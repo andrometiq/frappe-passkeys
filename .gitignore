@@ -9,6 +9,12 @@ local-notes/
 secrets/
 credentials/
 
+# local dev benches (frappe bench trees — big, machine-specific)
+dev-benches/
+
+# python
+__pycache__/
+
 # OS junk
 .DS_Store
 Thumbs.db
