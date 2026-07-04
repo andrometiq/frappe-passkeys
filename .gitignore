@@ -1,0 +1,14 @@
+# local working context — never committed
+CLAUDE.local.md
+local-notes/
+
+# secrets
+.env*
+*.pem
+*.key
+secrets/
+credentials/
+
+# OS junk
+.DS_Store
+Thumbs.db
