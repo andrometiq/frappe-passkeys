@@ -1,0 +1,30 @@
+# Daily upstream-drift canary (design/ci-plan.md §1 + §5 schedule trigger,
+# split into its own workflow so ci.yml stays purely PR/push-scoped).
+#
+# Frappe's branch tips move under us while this repo is idle — develop HEAD
+# especially, but version-15/version-16 pick up dependency-pin bumps too
+# (the cryptography/pyOpenSSL landmine, ci-plan.md §8). Running the full
+# 3-cell matrix daily catches that drift the morning it happens instead of
+# on the next unrelated PR.
+#
+# Cron between hrms/payments (00:00 UTC) and insights (02:00 UTC) — same
+# rationale, off-peak runners.
+
+name: Upstream Drift
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Daily matrix vs frappe branch tips
+    uses: ./.github/workflows/ci.yml

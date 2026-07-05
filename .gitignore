@@ -14,6 +14,8 @@ dev-benches/
 
 # python
 __pycache__/
+.pytest_cache/
+*.egg-info/
 
 # OS junk
 .DS_Store

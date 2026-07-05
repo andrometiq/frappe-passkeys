@@ -1,0 +1,169 @@
+# Copyright (c) 2026, Frappe Passkeys Contributors
+# License: MIT. See LICENSE
+
+"""Ceremony / sudo / grant / uv-setup state store (DESIGN-v1 §4; folds into
+``frappe/passkey.py``).
+
+Every single-use ``passkeys:*`` key uses **only raw ``redis.Redis`` operations
+on the made key** (``frappe.cache`` *is* a ``redis.Redis``). The wrapper's
+``set_value``/``get_value``/``delete_value`` are banned for these keys:
+``set_value`` pickles, ``delete_value`` discards the delete count, and
+``get_value`` serves a request-local copy that is provably stale after a
+remote consume (§4.2, PROBE-bench). Values are JSON, never pickle. Redis
+``ex`` is the sole expiry authority — records never re-derive expiry from
+their own timestamps with the consuming worker's clock.
+"""
+
+import json
+
+import frappe
+import redis
+
+# TTLs are code constants, not knobs (§9.1 fixed policy); the sudo window is
+# the one settings-driven lifetime (`passkey_reauth_window`, later phase).
+CEREMONY_TTL = 300
+CONFIRM_CEREMONY_TTL = 180
+UV_SETUP_TTL = 180
+GRANT_TTL = 180
+PASSWORD_FAILURE_TTL = 900
+PASSWORD_FAILURE_LIMIT = 5
+
+CEREMONY_PREFIX = "passkeys:ceremony:"
+SUDO_PREFIX = "passkeys:sudo:"
+GRANT_PREFIX = "passkeys:grant:"
+UV_SETUP_PREFIX = "passkeys:uvsetup:"
+PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
+
+
+def new_id() -> str:
+	"""Server-issued, unguessable id (CSPRNG) — never keyed by user or challenge."""
+	return frappe.generate_hash()
+
+
+# ---------------------------------------------------------------------------
+# single-use records (atomic consume; §4.2)
+# ---------------------------------------------------------------------------
+
+
+def store_ceremony(record: dict, ttl: int = CEREMONY_TTL) -> str:
+	state_id = new_id()
+	_put_json(CEREMONY_PREFIX + state_id, record, ttl)
+	return state_id
+
+
+def consume_ceremony(state_id: str) -> dict | None:
+	"""Atomically fetch-and-invalidate; exactly one caller wins across workers.
+
+	Returns ``None`` when the record was consumed, expired, evicted, or never
+	existed — callers MUST fail closed (typed ``CeremonyExpired``)."""
+	return _consume_json(CEREMONY_PREFIX + state_id)
+
+
+def store_uv_setup(record: dict, ttl: int = UV_SETUP_TTL) -> str:
+	setup_id = new_id()
+	_put_json(UV_SETUP_PREFIX + setup_id, record, ttl)
+	return setup_id
+
+
+def consume_uv_setup(setup_id: str) -> dict | None:
+	return _consume_json(UV_SETUP_PREFIX + setup_id)
+
+
+def store_grant(token_hash: str, record: dict, ttl: int = GRANT_TTL) -> None:
+	"""Keyed by sha256(token) — only the hash is ever stored (§4.1)."""
+	_put_json(GRANT_PREFIX + token_hash, record, ttl)
+
+
+def consume_grant(token_hash: str) -> dict | None:
+	return _consume_json(GRANT_PREFIX + token_hash)
+
+
+# ---------------------------------------------------------------------------
+# reusable records (sudo window; §7.1 — same raw treatment uniformly)
+# ---------------------------------------------------------------------------
+
+
+def set_sudo_window(sid: str, record: dict, ttl: int) -> None:
+	_put_json(SUDO_PREFIX + sid, record, ttl)
+
+
+def get_sudo_window(sid: str) -> dict | None:
+	raw = frappe.cache.get(_make_key(SUDO_PREFIX + sid))
+	return json.loads(raw) if raw is not None else None
+
+
+def clear_sudo_window(sid: str) -> None:
+	frappe.cache.delete(_make_key(SUDO_PREFIX + sid))
+
+
+# ---------------------------------------------------------------------------
+# counters (pwfail + per-user rate shapes; TTL guaranteed at creation — §4.2)
+# ---------------------------------------------------------------------------
+
+
+def bump_counter(name: str, ttl: int) -> int:
+	"""Pinned idiom: ``SET key 0 EX ttl NX`` + ``INCR`` in one pipeline — a
+	worker dying between a naive INCR and EXPIRE would leave an immortal
+	counter. Eviction resetting a counter is accepted: throttles fail open."""
+	key = _make_key(name)
+	pipe = frappe.cache.pipeline()
+	pipe.set(key, 0, ex=ttl, nx=True)
+	pipe.incr(key)
+	return pipe.execute()[1]
+
+
+def get_counter(name: str) -> int:
+	raw = frappe.cache.get(_make_key(name))
+	return int(raw) if raw is not None else 0
+
+
+def clear_counter(name: str) -> None:
+	frappe.cache.delete(_make_key(name))
+
+
+def record_password_failure(user: str) -> int:
+	return bump_counter(PASSWORD_FAILURE_PREFIX + user, PASSWORD_FAILURE_TTL)
+
+
+def is_password_throttled(user: str) -> bool:
+	return get_counter(PASSWORD_FAILURE_PREFIX + user) >= PASSWORD_FAILURE_LIMIT
+
+
+def clear_password_failures(user: str) -> None:
+	clear_counter(PASSWORD_FAILURE_PREFIX + user)
+
+
+# ---------------------------------------------------------------------------
+# raw idioms (§4.2 — normative)
+# ---------------------------------------------------------------------------
+
+
+def _make_key(name: str) -> bytes:
+	# site-scoped structurally: b"<db_name>|<name>"
+	return frappe.cache.make_key(name)
+
+
+def _put_json(name: str, record: dict, ttl: int) -> None:
+	# TTL at write; JSON; never touches frappe.local.cache
+	frappe.cache.set(_make_key(name), json.dumps(record), ex=ttl)
+
+
+def _consume_json(name: str) -> dict | None:
+	key = _make_key(name)
+	try:
+		raw = frappe.cache.getdel(key)  # Redis >= 6.2
+	except redis.exceptions.ResponseError:
+		raw = _consume_via_pipeline(key)
+	return json.loads(raw) if raw is not None else None
+
+
+def _consume_via_pipeline(key: bytes) -> bytes | None:
+	"""MULTI/EXEC fallback for Redis < 6.2: proceed iff the value was present
+	AND this caller's DELETE removed it (delete count == 1)."""
+	pipe = frappe.cache.pipeline()
+	pipe.get(key)
+	pipe.delete(key)
+	raw, deleted = pipe.execute()
+	if raw is None or not deleted:
+		return None
+	return raw

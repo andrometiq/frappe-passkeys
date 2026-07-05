@@ -1,0 +1,192 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "login_modes_section",
+  "login_with_passkey",
+  "passkey_as_second_factor",
+  "passkey_2fa_allow_otp_fallback",
+  "relying_party_section",
+  "passkey_rp_id",
+  "passkey_origins",
+  "resolved_rp_html",
+  "policy_section",
+  "passkey_sign_count_hard_fail",
+  "passkey_max_per_user",
+  "column_break_policy",
+  "passkey_reauth_window",
+  "passkey_allow_first_enrollment_on_weak_login",
+  "enrollment_section",
+  "passkey_enrollment_nudge",
+  "passkey_nudge_max_prompts",
+  "column_break_enrollment",
+  "passkey_nudge_cooldown_days",
+  "passkey_conditional_create",
+  "notifications_section",
+  "passkey_notify_on_change",
+  "passkey_notify_password_fallback"
+ ],
+ "fields": [
+  {
+   "fieldname": "login_modes_section",
+   "fieldtype": "Section Break",
+   "label": "Login Modes"
+  },
+  {
+   "default": "0",
+   "description": "Passwordless first-factor login with a passkey (and the login page UI)",
+   "fieldname": "login_with_passkey",
+   "fieldtype": "Check",
+   "label": "Login with Passkey"
+  },
+  {
+   "default": "0",
+   "description": "Use a passkey as the second factor after password login; requires Two Factor Authentication to be enabled in System Settings",
+   "fieldname": "passkey_as_second_factor",
+   "fieldtype": "Check",
+   "label": "Passkey as Second Factor"
+  },
+  {
+   "default": "1",
+   "description": "Allow a mid-flow fallback to the configured OTP method when the passkey second factor fails",
+   "fieldname": "passkey_2fa_allow_otp_fallback",
+   "fieldtype": "Check",
+   "label": "Allow OTP Fallback for Passkey Second Factor"
+  },
+  {
+   "fieldname": "relying_party_section",
+   "fieldtype": "Section Break",
+   "label": "Relying Party"
+  },
+  {
+   "description": "One-way door: changing the RP ID invalidates every enrolled passkey. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
+   "fieldname": "passkey_rp_id",
+   "fieldtype": "Data",
+   "label": "Passkey RP ID"
+  },
+  {
+   "description": "Additional allowed origins, one per line (explicit ports allowed). Each must be HTTPS and within the RP ID's scope.",
+   "fieldname": "passkey_origins",
+   "fieldtype": "Small Text",
+   "label": "Passkey Origins"
+  },
+  {
+   "fieldname": "resolved_rp_html",
+   "fieldtype": "HTML",
+   "label": "Resolved Configuration",
+   "options": "<p class=\"text-muted\">Changing the RP ID after enrollment invalidates every passkey registered under it. The resolved RP ID and origins are validated when a login mode is enabled.</p>"
+  },
+  {
+   "fieldname": "policy_section",
+   "fieldtype": "Section Break",
+   "label": "Policy"
+  },
+  {
+   "default": "0",
+   "description": "Reject logins on a signature-counter regression instead of logging and flagging the credential",
+   "fieldname": "passkey_sign_count_hard_fail",
+   "fieldtype": "Check",
+   "label": "Hard-fail on Sign Count Regression"
+  },
+  {
+   "default": "10",
+   "fieldname": "passkey_max_per_user",
+   "fieldtype": "Int",
+   "label": "Maximum Passkeys per User"
+  },
+  {
+   "fieldname": "column_break_policy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "600",
+   "description": "Seconds a fresh login or re-authentication satisfies the sudo gate for passkey management",
+   "fieldname": "passkey_reauth_window",
+   "fieldtype": "Int",
+   "label": "Re-authentication Window (Seconds)"
+  },
+  {
+   "default": "1",
+   "description": "Let accounts without a usable password (social login only) enroll their first passkey shortly after an interactive login",
+   "fieldname": "passkey_allow_first_enrollment_on_weak_login",
+   "fieldtype": "Check",
+   "label": "Allow First Enrollment on Weak Login"
+  },
+  {
+   "fieldname": "enrollment_section",
+   "fieldtype": "Section Break",
+   "label": "Enrollment"
+  },
+  {
+   "default": "1",
+   "fieldname": "passkey_enrollment_nudge",
+   "fieldtype": "Check",
+   "label": "Enrollment Nudge"
+  },
+  {
+   "default": "3",
+   "fieldname": "passkey_nudge_max_prompts",
+   "fieldtype": "Int",
+   "label": "Maximum Nudge Prompts"
+  },
+  {
+   "fieldname": "column_break_enrollment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "fieldname": "passkey_nudge_cooldown_days",
+   "fieldtype": "Int",
+   "label": "Nudge Cooldown (Days)"
+  },
+  {
+   "default": "1",
+   "description": "Silently upgrade password users to a passkey where the browser supports conditional create",
+   "fieldname": "passkey_conditional_create",
+   "fieldtype": "Check",
+   "label": "Conditional Create"
+  },
+  {
+   "fieldname": "notifications_section",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "default": "1",
+   "description": "Email the user when a passkey is added, removed or flagged. This is the compensating control for registration hijack — leave it on outside mail-less development sites.",
+   "fieldname": "passkey_notify_on_change",
+   "fieldtype": "Check",
+   "label": "Notify on Passkey Changes"
+  },
+  {
+   "default": "0",
+   "description": "Email the user when a passkey holder signs in with a weaker method",
+   "fieldname": "passkey_notify_password_fallback",
+   "fieldtype": "Check",
+   "label": "Notify on Password Fallback"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Passkeys",
+ "name": "Passkey Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
