@@ -14,6 +14,7 @@ remote consume (§4.2, PROBE-bench). Values are JSON, never pickle. Redis
 their own timestamps with the consuming worker's clock.
 """
 
+import hashlib
 import json
 
 import frappe
@@ -33,6 +34,12 @@ SUDO_PREFIX = "passkeys:sudo:"
 GRANT_PREFIX = "passkeys:grant:"
 UV_SETUP_PREFIX = "passkeys:uvsetup:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
+
+# Guest-ceremony browser binder (§4.3). Ephemeral cookie; the ceremony record
+# stores only sha256(value). Max-Age = 2× ceremony TTL (sliding), so a slow
+# hybrid-QR ceremony begun minutes after page load never outlives the cookie.
+BINDER_COOKIE = "passkey_binder"
+BINDER_MAX_AGE = 2 * CEREMONY_TTL  # 600 s
 
 
 def new_id() -> str:
@@ -131,6 +138,59 @@ def is_password_throttled(user: str) -> bool:
 
 def clear_password_failures(user: str) -> None:
 	clear_counter(PASSWORD_FAILURE_PREFIX + user)
+
+
+# ---------------------------------------------------------------------------
+# guest browser binder cookie (§4.3 — the login-CSRF defence)
+# ---------------------------------------------------------------------------
+
+
+def read_binder_cookie() -> str | None:
+	"""The `passkey_binder` value carried on the current request, or ``None``."""
+	request = getattr(frappe.local, "request", None)
+	if request is None:
+		return None
+	cookies = getattr(request, "cookies", None)
+	if cookies is None:
+		return None
+	return cookies.get(BINDER_COOKIE) or None
+
+
+def set_binder_cookie() -> str | None:
+	"""Set-iff-absent + sliding refresh (§4.3): reuse the request's existing
+	binder value if present, else mint one; (re)send it with a fresh Max-Age.
+	Returns the value whose sha256 the ceremony record should store, or ``None``
+	when there is no cookie manager (no HTTP context) — the caller then stores a
+	``None`` binder hash and every ``verify_*`` fails closed."""
+	manager = getattr(frappe.local, "cookie_manager", None)
+	if manager is None:
+		return None
+	value = read_binder_cookie() or frappe.generate_hash()
+	manager.set_cookie(
+		BINDER_COOKIE,
+		value,
+		httponly=True,
+		samesite="Lax",
+		secure=True,
+		max_age=BINDER_MAX_AGE,
+	)
+	return value
+
+
+def binder_hash(value: str | None) -> str | None:
+	return hashlib.sha256(value.encode("utf-8")).hexdigest() if value else None
+
+
+def binder_matches(stored_hash: str | None) -> bool:
+	"""Fail-closed match (§4.3): the request must carry a binder cookie whose
+	sha256 equals the value stored at begin time. A missing stored hash (record
+	minted without a cookie manager) or a missing/mismatched request cookie both
+	return ``False`` — an attacker cannot set or read this HttpOnly cookie
+	cross-site, which is the structural login-CSRF defence."""
+	if not stored_hash:
+		return False
+	got = read_binder_cookie()
+	return bool(got) and binder_hash(got) == stored_hash
 
 
 # ---------------------------------------------------------------------------

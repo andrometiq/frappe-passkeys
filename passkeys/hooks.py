@@ -22,6 +22,15 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 # Programmatic registry Property Setter — never a fixtures/ fixture (§14).
 after_migrate = ["passkeys.install.sync_registry_fixture"]
 
+# Website integration
+# -------------------
+# Conditional login-page asset delivery (§5.1): the shim appends the login
+# bundle to web_include_js/css only on /login when a passkey mode is enabled —
+# zero template fork, zero bytes on disabled sites. Import-clean (no webauthn),
+# since update_website_context fires on every website render (§1.3). The login
+# endpoints are whitelisted (passkeys.passkey.*), so they need no hook here.
+update_website_context = ["passkeys.shims.login_page.website_context"]
+
 # Session lifecycle
 # -----------------
 # Sudo-window seed at fresh login (§7.1): fires after make_session inside
