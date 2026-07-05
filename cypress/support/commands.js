@@ -180,6 +180,37 @@ Cypress.Commands.add("purge_server_passkeys", (user) =>
 	cy.call("passkeys.tests.ui_test_helpers.purge_passkeys", { user })
 );
 
+// --- second-factor (P4, §6) scaffolding ------------------------------------
+// Turn on core 2FA (the structural floor) + passkey_as_second_factor, pointed at
+// this UI-test origin. `first_factor`/`otp_fallback` toggle the co-features.
+Cypress.Commands.add("setup_second_factor", (opts = {}) =>
+	cy.call("passkeys.tests.ui_test_helpers.configure_second_factor", {
+		rp_id: site_host(),
+		origin: site_origin(),
+		login_with_passkey: opts.first_factor ? 1 : 0,
+		allow_otp_fallback: opts.otp_fallback ? 1 : 0,
+	})
+);
+
+Cypress.Commands.add("teardown_second_factor", () =>
+	cy.call("passkeys.tests.ui_test_helpers.teardown_second_factor", {})
+);
+
+// A non-admin user with a known password (the passkey second factor is hard-
+// exempt for Administrator, §6.2).
+Cypress.Commands.add("ensure_sf_user", (email, pwd) =>
+	cy.call("passkeys.tests.ui_test_helpers.ensure_second_factor_user", { email, pwd })
+);
+
+// Cover the user with a core-2FA role (call AFTER registering the passkey).
+Cypress.Commands.add("enroll_user_2fa", (user) =>
+	cy.call("passkeys.tests.ui_test_helpers.enroll_user_in_2fa", { user })
+);
+
+Cypress.Commands.add("delete_test_user", (email) =>
+	cy.call("passkeys.tests.ui_test_helpers.delete_test_user", { email })
+);
+
 // Seed a real discoverable credential for `user`: log in over the password leg
 // (which seeds a sudo window), drive the committed registration ceremony from
 // the page (virtual authenticator generates the ES256 key — no injection), then

@@ -51,6 +51,115 @@ def configure_login(
 	return values
 
 
+_2FA_ROLE = "Passkey 2FA UI Role"
+
+
+@frappe.whitelist()
+def configure_second_factor(
+	rp_id: str,
+	origin: str,
+	login_with_passkey: int = 0,
+	allow_otp_fallback: int = 0,
+) -> dict:
+	"""Set up the password → passkey second-factor mode for the P4 Cypress spec
+	(DESIGN-v1 §6): turn core Two Factor Authentication ON (the structural floor,
+	§6.1), point Passkey Settings at the UI-test origin, and enable
+	``passkey_as_second_factor`` + the OTP-fallback knob. Values are written
+	directly (``set_single_value``) — the same bench-origin rationale as
+	:func:`configure_login`, and ``set_single_value`` bypasses the doc_events
+	floor guard, which is correct for scaffolding."""
+	_guard()
+	frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 1)
+	frappe.db.set_single_value("System Settings", "two_factor_method", "OTP App")
+	values = {
+		"passkey_rp_id": rp_id,
+		"passkey_origins": origin,
+		"login_with_passkey": cint(login_with_passkey),
+		"passkey_as_second_factor": 1,
+		"passkey_2fa_allow_otp_fallback": cint(allow_otp_fallback),
+	}
+	for field, value in values.items():
+		frappe.db.set_single_value("Passkey Settings", field, value)
+	frappe.local.system_settings = None
+	frappe.clear_document_cache("System Settings", "System Settings")
+	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	frappe.db.commit()
+	return values
+
+
+@frappe.whitelist()
+def teardown_second_factor() -> dict:
+	"""Undo :func:`configure_second_factor` (P4 spec ``after``): drop the app
+	second-factor mode, then core 2FA. ``set_single_value`` bypasses the
+	doc_events guard (which would otherwise block the 1→0 flip), so order is
+	immaterial — clear the app knob first for clarity."""
+	_guard()
+	frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
+	frappe.db.set_single_value("Passkey Settings", "passkey_2fa_allow_otp_fallback", 0)
+	frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
+	frappe.local.system_settings = None
+	frappe.clear_document_cache("System Settings", "System Settings")
+	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	frappe.db.commit()
+	return {"ok": 1}
+
+
+@frappe.whitelist()
+def ensure_second_factor_user(email: str, pwd: str) -> str:
+	"""Get-or-create a NON-admin test user with a known password (the passkey
+	second factor is hard-exempt for Administrator, §6.2). Returns the user name."""
+	_guard()
+	from frappe.utils.password import update_password
+
+	if not frappe.db.exists("User", email):
+		user = frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": email,
+				"first_name": "Passkey",
+				"last_name": "SecondFactor",
+				"send_welcome_email": 0,
+			}
+		)
+		user.flags.no_welcome_mail = True
+		user.insert(ignore_permissions=True)
+	update_password(email, pwd)
+	frappe.db.commit()
+	return email
+
+
+@frappe.whitelist()
+def enroll_user_in_2fa(user: str) -> dict:
+	"""Cover ``user`` with a role carrying ``two_factor_auth=1`` so
+	``should_run_2fa(user)`` is True (drives pwd retention + OTP fallback), and
+	force the OTP-App verification path off the email branch. Call AFTER the
+	passkey is registered — a 2FA-covered ``/api/method/login`` would otherwise
+	trip core OTP mid-registration."""
+	_guard()
+	from frappe.twofactor import set_default
+
+	if not frappe.db.exists("Role", _2FA_ROLE):
+		frappe.get_doc(
+			{"doctype": "Role", "role_name": _2FA_ROLE, "two_factor_auth": 1, "desk_access": 0}
+		).insert(ignore_permissions=True)
+	frappe.get_doc("User", user).add_roles(_2FA_ROLE)
+	set_default(user + "_otplogin", 1)
+	frappe.db.commit()
+	return {"ok": 1}
+
+
+@frappe.whitelist()
+def delete_test_user(email: str) -> dict:
+	"""Remove a user created by :func:`ensure_second_factor_user` (P4 spec cleanup)."""
+	_guard()
+	frappe.db.delete("WebAuthn Credential", {"user": email})
+	frappe.db.delete("WebAuthn User Handle", {"user": email})
+	if frappe.db.exists("User", email):
+		frappe.delete_doc("User", email, force=1, ignore_permissions=True, delete_permanently=True)
+	frappe.db.commit()
+	return {"ok": 1}
+
+
 @frappe.whitelist()
 def purge_passkeys(user: str) -> dict:
 	"""Delete every WebAuthn Credential + User Handle row for ``user`` — DB
