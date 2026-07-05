@@ -348,6 +348,305 @@
 		};
 	}
 
+	// ============================================================ §7 confirm
+	// Action-confirmation ("passkey signing") primitive — the PURE protocol
+	// engine. Zero window/document/navigator/frappe references so the whole
+	// begin -> gesture -> verify -> grant flow (+ the 401 retry / fingerprint
+	// echo of §7.2 A36, + concurrency dedupe) is unit-testable under node:test
+	// with injected deps. The frappe.ui.Dialog UI + fetch/navigator wiring live
+	// in passkey_confirm.js, which passes real deps here (§7.3).
+
+	// Wire constants — MUST mirror passkeys/session.py GRANT_HEADER/GRANT_KWARG.
+	var GRANT_HEADER = "X-Passkey-Grant";
+	var GRANT_KWARG = "_passkey_grant";
+
+	// Method paths the confirm client calls (server whitelist names, §3.0 rows
+	// 14/15/16). Kept here so the P5-server phase can grep the exact strings.
+	var CONFIRM_METHODS = {
+		begin: "passkeys.confirm.begin_confirmation",
+		verify: "passkeys.confirm.verify_confirmation",
+		reauth: "passkeys.confirm.reauth_password",
+	};
+
+	// The 401 retry-contract exc_type (§3 wire taxonomy) and the fixed,
+	// exhaustive rejection codes consuming apps program against (§7.3 A44).
+	var CONFIRM_EXC_TYPE = "PasskeyConfirmationRequired";
+	var CONFIRM_CODES = {
+		USER_CANCELLED: "user_cancelled",
+		NOT_SUPPORTED: "not_supported",
+		NO_CREDENTIALS: "no_credentials",
+		CONFIRMATION_FAILED: "confirmation_failed",
+		FALLBACK_UNAVAILABLE: "fallback_unavailable",
+		NETWORK: "network",
+	};
+
+	// frappe wraps a whitelisted dict return as {message: <dict>}; typed-error
+	// bodies put their structured keys at TOP LEVEL via frappe.local.response
+	// (§3). So SUCCESS payloads are unwrapped from `.message`; ERROR payloads
+	// are read at top level (parseConfirmationRequired below).
+	function unwrapMessage(body) {
+		if (body && typeof body === "object" && "message" in body) return body.message;
+		return body;
+	}
+
+	// Parse a 401 body into the retry contract, or null if it isn't one. Clients
+	// match on exc_type ONLY (§3). Echoes payload_fingerprint VERBATIM (A36) —
+	// JS never computes a hash.
+	function parseConfirmationRequired(body) {
+		if (!body || typeof body !== "object") return null;
+		if (body.exc_type !== CONFIRM_EXC_TYPE) return null;
+		return {
+			action: body.action || null,
+			payloadFingerprint: body.payload_fingerprint || null,
+			methods: Array.isArray(body.methods) ? body.methods.slice() : [],
+		};
+	}
+
+	// The header a caller attaches to the protected call once it holds a grant
+	// (§7.2). Header is primary; the _passkey_grant kwarg is the server-side
+	// fallback (session.py) — the client uses the header.
+	function buildGrantHeaders(token) {
+		var h = {};
+		if (token) h[GRANT_HEADER] = token;
+		return h;
+	}
+
+	// Stable local key for concurrency dedupe ONLY (A44 "concurrent invocations
+	// share one dialog"). NOT a security hash and NEVER sent to the server — the
+	// payload hash is server-computed (A36). Sorted keys for stability.
+	function confirmSignature(action, params, payloadFingerprint) {
+		if (payloadFingerprint) return "fp:" + action + ":" + payloadFingerprint;
+		var p = params || {};
+		var keys = Object.keys(p).sort();
+		var parts = [];
+		for (var i = 0; i < keys.length; i++) {
+			var v = p[keys[i]];
+			parts.push(keys[i] + "=" + (typeof v === "object" ? JSON.stringify(v) : String(v)));
+		}
+		return "pp:" + action + ":" + parts.join("&");
+	}
+
+	// Pull the grant token from a verify_confirmation / reauth_password success
+	// body. Server returns {grant: "<token>"} (wrapped as {message:{grant}}).
+	function extractGrant(body) {
+		var m = unwrapMessage(body);
+		if (m && typeof m === "object" && m.grant) return m.grant;
+		if (body && typeof body === "object" && body.grant) return body.grant;
+		return null;
+	}
+
+	// Available authentication methods for a confirmation, from a
+	// begin_confirmation response (authoritative, per-user) or a 401 body
+	// (policy hint). methods ⊆ ["passkey","password","sudo"] (A44).
+	function confirmCapabilities(methods) {
+		var m = Array.isArray(methods) ? methods : [];
+		return {
+			passkey: m.indexOf("passkey") !== -1,
+			password: m.indexOf("password") !== -1,
+			sudo: m.indexOf("sudo") !== -1,
+		};
+	}
+
+	function ConfirmError(code, message) {
+		this.code = code;
+		this.message = message || code;
+	}
+
+	// The engine. deps (all injected — nothing browser-bound here):
+	//   post(method, body, headers) -> Promise<{ok, status, body}>
+	//   runGesture(optionsJSON)     -> Promise<assertionJSON>  (parse + get + toJSON)
+	//   ui: {
+	//     chooseMethod({action, canPasskey, canPassword}) -> Promise<"passkey"|"password">
+	//                                                          (reject to cancel)
+	//     collectPassword()  -> Promise<string>              (reject to cancel)
+	//     announce(msg), busy(bool), done(ok), passwordError(msg), close()
+	//   }
+	//   translate (optional): (str) -> str
+	//   now (optional): () -> ms
+	function createConfirmEngine(deps) {
+		deps = deps || {};
+		var post = deps.post;
+		var runGesture = deps.runGesture;
+		var makeUI = deps.ui; // () -> ui controller, OR a controller object
+		var tr = deps.translate || function (s) { return s; };
+		var maxPasswordTries = typeof deps.maxPasswordTries === "number" ? deps.maxPasswordTries : 5;
+
+		var inflight = {}; // signature -> Promise (dedupe identical concurrent)
+		var chain = Promise.resolve(); // serialize distinct dialogs (never stack two)
+
+		function reject(code, msg) {
+			return Promise.reject(new ConfirmError(code, tr(msg || code)));
+		}
+
+		function ui() {
+			return typeof makeUI === "function" ? makeUI() : makeUI;
+		}
+
+		function mapGestureError(err) {
+			if (err && err.code && CODE_SET[err.code]) return err; // already typed
+			var mapped = mapDomException(err);
+			return new ConfirmError(mapped.code, tr(mapped.messageKey));
+		}
+
+		// One confirmation ceremony. input:
+		//   {action, params}                 (frappe.passkeys.confirm)
+		//   {action, payloadFingerprint, methods}  (retry after a 401)
+		function ceremony(input) {
+			var action = input.action;
+			var beginBody = input.payloadFingerprint
+				? { action: action, payload_hash: input.payloadFingerprint } // echo verbatim (A36)
+				: { action: action, params: input.params || {} };
+
+			return post(CONFIRM_METHODS.begin, beginBody, {}).then(function (res) {
+				if (!res || !res.ok) {
+					// begin itself failed: served-by-core / disabled / network
+					var parsed = res && parseConfirmationRequired(res.body);
+					if (res && res.status === 417) return reject(CONFIRM_CODES.NOT_SUPPORTED, "Passkey confirmation isn't available here.");
+					if (parsed) return reject(CONFIRM_CODES.CONFIRMATION_FAILED, "Couldn't start confirmation.");
+					return reject(CONFIRM_CODES.NETWORK, "Couldn't reach the confirmation service — try again.");
+				}
+				var begin = unwrapMessage(res.body) || {};
+				var stateId = begin.state_id;
+				var options = begin.options;
+				var fingerprint = begin.payload_fingerprint || input.payloadFingerprint || null;
+				// begin's per-user methods are authoritative; fall back to the
+				// 401 policy hint only if begin omitted them.
+				var caps = confirmCapabilities(
+					Array.isArray(begin.methods) ? begin.methods : input.methods
+				);
+				if (!caps.passkey && !caps.password) {
+					return reject(CONFIRM_CODES.FALLBACK_UNAVAILABLE,
+						"This action needs a passkey, and none is available.");
+				}
+				var controller = ui();
+				return Promise.resolve()
+					.then(function () {
+						if (!caps.passkey) return "password"; // open straight on the password tab
+						return controller.chooseMethod({
+							action: action,
+							canPasskey: caps.passkey,
+							canPassword: caps.password,
+						});
+					})
+					.then(function (method) {
+						if (method === "password") {
+							return passwordLeg(controller, action, fingerprint);
+						}
+						return passkeyLeg(controller, stateId, options);
+					})
+					.then(function (grant) {
+						controller.done(true);
+						return grant;
+					})
+					.catch(function (err) {
+						controller.done(false);
+						throw err;
+					});
+			}, function () {
+				return reject(CONFIRM_CODES.NETWORK, "Couldn't reach the confirmation service — try again.");
+			});
+		}
+
+		function passkeyLeg(controller, stateId, options) {
+			controller.busy(true);
+			controller.announce(tr("Waiting for your passkey…"));
+			return Promise.resolve()
+				.then(function () { return runGesture(options); })
+				.catch(function (err) { throw mapGestureError(err); })
+				.then(function (assertion) {
+					return post(CONFIRM_METHODS.verify, { state_id: stateId, credential: assertion }, {});
+				})
+				.then(function (res) {
+					if (!res || !res.ok) {
+						// A35: an assertion is NEVER re-POSTed; failure = fresh ceremony.
+						controller.announce(tr("That didn't work — please try again."));
+						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
+							tr("Couldn't confirm with your passkey."));
+					}
+					var grant = extractGrant(res.body);
+					if (!grant) throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Confirmation didn't complete."));
+					return grant;
+				});
+		}
+
+		function passwordLeg(controller, action, fingerprint) {
+			var tries = 0;
+			function attempt() {
+				return controller.collectPassword().then(function (pwd) {
+					tries += 1;
+					var body = { pwd: pwd, action: action };
+					if (fingerprint) body.payload_fingerprint = fingerprint;
+					return post(CONFIRM_METHODS.reauth, body, {}).then(function (res) {
+						if (res && res.ok) {
+							var grant = extractGrant(res.body);
+							if (grant) return grant;
+						}
+						if (tries >= maxPasswordTries) {
+							throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Too many attempts. Try again later."));
+						}
+						controller.passwordError(tr("That password wasn't right. Try again."));
+						return attempt();
+					});
+				});
+			}
+			return attempt();
+		}
+
+		// Concurrency (A44): identical signatures share one in-flight promise;
+		// distinct confirmations serialize so two dialogs never stack.
+		function run(input) {
+			var sig = confirmSignature(input.action, input.params, input.payloadFingerprint);
+			if (inflight[sig]) return inflight[sig];
+			var p = chain.then(function () { return ceremony(input); });
+			inflight[sig] = p;
+			var clear = function () { if (inflight[sig] === p) delete inflight[sig]; };
+			p.then(clear, clear);
+			// keep the chain alive but swallow errors so one failure can't poison the queue
+			chain = p.then(function () {}, function () {});
+			return p;
+		}
+
+		// Public: low-level — run the ceremony, resolve to a grant token (§7.3).
+		function confirm(action, params) {
+			return run({ action: action, params: params || {} });
+		}
+
+		// Public: high-level — call a protected method, catch the 401 contract,
+		// run the confirmation, retry ONCE with the grant header (§7.3).
+		function call(method, args) {
+			args = args || {};
+			return post(method, args, {}).then(function (res) {
+				if (res && res.ok) return unwrapMessage(res.body);
+				var req = res && res.status === 401 && parseConfirmationRequired(res.body);
+				if (!req) throw httpError(res);
+				return run({
+					action: req.action,
+					payloadFingerprint: req.payloadFingerprint,
+					methods: req.methods,
+				}).then(function (grant) {
+					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
+						if (res2 && res2.ok) return unwrapMessage(res2.body);
+						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
+							tr("The action couldn't be confirmed."));
+					});
+				});
+			}, function () {
+				throw new ConfirmError(CONFIRM_CODES.NETWORK, tr("Couldn't reach the server — try again."));
+			});
+		}
+
+		function httpError(res) {
+			return new ConfirmError(CONFIRM_CODES.NETWORK, tr("Couldn't reach the server — try again."));
+		}
+
+		return { confirm: confirm, call: call, run: run, _inflight: inflight };
+	}
+
+	var CODE_SET = {};
+	(function () {
+		for (var k in CONFIRM_CODES) if (CONFIRM_CODES.hasOwnProperty(k)) CODE_SET[CONFIRM_CODES[k]] = true;
+	})();
+
 	return {
 		t: t,
 		mergeAppTranslations: mergeAppTranslations,
@@ -366,5 +665,19 @@
 		announce: announce,
 		captureFocus: captureFocus,
 		LIVE_REGION_ID: LIVE_REGION_ID,
+		// §7 action-confirmation ("passkey signing")
+		GRANT_HEADER: GRANT_HEADER,
+		GRANT_KWARG: GRANT_KWARG,
+		CONFIRM_METHODS: CONFIRM_METHODS,
+		CONFIRM_EXC_TYPE: CONFIRM_EXC_TYPE,
+		CONFIRM_CODES: CONFIRM_CODES,
+		unwrapMessage: unwrapMessage,
+		parseConfirmationRequired: parseConfirmationRequired,
+		buildGrantHeaders: buildGrantHeaders,
+		confirmSignature: confirmSignature,
+		extractGrant: extractGrant,
+		confirmCapabilities: confirmCapabilities,
+		ConfirmError: ConfirmError,
+		createConfirmEngine: createConfirmEngine,
 	};
 });
