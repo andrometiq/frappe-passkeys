@@ -22,6 +22,16 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 # Programmatic registry Property Setter — never a fixtures/ fixture (§14).
 after_migrate = ["passkeys.install.sync_registry_fixture"]
 
+# Session lifecycle
+# -----------------
+# Sudo-window seed at fresh login (§7.1): fires after make_session inside
+# post_login, where the sid already exists (the on_login veto, §9.3, fires
+# BEFORE make_session and cannot seed a sid-keyed window). Dropped on logout
+# (§7.5). Both handlers are on the every-login hook path, so session.py imports
+# no webauthn (§1.3).
+on_session_creation = ["passkeys.session.seed_sudo_window"]
+on_logout = ["passkeys.session.clear_sudo_window"]
+
 # Document Events
 # ---------------
 doc_events = {
