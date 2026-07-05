@@ -190,3 +190,48 @@ def credential_count(user: str) -> int:
 	"""Server-side truth for a spec's post-condition assertions."""
 	_guard()
 	return frappe.db.count("WebAuthn Credential", {"user": user})
+
+
+# ---------------------------------------------------------------------------
+# §7 action-confirmation ("passkey signing") probes — the decorated endpoints the
+# P5 confirm Cypress specs drive through the frozen `frappe.passkeys.*` client.
+# These import `passkeys.confirm` (webauthn-free) and register their actions at
+# import time — pure test scaffolding, folds away with the shims on core merge.
+# ---------------------------------------------------------------------------
+
+from passkeys.confirm import passkey_protected  # noqa: E402
+
+# Namespaced probe actions (never collide with the app's own passkeys.* actions).
+CONFIRM_PROBE_ACTION = "passkeys.tests.confirm_probe"
+CONFIRM_PROBE_PASSKEY_ONLY_ACTION = "passkeys.tests.confirm_probe_passkey_only"
+CONFIRM_PROBE_FAILING_ACTION = "passkeys.tests.confirm_probe_failing"
+
+
+@frappe.whitelist(methods=["POST"])
+@passkey_protected(action=CONFIRM_PROBE_ACTION, bind_params=["token"], allow_password_fallback=True)
+def confirm_probe(token=None) -> dict:
+	"""A @passkey_protected endpoint the confirm-happy / call-retry / password-
+	fallback / concurrency specs hit: a valid grant for ``(action, {token})`` runs
+	it; otherwise it 401s the retry contract. ``allow_password_fallback=True`` so
+	the password tab is offered (§7.2)."""
+	return {"confirmed": True, "token": token}
+
+
+@frappe.whitelist(methods=["POST"])
+@passkey_protected(
+	action=CONFIRM_PROBE_PASSKEY_ONLY_ACTION, bind_params=["token"], allow_password_fallback=False
+)
+def confirm_probe_passkey_only(token=None) -> dict:
+	"""Passkey-only assurance variant (``allow_password_fallback=False``): the
+	error-taxonomy spec asserts the dialog offers no password door and a password
+	grant never satisfies it."""
+	return {"confirmed": True, "token": token}
+
+
+@frappe.whitelist(methods=["POST"])
+@passkey_protected(action=CONFIRM_PROBE_FAILING_ACTION, bind_params=["token"])
+def confirm_probe_failing(token=None):
+	"""Consumes the grant, then fails — the grant-semantics spec asserts the
+	gesture is burned even when the wrapped action fails (A-F20): a retry needs a
+	fresh ceremony."""
+	frappe.throw("intentional post-consume failure (A-F20 probe)", frappe.ValidationError)

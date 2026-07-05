@@ -5,6 +5,20 @@ app_description = "Passkey (WebAuthn) authentication for Frappe"
 app_email = "passkeys@example.com"
 app_license = "MIT"
 
+# Desk / portal assets — action-confirmation ("passkey signing") client (§7.3)
+# ---------------------------------------------------------------------------
+# The confirm.* surface is delivered on EVERY desk page independent of login
+# modes (§3.0 matrix / A39): consuming apps' @passkey_protected actions must not
+# silently break when an admin toggles login modes — it is re-auth, not login.
+# passkey_common.js MUST load first (sets the frappe.passkeys_common global the
+# confirm bundle reads). Both files are UMD-lite browser globals (no build step);
+# they self-gate on `frappe.passkeys` availability at runtime.
+app_include_js = [
+	"/assets/passkeys/js/passkey_common.js",
+	"/assets/passkeys/js/passkey_confirm.js",
+]
+app_include_css = ["/assets/passkeys/css/passkey_confirm.css"]
+
 # Installation
 # ------------
 # Version floor + fresh-install-onto-native-core refusal (DESIGN-v1 §14): the
@@ -33,6 +47,14 @@ update_website_context = ["passkeys.shims.login_page.website_context"]
 
 # Session lifecycle
 # -----------------
+# passkey_only_login veto (§9.3 / F2): fires BEFORE make_session inside
+# post_login on all three branches — a raising hook aborts the login before any
+# session exists. Blocks password / email-link / social first-factor login for a
+# flagged user; passkey legs (which set frappe.local.flags.passkey_login) and
+# impersonation (non-Guest session at hook time) pass. On the every-login hook
+# path, so auth_hooks.py imports no webauthn (§1.3).
+on_login = ["passkeys.auth_hooks.on_login_veto"]
+
 # Sudo-window seed at fresh login (§7.1): fires after make_session inside
 # post_login, where the sid already exists (the on_login veto, §9.3, fires
 # BEFORE make_session and cannot seed a sid-keyed window). Dropped on logout

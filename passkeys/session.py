@@ -21,7 +21,7 @@ import hashlib
 import json
 
 import frappe
-from frappe.utils import cint
+from frappe.utils import cint, now
 
 from passkeys import state
 
@@ -181,6 +181,105 @@ def consume_passkey_grant(user: str, action: str, params: dict) -> bool:
 		and record.get("method") == "passkey"
 		and record.get("payload_hash") == payload_hash(params)
 	)
+
+
+def _grant_matches(record: dict, user: str, action: str, params: dict) -> bool:
+	"""Ownership/binding predicate shared by both grant consumers: a grant
+	authorizes only its exact ``user`` + current sid + declared ``action`` +
+	exact payload (§7.2). Method binding is layered by the caller."""
+	return (
+		record.get("user") == user
+		and record.get("sid") == frappe.session.sid
+		and record.get("action") == action
+		and record.get("payload_hash") == payload_hash(params)
+	)
+
+
+def mint_action_grant(
+	user: str, action: str, payload_hash_hex: str, *, method: str, sid: str | None = None, ttl: int = None
+) -> str:
+	"""Mint a single-use action grant and return the raw token **once** (§7.2).
+
+	The token is stored only as SHA-256 (a cache snapshot never yields a usable
+	grant); the record binds ``user + sid + action + payload_hash + method`` and
+	expires by Redis ``ex`` alone (default 180 s ≤ the pinned cap). ``method`` is
+	``"passkey"`` (a real UV assertion via the confirm ceremony) or ``"password"``
+	(a ``reauth_password`` action-grant, accepted only by
+	``allow_password_fallback`` actions — never by F19's set_passkey_only_login).
+	``payload_hash_hex`` is the ceremony's stored hash (server-computed from raw
+	params at ``begin_confirmation``, or the verbatim echoed fingerprint), NOT raw
+	params."""
+	token = frappe.generate_hash()
+	state.store_grant(
+		hashlib.sha256(token.encode("utf-8")).hexdigest(),
+		{
+			"v": 1,
+			"user": user,
+			"sid": sid or frappe.session.sid,
+			"action": action,
+			"payload_hash": payload_hash_hex,
+			"method": method,
+			"at": now(),
+		},
+		ttl if ttl is not None else state.GRANT_TTL,
+	)
+	_audit_grant("issued", action, user, method)
+	return token
+
+
+def consume_action_grant(
+	user: str,
+	action: str,
+	params: dict,
+	*,
+	allow_password_fallback: bool = False,
+	allow_sudo_window: bool = False,
+) -> bool:
+	"""Generalized grant consumer for the public ``@passkey_protected`` decorator
+	(§7.2). Atomically consumes a presented grant bound to
+	user + sid + action + exact payload:
+
+	* a ``passkey``-method grant always satisfies the gate;
+	* a ``password``-method grant satisfies it **only** when the action declared
+	  ``allow_password_fallback=True`` (the primitive's universal-re-auth mode);
+	* when no matching grant token is presented and ``allow_sudo_window=True``, a
+	  live full-sudo window (GitHub-sudo ergonomics for the app's own management)
+	  satisfies it instead.
+
+	Returns ``True`` on a valid consume, else ``False`` (caller raises the §3 401
+	retry contract). Unlike :func:`consume_passkey_grant` (the strict F19 gate),
+	this honours the per-action fallback policy — but the F19 invariant still
+	holds structurally: set_passkey_only_login is declared
+	``allow_password_fallback=False``, so a password-method grant is rejected here
+	AND :func:`consume_passkey_grant` refuses any non-passkey method outright."""
+	token = _grant_token()
+	if token:
+		record = state.consume_grant(hashlib.sha256(token.encode("utf-8")).hexdigest())
+		if record and _grant_matches(record, user, action, params):
+			method = record.get("method")
+			if method == "passkey":
+				_audit_grant("consumed", action, user, method)
+				return True
+			if method == "password" and allow_password_fallback:
+				_audit_grant("consumed", action, user, method)
+				return True
+			# matched this action+payload but the method is not accepted by the
+			# action's policy (F19): the grant is burned (single-use) and refused.
+			return False
+	if allow_sudo_window and has_management_sudo(user):
+		return True
+	return False
+
+
+def _audit_grant(event: str, action: str, user: str, method: str) -> None:
+	"""§7.2 "every issuance/consumption writes an Activity Log row". The Activity
+	Log DocType rows are owned by ``notifications.py`` (a later phase, per the same
+	deferral noted in ``api/credentials.py``); until then this is a structured
+	logger line so the audit trail is never silently dropped. Non-blocking."""
+	try:
+		frappe.logger("passkeys").info(f"passkey grant {event}: action={action} user={user} method={method}")
+	except Exception:
+		pass
 
 
 def _grant_token() -> str | None:

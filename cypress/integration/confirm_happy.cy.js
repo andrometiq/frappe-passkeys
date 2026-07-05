@@ -1,0 +1,54 @@
+// Copyright (c) 2026, Frappe Passkeys Contributors
+// License: MIT. See LICENSE
+//
+// P5 spec 1 — action-confirmation happy path (DESIGN-v1 §7.2/§7.3). The low-level
+// `frappe.passkeys.confirm(action, params)` runs the ceremony (begin → virtual UV
+// assertion → verify_confirmation) and resolves to a grant TOKEN; attaching it as
+// the X-Passkey-Grant header authorizes the @passkey_protected probe endpoint.
+
+const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
+const USER = "Administrator";
+const PW = () => Cypress.env("adminPassword") || "admin";
+const PROBE = "passkeys.tests.ui_test_helpers.confirm_probe";
+const ACTION = "passkeys.tests.confirm_probe";
+
+chromium_only("passkey action-confirmation — happy path", () => {
+	before(() => {
+		cy.enable_virtual_authenticator();
+		cy.login(USER, PW());
+		cy.visit("/app");
+		cy.setup_passkey_settings();
+		cy.purge_server_passkeys(USER);
+		cy.register_passkey(USER, PW());
+	});
+
+	after(() => {
+		cy.purge_server_passkeys(USER);
+		cy.disable_virtual_authenticator();
+		cy.clearCookies();
+	});
+
+	it("confirm(action, params) resolves a grant token that authorizes the action", () => {
+		cy.visit("/app");
+		cy.window().its("frappe.passkeys").should("exist");
+		cy.window().then((win) =>
+			cy
+				.wrap(win.frappe.passkeys.confirm(ACTION, { token: "T1" }), { timeout: 20000 })
+				.then((grant) => {
+					expect(grant, "grant token").to.be.a("string").and.have.length.greaterThan(10);
+					return cy
+						.wrap(
+							win.frappe.call({
+								method: PROBE,
+								args: { token: "T1" },
+								headers: { "X-Passkey-Grant": grant },
+							})
+						)
+						.then((r) => {
+							expect(r.message.confirmed).to.eq(true);
+							expect(r.message.token).to.eq("T1");
+						});
+				})
+		);
+	});
+});
