@@ -77,17 +77,20 @@ patch 03), and one `post_model_sync` adoption patch.
 
 ### How the app *feature-detects* Stage 1 to prefer the native path
 
-The app declares `two_factor_methods` **statically and unconditionally** in `hooks.py` — inert
-on v15/v16/pre-Stage-1 develop, because core there never reads that hook. It must therefore
-**never** detect Stage 1 via `frappe.get_hooks("two_factor_methods")`: the app's own static
-entry would self-poison the probe (it would always look "present"). Detection is keyed to a
-**core symbol introduced by Stage 1** — `hasattr(frappe.twofactor, "get_two_factor_method_provider")`
-(pinned in `passkeys/install.py::two_factor_registry_available()`, currently a `return False`
-placeholder awaiting the merged symbol name). When present, `sync_registry_fixture`
-(`after_install`/`after_migrate`) programmatically adds the `Passkey` option to
-`System Settings.two_factor_method` via a `module="Passkeys"` Property Setter and the second
-factor runs through core's registry; when absent, the app's own LDAP-shaped dispatch
-(`passkeys/passkey.py::_dispatch_passkey_second_factor`, `:378`) carries it. Never a
+The Stage-1 registry package is **deferred, not shipped in v1** (DESIGN §16 A56): the app carries
+**no** `two_factor_methods` hook entry in `hooks.py` today, because the hook only becomes useful
+once the upstream pluggable-2FA PR (patch 01) lands and core actually reads it. When that Stage-1
+PR is authored, the app *will* declare `two_factor_methods` statically and unconditionally — and
+even then detection must **never** use `frappe.get_hooks("two_factor_methods")`, because the app's
+own static entry would self-poison the probe (it would always look "present"). Detection is keyed
+to a **core symbol introduced by Stage 1** — `hasattr(frappe.twofactor, "get_two_factor_method_provider")`
+(pinned in `passkeys/install.py::two_factor_registry_available()`, **currently `return False`**
+awaiting the merged symbol name). While that probe is `False`, `sync_registry_fixture`
+(`after_install`/`after_migrate`) *removes* any `Passkey` Property Setter and the app's own
+LDAP-shaped dispatch (`passkeys/passkey.py::_dispatch_passkey_second_factor`, `:436`) carries the
+second factor. Once the probe flips `True` (Stage-1 core present, not yet native), it
+programmatically adds the `Passkey` option to `System Settings.two_factor_method` via a
+`module="Passkeys"` Property Setter and the factor runs through core's registry. Never a
 `fixtures/` fixture (that would fight core's own option list); never a version-string check.
 
 ---

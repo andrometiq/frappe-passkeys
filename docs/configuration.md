@@ -51,6 +51,7 @@ request host does not match — a red mismatch banner.
 |---|---|---|
 | **Notify on Passkey Changes** (`passkey_notify_on_change`) | On | Sends the account owner an email (with label, time, and IP) whenever a passkey is added, removed, disabled, or flagged. This email is the **compensating control for registration hijack** — a user who did not initiate the change can react. Turning it off is warned against; only do so on mail-less development sites. Activity Log rows are written either way. |
 | **Notify on Password Fallback** (`passkey_notify_password_fallback`) | Off | When on, emails a passkey holder if a sign-in used a one-time code instead of their passkey. Opt-in telemetry; off by default. |
+| **Notify on Password Login by Passkey Holder** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one enabled passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
 
 ## The two-factor floor (both directions)
 

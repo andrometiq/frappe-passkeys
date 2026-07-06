@@ -78,7 +78,15 @@ fallback): a per-user failure counter locks after 5 failures for 15 minutes,
 independent of core's login tracker. The primary login leg keeps core's own
 protections only, to avoid an account-lockout denial of service.
 
-**Rate limits** on the guest and confirmation endpoints:
+**Rate limits, keyed two ways.** Pre-session (guest) endpoints keep core's own
+`@rate_limit` decorator, which keys on **IP** — the only stable identity before a
+session exists. Every authenticated endpoint instead uses a **per-user** app
+counter (a session-user-keyed cache token), because core's IP keying would 429 a
+whole NAT'd office off one busy user and can't attribute abuse to an account. A
+guest ceremony can never reach the per-user endpoints, so the two classes don't
+overlap.
+
+*Guest / pre-session endpoints — core `@rate_limit`, IP-keyed:*
 
 | Endpoint | Limit |
 |---|---|
@@ -88,9 +96,27 @@ protections only, to avoid an account-lockout denial of service.
 | `login_with_password` | 10 / 60 s |
 | `verify_second_factor` | 10 / 60 s |
 | `fallback_to_otp` | 5 / 300 s |
-| `begin_confirmation` | 30 / 300 s |
-| `verify_confirmation` | 30 / 300 s |
-| `reauth_password` | 5 / 300 s |
+| `get_app_translations` | 30 / 60 s |
+
+*Authenticated endpoints — per-user app counter, keyed on the session user:*
+
+| Endpoint | Limit |
+|---|---|
+| `begin_registration` | 20 / hour |
+| `verify_registration` | 20 / hour |
+| `list_credentials` | 60 / min |
+| `rename_credential` | 20 / hour |
+| `delete_credential` | 10 / hour |
+| `get_signal_data` | 60 / min |
+| `record_nudge` | 30 / hour |
+| `begin_confirmation` | 30 / 5 min |
+| `verify_confirmation` | 30 / 5 min |
+| `reauth_password` | 5 / 5 min |
+
+The action-confirmation endpoints (`begin_confirmation` / `verify_confirmation` /
+`reauth_password`) require an authenticated caller, so they sit in the per-user
+class — the `reauth_password` 5 / 5 min ceiling is a second, coarse backstop on
+top of the per-user password-oracle lock above.
 
 **No account enumeration.** First-factor login is discoverable-only — it takes no
 identifier, so the begin response leaks nothing about which accounts have
