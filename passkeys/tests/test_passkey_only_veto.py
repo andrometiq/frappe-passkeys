@@ -91,10 +91,12 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		# genuinely flagged Administrator logs in with a password.
 		cred = make_credential("Administrator")  # satisfies the handle ≥1 floor
 		make_handle("Administrator", passkey_only_login=1)
-		self.addCleanup(
-			lambda: frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"})
-		)
+		# Cleanups run LIFO: register credential-delete FIRST so the handle (which
+		# carries passkey_only_login=1) is dropped BEFORE the last credential —
+		# otherwise the §8.6 lockout interlock (correctly) refuses the delete. This
+		# is the documented remediation: clear the flag before the last passkey.
 		self.addCleanup(frappe.delete_doc, "WebAuthn Credential", cred.name, force=1, ignore_permissions=True)
+		self.addCleanup(lambda: frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"}))
 		self._guest_context()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Administrator")))
 
@@ -118,9 +120,9 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		settings.passkey_as_second_factor = 0
 		with self.assertRaises(frappe.ValidationError):
 			settings.save(ignore_permissions=True)
-		self.assertIn(user, frappe.get_all(
-			"WebAuthn User Handle", filters={"passkey_only_login": 1}, pluck="user"
-		))
+		self.assertIn(
+			user, frappe.get_all("WebAuthn User Handle", filters={"passkey_only_login": 1}, pluck="user")
+		)
 
 	# ---- recovery escape --------------------------------------------------
 

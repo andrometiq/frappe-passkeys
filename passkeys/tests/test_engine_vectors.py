@@ -91,7 +91,9 @@ class TestGoldenVectors(IntegrationTestCase):
 					self.assertEqual(result.sign_count, expected["sign_count"])
 					self.assertEqual(result.device_type, expected["credential_device_type"])
 					self.assertEqual(result.backup_state, expected["credential_backed_up"])
-					self.assertEqual(result.backup_eligible, expected["credential_device_type"] == "multi_device")
+					self.assertEqual(
+						result.backup_eligible, expected["credential_device_type"] == "multi_device"
+					)
 					if "credprops_rk" in expected:
 						self.assertEqual(result.credprops_rk, expected["credprops_rk"])
 						self.assertEqual(result.discoverable, "Yes" if expected["credprops_rk"] else "No")

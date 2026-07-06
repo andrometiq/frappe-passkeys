@@ -398,8 +398,7 @@ def _dispatch_passkey_second_factor(user, pwd, credentials, settings, run_2fa):
 
 	binder_value = state.set_binder_cookie()  # set-iff-absent + sliding refresh (F12)
 	allow_credentials = [
-		{"id": row.credential_id, "transports": json.loads(row.transports or "[]")}
-		for row in credentials
+		{"id": row.credential_id, "transports": json.loads(row.transports or "[]")} for row in credentials
 	]
 	options, challenge_b64 = engine.build_authentication_options(
 		rp_id=rp_id,
@@ -482,9 +481,7 @@ def verify_second_factor(state_id: str, credential):
 	# initialize a uv_initialized=0 credential).
 	_advance_credential(cred.name, result)
 	if result.user_verified and not cint(cred.uv_initialized):
-		frappe.db.set_value(
-			"WebAuthn Credential", cred.name, "uv_initialized", 1, update_modified=False
-		)
+		frappe.db.set_value("WebAuthn Credential", cred.name, "uv_initialized", 1, update_modified=False)
 
 	frappe.local.flags.passkey_login = True
 	_mint_session(record["user"])
@@ -622,11 +619,7 @@ def fallback_to_otp(state_id: str):
 	# server-side knob re-check: the state only carries `pwd` under the fallback
 	# conjunction, but re-read the live knob too (defense against a stale state
 	# minted before the admin turned the knob off).
-	if not (
-		cint(settings.passkey_2fa_allow_otp_fallback)
-		and record.get("fallback")
-		and record.get("pwd")
-	):
+	if not (cint(settings.passkey_2fa_allow_otp_fallback) and record.get("fallback") and record.get("pwd")):
 		raise frappe.AuthenticationError(_("A verification code is not available for this sign-in."))
 
 	# restore the credentials core's OTP leg needs (`cache_2fa_data` reads pwd
@@ -640,12 +633,13 @@ def fallback_to_otp(state_id: str):
 
 def _record_fallback_used(user: str) -> None:
 	"""FIDO-downgrade telemetry (§6.3 / §8.5): a passkey holder chose phishable
-	OTP. Non-blocking; the notify email is a later-phase knob
-	(``passkey_notify_password_fallback``)."""
-	try:
-		frappe.logger("passkeys").info(f"passkey second-factor OTP fallback used by {user}")
-	except Exception:
-		pass
+	OTP. Activity-Log-backed, plus an opt-in email under
+	``passkey_notify_password_fallback`` (default off). Non-blocking."""
+	from passkeys import notifications
+
+	notifications.record_risk_event(
+		notifications.RISK_FALLBACK_USED, user, f"OTP fallback taken by passkey holder {user}"
+	)
 
 
 def _enabled_credentials(user: str) -> list:
@@ -717,6 +711,50 @@ def get_app_translations(version: str | None = None):
 	return get_translations_from_apps(lang, apps=["passkeys"])
 
 
+# ===========================================================================
+# Management-surface data endpoints (§8.1 / §8.4) — authed, webauthn-free
+# ===========================================================================
+
+
+@frappe.whitelist(methods=["POST"])
+def get_signal_data():
+	"""Data for the WebAuthn Signal API ``signalAllAcceptedCredentials`` (§8.3):
+	the caller's own ``{rp_id, user_handle, credential_ids}`` (enabled credentials
+	only). The desk/portal bundle fires the signal fire-and-forget in-session so a
+	deleted credential is pruned from the browser's autofill list. Identity is
+	strictly ``frappe.session.user``; no client param selects the account.
+
+	Rate limit: the §3.0 per-user shapes are deferred as a set (matching the P2b
+	authed management endpoints, which enforce none) — see build-p6 notes."""
+	user = _require_authed_user()
+	settings = frappe.get_cached_doc("Passkey Settings")
+	rp_id = policy.resolve_rp_id(settings)
+	handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
+	credential_ids = frappe.get_all(
+		"WebAuthn Credential", filters={"user": user, "enabled": 1}, pluck="credential_id"
+	)
+	return {"rp_id": rp_id, "user_handle": handle, "credential_ids": credential_ids}
+
+
+@frappe.whitelist(methods=["POST"])
+def record_nudge(event: str):
+	"""Fold an enrollment-nudge event into the caller's server-side cadence state
+	(§8.4 / §3.0 row 13). ``event`` ∈ {``shown``, ``declined``, ``opt_out``}. The
+	counters are **server-side per-user** so a three-browser user gets N prompts
+	total (not 3N); capability checks stay client-side."""
+	user = _require_authed_user()
+	from passkeys import boot
+
+	return {"nudge_state": boot.record_nudge_event(user, event)}
+
+
+def _require_authed_user() -> str:
+	user = frappe.session.user
+	if not user or user in ("Guest", ""):
+		raise frappe.AuthenticationError(_("Not permitted."))
+	return user
+
+
 # ---------------------------------------------------------------------------
 # session mint (the one auditable choke point — §1.2)
 # ---------------------------------------------------------------------------
@@ -749,10 +787,20 @@ def _advance_credential(name: str, result) -> None:
 		"last_used_at": now_datetime(),
 		"last_used_ip": _request_ip(),
 	}
+	newly_flagged = False
 	if result.sign_count_regression:
 		values["flagged"] = 1
 		values["flagged_reason"] = "sign_count_regression"
+		newly_flagged = not cint(frappe.db.get_value("WebAuthn Credential", name, "flagged"))
 	frappe.db.set_value("WebAuthn Credential", name, values, update_modified=False)
+	if newly_flagged:
+		# §8.3 out-of-band "passkey flagged" notice on the unflagged→flagged edge
+		# only (a repeatedly-regressing credential does not re-spam the owner).
+		from passkeys import notifications
+
+		row = frappe.db.get_value("WebAuthn Credential", name, ["user", "label"], as_dict=True)
+		if row:
+			notifications.notify_credential_flagged(row.user, row.label, "sign_count_regression")
 
 
 # ---------------------------------------------------------------------------

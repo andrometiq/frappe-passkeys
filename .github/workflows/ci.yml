@@ -43,9 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # Flip to "1" once passkeys/{auth_hooks,boot,install,shims/login_page}.py exist:
-      # a missing hook-path module then FAILS the gate instead of warning.
-      IMPORT_GATE_STRICT: "0"
+      # All four hook-path modules (auth_hooks, boot, install, shims/login_page)
+      # now exist and are proven import-clean of webauthn (P6 integration verified
+      # the gate locally with webauthn blocked), so the gate is strict: a missing
+      # hook-path module now FAILS instead of warning.
+      IMPORT_GATE_STRICT: "1"
     steps:
       - uses: actions/checkout@v4
 

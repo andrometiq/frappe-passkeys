@@ -47,7 +47,6 @@ from frappe.utils import cint, now_datetime
 
 from passkeys import policy, session, state
 
-
 # ---------------------------------------------------------------------------
 # Per-action policy registry (§7.2). The @passkey_protected decorator declares
 # an action's fallback policy at import time; the minter endpoints consult the
@@ -128,8 +127,7 @@ def passkey_protected(
 
 	    @frappe.whitelist(methods=["POST"])
 	    @passkey_protected(action="myapp.release_payment", bind_params=["payment_id"])
-	    def release_payment(payment_id):
-	        ...
+	    def release_payment(payment_id): ...
 
 	Parameters
 	----------
@@ -396,9 +394,16 @@ def verify_confirmation(state_id: str, credential):
 	# sign-count policy applies (upward-only store + flag/hard-fail; §3.6).
 	_advance_credential(cred.name, result)
 
-	token = session.mint_action_grant(
-		user, record["action"], record["payload_hash"], method="passkey"
-	)
+	token = session.mint_action_grant(user, record["action"], record["payload_hash"], method="passkey")
+	# §7.1: a completed passkey confirmation for the built-in ``passkeys.manage``
+	# action ALSO seeds the full-sudo window — the sudo-gated management endpoints
+	# (``delete_credential`` / explicit ``begin_registration``) check that window,
+	# not the grant, so without this the client's confirm→retry dance re-fails the
+	# window check (build-p6-frontend-manifest.md §5). Scoped strictly to
+	# ``passkeys.manage``: a third-party action confirmation never mints a
+	# management sudo window (that would be a privilege leak).
+	if record.get("action") == session.MANAGE_ACTION:
+		_seed_management_window(user, "passkey")
 	return {"grant": token}
 
 
@@ -431,6 +436,14 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 	_refuse_if_core_native()
 	user = _require_user()
 
+	# §7.4 / §9.4 row 7: under site `disable_user_pass_login`, a password can no
+	# longer re-auth for management once the user holds ≥1 passkey — only the
+	# passkey grant counts. Refuse before touching the password oracle at all.
+	if frappe.get_system_settings("disable_user_pass_login") and _has_enabled_passkey(user):
+		raise frappe.AuthenticationError(
+			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
+		)
+
 	# app-owned per-user password-oracle throttle (§3.0 / A49).
 	if state.is_password_throttled(user):
 		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
@@ -452,6 +465,13 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 		if not payload_fingerprint:
 			frappe.throw(_("Missing confirmation payload."), frappe.ValidationError)
 		token = session.mint_action_grant(user, action, str(payload_fingerprint), method="password")
+		# §7.1: the password door for ``passkeys.manage`` seeds the full-sudo window
+		# too (same as the passkey door in ``verify_confirmation``), so the sudo-gated
+		# management endpoints pass on retry. Reachable only when this user may still
+		# password-re-auth for management — the §7.4/§9.4-row-7 refusal above already
+		# blocks a passkey holder under ``disable_user_pass_login``.
+		if action == session.MANAGE_ACTION:
+			_seed_management_window(user, "reauth")
 		return {"grant": token}
 
 	# bare sudo seed (§7.1): a full-sudo window seeded by a fresh password re-auth.
@@ -466,6 +486,17 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 # ---------------------------------------------------------------------------
 
 
+def _seed_management_window(user: str, seeded_by: str) -> None:
+	"""Seed the full-sudo window a completed ``passkeys.manage`` confirmation grants
+	(§7.1) — the window the sudo-gated management endpoints (``delete_credential`` /
+	explicit ``begin_registration``) check. ``seeded_by`` is ``passkey`` (a UV
+	assertion) or ``reauth`` (the password door); both are §7.1 full-sudo classes,
+	and both mirror the fresh-login / bare-``reauth_password`` seed shape + TTL."""
+	settings = frappe.get_cached_doc("Passkey Settings")
+	ttl = cint(settings.passkey_reauth_window) or 600
+	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": seeded_by}, ttl)
+
+
 def _resolve_payload_hash(params, payload_hash) -> str:
 	"""Server authority over the payload hash (A36). ``params`` ⇒ compute the hash
 	with the pinned Python canonicalization; ``payload_hash`` ⇒ the verbatim echoed
@@ -473,9 +504,7 @@ def _resolve_payload_hash(params, payload_hash) -> str:
 	recomputation rejects — a correctness contract, not a security one). Mutually
 	exclusive: a client supplying both is rejected outright."""
 	if params is not None and payload_hash is not None:
-		frappe.throw(
-			_("Send either params or a payload fingerprint, not both."), frappe.ValidationError
-		)
+		frappe.throw(_("Send either params or a payload fingerprint, not both."), frappe.ValidationError)
 	if payload_hash is not None:
 		return str(payload_hash)
 	return session.payload_hash(_as_dict(params) or {})
@@ -509,6 +538,11 @@ def _enabled_credentials(user: str) -> list:
 		filters={"user": user, "enabled": 1},
 		fields=["credential_id", "credential_id_sha256", "transports"],
 	)
+
+
+def _has_enabled_passkey(user: str) -> bool:
+	"""True iff the user holds ≥1 enabled credential (§7.4 / §9.4 row 7)."""
+	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
 
 
 def _refuse_if_core_native() -> None:

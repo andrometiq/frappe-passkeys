@@ -333,6 +333,58 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertIsInstance(catalog, dict)
 		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
 
+	# ======================================================================
+	# §12.5 security regression rows on the first-factor surface
+	# ======================================================================
+
+	def test_splice_register_state_cannot_verify_a_login(self):
+		"""A register-type ceremony fed to verify_login is rejected before any
+		assertion is looked at (type-scoped records, §3.1 step 3 / §12.5 splice)."""
+		state_id = state.store_ceremony(
+			{
+				"v": 1,
+				"type": "register",
+				"user": "x",
+				"challenge_b64": "YQ",
+				"rp_id": RP_ID,
+				"origins": [ORIGIN],
+			}
+		)
+		self._request("/api/method/passkeys.passkey.verify_login")
+		with self.assertRaises(CeremonyExpired):
+			passkey.verify_login(state_id, {"id": "z", "response": {"userHandle": "h"}})
+
+	def test_first_factor_cross_user_substitution_is_uniform_failure(self):
+		"""StrongKey class (§12.5): user B's valid assertion carrying user A's
+		userHandle must fail uniformly — a credential must belong to the account its
+		handle resolves to (both halves)."""
+		user_a = self._user()
+		self._enroll(user_a, seed="xuserA")
+		handle_a = frappe.db.get_value("WebAuthn User Handle", {"user": user_a}, "handle")
+		user_b = self._user()
+		auth_b, _ = self._enroll(user_b, seed="xuserB")
+
+		begun, binder = self._begin()
+		credential = self._assert(auth_b, begun["options"])  # B's own valid assertion
+		credential["response"]["userHandle"] = handle_a  # ...but claiming to be A
+		self._request("/api/method/passkeys.passkey.verify_login", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.verify_login(begun["state_id"], credential)
+
+	def test_begin_login_refuses_a_foreign_request_origin(self):
+		"""Cross-site origin (§12.5): a request whose Origin is not in the configured
+		origins fails closed at begin (host-mismatch diagnosability, §9.2)."""
+		set_request(
+			method="POST",
+			path="/api/method/passkeys.passkey.begin_login",
+			headers=[("Origin", "https://evil.example.net")],
+		)
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.request_ip = frappe.generate_hash(length=12)
+		frappe.local.form_dict = frappe._dict()
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.begin_login()
+
 
 def _b64url_decode(value: str) -> bytes:
 	import base64

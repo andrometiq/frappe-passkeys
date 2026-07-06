@@ -37,7 +37,9 @@ class TestSignCountPolicy(IntegrationTestCase):
 		auth = SoftAuthenticator()
 		challenge = _challenge()
 		return engine.verify_authentication(
-			credential=auth.assertion(challenge_b64=challenge, rp_id=RP_ID, origin=ORIGIN, sign_count=asserted),
+			credential=auth.assertion(
+				challenge_b64=challenge, rp_id=RP_ID, origin=ORIGIN, sign_count=asserted
+			),
 			expected_challenge=challenge,
 			expected_rp_id=RP_ID,
 			expected_origin=ORIGIN,

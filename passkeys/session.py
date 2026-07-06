@@ -196,7 +196,13 @@ def _grant_matches(record: dict, user: str, action: str, params: dict) -> bool:
 
 
 def mint_action_grant(
-	user: str, action: str, payload_hash_hex: str, *, method: str, sid: str | None = None, ttl: int = None
+	user: str,
+	action: str,
+	payload_hash_hex: str,
+	*,
+	method: str,
+	sid: str | None = None,
+	ttl: int | None = None,
 ) -> str:
 	"""Mint a single-use action grant and return the raw token **once** (§7.2).
 

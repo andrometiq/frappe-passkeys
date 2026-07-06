@@ -1,0 +1,46 @@
+{#
+	passkeys.html — the /passkeys portal management page (DESIGN-v1 §8.1).
+	Jinja template only; the controller (no_cache, guest → /login?redirect-to=
+	/passkeys, context) is passkeys/www/passkeys.py, owned by the server phase.
+
+	Zero template fork: the page ships only a mount point + heading + a no-JS
+	fallback. passkey_portal.bundle.js (delivered via web_include_js when a passkey
+	mode is enabled) renders the card component into #passkey-portal-root and, on
+	authenticated portal pages, the enrollment-nudge banner. Destination on core
+	merge: frappe/www/passkeys.html.
+#}
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("My Passkeys") }}{% endblock %}
+
+{% block page_content %}
+<div class="passkey-portal-page">
+	<header class="passkey-portal-header">
+		<h1 class="passkey-portal-heading">{{ _("My Passkeys") }}</h1>
+		<p class="passkey-portal-sub text-muted">
+			{{ _("Passkeys let you sign in with your fingerprint, face, screen lock, or a security key — no password to type.") }}
+		</p>
+	</header>
+
+	{# The card component mounts here (passkey_portal.bundle.js). #}
+	<div id="passkey-portal-root" class="passkey-portal-root" aria-live="polite">
+		<noscript>
+			<p class="passkey-portal-noscript">
+				{{ _("Managing passkeys needs JavaScript. Please enable it and reload this page.") }}
+			</p>
+		</noscript>
+	</div>
+</div>
+
+{# Bridge the controller's server-truth boot payload (context.passkeys =
+   boot.build_passkeys_boot) into frappe.boot.passkeys, so the portal bundle reads
+   the SAME contract as the Desk surfaces (modes / credential_count / nudge_state /
+   post_login_method). Server-rendered, escaped by |tojson; no client value echoed. #}
+{% if passkeys is defined %}
+<script>
+	window.frappe = window.frappe || {};
+	frappe.boot = frappe.boot || {};
+	if (!frappe.boot.passkeys) frappe.boot.passkeys = {{ passkeys | tojson }};
+</script>
+{% endif %}
+{% endblock %}

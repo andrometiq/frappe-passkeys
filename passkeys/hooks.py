@@ -13,11 +13,34 @@ app_license = "MIT"
 # passkey_common.js MUST load first (sets the frappe.passkeys_common global the
 # confirm bundle reads). Both files are UMD-lite browser globals (no build step);
 # they self-gate on `frappe.passkeys` availability at runtime.
+#
+# Desk management surfaces (§8.1/§8.2/§8.4 — P6 frontend). Order is load-bearing:
+# passkey_manage_common.js sets `frappe.passkeys_manage_common` and passkey_confirm.js
+# sets `frappe.passkeys.call`/`.confirm`; passkey_desk.bundle.js reads BOTH, so both
+# must load before it (frontend manifest §2.1). The desk bundle self-gates on
+# `frappe.boot.passkeys.enabled` — a both-modes-off / dormant site removes itself.
 app_include_js = [
 	"/assets/passkeys/js/passkey_common.js",
+	"/assets/passkeys/js/passkey_manage_common.js",
 	"/assets/passkeys/js/passkey_confirm.js",
+	"/assets/passkeys/js/passkey_desk.bundle.js",
 ]
-app_include_css = ["/assets/passkeys/css/passkey_confirm.css"]
+app_include_css = [
+	"/assets/passkeys/css/passkey_confirm.css",
+	"/assets/passkeys/css/passkey_manage.css",
+]
+
+# DocType client scripts (§8.1 / §9.4 — P6 frontend)
+# --------------------------------------------------
+# User form: the "Passkeys" section (own form ⇒ interactive cards + add; another
+# user's form, System Manager ⇒ read-only inventory + WebAuthn Credential link,
+# §8.6). Passkey Settings form: the §9.4 cross-flag banner matrix + the RP-ID
+# one-way-door confirm. Both delegate rendering to `frappe.passkeys.manage`
+# (passkey_desk.bundle.js, loaded via app_include_js) and are pure form glue.
+doctype_js = {
+	"User": "public/js/user_passkeys.js",
+	"Passkey Settings": "public/js/passkey_settings.js",
+}
 
 # Installation
 # ------------
@@ -44,6 +67,15 @@ after_migrate = ["passkeys.install.sync_registry_fixture"]
 # since update_website_context fires on every website render (§1.3). The login
 # endpoints are whitelisted (passkeys.passkey.*), so they need no hook here.
 update_website_context = ["passkeys.shims.login_page.website_context"]
+
+# Boot
+# ----
+# Desk boot flag (§8.1): publishes bootinfo.passkeys = {modes, credential_count,
+# nudge_state, post_login_method} the desk management + nudge surfaces read.
+# Guest/CORE_NATIVE no-op + exception-hardened + import-clean (fires on every Desk
+# boot, §1.3). The frontend desk bundle (doctype_js / app_include_js) is wired by
+# the integration pass per the frontend manifest — not guessed here.
+extend_bootinfo = ["passkeys.boot.extend_bootinfo"]
 
 # Session lifecycle
 # -----------------

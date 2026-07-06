@@ -12,6 +12,10 @@ credentials/
 # local dev benches (frappe bench trees — big, machine-specific)
 dev-benches/
 
+# build artifacts
+passkeys/public/dist/
+node_modules/
+
 # python
 __pycache__/
 .pytest_cache/

@@ -43,6 +43,11 @@ class ConfirmationTest(IntegrationTestCase):
 		settings.passkey_rp_id = RP_ID
 		settings.passkey_origins = ""
 		settings.passkey_sign_count_hard_fail = 0
+		# A login mode must be on for `_enroll`'s begin_registration (§3.0 gates
+		# registration on any-mode-on); confirm.* itself is mode-independent (A39),
+		# but enrolling the test credential to confirm with needs a mode. Hermetic —
+		# don't depend on ambient Passkey Settings state (mirrors RegistrationCeremonyTest).
+		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 		self._ip = frappe.generate_hash(length=12)
@@ -51,7 +56,12 @@ class ConfirmationTest(IntegrationTestCase):
 
 	def _restore(self):
 		frappe.set_user("Administrator")
-		for field in ("passkey_rp_id", "passkey_origins", "passkey_sign_count_hard_fail"):
+		for field in (
+			"login_with_passkey",
+			"passkey_rp_id",
+			"passkey_origins",
+			"passkey_sign_count_hard_fail",
+		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snap.get(field) or 0)
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 
@@ -76,7 +86,11 @@ class ConfirmationTest(IntegrationTestCase):
 		begun = registration.begin_registration(flow="explicit")
 		auth = SoftAuthenticator(seed=f"{seed}-{self._ip}")
 		credential = auth.registration(
-			challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN, uv=True, credprops_rk=True
+			challenge_b64=begun["options"]["challenge"],
+			rp_id=RP_ID,
+			origin=ORIGIN,
+			uv=True,
+			credprops_rk=True,
 		)
 		registration.verify_registration(begun["state_id"], credential)
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
@@ -129,9 +143,7 @@ class ConfirmationTest(IntegrationTestCase):
 
 		# the grant authorizes exactly this action + payload for this session.
 		self._attach_grant(token)
-		self.assertTrue(
-			session.consume_action_grant(user, "myapp.release_payment", {"payment_id": "PAY-1"})
-		)
+		self.assertTrue(session.consume_action_grant(user, "myapp.release_payment", {"payment_id": "PAY-1"}))
 
 	# ======================================================================
 	# grant is single-use
@@ -360,6 +372,43 @@ class ConfirmationTest(IntegrationTestCase):
 		self._attach_grant(token2)
 		self.assertFalse(session.consume_action_grant(user, "myapp.other", {"amount": 50}))
 
+	# ======================================================================
+	# P6 fix (a): a completed passkeys.manage confirmation seeds the full-sudo
+	# window (§7.1 / build-p6-frontend-manifest.md §5) — the sudo-gated management
+	# endpoints check the window, not the grant, so the confirm→retry dance would
+	# re-fail without this. Both doors, plus the scoping guard.
+	# ======================================================================
+
+	def test_manage_confirmation_passkey_door_seeds_sudo_window(self):
+		user = self._user()
+		auth = self._enroll(user)  # _enroll leaves a password-seeded window
+		frappe.set_user(user)
+		state.clear_sudo_window(self.sid)  # go cold
+		self.assertFalse(session.has_management_sudo(user))
+		begun = self._begin(session.MANAGE_ACTION)
+		out = self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True))
+		self.assertIn("grant", out)
+		self.assertTrue(session.has_management_sudo(user))  # re-seeded (§7.1)
+
+	def test_manage_confirmation_password_door_seeds_sudo_window(self):
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		state.clear_sudo_window(self.sid)
+		self.assertFalse(session.has_management_sudo(user))
+		out = self._reauth(PWD, action=session.MANAGE_ACTION, payload_fingerprint=session.payload_hash({}))
+		self.assertIn("grant", out)
+		self.assertTrue(session.has_management_sudo(user))
+
+	def test_non_manage_confirmation_never_seeds_a_management_window(self):
+		# scoping: a third-party action confirmation must NOT mint management sudo.
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.set_user(user)
+		state.clear_sudo_window(self.sid)
+		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
+		self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True))
+		self.assertFalse(session.has_management_sudo(user))
+
 	def test_reauth_wrong_password_refused_and_tracked(self):
 		user = self._user(with_password=True)
 		frappe.set_user(user)
@@ -398,9 +447,7 @@ class ConfirmationTest(IntegrationTestCase):
 		self._request("/api/method/x")
 		frappe.local.form_dict[session.GRANT_KWARG] = token
 		self.assertFalse(
-			session.consume_passkey_grant(
-				user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True}
-			)
+			session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		)
 
 	def test_begin_confirmation_offers_no_password_for_passkey_only_action(self):

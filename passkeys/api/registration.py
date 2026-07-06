@@ -153,6 +153,13 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 		raise frappe.AuthenticationError(_("This passkey is already registered."))
 
 	handle = _get_or_create_handle(record["user"])
+	# §8.3 out-of-band "passkey added" notice (label, time, IP) + Activity Log —
+	# the compensating control for registration hijack. Exception-hardened inside.
+	from passkeys import notifications
+
+	notifications.notify_credential_added(
+		record["user"], doc.label, ip=getattr(frappe.local, "request_ip", None)
+	)
 	return {
 		"name": doc.name,
 		"label": doc.label,
@@ -193,6 +200,14 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> None:
 		# login may enroll ONLY a first credential, only when the knob allows.
 		if _enabled_credential_count(user) > 0 or not settings.passkey_allow_first_enrollment_on_weak_login:
 			_raise_confirmation_required()
+		# §8.5 risk event: the weak-login bootstrap scope was used.
+		from passkeys import notifications
+
+		notifications.record_risk_event(
+			notifications.RISK_WEAK_LOGIN_ENROLLMENT,
+			user,
+			f"first-enrollment bootstrap via weak login by {user}",
+		)
 		return
 	if seeded_by in ("password", "passkey", "reauth"):
 		return

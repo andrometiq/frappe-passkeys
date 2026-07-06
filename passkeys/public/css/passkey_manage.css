@@ -1,0 +1,275 @@
+/* passkey_manage.css — credential-management cards, badges, enrollment nudges,
+ * the portal page, and the settings banners (DESIGN-v1 §8/§9.4). Loaded on Desk
+ * (app_include_css) and portal (web_include_css). Inherits core .btn / focus
+ * styles; adds only what core doesn't ship. Destination on core merge:
+ * frappe/public/scss/passkey.scss.
+ *
+ * The shared visually-hidden live-region rule (.passkey-sr-only) also lives in
+ * passkey_login.css / passkey_confirm.css; a copy here keeps the manage surfaces
+ * announcing even if those bundles are absent. */
+.passkey-sr-only {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ----------------------------------------------------------------- cards */
+.passkey-cards-root,
+.passkey-manager,
+.passkey-portal-root {
+	display: block;
+}
+
+.passkey-card-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.passkey-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 0.85rem 1rem;
+	border: 1px solid var(--border-color, #e2e6ea);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--card-bg, #fff);
+}
+
+.passkey-card-disabled {
+	opacity: 0.65;
+}
+
+.passkey-card-glyph {
+	font-size: 1.4rem;
+	line-height: 1.4;
+	flex: 0 0 auto;
+}
+
+.passkey-card-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.passkey-card-labelrow {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.passkey-card-label {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.passkey-card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 1rem;
+	margin-top: 0.35rem;
+	font-size: var(--text-sm, 0.82rem);
+	color: var(--text-muted, #6b7280);
+}
+
+.passkey-card-flagged {
+	margin-top: 0.4rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: var(--border-radius-sm, 4px);
+	background: var(--red-100, #fdecec);
+	color: var(--red-700, #b32d2d);
+	font-size: var(--text-sm, 0.82rem);
+}
+
+.passkey-card-actions {
+	display: flex;
+	gap: 0.35rem;
+	flex: 0 0 auto;
+}
+
+.passkey-icon-btn {
+	line-height: 1;
+}
+
+/* ----------------------------------------------------------------- badges */
+.passkey-badge {
+	display: inline-block;
+	padding: 0.1rem 0.45rem;
+	border-radius: 999px;
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	white-space: nowrap;
+}
+
+.passkey-badge-synced {
+	background: var(--green-100, #e6f5ec);
+	color: var(--green-700, #1f7a44);
+}
+
+.passkey-badge-device {
+	background: var(--blue-100, #e7f1fd);
+	color: var(--blue-700, #1a68c4);
+}
+
+.passkey-badge-disabled {
+	background: var(--gray-200, #e9ecef);
+	color: var(--gray-700, #495057);
+}
+
+/* --------------------------------------------------------- empty / add */
+.passkey-empty {
+	text-align: center;
+	padding: 1.5rem 1rem;
+	border: 1px dashed var(--border-color, #d5dbe0);
+	border-radius: var(--border-radius-md, 6px);
+}
+
+.passkey-empty-title {
+	margin: 0 0 0.5rem;
+}
+
+.passkey-empty-body {
+	margin: 0 auto 1rem;
+	max-width: 32rem;
+	color: var(--text-muted, #6b7280);
+}
+
+.passkey-card-add-row {
+	margin-top: 1rem;
+}
+
+.passkey-cards-loading,
+.passkey-cards-error,
+.passkey-cards-empty-admin {
+	padding: 0.75rem 0;
+	color: var(--text-muted, #6b7280);
+}
+
+.passkey-admin-link {
+	display: inline-block;
+	margin-top: 0.75rem;
+}
+
+/* --------------------------------------------------------- nudge banner */
+.passkey-nudge-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.9rem;
+	padding: 0.75rem 1rem;
+	margin: 0 0 1rem;
+	border: 1px solid var(--blue-300, #bcd8fb);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--blue-50, #f2f8ff);
+}
+
+.passkey-nudge-title {
+	font-weight: 600;
+}
+
+.passkey-nudge-copy {
+	flex: 1 1 16rem;
+	color: var(--text-muted, #4b5563);
+}
+
+.passkey-nudge-acts {
+	display: flex;
+	gap: 0.35rem;
+	flex-wrap: wrap;
+}
+
+.passkey-nudge-body {
+	margin: 0 0 0.75rem;
+}
+
+.passkey-nudge-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	justify-content: flex-end;
+}
+
+/* --------------------------------------------------------- portal page */
+.passkey-portal-page {
+	max-width: 42rem;
+	margin: 0 auto;
+	padding: 1.5rem 0;
+}
+
+.passkey-portal-heading {
+	margin: 0 0 0.35rem;
+}
+
+.passkey-portal-sub {
+	margin: 0 0 1.5rem;
+}
+
+/* ------------------------------------- portal self-contained modal (§5.5) */
+.passkey-portal-overlay {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.45);
+	z-index: 1060;
+	padding: 1rem;
+}
+
+.passkey-portal-overlay .passkey-dialog {
+	background: var(--card-bg, #fff);
+	color: var(--text-color, #1d1d1d);
+	border-radius: var(--border-radius-lg, 8px);
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+	width: 100%;
+	max-width: 24rem;
+	padding: 1.4rem;
+}
+
+.passkey-portal-overlay .passkey-dialog-title {
+	margin: 0 0 0.75rem;
+	font-size: 1.1rem;
+}
+
+.passkey-portal-overlay .passkey-dialog-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	margin-top: 1rem;
+}
+
+/* Keep a visible focus ring even when a theme strips it (WCAG 2.4.7, §5.5). */
+.passkey-card-actions .btn:focus-visible,
+.passkey-btn:focus-visible,
+.passkey-icon-btn:focus-visible,
+.passkey-portal-overlay button:focus-visible,
+.passkey-nudge-banner button:focus-visible {
+	outline: 2px solid var(--primary, #2490ef);
+	outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+	.passkey-card,
+	.passkey-portal-overlay .passkey-dialog {
+		background: var(--card-bg, #1c2126);
+		color: var(--text-color, #e2e6ea);
+		border-color: var(--border-color, #2b333b);
+	}
+	.passkey-nudge-banner {
+		background: var(--blue-900, #16273c);
+		border-color: var(--blue-700, #2b6cb0);
+	}
+}

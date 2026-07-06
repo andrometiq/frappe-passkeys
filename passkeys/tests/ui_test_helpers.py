@@ -193,13 +193,80 @@ def credential_count(user: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# §7.4 / §8.4 P6 management + nudge helpers — the sudo-gate delete dance
+# (manage_sudo_gate.cy.js) and the nudge-cadence spec (nudge_cadence.cy.js) drive
+# these via cy.call. The FRONTEND agent cannot add Python, so integration owns
+# them (build-p6-frontend-manifest.md §6). Test-only; fold away with the shims.
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def clear_sudo_window() -> dict:
+	"""Expire the caller's fresh-login sudo window so a sudo-gated mutation must
+	re-confirm (§7.4). Drives ``manage_sudo_gate.cy.js``."""
+	_guard()
+	from passkeys import state
+
+	state.clear_sudo_window(frappe.session.sid)
+	return {"ok": 1}
+
+
+@frappe.whitelist()
+def configure_nudge(
+	enrollment_nudge: int = 1,
+	max_prompts: int = 3,
+	cooldown_days: int = 30,
+	conditional_create: int = 0,
+) -> dict:
+	"""Set the §8.4 enrollment-nudge knobs for ``nudge_cadence.cy.js`` (written
+	directly — the same bench rationale as :func:`configure_login`)."""
+	_guard()
+	values = {
+		"passkey_enrollment_nudge": cint(enrollment_nudge),
+		"passkey_nudge_max_prompts": cint(max_prompts),
+		"passkey_nudge_cooldown_days": cint(cooldown_days),
+		"passkey_conditional_create": cint(conditional_create),
+	}
+	for field, value in values.items():
+		frappe.db.set_single_value("Passkey Settings", field, value)
+	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	frappe.db.commit()
+	return values
+
+
+@frappe.whitelist()
+def seed_nudge_state(declines: int = 0, last_shown=None, opt_out: int = 0) -> dict:
+	"""Write the caller's ``{user}_passkey_nudge`` Defaults row directly (§2.3 idiom)
+	so a spec can drive a specific cadence state. Drives ``nudge_cadence.cy.js``."""
+	_guard()
+	from passkeys.install import DEFAULTS_PARENT
+
+	blob = {"declines": cint(declines), "last_shown": last_shown or None, "opt_out": cint(opt_out)}
+	frappe.db.set_default(
+		f"{frappe.session.user}_passkey_nudge", frappe.as_json(blob), parent=DEFAULTS_PARENT
+	)
+	frappe.db.commit()
+	return blob
+
+
+@frappe.whitelist()
+def get_nudge_state() -> dict:
+	"""Read the caller's server-side nudge state back for a spec's post-condition
+	assertions. Drives ``nudge_cadence.cy.js``."""
+	_guard()
+	from passkeys import boot
+
+	return boot.get_nudge_state(frappe.session.user)
+
+
+# ---------------------------------------------------------------------------
 # §7 action-confirmation ("passkey signing") probes — the decorated endpoints the
 # P5 confirm Cypress specs drive through the frozen `frappe.passkeys.*` client.
 # These import `passkeys.confirm` (webauthn-free) and register their actions at
 # import time — pure test scaffolding, folds away with the shims on core merge.
 # ---------------------------------------------------------------------------
 
-from passkeys.confirm import passkey_protected  # noqa: E402
+from passkeys.confirm import passkey_protected
 
 # Namespaced probe actions (never collide with the app's own passkeys.* actions).
 CONFIRM_PROBE_ACTION = "passkeys.tests.confirm_probe"

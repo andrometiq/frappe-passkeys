@@ -134,7 +134,11 @@ class SecondFactorTest(IntegrationTestCase):
 		begun = registration.begin_registration(flow="explicit")
 		auth = SoftAuthenticator(seed=f"{seed}-{self._ip}")
 		credential = auth.registration(
-			challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN, uv=True, credprops_rk=True
+			challenge_b64=begun["options"]["challenge"],
+			rp_id=RP_ID,
+			origin=ORIGIN,
+			uv=True,
+			credprops_rk=True,
 		)
 		registration.verify_registration(begun["state_id"], credential)
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
@@ -157,9 +161,7 @@ class SecondFactorTest(IntegrationTestCase):
 			frappe.local.form_dict["pwd"] = pwd
 
 	def _leg1(self, usr, pwd, binder=None):
-		self._request(
-			"/api/method/passkeys.passkey.login_with_password", binder=binder, usr=usr, pwd=pwd
-		)
+		self._request("/api/method/passkeys.passkey.login_with_password", binder=binder, usr=usr, pwd=pwd)
 		passkey.login_with_password(usr, pwd)
 		resp = frappe.local.response
 		set_binder = frappe.local.cookie_manager.cookies.get(state.BINDER_COOKIE)

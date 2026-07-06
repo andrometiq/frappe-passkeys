@@ -36,7 +36,7 @@ UV_SETUP_PREFIX = "passkeys:uvsetup:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
 
 # Guest-ceremony browser binder (§4.3). Ephemeral cookie; the ceremony record
-# stores only sha256(value). Max-Age = 2× ceremony TTL (sliding), so a slow
+# stores only sha256(value). Max-Age = 2x ceremony TTL (sliding), so a slow
 # hybrid-QR ceremony begun minutes after page load never outlives the cookie.
 BINDER_COOKIE = "passkey_binder"
 BINDER_MAX_AGE = 2 * CEREMONY_TTL  # 600 s
