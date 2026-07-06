@@ -149,6 +149,31 @@ class LoginCeremonyTest(IntegrationTestCase):
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 5)
 
+	def test_passkey_only_user_passwordless_round_trip_seeds_passkey_window(self):
+		"""C1 regression: verify_login's SESSION leg sets
+		``frappe.local.flags.passkey_login`` itself (F3-2) — driven through the
+		REAL begin→verify path with the real on_login hook firing, no manual flag.
+		Without the flag a ``passkey_only_login=1`` user trips their own §9.3 veto
+		(total lockout from their only login method) and every passwordless
+		session seeds a "weak" sudo window instead of "passkey" (§7.1)."""
+		user = self._user()
+		auth, _handle = self._enroll(user)
+		frappe.db.set_value(
+			"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1, update_modified=False
+		)
+		# a flag leaked by an earlier test would false-pass this regression
+		frappe.local.flags.pop("passkey_login", None)
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], sign_count=5)
+		self._verify(begun["state_id"], credential, binder)
+
+		# the veto let the passkey leg through; the session minted for that user
+		self.assertEqual(frappe.session.user, user)
+		# ...and seed_sudo_window classified it as a full "passkey" window (§7.1)
+		window = state.get_sudo_window(frappe.session.sid)
+		self.assertEqual((window or {}).get("seeded_by"), "passkey")
+
 	def test_begin_login_mode_off_is_pure_config_no_state(self):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")

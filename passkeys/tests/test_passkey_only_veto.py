@@ -104,6 +104,45 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		self._guest_context()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Guest")))
 
+	# ---- resumed-session takeover (SEC-1) ---------------------------------
+
+	def test_resumed_attacker_session_cannot_bypass_veto(self):
+		"""SEC-1 regression: ``login_via_key``/OAuth run on a RESUMED session, so
+		``frappe.session.user`` at on_login time is the COOKIE HOLDER — an
+		attacker's own throwaway session redeeming a passkey_only victim's
+		one-time email key must still be vetoed (a bare non-Guest exemption was
+		full account takeover)."""
+		victim = self._user(passkey_only=True)
+		attacker = self._user(passkey_only=False)
+		frappe.set_user(attacker)  # the resumed-session state login_via_key leaves
+		self._clear_flags()
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_same_user_reauth_is_still_exempt(self):
+		user = self._user(passkey_only=True)
+		frappe.set_user(user)  # already authenticated as themselves
+		self._clear_flags()
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
+
+	def test_system_manager_session_is_still_exempt(self):
+		# the SM-gated impersonate() caller (F2/A15) — a non-Administrator SM.
+		victim = self._user(passkey_only=True)
+		manager = self._user(passkey_only=False)
+		frappe.get_doc("User", manager).add_roles("System Manager")
+		frappe.set_user(manager)
+		self._clear_flags()
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
+
+	def test_flagged_passkey_login_passes_over_a_resumed_foreign_session(self):
+		# the app's own passkey legs (flag set before login_as, F3-2) still pass
+		# when a different user's session is being resumed on the same browser.
+		victim = self._user(passkey_only=True)
+		other = self._user(passkey_only=False)
+		frappe.set_user(other)
+		frappe.local.flags.passkey_login = True
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
+
 	# ---- wiring -----------------------------------------------------------
 
 	def test_veto_is_wired_on_the_on_login_hook(self):

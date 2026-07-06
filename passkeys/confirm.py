@@ -350,8 +350,10 @@ def verify_confirmation(state_id: str, credential):
 	"""Verify the confirmation assertion and mint a single-use grant (§7.2).
 
 	§3.1 ladder + sid binding + **UV bit must be 1** (a UV-less completion is a
-	server-side dead end — confirmation always requires verification). On success
-	returns ``{grant: "<token>"}`` — the single-use, 180 s, user+sid+action+payload
+	server-side dead end — confirmation always requires verification) + the §3.7
+	``uv_initialized`` gate (flip iff a password-seeded sudo window accompanies
+	this session; otherwise route to the password tab). On success returns
+	``{grant: "<token>"}`` — the single-use, 180 s, user+sid+action+payload
 	bound, ``passkey``-method grant. Any failure raises the uniform typed error;
 	the client never re-POSTs an assertion (A35)."""
 	_refuse_if_core_native()
@@ -390,9 +392,25 @@ def verify_confirmation(state_id: str, credential):
 	# a non-UV authenticator cannot mint an action grant.
 	if not result.user_verified:
 		raise frappe.AuthenticationError(_("Please verify it's you to confirm this action."))
+	# §3.7 uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
+	# MUST NOT be relied upon as a verification factor. The false→true flip is
+	# allowed iff a password accompanied this session (a password/reauth-seeded
+	# sudo window); otherwise the typed error routes the dialog to its password
+	# tab (§7.2) — possession alone never mints a confirmation grant.
+	uv_flip_pending = not cint(cred.uv_initialized)
+	if uv_flip_pending:
+		window = session.get_window(user)
+		if not (window and window.get("seeded_by") in ("password", "reauth")):
+			session._raise_confirmation_required(
+				record["action"], methods=["password"], payload_fingerprint=record["payload_hash"]
+			)
 
 	# sign-count policy applies (upward-only store + flag/hard-fail; §3.6).
 	_advance_credential(cred.name, result)
+	if uv_flip_pending:
+		# the standard password-accompanied uv_initialized flip (§3.7 — the same
+		# idiom as the verified second-factor leg in passkey.py).
+		frappe.db.set_value("WebAuthn Credential", cred.name, "uv_initialized", 1, update_modified=False)
 
 	token = session.mint_action_grant(user, record["action"], record["payload_hash"], method="passkey")
 	# §7.1: a completed passkey confirmation for the built-in ``passkeys.manage``

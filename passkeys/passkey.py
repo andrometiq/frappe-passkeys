@@ -212,9 +212,11 @@ def verify_login(state_id: str, credential):
 		frappe.local.response["setup_id"] = setup_id
 		raise UVSetupRequired(_("One more step to finish setting up this passkey."))
 
-	# 12. SESSION
+	# 12. SESSION — flag before login_as (F3-2): the §9.3 veto exemption for a
+	# passkey_only_login=1 user, and the §7.1 "passkey" sudo-window classification.
 	_advance_credential(cred.name, result)
 	frappe.local.response["authenticator_attachment"] = credential.get("authenticatorAttachment")
+	frappe.local.flags.passkey_login = True
 	_mint_session(cred.user)
 	return None
 

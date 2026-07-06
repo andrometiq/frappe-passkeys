@@ -78,8 +78,10 @@ class ConfirmationTest(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		return user
 
-	def _enroll(self, user, seed="c1") -> SoftAuthenticator:
-		"""Enroll one real credential for ``user`` (real crypto for verify)."""
+	def _enroll(self, user, seed="c1", uv=True) -> SoftAuthenticator:
+		"""Enroll one real credential for ``user`` (real crypto for verify).
+		``uv=False`` registers a ``uv_initialized=0`` credential (the
+		conditional-create-style population, §3.7)."""
 		frappe.set_user(user)
 		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
 		self._request("/api/method/passkeys.api.registration.begin_registration")
@@ -89,7 +91,7 @@ class ConfirmationTest(IntegrationTestCase):
 			challenge_b64=begun["options"]["challenge"],
 			rp_id=RP_ID,
 			origin=ORIGIN,
-			uv=True,
+			uv=uv,
 			credprops_rk=True,
 		)
 		registration.verify_registration(begun["state_id"], credential)
@@ -267,6 +269,41 @@ class ConfirmationTest(IntegrationTestCase):
 		no_uv = self._assert(auth, begun["options"], uv=False)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._verify(begun["state_id"], no_uv)
+
+	def test_uv_uninitialized_without_password_window_refused_no_grant(self):
+		"""S1 regression (§3.7 / §12.5 uninitialized-UV row): while
+		``uv_initialized=0`` the assertion's UV bit MUST NOT count as a
+		verification factor — without a password-seeded sudo window the typed
+		error routes the dialog to its password tab and NO grant is minted."""
+		user = self._user()
+		auth = self._enroll(user, seed="uvgate-a", uv=False)
+		frappe.set_user(user)
+		state.clear_sudo_window(self.sid)  # no password accompanied this session
+
+		begun = self._begin("myapp.act", params={"x": 1})
+		credential = self._assert(auth, begun["options"], uv=True)
+		with self.assertRaises(PasskeyConfirmationRequired):
+			self._verify(begun["state_id"], credential)
+		# the §3 wire contract routes to the password tab...
+		self.assertEqual(frappe.local.response.get("methods"), ["password"])
+		# ...and the flag did NOT flip on possession alone (L3 §4 MUST NOT)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+
+	def test_uv_uninitialized_with_password_window_flips_and_mints(self):
+		"""S1 regression, the sanctioned path (§3.7): a password-seeded sudo
+		window is the accompanying knowledge factor — the grant mints and
+		``uv_initialized`` flips false→true."""
+		user = self._user()
+		auth = self._enroll(user, seed="uvgate-b", uv=False)
+		frappe.set_user(user)
+		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
+
+		begun = self._begin("myapp.act", params={"x": 1})
+		out = self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True))
+		self.assertTrue(out["grant"])
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 1)
 
 	def test_confirm_ceremony_is_single_use(self):
 		user = self._user()

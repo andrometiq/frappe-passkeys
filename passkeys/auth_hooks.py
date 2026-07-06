@@ -37,11 +37,17 @@ def on_login_veto(login_manager=None, **kwargs):
 	**Impersonation exemption (F2)** — by session state, not a marker: core's
 	``impersonate()`` calls ``login_as`` and only *afterwards* ``set_impersonated``,
 	so no impersonation marker exists at ``on_login`` time and ``LoginManager``
-	carries none of the impersonation args. What *is* distinguishable: during
-	impersonation the request is still authenticated as the impersonator, so
-	``frappe.session.user`` is a real (non-Guest) user — whereas every genuine
-	first-factor login the veto must police runs with a Guest session. So: exempt
-	when the current session is already non-Guest.
+	carries none of the impersonation args. A non-Guest ``frappe.session.user`` is
+	NOT by itself proof of impersonation, though: every login path other than
+	``/api/method/login`` runs on a RESUMED session (``LoginManager.__init__`` →
+	``make_session(resume=True)``, develop ``auth.py:135-138``), so at hook time
+	``frappe.session.user`` is the COOKIE HOLDER — on ``login_via_key``/OAuth that
+	may be an attacker's own throwaway session while ``login_manager.user`` is the
+	victim, and a bare non-Guest exemption would hand over any ``passkey_only``
+	account for the price of one email login key. Exempt only what is genuinely
+	distinguishable: same-user re-auth (target == session user), or a session
+	holding System Manager — the role core's SM-gated ``impersonate()`` requires
+	(A15/F2). Every other cross-user, non-flagged login is policed.
 
 	**No lockout** — two layers. (1) The Passkey Settings disable-guard (F3-3)
 	refuses any settings save that would leave no passkey-capable login mode while
@@ -52,26 +58,37 @@ def on_login_veto(login_manager=None, **kwargs):
 	interlock), or the self-hoster clears that row / disables the app. Administrator
 	is exempt (mirroring core's 2FA Administrator exemption), so the site owner can
 	never be locked out through this veto. Exception-hardened only around the
-	session-state read — a genuine veto MUST propagate to abort the login."""
-	# Impersonation (and any already-authenticated re-login): a non-Guest session
-	# at hook time is never a first-factor login the veto should police.
+	session-state and role reads — a genuine veto MUST propagate to abort the
+	login."""
+	target = getattr(login_manager, "user", None) if login_manager is not None else None
+
+	# Impersonation / already-authenticated re-login: a non-Guest session at hook
+	# time is exempt ONLY for same-user re-auth or a System-Manager holder (the
+	# SM-gated impersonate() caller, F2/A15) — resume-based paths reach here with
+	# frappe.session.user = the cookie holder (docstring above), so a bare
+	# non-Guest exemption would let any logged-in session bypass the veto.
 	try:
 		current = frappe.session.user
 	except Exception:
 		current = None
 	if current and current not in ("Guest", ""):
-		return
+		if target and target == current:
+			return  # same-user re-auth is never a first-factor login to police
+		try:
+			if "System Manager" in frappe.get_roles(current):
+				return
+		except Exception:
+			pass  # fail closed — the veto below must still be evaluated
 
 	# Our own passkey legs flag themselves before login_as — those always pass.
 	flags = getattr(frappe.local, "flags", None)
 	if flags is not None and flags.get("passkey_login"):
 		return
 
-	user = getattr(login_manager, "user", None) if login_manager is not None else None
-	if not user or user in ("Guest", "Administrator", ""):
+	if not target or target in ("Guest", "Administrator", ""):
 		return  # Administrator exempt (core-2FA parity); Guest/empty are not logins
 
-	if _is_passkey_only(user):
+	if _is_passkey_only(target):
 		frappe.throw(
 			_("This account signs in with a passkey. Please use your passkey to continue."),
 			frappe.AuthenticationError,
