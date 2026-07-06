@@ -17,7 +17,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import session
+from passkeys import session, state
 
 CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 
@@ -32,6 +32,7 @@ def list_credentials():
 	"""Return the caller's own credentials for the management cards (§8.2). A
 	read — not sudo-gated; ownership is implicit (filtered to the session user)."""
 	user = _require_user()
+	state.rate_limit_user("list_credentials", 60, 60)  # §3.0 row 9: 60/min/user
 	rows = frappe.get_all(
 		CREDENTIAL_DOCTYPE,
 		filters={"user": user},
@@ -50,7 +51,14 @@ def list_credentials():
 		],
 		order_by="creation asc",
 	)
-	return {"credentials": rows}
+	# §9.3: the caller's current passkey_only_login flag (0 when no handle row yet)
+	# — the management toggle reads it from this payload (client parity with boot).
+	return {
+		"credentials": rows,
+		"passkey_only_login": cint(
+			frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")
+		),
+	}
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +71,7 @@ def rename_credential(name: str, label: str):
 	"""Rename the caller's own credential (§8.2). Display-only, so no sudo gate;
 	the DocType ``validate`` sanitizes + length-caps the label (stored-XSS)."""
 	user = _require_user()
+	state.rate_limit_user("rename_credential", 20, 3600)  # §3.0 row 10: 20/hr/user
 	doc = _own_credential(user, name)
 	if not (label or "").strip():
 		frappe.throw(_("A passkey name cannot be empty."), frappe.ValidationError)
@@ -84,6 +93,7 @@ def delete_credential(name: str):
 	``passkey_only_login`` user (or under site ``disable_user_pass_login``), the
 	endpoint enforcement of the §2.2 handle-row floor (F3-3 / F-B3)."""
 	user = _require_user()
+	state.rate_limit_user("delete_credential", 10, 3600)  # §3.0 row 11: 10/hr/user
 	session.require_management_sudo(user)
 	doc = _own_credential(user, name)
 	_guard_last_credential(user, doc)
@@ -134,11 +144,19 @@ def set_passkey_only_login(enabled):
 	ceremony, a grant can only be produced by that phase's passkey assertion."""
 	user = _require_user()
 	enabled_int = cint(enabled)
-	if not session.consume_passkey_grant(
-		user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": bool(enabled_int)}
-	):
+	payload = {"enabled": bool(enabled_int)}
+	if not session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, payload):
 		# Passkey-grade re-auth only — no sudo/password fallback offered (§9.3).
-		session._raise_confirmation_required(session.SET_PASSKEY_ONLY_ACTION, methods=["passkey"])
+		# The 401 MUST carry the SERVER-computed fingerprint of THIS payload (A36):
+		# the client echoes it verbatim into begin_confirmation, which binds the
+		# minted grant's payload_hash to it, and the retry's consume recomputes the
+		# same payload_hash({"enabled": bool}) — omitting it here shipped a None
+		# fingerprint, so the grant could never match and the toggle never succeeded.
+		session._raise_confirmation_required(
+			session.SET_PASSKEY_ONLY_ACTION,
+			methods=["passkey"],
+			payload_fingerprint=session.payload_hash(payload),
+		)
 
 	if enabled_int and frappe.db.count(CREDENTIAL_DOCTYPE, {"user": user, "enabled": 1}) < 2:
 		frappe.throw(

@@ -196,3 +196,69 @@ class CredentialManagementTest(IntegrationTestCase):
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": False})
 		result = credentials.set_passkey_only_login(0)
 		self.assertEqual(result["passkey_only_login"], 0)
+
+	def test_set_passkey_only_end_to_end_grant_matches_the_401_fingerprint(self):
+		"""C2 (E2E): the 401 the toggle raises must carry the SAME payload fingerprint
+		the retry's consume recomputes — a passkey grant minted from that fingerprint
+		verbatim (exactly what begin_confirmation's echo + verify_confirmation produce)
+		must then satisfy the retry. The bug shipped a None fingerprint, so the grant
+		could never match and the toggle could NEVER succeed end to end. Both directions."""
+		for enabled, want in ((1, 1), (0, 0)):
+			user = self._user()
+			make_credential(user)
+			make_credential(user)  # ≥2 enabled (the enable-direction floor)
+			make_handle(user, passkey_only_login=(0 if enabled else 1))
+			frappe.set_user(user)
+			frappe.local.form_dict = frappe._dict()
+			frappe.local.response = frappe._dict()
+
+			# 1) no grant → 401 carrying the SERVER-computed fingerprint of THIS payload
+			with self.assertRaises(PasskeyConfirmationRequired):
+				credentials.set_passkey_only_login(enabled)
+			fingerprint = frappe.local.response.get("payload_fingerprint")
+			self.assertEqual(fingerprint, session.payload_hash({"enabled": bool(enabled)}))
+
+			# 2) mint a passkey grant bound to that fingerprint verbatim
+			token = frappe.generate_hash()
+			state.store_grant(
+				hashlib.sha256(token.encode()).hexdigest(),
+				{
+					"v": 1,
+					"user": user,
+					"sid": self.sid,
+					"action": session.SET_PASSKEY_ONLY_ACTION,
+					"method": "passkey",
+					"payload_hash": fingerprint,
+				},
+			)
+			frappe.local.form_dict[session.GRANT_KWARG] = token
+
+			# 3) retry with the grant → the toggle persists
+			result = credentials.set_passkey_only_login(enabled)
+			self.assertEqual(result["passkey_only_login"], want)
+
+	def test_list_credentials_carries_passkey_only_login_flag(self):
+		"""C2-payload-exposure: the client reads passkey_only_login from the list
+		payload — it must be present and reflect a flip."""
+		user = self._user()
+		make_credential(user)
+		make_handle(user, passkey_only_login=0)
+		frappe.set_user(user)
+		self.assertEqual(credentials.list_credentials()["passkey_only_login"], 0)
+		frappe.db.set_value("WebAuthn User Handle", {"user": user}, "passkey_only_login", 1)
+		self.assertEqual(credentials.list_credentials()["passkey_only_login"], 1)
+
+	def test_authed_rate_limit_is_per_user(self):
+		"""S4 (§3.0): an authed endpoint driven past its per-user limit 429s; a
+		different user is unaffected (the limit keys on frappe.session.user)."""
+		user_a, user_b = self._user(), self._user()
+		make_credential(user_a)
+		make_credential(user_b)
+		frappe.set_user(user_a)
+		for _ in range(60):  # list_credentials is 60/min/user (§3.0 row 9)
+			credentials.list_credentials()
+		with self.assertRaises(frappe.TooManyRequestsError):
+			credentials.list_credentials()
+		# a different user has their own counter — unaffected
+		frappe.set_user(user_b)
+		self.assertIn("credentials", credentials.list_credentials())

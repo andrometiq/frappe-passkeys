@@ -128,6 +128,8 @@ def build_passkeys_boot(user: str) -> dict:
 	    on it (both modes off / dormant ⇒ the management UI removes itself, §3.0).
 	  * ``modes``              — ``{first_factor, second_factor}``.
 	  * ``credential_count``   — the user's ENABLED credentials.
+	  * ``passkey_only_login`` — the caller's per-user password-login-disable flag
+	    (§9.3; 0 when no handle row yet); the management toggle reflects it.
 	  * ``nudge_state``        — ``{declines, last_shown, opt_out, eligible}``;
 	    ``eligible`` is the SERVER cadence verdict (§8.4 — "never client-side-only caps").
 	  * ``post_login_method``  — the sudo window's seeding class this session
@@ -153,6 +155,12 @@ def build_passkeys_boot(user: str) -> dict:
 		"enabled": first or second,
 		"modes": {"first_factor": first, "second_factor": second},
 		"credential_count": credential_count,
+		# §9.3: the caller's own passkey_only_login flag (0 when no handle row) —
+		# the desk/portal management toggle reflects it on boot (client parity with
+		# list_credentials' payload).
+		"passkey_only_login": cint(
+			frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")
+		),
 		"nudge_state": {
 			**state,
 			"eligible": nudge_eligible(user, settings, credential_count, state),

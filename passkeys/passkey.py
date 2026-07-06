@@ -736,17 +736,40 @@ def _observe_2fa_floor_desync(settings) -> None:
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
+@rate_limit(limit=30, seconds=60)
 def get_app_translations(version: str | None = None):
 	"""Return the passkeys app's translation catalog for the request language
 	(§5.6). Wraps ``get_translations_from_apps`` scoped to this app only; the
 	bundle fetches once, memoizes on the app-controlled ``version`` param, and
 	``Object.assign``-merges into ``frappe._messages`` (never clobbers the
 	Web-Form / core catalog). Without it, non-English v15/v16 sites see English
-	passkey UI — a release blocker."""
+	passkey UI — a release blocker.
+
+	Rate-limited like the sibling page-load-coupled guest endpoints (30/min/IP,
+	as ``begin_login``); a ``version``-keyed long-lived Cache-Control lets the
+	browser reuse the catalog until the client mints a new ``version`` (a new URL
+	⇒ a cache miss), so this endpoint is normally hit once per catalog release."""
 	from frappe.translate import get_translations_from_apps
 
 	lang = getattr(frappe.local, "lang", None) or "en"
+	_set_translations_cache_control(version)
 	return get_translations_from_apps(lang, apps=["passkeys"])
+
+
+def _set_translations_cache_control(version) -> None:
+	"""§5.6 caching: the catalog is content-addressed by the client's ``version``
+	cache-buster (a new version ⇒ a new URL), so a versioned request is safely
+	immutable-cacheable for a year; an unversioned request gets a short private
+	cache. ``private`` (never ``public``) because the URL does not encode the
+	language — a shared cache must not serve one language's catalog to another.
+	Best-effort: a direct-call context without ``response_headers`` skips it."""
+	headers = getattr(frappe.local, "response_headers", None)
+	if headers is None:
+		return
+	if version:
+		headers.set("Cache-Control", "private, max-age=31536000, immutable")
+	else:
+		headers.set("Cache-Control", "private, max-age=300")
 
 
 # ===========================================================================
@@ -760,11 +783,9 @@ def get_signal_data():
 	the caller's own ``{rp_id, user_handle, credential_ids}`` (enabled credentials
 	only). The desk/portal bundle fires the signal fire-and-forget in-session so a
 	deleted credential is pruned from the browser's autofill list. Identity is
-	strictly ``frappe.session.user``; no client param selects the account.
-
-	Rate limit: the §3.0 per-user shapes are deferred as a set (matching the P2b
-	authed management endpoints, which enforce none) — see build-p6 notes."""
+	strictly ``frappe.session.user``; no client param selects the account."""
 	user = _require_authed_user()
+	state.rate_limit_user("get_signal_data", 60, 60)  # §3.0 row 12: 60/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
 	handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
@@ -781,6 +802,7 @@ def record_nudge(event: str):
 	counters are **server-side per-user** so a three-browser user gets N prompts
 	total (not 3N); capability checks stay client-side."""
 	user = _require_authed_user()
+	state.rate_limit_user("record_nudge", 30, 3600)  # §3.0 row 13: 30/hr/user
 	from passkeys import boot
 
 	return {"nudge_state": boot.record_nudge_event(user, event)}

@@ -69,18 +69,6 @@ class WebAuthnCredential(Document):
 		if cint(self.sign_count) < cint(before.sign_count):
 			frappe.throw(_("The signature counter is never written downward."))
 
-	def _guard_admin_disable(self):
-		"""§8.6: soft-disabling (enabled 1→0) the last enabled credential of a
-		passkey-only user is the same lockout as deleting it — refuse it, and notify
-		the owner when a disable does go through."""
-		if self.is_new():
-			return
-		was_enabled = cint(frappe.db.get_value(self.doctype, self.name, "enabled"))
-		if not (was_enabled and not cint(self.enabled)):
-			return  # not a 1→0 disable transition
-		self._guard_last_login_method("disable")
-		self._notify(removed=False)
-
 	def _guard_last_login_method(self, action: str):
 		"""Refuse removing/disabling the caller's final passkey-capable credential
 		when the owner would then have no login method (§8.3/§8.6, census mirroring

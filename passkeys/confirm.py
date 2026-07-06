@@ -42,7 +42,6 @@ from dataclasses import dataclass, field
 
 import frappe
 from frappe import _
-from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
 from passkeys import policy, session, state
@@ -286,7 +285,6 @@ def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(limit=30, seconds=300)
 def begin_confirmation(action: str, params=None, payload_hash=None):
 	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``
 	(§7.2). The client sends EITHER ``params`` (raw bound params — the server
@@ -300,6 +298,7 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 	417 ``PasskeyServedByCore`` when core serves passkeys natively (§11)."""
 	_refuse_if_core_native()
 	user = _require_user()
+	state.rate_limit_user("begin_confirmation", 30, 300)  # §3.0 row 14: 30/5 min/user
 	action = _require_action(action)
 	fingerprint = _resolve_payload_hash(params, payload_hash)
 
@@ -345,7 +344,6 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(limit=30, seconds=300)
 def verify_confirmation(state_id: str, credential):
 	"""Verify the confirmation assertion and mint a single-use grant (§7.2).
 
@@ -358,6 +356,7 @@ def verify_confirmation(state_id: str, credential):
 	the client never re-POSTs an assertion (A35)."""
 	_refuse_if_core_native()
 	user = _require_user()
+	state.rate_limit_user("verify_confirmation", 30, 300)  # §3.0 row 15: 30/5 min/user
 
 	from passkeys import engine
 
@@ -426,7 +425,6 @@ def verify_confirmation(state_id: str, credential):
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(limit=5, seconds=300)
 def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 	"""Password fallback (§7.2 / §3.0 row 16). Two modes on one endpoint:
 
@@ -453,6 +451,7 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 
 	_refuse_if_core_native()
 	user = _require_user()
+	state.rate_limit_user("reauth_password", 5, 300)  # §3.0 row 16: 5/5 min/user
 
 	# §7.4 / §9.4 row 7: under site `disable_user_pass_login`, a password can no
 	# longer re-auth for management once the user holds ≥1 passkey — only the

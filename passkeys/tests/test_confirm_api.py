@@ -147,6 +147,22 @@ class ConfirmationTest(IntegrationTestCase):
 		self._attach_grant(token)
 		self.assertTrue(session.consume_action_grant(user, "myapp.release_payment", {"payment_id": "PAY-1"}))
 
+	def test_grant_issuance_and_consumption_write_activity_log(self):
+		"""S9 (§7.2): every grant issuance/consumption leaves an Activity Log row —
+		routed through notifications._activity_log, not just a logger line."""
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.set_user(user)
+		begun = self._begin("myapp.act", params={"x": 1})
+		# verify_confirmation MINTS the grant (a grant_issued row)...
+		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
+		# ...then consume it (a grant_consumed row).
+		self._attach_grant(token)
+		self.assertTrue(session.consume_action_grant(user, "myapp.act", {"x": 1}))
+		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
+		self.assertIn("passkeys:grant_issued", contents)
+		self.assertIn("passkeys:grant_consumed", contents)
+
 	# ======================================================================
 	# grant is single-use
 	# ======================================================================

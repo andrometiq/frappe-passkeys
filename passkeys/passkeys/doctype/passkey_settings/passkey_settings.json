@@ -26,7 +26,8 @@
   "passkey_conditional_create",
   "notifications_section",
   "passkey_notify_on_change",
-  "passkey_notify_password_fallback"
+  "passkey_notify_password_fallback",
+  "passkey_notify_password_login"
  ],
  "fields": [
   {
@@ -166,6 +167,13 @@
    "fieldname": "passkey_notify_password_fallback",
    "fieldtype": "Check",
    "label": "Notify on Password Fallback"
+  },
+  {
+   "default": "0",
+   "description": "Record a risk event when a user who has a passkey signs in with their password instead (Activity Log telemetry; off by default)",
+   "fieldname": "passkey_notify_password_login",
+   "fieldtype": "Check",
+   "label": "Notify on Password Login by Passkey Holder"
   }
  ],
  "issingle": 1,

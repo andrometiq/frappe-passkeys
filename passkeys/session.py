@@ -63,8 +63,31 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 			{"v": 1, "user": user, "seeded_by": method},
 			ttl,
 		)
+		_maybe_record_password_login_risk(user, method, settings)
 	except Exception:
 		frappe.log_error(title="passkeys: sudo-window seed failed")
+
+
+def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
+	"""§8.5 ``password_login_by_passkey_holder`` risk event: a user who holds ≥1
+	enabled passkey signed in with their password instead. Opt-in behind
+	``passkey_notify_password_login`` (default OFF) — so the enabled-credential
+	read never touches the hot login path unless an operator wants the telemetry,
+	and a default site records nothing. Best-effort — the enclosing seed is already
+	exception-hardened; a telemetry failure must never break a login."""
+	if method != "password":
+		return
+	if not cint(getattr(settings, "passkey_notify_password_login", 0)):
+		return
+	if not frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}):
+		return
+	from passkeys import notifications
+
+	notifications.record_risk_event(
+		notifications.RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER,
+		user,
+		f"Password login by passkey holder {user}",
+	)
 
 
 def clear_sudo_window(login_manager=None, **kwargs) -> None:
@@ -285,10 +308,19 @@ def consume_action_grant(
 
 
 def _audit_grant(event: str, action: str, user: str, method: str) -> None:
-	"""§7.2 "every issuance/consumption writes an Activity Log row". The Activity
-	Log DocType rows are owned by ``notifications.py`` (a later phase, per the same
-	deferral noted in ``api/credentials.py``); until then this is a structured
-	logger line so the audit trail is never silently dropped. Non-blocking."""
+	"""§7.2 "every issuance/consumption writes an Activity Log row". Routes through
+	``notifications._activity_log`` (the P6 audit-row writer) so the trail is a real
+	queryable Activity Log entry, and keeps the structured logger breadcrumb (the
+	non-blocking-telemetry idiom used across the app). Lazy import keeps this
+	every-login-hook module webauthn-free (§1.3) — ``_audit_grant`` is called only
+	from the grant mint/consume endpoints, never from a login hook. Non-blocking:
+	an audit failure must never break a ceremony."""
+	try:
+		from passkeys import notifications
+
+		notifications._activity_log(user, f"grant_{event}", f"Passkey grant {event}: {action} ({method})")
+	except Exception:
+		frappe.log_error(title="passkeys: grant-audit log failed")
 	try:
 		frappe.logger("passkeys").info(f"passkey grant {event}: action={action} user={user} method={method}")
 	except Exception:

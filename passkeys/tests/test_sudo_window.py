@@ -80,6 +80,37 @@ class SudoWindowTest(IntegrationTestCase):
 		session.seed_sudo_window()
 		self.assertIsNone(state.get_sudo_window(frappe.session.sid))
 
+	def test_password_login_by_passkey_holder_risk_event_gated_by_knob(self):
+		"""C10/S8 (§8.5): a password-seeded window for a user holding an enabled
+		passkey records the ``password_login_by_passkey_holder`` risk event — but only
+		when the opt-in ``passkey_notify_password_login`` knob is on (default OFF ⇒ no
+		telemetry, and the enabled-credential read never touches the hot login path)."""
+		user = self._user()
+		make_credential(user)  # ≥1 enabled credential
+		frappe.set_user(user)
+		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(
+			frappe.db.set_single_value, "Passkey Settings", "passkey_notify_password_login", 0
+		)
+
+		def seed_as_password():
+			frappe.local.form_dict["cmd"] = "login"  # classify the window as password (§7.1)
+			session.seed_sudo_window()
+
+		# knob OFF (default) → nothing recorded
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 0)
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		before = frappe.db.count("Activity Log", {"user": user})
+		seed_as_password()
+		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before)
+
+		# knob ON → the risk event is recorded
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 1)
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		seed_as_password()
+		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
+		self.assertIn("passkeys:password_login_by_passkey_holder", contents)
+
 	# ---- TTL honesty (§4.2 — Redis ex is the sole expiry authority) -------
 
 	def test_seed_ttl_is_bounded_by_settings_window(self):

@@ -43,6 +43,7 @@ def begin_registration(flow: str = "explicit"):
 	user = frappe.session.user
 	if user in ("Guest", ""):
 		raise frappe.AuthenticationError(_("Not permitted."))
+	state.rate_limit_user("begin_registration", 20, 3600)  # §3.0 row 7: 20/hr/user
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)
@@ -99,6 +100,10 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	global ``credential_id_sha256`` unique index is the final arbiter of both
 	duplicate registration and cross-account hijack."""
 	from passkeys import engine
+
+	# §3.0 row 8: 20/hr/user — BEFORE the single-use consume, so a rate-limited
+	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
+	state.rate_limit_user("verify_registration", 20, 3600)
 
 	credential = _as_dict(credential)
 	record = state.consume_ceremony(state_id)

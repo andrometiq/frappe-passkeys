@@ -73,6 +73,7 @@ class BootInfoTest(IntegrationTestCase):
 				"enabled",
 				"modes",
 				"credential_count",
+				"passkey_only_login",
 				"nudge_state",
 				"post_login_method",
 				"conditional_create",
@@ -86,8 +87,20 @@ class BootInfoTest(IntegrationTestCase):
 		self.assertFalse(pk["modes"]["second_factor"])
 		self.assertEqual(pk["credential_count"], 1)
 		self.assertEqual(pk["rp_id"], RP_ID)
+		self.assertEqual(pk["passkey_only_login"], 0)  # no handle row ⇒ 0
 		# credential_count > 0 ⇒ nudge not eligible
 		self.assertFalse(pk["nudge_state"]["eligible"])
+
+	def test_bootinfo_passkey_only_login_reflects_the_handle_flag(self):
+		"""C2-payload-exposure (boot): the toggle reads passkey_only_login from the
+		boot payload — it must ship the caller's actual handle-row flag."""
+		user = self._user()
+		make_credential(user, label="k")
+		make_handle(user, passkey_only_login=1)
+		frappe.set_user(user)
+		info = frappe._dict()
+		boot.extend_bootinfo(bootinfo=info)
+		self.assertEqual(info.passkeys["passkey_only_login"], 1)
 
 	def test_bootinfo_nudge_eligible_when_zero_credentials(self):
 		user = self._user()

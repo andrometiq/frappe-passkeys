@@ -360,6 +360,28 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertIsInstance(catalog, dict)
 		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
 
+	def test_translations_versioned_request_sets_long_lived_cache_control(self):
+		"""S13: a version-keyed request carries a long-lived immutable Cache-Control
+		(the client mints a new version ⇒ a new URL ⇒ a cache miss)."""
+		from werkzeug.datastructures import Headers
+
+		frappe.set_user("Guest")
+		self._request("/api/method/passkeys.passkey.get_app_translations")
+		frappe.local.response_headers = Headers()
+		passkey.get_app_translations(version="42")
+		cache_control = frappe.local.response_headers.get("Cache-Control")
+		self.assertIsNotNone(cache_control)
+		self.assertIn("immutable", cache_control)
+
+	def test_translations_endpoint_is_rate_limited(self):
+		"""S13: the previously-unlimited guest translations endpoint now carries
+		frappe's @rate_limit, like its sibling guest endpoints."""
+		frappe.set_user("Guest")
+		with self.assertRaises(frappe.RateLimitExceededError):
+			for _ in range(31):
+				self._request("/api/method/passkeys.passkey.get_app_translations")
+				passkey.get_app_translations()
+
 	# ======================================================================
 	# §12.5 security regression rows on the first-factor surface
 	# ======================================================================
@@ -401,6 +423,10 @@ class LoginCeremonyTest(IntegrationTestCase):
 	def test_begin_login_refuses_a_foreign_request_origin(self):
 		"""Cross-site origin (§12.5): a request whose Origin is not in the configured
 		origins fails closed at begin (host-mismatch diagnosability, §9.2)."""
+		# reset the request after us so the foreign Origin never leaks onto
+		# frappe.local.request into a later test (same discipline as the S10
+		# host-mismatch test below — never rely on lucky test ordering).
+		self.addCleanup(set_request, method="POST", path="/api/method/passkeys.passkey.begin_login")
 		set_request(
 			method="POST",
 			path="/api/method/passkeys.passkey.begin_login",

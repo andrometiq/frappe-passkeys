@@ -34,6 +34,7 @@ SUDO_PREFIX = "passkeys:sudo:"
 GRANT_PREFIX = "passkeys:grant:"
 UV_SETUP_PREFIX = "passkeys:uvsetup:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
+RATE_LIMIT_PREFIX = "passkeys:ratelimit:"
 
 # Guest-ceremony browser binder (§4.3). Ephemeral cookie; the ceremony record
 # stores only sha256(value). Max-Age = 2x ceremony TTL (sliding), so a slow
@@ -138,6 +139,22 @@ def is_password_throttled(user: str) -> bool:
 
 def clear_password_failures(user: str) -> None:
 	clear_counter(PASSWORD_FAILURE_PREFIX + user)
+
+
+def rate_limit_user(name: str, limit: int, ttl: int) -> None:
+	"""§3.0 per-user rate limit for the authenticated endpoints. Core
+	``@rate_limit`` cannot key on ``frappe.session.user`` — it keys on IP and/or a
+	spoofable ``form_dict`` field (``frappe/rate_limiter.py:142``), which 429s a
+	NAT'd campus and is forgeable — so the app owns a cache counter keyed on the
+	session user (one per ``(endpoint, user)``), sharing :func:`bump_counter`'s
+	TTL-at-creation guarantee (§4.2). The ``limit``-th call in the window passes;
+	the next raises the 429 wire contract. Eviction resets the counter — the
+	throttle fails open, exactly like the password-failure counter."""
+	user = frappe.session.user or "Guest"
+	if bump_counter(f"{RATE_LIMIT_PREFIX}{name}:{user}", ttl) > limit:
+		raise frappe.TooManyRequestsError(
+			frappe._("You've hit the rate limit. Please try again shortly.")
+		)
 
 
 # ---------------------------------------------------------------------------
