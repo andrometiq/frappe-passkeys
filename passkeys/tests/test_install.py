@@ -57,11 +57,20 @@ class TestUninstallGuards(IntegrationTestCase):
 		)
 
 	def tearDown(self):
-		frappe.db.set_single_value(
-			"System Settings", "disable_user_pass_login", self._disable_user_pass_login
-		)
-		frappe.db.set_single_value("System Settings", "login_with_email_link", self._login_with_email_link)
+		self._set_ss("disable_user_pass_login", self._disable_user_pass_login)
+		self._set_ss("login_with_email_link", self._login_with_email_link)
 		super().tearDown()
+
+	def _set_ss(self, field, value):
+		"""Toggle a System Settings login field AND bust both caches. Anything that
+		reads ``frappe.get_system_settings`` while a toggle is live caches the whole
+		singles dict on ``frappe.local.system_settings``; the runner's thread-local
+		restore does NOT clear that attribute, so a stale ``disable_user_pass_login=1``
+		would leak into later modules and trip ``_guard_last_login_method`` there
+		(mirrors ``test_management_p6._set_disable`` / ``test_second_factor._set_system_2fa``)."""
+		frappe.db.set_single_value("System Settings", field, value)
+		frappe.clear_document_cache("System Settings", "System Settings")
+		frappe.local.system_settings = None  # bust the request-local singles cache
 
 	def _make_user(self) -> str:
 		user = make_user()
@@ -81,8 +90,8 @@ class TestUninstallGuards(IntegrationTestCase):
 		install.before_uninstall()  # must not raise
 
 	def test_blocks_when_no_login_method_would_survive(self):
-		frappe.db.set_single_value("System Settings", "disable_user_pass_login", 1)
-		frappe.db.set_single_value("System Settings", "login_with_email_link", 0)
+		self._set_ss("disable_user_pass_login", 1)
+		self._set_ss("login_with_email_link", 0)
 		if frappe.db.exists("Social Login Key", {"enable_social_login": 1}) or cint(
 			frappe.db.get_single_value("LDAP Settings", "enabled")
 		):
@@ -90,7 +99,7 @@ class TestUninstallGuards(IntegrationTestCase):
 
 		self.assertRaises(frappe.ValidationError, install.before_uninstall)
 
-		frappe.db.set_single_value("System Settings", "login_with_email_link", 1)
+		self._set_ss("login_with_email_link", 1)
 		install.before_uninstall()  # must not raise
 
 	def test_uninstall_deletes_passkeys_default_rows(self):
