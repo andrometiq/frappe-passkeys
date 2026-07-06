@@ -537,6 +537,34 @@ class LoginCeremonyTest(IntegrationTestCase):
 		# never regressed to the stashed 5 — the concurrent N2=50 is preserved
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 50)
 
+	def test_complete_uv_setup_refuses_when_password_throttled(self):
+		"""A49/§3.0: complete_uv_setup is a password oracle the app introduces (the
+		core tracker is off by default), so it consults the per-user password-failure
+		throttle BEFORE check_password. With the counter already at the limit the
+		endpoint refuses THROTTLED — even with the CORRECT password: no session, no
+		``uv_initialized`` flip, never a password-oracle read. (test_state pins the
+		counter's climb; this pins the endpoint enforcement E2E.)"""
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		self.addCleanup(state.clear_password_failures, user)
+		for _ in range(state.PASSWORD_FAILURE_LIMIT):
+			state.record_password_failure(user)
+		self.assertTrue(state.is_password_throttled(user))
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError) as ctx:
+			passkey.complete_uv_setup(setup_id, PWD)  # the CORRECT password — still refused
+		self.assertIn("Too many attempts", str(ctx.exception))
+		self.assertEqual(frappe.session.user, "Guest")  # no session minted
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+
 	def test_failed_verify_login_feeds_login_attempt_tracker(self):
 		"""S6: N failed passkey verifies feed core's LoginAttemptTracker for the
 		resolved user (§3/§6.3), exactly as a bad password would — without leaking
@@ -604,6 +632,33 @@ class LoginCeremonyTest(IntegrationTestCase):
 		# ...and seed_sudo_window classified the window as full "passkey", not "weak"
 		window = state.get_sudo_window(frappe.session.sid)
 		self.assertEqual((window or {}).get("seeded_by"), "passkey")
+
+	def test_passkey_only_user_real_core_password_login_is_vetoed(self):
+		"""The veto BLOCK leg end-to-end through the REAL hook chain (§9.3 / F2): a
+		``passkey_only_login=1`` user attempting a genuine core username+password login
+		is aborted by ``on_login_veto`` BEFORE any session exists. ``authenticate``
+		verifies the CORRECT password (this is not a bad-password rejection), then the
+		``login_as`` → ``post_login`` → ``run_trigger("on_login")`` chain — the SAME
+		chain the passwordless / uv-setup exemption legs above ride — fires the veto,
+		which throws because a real password login carries NO ``passkey_login`` flag.
+		No session is minted. (The direct-call block battery is in
+		test_passkey_only_veto.py; this pins it on the real login wire.)"""
+		from frappe.auth import LoginManager
+
+		user = self._user()
+		self._enroll(user)  # the flagged user still holds a real passkey
+		frappe.db.set_value(
+			"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1, update_modified=False
+		)
+		frappe.set_user("Guest")
+		frappe.local.flags.pop("passkey_login", None)  # a real password login carries NO flag
+
+		self._request("/api/method/passkeys.passkey.begin_login")  # non-login path → resume init
+		login_manager = LoginManager()
+		login_manager.authenticate(user=user, pwd=PWD)  # real core password check (correct pwd)
+		with self.assertRaises(frappe.AuthenticationError):
+			login_manager.login_as(user)  # login_as → post_login → on_login veto aborts
+		self.assertNotEqual(frappe.session.user, user)  # no session minted for the flagged user
 
 	# ======================================================================
 	# §13 M-cmd (§3.0) — spoofed cmd=login at an app endpoint mints no session

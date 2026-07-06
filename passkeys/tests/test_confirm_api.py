@@ -511,3 +511,121 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertIn("passkey", begun["methods"])
 		self.assertNotIn("password", begun["methods"])  # F19 — never a password door
 		self.assertNotIn("sudo", begun["methods"])
+
+	# ======================================================================
+	# A59 (§7.2) — the confirm assertion options carry a wire timeout equal to
+	# THIS ceremony's server-side TTL, not the engine's 300 s default
+	# ======================================================================
+
+	def test_begin_confirmation_wire_timeout_matches_ceremony_ttl(self):
+		"""A59 (§7.2): begin_confirmation's assertion options carry a browser wire
+		timeout equal to the server-side ceremony TTL (state.CONFIRM_CEREMONY_TTL =
+		180 s), NOT the engine's 300 s default — otherwise a slow hybrid cross-device
+		confirmation (3-5 min) clears the browser gesture only to fail server-side on
+		the already-expired ceremony. Login/registration ceremonies keep the 300 s
+		default because their store_ceremony TTL is the matching 300 s CEREMONY_TTL."""
+		user = self._user()
+		self._enroll(user)
+		frappe.set_user(user)
+		begun = self._begin("myapp.act", params={"x": 1})
+		self.assertEqual(begun["options"]["timeout"], 180000)
+		self.assertEqual(begun["options"]["timeout"], state.CONFIRM_CEREMONY_TTL * 1000)
+
+	# ======================================================================
+	# grant user-binding is independent of sid-binding (§7.2 record.user == user)
+	# ======================================================================
+
+	def test_grant_wrong_user_same_sid_is_refused(self):
+		"""§7.2 (session consume path, record.user == user): a grant forged for user A
+		cannot be consumed as user B even on the SAME sid — the user binding is not a
+		by-product of the sid binding. Positive control: the same shape consumed as A
+		on that identical sid succeeds, isolating the refusal to the user check."""
+		user_a = self._user()
+		user_b = self._user()
+		frappe.set_user(user_a)
+		self._request("/api/method/x")
+		sid = self.sid  # the one live sid both the grants and the consumes see
+
+		def _seed(owner):
+			token = frappe.generate_hash()
+			state.store_grant(
+				hashlib.sha256(token.encode()).hexdigest(),
+				{
+					"v": 1,
+					"user": owner,
+					"sid": sid,
+					"action": "myapp.act",
+					"method": "passkey",
+					"payload_hash": session.payload_hash({"x": 1}),
+				},
+			)
+			return token
+
+		# forged for user_a, consumed as user_b on the SAME sid → refused (user binding)
+		self._attach_grant(_seed(user_a))
+		self.assertFalse(session.consume_action_grant(user_b, "myapp.act", {"x": 1}))
+		# positive control: the identical grant on that identical sid consumes True for
+		# its real owner — proving it was the user binding, not the sid, that refused B.
+		self._attach_grant(_seed(user_a))
+		self.assertTrue(session.consume_action_grant(user_a, "myapp.act", {"x": 1}))
+
+	# ======================================================================
+	# F19/A-F20 — a matched grant whose method the policy rejects is BURNED,
+	# not merely refused (session.consume_action_grant)
+	# ======================================================================
+
+	def test_password_grant_burned_on_method_mismatch(self):
+		"""§7.2 / A-F20 (session.consume_action_grant): a password-method grant that
+		matches action+payload but whose method the action policy rejects
+		(allow_password_fallback=False) is BURNED on the refused consume — the single-
+		use consume runs before the policy check (one gesture = one attempt). Proven by
+		a second consume of the same token failing even with allow_password_fallback=
+		True (which would accept a LIVE password grant) — the token is gone."""
+		user = self._user()
+		frappe.set_user(user)
+		self._request("/api/method/x")
+		token = frappe.generate_hash()
+		state.store_grant(
+			hashlib.sha256(token.encode()).hexdigest(),
+			{
+				"v": 1,
+				"user": user,
+				"sid": self.sid,
+				"action": "myapp.refund",
+				"method": "password",
+				"payload_hash": session.payload_hash({"amount": 50}),
+			},
+		)
+		# matched action+payload+method=password, but the policy forbids a password
+		# grant here → refused AND burned (consume ran before the policy check).
+		self._attach_grant(token)
+		self.assertFalse(
+			session.consume_action_grant(user, "myapp.refund", {"amount": 50}, allow_password_fallback=False)
+		)
+		# the token is gone: a retry that WOULD have accepted a live password grant
+		# (allow_password_fallback=True) still fails — burn, not a mere policy refusal.
+		self._attach_grant(token)
+		self.assertFalse(
+			session.consume_action_grant(user, "myapp.refund", {"amount": 50}, allow_password_fallback=True)
+		)
+
+	# ======================================================================
+	# A49/§3.0 — reauth_password consults the per-user password-oracle throttle
+	# ======================================================================
+
+	def test_reauth_password_refuses_when_password_throttled(self):
+		"""A49/§3.0 (confirm.reauth_password): the endpoint checks the per-user
+		password-oracle throttle before touching the password. With the failure counter
+		already at the limit, a reauth attempt is refused THROTTLED — even with the
+		CORRECT password, never a password-oracle read. (test_state pins the counter's
+		climb; this pins endpoint enforcement.)"""
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		self.addCleanup(state.clear_password_failures, user)
+		for _ in range(state.PASSWORD_FAILURE_LIMIT):
+			state.record_password_failure(user)
+		self.assertTrue(state.is_password_throttled(user))
+
+		with self.assertRaises(frappe.AuthenticationError) as ctx:
+			self._reauth(PWD)  # the CORRECT password — still refused because throttled
+		self.assertIn("Too many attempts", str(ctx.exception))

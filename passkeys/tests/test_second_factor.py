@@ -195,6 +195,30 @@ class SecondFactorTest(IntegrationTestCase):
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 7)
 
+	def test_passkey_only_user_two_factor_mints_via_flag_and_seeds_passkey_window(self):
+		"""§9.3 / §6.3: a ``passkey_only_login=1`` user completes password+passkey 2FA.
+		Leg 2 (verify_second_factor) sets ``frappe.local.flags.passkey_login`` before
+		``login_as`` (passkey.py ~:549), so the REAL ``on_login`` veto EXEMPTS the mint
+		via that flag — a flagged user is not locked out of their own 2FA — and
+		``seed_sudo_window`` (§7.1) classifies the window "passkey", not "weak". The
+		second-factor analog of test_login_api's passkey_only passwordless round-trip."""
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.db.set_value(
+			"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1, update_modified=False
+		)
+		frappe.local.flags.pop("passkey_login", None)  # a leaked flag would false-pass
+
+		resp, binder = self._leg1(user, PWD)
+		credential = self._assert(auth, resp["verification"]["options"], sign_count=7)
+		frappe.local.flags.pop("passkey_login", None)  # prove leg 2 sets the flag itself
+		self._leg2(resp["tmp_id"], credential, binder)
+
+		# the veto let the flagged user's 2FA mint through (its own passkey_login flag)
+		self.assertEqual(frappe.session.user, user)
+		window = state.get_sudo_window(frappe.session.sid)
+		self.assertEqual((window or {}).get("seeded_by"), "passkey")
+
 	def test_mode_off_refuses_before_authentication(self):
 		user = self._user()
 		self._enroll(user)  # enroll while a mode is still on
@@ -330,6 +354,24 @@ class SecondFactorTest(IntegrationTestCase):
 		# core's OTP envelope rode back (a non-passkey verification + tmp_id)
 		self.assertTrue(frappe.local.response.get("tmp_id"))
 		self.assertNotEqual(frappe.local.response.get("verification", {}).get("method"), "Passkey")
+
+	def test_otp_fallback_records_risk_event_in_activity_log(self):
+		"""§6.3 / §8.5 FIDO-downgrade telemetry: when ``fallback_to_otp`` actually runs
+		(a passkey holder chooses phishable OTP), ``_record_fallback_used`` fires and
+		writes a ``RISK_FALLBACK_USED`` row to the Activity Log. The envelope test above
+		asserts only the core-OTP hand-off; this pins that the risk-event row is real."""
+		from passkeys import notifications
+
+		self._set_passkey_setting("passkey_2fa_allow_otp_fallback", 1)
+		user = self._user(otp_capable=True)
+		self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+
+		self._request("/api/method/passkeys.passkey.fallback_to_otp", binder=binder)
+		passkey.fallback_to_otp(resp["tmp_id"])
+
+		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
+		self.assertIn(f"passkeys:{notifications.RISK_FALLBACK_USED}", contents)
 
 	def test_otp_fallback_off_is_refused_server_side(self):
 		# knob OFF: no downgrade offered in the envelope AND a direct call refused

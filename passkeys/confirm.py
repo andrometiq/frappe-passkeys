@@ -318,6 +318,15 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 			{"id": row.credential_id, "transports": _transports(row.transports)} for row in creds
 		],
 		user_verification=policy.UV_WIRE["confirmation"],  # "required" (§3.7 / §7.2)
+		# A59 (§7.2): pin the browser wire timeout to THIS ceremony's server-side TTL
+		# (state.CONFIRM_CEREMONY_TTL = 180 s), not the engine's 300 s default. The
+		# login/registration ceremonies inherit the 300 s default because their
+		# store_ceremony TTL is the matching 300 s CEREMONY_TTL; the confirm ceremony's
+		# TTL is shorter, so a defaulted 300 s wire timeout would let a slow hybrid
+		# cross-device confirmation (3-5 min) clear the browser gesture only to fail
+		# server-side on the already-expired ceremony. Derive it from the TTL constant
+		# so the two can never drift apart.
+		timeout_ms=state.CONFIRM_CEREMONY_TTL * 1000,
 	)
 	state_id = state.store_ceremony(
 		{
