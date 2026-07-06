@@ -66,7 +66,16 @@ after_migrate = ["passkeys.install.sync_registry_fixture"]
 # zero template fork, zero bytes on disabled sites. Import-clean (no webauthn),
 # since update_website_context fires on every website render (§1.3). The login
 # endpoints are whitelisted (passkeys.passkey.*), so they need no hook here.
-update_website_context = ["passkeys.shims.login_page.website_context"]
+#
+# Portal enrollment-nudge delivery (§5.1 line "on authenticated web pages" / §8.4):
+# the second shim carries the portal bundle + the frappe.boot.passkeys bridge to
+# EVERY authenticated portal page (not only /passkeys), so a portal-only user who
+# never opens /passkeys still gets the §8.4 adoption nudge. Same one bundle, which
+# self-gates at runtime; gate is cheapest-first + import-clean + exception-hardened.
+update_website_context = [
+	"passkeys.shims.login_page.website_context",
+	"passkeys.shims.portal_nudge.website_context",
+]
 
 # Boot
 # ----

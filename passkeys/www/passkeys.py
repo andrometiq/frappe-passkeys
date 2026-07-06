@@ -24,9 +24,12 @@ no_cache = 1
 # The portal management bundle (frontend manifest §2.5). Order is load-bearing:
 # passkey_common.js sets the confirm engine + JSON-shim globals, passkey_manage_
 # common.js sets the shared card view-models, and passkey_portal.bundle.js reads
-# BOTH and mounts into ``#passkey-portal-root``. Delivered page-scoped here (not via
-# the login-page shim) so no other portal page pays for it (§5.1). Portal pages ship
-# no ``frappe.ui.Dialog`` / desk confirm bundle, so passkey_common.js is required.
+# BOTH and mounts into ``#passkey-portal-root``. Delivered page-scoped here for the
+# /passkeys management page; the SAME set also reaches other authenticated portal
+# pages via ``shims/portal_nudge.py`` so the §8.4 nudge finds portal-only users
+# (§5.1 "on authenticated web pages when enabled"), where the bundle self-gates to
+# the nudge alone (no mount). Portal pages ship no ``frappe.ui.Dialog`` / desk
+# confirm bundle, so passkey_common.js is required.
 PORTAL_JS = (
 	"/assets/passkeys/js/passkey_common.js",
 	"/assets/passkeys/js/passkey_manage_common.js",

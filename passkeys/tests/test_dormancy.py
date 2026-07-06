@@ -19,7 +19,7 @@ import passkeys.confirm as confirm
 from passkeys import auth_hooks, boot, install, passkey, session, state
 from passkeys.api import credentials, registration
 from passkeys.passkey import PasskeyServedByCore
-from passkeys.shims import login_page
+from passkeys.shims import login_page, portal_nudge
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -224,6 +224,29 @@ class DormantHooksTest(IntegrationTestCase):
 		with _core_native():
 			login_page.website_context(context)
 		self.assertNotIn("web_include_js", context)
+
+	def test_portal_nudge_context_appends_nothing(self):
+		orig = cint(frappe.db.get_single_value("Passkey Settings", "login_with_passkey"))
+
+		def _restore():
+			frappe.db.set_single_value("Passkey Settings", "login_with_passkey", orig)
+			frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+
+		self.addCleanup(_restore)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		user = self._user()
+		frappe.set_user(user)
+		# control: with a mode on, the shim delivers the portal bundle to a portal page
+		ctrl = frappe._dict(path="app/dashboard", boot=frappe._dict())
+		portal_nudge.website_context(ctrl)
+		self.assertTrue(any("passkey_portal" in a for a in ctrl.get("web_include_js", [])))
+		# dormant: nothing appended, no boot bridged (core serves the nudge natively, §11)
+		context = frappe._dict(path="app/dashboard", boot=frappe._dict())
+		with _core_native():
+			portal_nudge.website_context(context)
+		self.assertNotIn("web_include_js", context)
+		self.assertNotIn("passkeys", context.boot)
 
 	def test_cascade_delete_is_a_noop(self):
 		user = self._user()
