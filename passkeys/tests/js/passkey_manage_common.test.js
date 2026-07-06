@@ -44,6 +44,50 @@ test("backupBadge: backup_state truthy => Synced, else Device-bound", () => {
 	assert.strictEqual(M.backupBadge({}).synced, false);
 });
 
+// ------------------------------------------- vendored AAGUID snapshot (§8.2)
+// The REAL release asset the bundles fetch from /assets/passkeys/aaguid-map.json
+// (source + refresh: docs/aaguid-map.md). These pin its contract: lean flat map
+// (no icon blobs), lowercase-UUID keys, a skipped _meta provenance block.
+
+const VENDORED_MAP = require("../../public/aaguid-map.json");
+const KNOWN_AAGUID = "ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4"; // Google Password Manager
+
+test("vendored aaguid-map.json: lean shape — lowercase UUID keys, non-empty string names", () => {
+	const keys = Object.keys(VENDORED_MAP).filter((k) => k[0] !== "_");
+	assert.ok(keys.length > 0, "snapshot must not be empty");
+	const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+	for (const k of keys) {
+		assert.match(k, uuid, "key must be a lowercase UUID: " + k);
+		assert.strictEqual(typeof VENDORED_MAP[k], "string", "value must be a plain name (icons stripped)");
+		assert.ok(VENDORED_MAP[k].trim().length, "name must be non-empty");
+	}
+	assert.ok(VENDORED_MAP._meta, "provenance _meta block present");
+});
+
+test("viewmodel resolves a provider from the vendored map; label falls back to it", () => {
+	const vm = M.credentialViewModel({ name: "c1", aaguid: KNOWN_AAGUID }, { aaguidMap: VENDORED_MAP });
+	assert.strictEqual(vm.providerName, "Google Password Manager");
+	assert.strictEqual(vm.hasProvider, true);
+	// no user label ⇒ the provider name IS the card label (§8.2)
+	assert.strictEqual(vm.label, "Google Password Manager");
+	// a server-supplied provider field still wins over the map (source of truth)
+	const vm2 = M.credentialViewModel(
+		{ name: "c2", provider: "Server Says", aaguid: KNOWN_AAGUID },
+		{ aaguidMap: VENDORED_MAP }
+	);
+	assert.strictEqual(vm2.providerName, "Server Says");
+});
+
+test("viewmodel falls back cleanly on zero/unmapped AAGUID with the real map (_meta never leaks)", () => {
+	const zero = M.credentialViewModel({ name: "z", aaguid: M.ZERO_AAGUID }, { aaguidMap: VENDORED_MAP });
+	assert.strictEqual(zero.providerName, null);
+	assert.strictEqual(zero.hasProvider, false);
+	assert.strictEqual(zero.label, M.COPY.unknownProvider);
+	// a hostile/broken aaguid value colliding with the provenance key stays Unknown
+	const meta = M.credentialViewModel({ name: "m", aaguid: "_meta" }, { aaguidMap: VENDORED_MAP });
+	assert.strictEqual(meta.providerName, null);
+});
+
 // ---------------------------------------------------------- view-model + a11y
 
 test("accessibleActionName fills the label placeholder", () => {

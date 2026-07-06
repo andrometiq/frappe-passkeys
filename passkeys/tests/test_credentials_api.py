@@ -61,6 +61,20 @@ class CredentialManagementTest(IntegrationTestCase):
 		self.assertIn(cred_a.name, names)
 		self.assertNotIn(cred_b.name, names)
 
+	def test_list_carries_server_resolved_provider(self):
+		"""S5 (§8.2): each row ships a `provider` key resolved from the vendored
+		AAGUID snapshot — a mapped AAGUID names its provider; an unmapped or
+		absent AAGUID ships None (the client's cue for "Unknown provider")."""
+		user = self._user()
+		known = make_credential(user, label="mapped", aaguid="ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4")
+		unknown = make_credential(user, label="unmapped", aaguid="11111111-2222-3333-4444-555555555555")
+		bare = make_credential(user, label="no aaguid")
+		frappe.set_user(user)
+		by_name = {row["name"]: row for row in credentials.list_credentials()["credentials"]}
+		self.assertEqual(by_name[known.name]["provider"], "Google Password Manager")
+		self.assertIsNone(by_name[unknown.name]["provider"])
+		self.assertIsNone(by_name[bare.name]["provider"])
+
 	# ---- rename (§8.2 — display-only, no sudo) ----------------------------
 
 	def test_rename_happy_path(self):

@@ -17,7 +17,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import session, state
+from passkeys import aaguid, session, state
 
 # §11 dormant-shell guard. Imported from passkey.py, which is webauthn-free at
 # module scope (the crypto engine is imported lazily inside its ceremony bodies),
@@ -57,6 +57,11 @@ def list_credentials():
 		],
 		order_by="creation asc",
 	)
+	# §8.2: server-resolved provider display name from the vendored AAGUID
+	# snapshot (aaguid.py — the single source of truth; the client's providerFor
+	# prefers this over its own map lookup). None ⇒ generic "Unknown provider".
+	for row in rows:
+		row["provider"] = aaguid.provider_name(row.get("aaguid"))
 	# §9.3: the caller's current passkey_only_login flag (0 when no handle row yet)
 	# — the management toggle reads it from this payload (client parity with boot).
 	return {

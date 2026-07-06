@@ -17,7 +17,7 @@ import secrets
 import frappe
 from frappe import _
 
-from passkeys import policy, state
+from passkeys import aaguid, policy, state
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired, refuse_if_core_native
 
 MANAGE_ACTION = "passkeys.manage"
@@ -289,8 +289,13 @@ def _get_or_create_handle(user: str):
 
 
 def _default_label(result) -> str:
-	# AAGUID→provider mapping (aaguid.py) arrives with the management phase; a
-	# neutral default keeps registration self-contained until then.
+	# §8.2 / §2.1 label precedence: AAGUID provider name from the vendored
+	# snapshot (e.g. "Apple Passwords"), else the neutral attachment-derived
+	# default. Zero/unknown AAGUID is never an error — just the fallback (§8.2).
+	# The DocType validate sanitizes + length-caps whatever lands here (§2.1).
+	provider = aaguid.provider_name(result.aaguid)
+	if provider:
+		return provider
 	if result.authenticator_attachment == "platform":
 		return _("Device passkey")
 	return _("Passkey")
