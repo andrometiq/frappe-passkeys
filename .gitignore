@@ -1,6 +1,8 @@
 # local working context — never committed
 CLAUDE.local.md
 local-notes/
+HANDOVER.md
+handover/
 
 # secrets
 .env*
