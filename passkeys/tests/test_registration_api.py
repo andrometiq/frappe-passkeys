@@ -129,6 +129,69 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertIn("state_id", begun)
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "preferred")
 
+	def test_weak_login_bootstrap_allows_only_first_enrollment(self):
+		"""§7.1 / §16 A7 weak-login bootstrap, BOTH directions: a weak-seeded window
+		(email-link / OAuth / social class) authorizes ONLY a first explicit
+		enrollment (zero existing credentials) and records the §8.5 risk event; the
+		moment the user holds ≥1 credential the SAME weak window is refused —
+		management-grade (password/passkey/reauth) sudo is then required. A recovery
+		login must never silently mint general enrollment power."""
+		user = self._user()
+		frappe.set_user(user)
+		# the allow knob defaults on; pin it explicitly + restore (setUp does not).
+		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(
+			frappe.db.set_single_value,
+			"Passkey Settings",
+			"passkey_allow_first_enrollment_on_weak_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+		)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+
+		# direction 1 — zero credentials + weak window → first enrollment is allowed,
+		# and the §8.5 weak-login-bootstrap risk event is recorded.
+		self._seed_sudo(user, seeded_by="weak")
+		before = frappe.db.count("Activity Log", {"user": user})
+		begun = registration.begin_registration(flow="explicit")
+		self.assertIn("state_id", begun)
+		self.assertGreater(frappe.db.count("Activity Log", {"user": user}), before)
+		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
+		self.assertIn("passkeys:weak_login_enrollment", contents)
+
+		# persist that first credential so the user now holds ≥1 enabled passkey
+		auth = SoftAuthenticator(seed="weak-bootstrap")
+		credential = auth.registration(
+			challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN, credprops_rk=True
+		)
+		registration.verify_registration(begun["state_id"], credential)
+
+		# direction 2 — with ≥1 credential the SAME weak window no longer bootstraps:
+		# a second enrollment demands management-grade sudo (§7.1).
+		self._seed_sudo(user, seeded_by="weak")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			registration.begin_registration(flow="explicit")
+
+	def test_weak_login_bootstrap_refused_when_knob_off(self):
+		"""§7.1: even a first enrollment is refused from a weak window when
+		``passkey_allow_first_enrollment_on_weak_login`` is off — the bootstrap is an
+		opt-in allowance, not a default."""
+		user = self._user()
+		frappe.set_user(user)
+		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(
+			frappe.db.set_single_value,
+			"Passkey Settings",
+			"passkey_allow_first_enrollment_on_weak_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+		)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 0)
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+
+		self._seed_sudo(user, seeded_by="weak")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			registration.begin_registration(flow="explicit")
+
 	def test_explicit_flow_requests_resident_key_required(self):
 		user = self._user()
 		begun, _credential, _auth = self._register(user)

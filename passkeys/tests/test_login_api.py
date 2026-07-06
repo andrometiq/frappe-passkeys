@@ -12,11 +12,12 @@ serves app strings."""
 from unittest.mock import patch
 
 import frappe
+import redis
 from frappe.auth import CookieManager
 from frappe.utils import set_request
 from frappe.utils.password import update_password
 
-from passkeys import passkey, state
+from passkeys import passkey, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, UnknownCredential, UVSetupRequired
 from passkeys.tests.compat import IntegrationTestCase
@@ -557,6 +558,113 @@ class LoginCeremonyTest(IntegrationTestCase):
 		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
 		self.assertEqual(int(fresh.login_failed_count or 0), 3)
 		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
+
+	# ======================================================================
+	# F3-2 (§3.4/§9.3/§16 A47) — passkey_only user × uv-setup repair, no self-veto
+	# ======================================================================
+
+	def test_passkey_only_user_completes_uv_setup_without_self_veto(self):
+		"""F3-2 / A47: a ``passkey_only_login=1`` user whose credential is
+		``uv_initialized=0`` completes the FULL uv-setup repair (verify_login →
+		UVSetupRequired → complete_uv_setup with password) WITHOUT tripping their own
+		§9.3 on_login veto mid-repair. ``complete_uv_setup`` sets
+		``frappe.local.flags.passkey_login`` before ``login_as``, so the REAL on_login
+		hook exempts the minted session. Driven end-to-end through begin→verify→
+		complete with the real hooks; no manual flag setting. (The negative — flag
+		absent ⇒ the veto throws — is pinned in test_passkey_only_veto.py.)"""
+		user = self._user()
+		# a conditional-create-style credential is born uv_initialized=0
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+		# the user opted into passkey-only sign-in — password/email-link/OAuth login
+		# is now vetoed for them (§9.3); only a passkey or the uv-setup repair gets in.
+		frappe.db.set_value(
+			"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1, update_modified=False
+		)
+		frappe.local.flags.pop("passkey_login", None)  # a leaked flag would false-pass
+
+		# verify_login on a UV=1 assertion against the UV=0 credential ⇒ UVSetupRequired
+		# (raised BEFORE any session mint — the veto is not even reached here).
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=3)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+		self.assertTrue(setup_id)
+
+		# complete_uv_setup mints the session for the passkey_only user through the
+		# real login_as/post_login hooks WITHOUT the veto tripping (its own
+		# passkey_login flag exempts it, F3-2), and flips uv_initialized 0→1.
+		frappe.local.flags.pop("passkey_login", None)
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, user)  # veto did NOT trip mid-repair
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 1)
+		# ...and seed_sudo_window classified the window as full "passkey", not "weak"
+		window = state.get_sudo_window(frappe.session.sid)
+		self.assertEqual((window or {}).get("seeded_by"), "passkey")
+
+	# ======================================================================
+	# §13 M-cmd (§3.0) — spoofed cmd=login at an app endpoint mints no session
+	# ======================================================================
+
+	def test_cmd_login_at_app_endpoint_mints_no_session_and_documents_core_trigger(self):
+		"""§13 M-cmd / §3.0 (T4): the app's endpoints take JSON bodies only and never
+		accept or forward a ``cmd`` form field. A request carrying a spoofed
+		``cmd=login&usr&pwd`` into an app endpoint path mints NO session via the app
+		on any branch — the app has no ``cmd``-driven session-minting side door. We
+		also DOCUMENT core's own v15/v16 behavior: ``session._is_core_password_login``
+		treats ``cmd=login`` as the core-login signal, but that is only a post-session
+		sudo-window CLASSIFIER (§7.1), never an app authentication path — enforcement
+		lives inside core's own ``login()`` gate, not in routing."""
+		user = self._user()
+		frappe.set_user("Guest")
+		self.addCleanup(self._reset_cmd_signals)
+		# a request to an APP endpoint path carrying the spoofed core-login fields
+		self._request("/api/method/passkeys.passkey.begin_login")
+		frappe.local.form_dict["cmd"] = "login"
+		frappe.local.form_dict["usr"] = user
+		frappe.local.form_dict["pwd"] = PWD
+
+		# the app endpoint runs its own contract and ignores cmd/usr/pwd — NO session
+		# is minted from the spoofed password fields (begin_login stays a guest call).
+		passkey.begin_login()
+		self.assertEqual(frappe.session.user, "Guest")
+
+		# documents core's v15/v16 trigger: with cmd=login in the form the core-login
+		# classifier fires True (the released-branch signal the app is aware of) — but
+		# it only ever CLASSIFIES an already-minted session's window, never mints one.
+		self.assertTrue(session._is_core_password_login())
+		# ...and on the same app path WITHOUT cmd it is False (path is not
+		# /api/method/login): the app never turns its own endpoint into a core login.
+		frappe.local.form_dict.pop("cmd", None)
+		self.assertFalse(session._is_core_password_login())
+
+	def _reset_cmd_signals(self):
+		form = getattr(frappe.local, "form_dict", None)
+		if form is not None:
+			for key in ("cmd", "usr", "pwd"):
+				form.pop(key, None)
+
+	# ======================================================================
+	# §4.2/§5.2.2 resilience — begin_login fails loud when the state store is DOWN
+	# ======================================================================
+
+	def test_begin_login_fails_loud_when_state_store_down(self):
+		"""§4.2/§5.2.2 / §12.5: Redis is the sole expiry authority, so a DOWN state
+		store must make ``begin_login`` FAIL LOUD — a 500-class exception propagates
+		— never return a fake success or an unusable ceremony with no server-side
+		state (B-F5: the bundle then degrades to no-op; the begin-side error
+		surfaces). We stub the narrowest seam ``state.store_ceremony`` delegates to
+		(the raw JSON write ``_put_json``) to simulate the outage, and assert the
+		injected failure escapes uncaught — begin_login never swallows it."""
+		self._request("/api/method/passkeys.passkey.begin_login")
+		with patch(
+			"passkeys.state._put_json", side_effect=redis.exceptions.ConnectionError("store down")
+		):
+			with self.assertRaises(redis.exceptions.ConnectionError):
+				passkey.begin_login()
 
 
 def _b64url_decode(value: str) -> bytes:

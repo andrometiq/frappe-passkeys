@@ -133,6 +133,40 @@ class TestStateStore(IntegrationTestCase):
 		self.assertEqual(frappe.cache.get_value(key_name), "v1")  # stale!
 		frappe.local.cache.pop(frappe.cache.make_key(key_name), None)
 
+	def test_get_value_expires_true_is_not_a_local_cache_bypass(self):
+		"""§4.2/§12.5 pin: ``get_value(expires=True)`` is NOT a fresh-read escape
+		hatch. In ``redis_wrapper.py`` the request-local-cache hit is checked BEFORE
+		the ``expires`` branch, so a key already resident in ``frappe.local.cache``
+		serves the STALE copy even with ``expires=True`` — only ``expires`` controls
+		whether a *fresh* read is re-stored locally, never whether the local copy is
+		consulted. This guards against a future "simplification" that reintroduces the
+		wrapper for single-use keys under the belief ``expires=True`` reads live Redis.
+		The complement — state.py's raw ``.get()`` honours real Redis state — is
+		pinned in the second half."""
+		key_name = f"passkeys:test:exp-{frappe.generate_hash(length=8)}"
+		made = frappe.cache.make_key(key_name)
+		# populate BOTH Redis and the request-local cache (set_value does both)
+		frappe.cache.set_value(key_name, "v1")
+		self.assertEqual(frappe.cache.get_value(key_name, expires=True), "v1")
+
+		# another worker consumes/expires the key — it is physically gone from Redis
+		raw_connection().delete(made)
+		self.assertIsNone(raw_connection().get(made))
+
+		# ...yet get_value(expires=True) STILL returns the stale local copy: the
+		# local-cache branch precedes the expires branch. NOT a bypass.
+		self.assertEqual(frappe.cache.get_value(key_name, expires=True), "v1")
+		frappe.local.cache.pop(made, None)
+
+		# state.py's raw idiom is the only correct read: set_sudo_window/get_sudo_window
+		# never touch frappe.local.cache, so a remote delete reads back None (real TTL
+		# / consume state honoured, §4.2), where the wrapper above lied.
+		sid = frappe.generate_hash()
+		state.set_sudo_window(sid, {"v": 1, "user": "x", "seeded_by": "password"}, ttl=60)
+		self.assertIsNotNone(state.get_sudo_window(sid))
+		raw_connection().delete(frappe.cache.make_key(state.SUDO_PREFIX + sid))
+		self.assertIsNone(state.get_sudo_window(sid))
+
 	def test_counter_idiom_ttl_at_creation(self):
 		name = f"passkeys:pwfail:test-{frappe.generate_hash(length=8)}"
 		self.addCleanup(state.clear_counter, name)
