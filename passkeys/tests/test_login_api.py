@@ -9,6 +9,8 @@ login-CSRF; the UV outcome policy gates passwordless vs uv-setup; the sign
 counter advances; the rate-limit path fires; the guest translations endpoint
 serves app strings."""
 
+from unittest.mock import patch
+
 import frappe
 from frappe.auth import CookieManager
 from frappe.utils import set_request
@@ -409,6 +411,126 @@ class LoginCeremonyTest(IntegrationTestCase):
 		frappe.local.form_dict = frappe._dict()
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.begin_login()
+
+	def test_host_mismatch_writes_structured_log(self):
+		"""S10 / §9.2 / B-F10: a host-mismatch refusal on the begin_login path writes
+		ONE structured log line (previously only the registration path logged; the
+		begin_login / begin_confirmation / verify legs were silent)."""
+		# reset the request after us so the foreign Origin never leaks into a later
+		# test's _enroll (which begins a registration without re-setting the request).
+		self.addCleanup(set_request, method="POST", path="/api/method/passkeys.passkey.begin_login")
+		set_request(
+			method="POST",
+			path="/api/method/passkeys.passkey.begin_login",
+			headers=[("Origin", "https://evil.example.net")],
+		)
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.request_ip = frappe.generate_hash(length=12)
+		frappe.local.form_dict = frappe._dict()
+		with patch.object(frappe, "log_error") as mock_log:
+			with self.assertRaises(frappe.AuthenticationError):
+				passkey.begin_login()
+		self.assertTrue(mock_log.called)
+		titles = " ".join(str(c.kwargs.get("title", "")) for c in mock_log.call_args_list)
+		self.assertIn("request host not in configured origins", titles)
+
+	# ======================================================================
+	# uv-setup completion hardening: enabled recheck, flag carry, upward-only
+	# ======================================================================
+
+	def test_complete_uv_setup_refuses_disabled_user(self):
+		"""C4: the uv-setup record outlives the assertion by up to 180 s; a user
+		disabled in that window is refused at complete_uv_setup — no session, and the
+		uv_initialized flip never happens (mirrors verify_login step 10)."""
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		frappe.db.set_value("User", user, "enabled", 0)  # admin disable mid-window
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+		frappe.db.set_value("User", user, "enabled", 1)  # let the committing sweep delete it
+
+	def test_uv_setup_leg_regressed_count_flags_credential(self):
+		"""SEC-2: the uv-setup login leg is the SOLE advance for its assertion — a
+		sign-count regression on that first UV=1 login must still flag the credential
+		AND fire the owner notification after complete_uv_setup (default soft policy)."""
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		# raise the stored counter so the assertion (sign_count=5) regresses
+		frappe.db.set_value("WebAuthn Credential", name, "sign_count", 100, update_modified=False)
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		with patch("passkeys.notifications.notify_credential_flagged") as mock_notify:
+			self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+			passkey.complete_uv_setup(setup_id, PWD)
+
+		self.assertEqual(frappe.session.user, user)
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "flagged"), 1)
+		self.assertEqual(
+			frappe.db.get_value("WebAuthn Credential", name, "flagged_reason"), "sign_count_regression"
+		)
+		self.assertTrue(mock_notify.called)
+
+	def test_complete_uv_setup_does_not_lower_concurrent_counter(self):
+		"""SEC-3: complete_uv_setup writes the STASHED sign_count; a concurrent advance
+		that raised the stored counter past the stash must NOT be regressed by the
+		late write — the write is upward-only (policy.sign_count_to_store)."""
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)  # stash N1=5
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		# a concurrent 2FA/confirm advance raises the stored counter to N2 > N1
+		frappe.db.set_value("WebAuthn Credential", name, "sign_count", 50, update_modified=False)
+
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		passkey.complete_uv_setup(setup_id, PWD)
+
+		self.assertEqual(frappe.session.user, user)
+		# never regressed to the stashed 5 — the concurrent N2=50 is preserved
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 50)
+
+	def test_failed_verify_login_feeds_login_attempt_tracker(self):
+		"""S6: N failed passkey verifies feed core's LoginAttemptTracker for the
+		resolved user (§3/§6.3), exactly as a bad password would — without leaking
+		user existence (the wire is still a uniform 401, no lock raised here)."""
+		from frappe.auth import get_login_attempt_tracker
+
+		user = self._user()
+		auth, _ = self._enroll(user)
+		del get_login_attempt_tracker(user, raise_locked_exception=False).login_failed_count
+
+		for _n in range(3):
+			begun, binder = self._begin()
+			# correct id + userHandle (resolves the user) but signed over the WRONG
+			# challenge → the crypto verify fails PAST resolution
+			bad = auth.assertion(challenge_b64=frappe.generate_hash(), rp_id=RP_ID, origin=ORIGIN)
+			with self.assertRaises(frappe.AuthenticationError):
+				self._verify(begun["state_id"], bad, binder)
+
+		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
+		self.assertEqual(int(fresh.login_failed_count or 0), 3)
+		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
 
 
 def _b64url_decode(value: str) -> bytes:

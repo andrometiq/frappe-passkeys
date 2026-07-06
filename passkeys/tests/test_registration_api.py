@@ -133,3 +133,22 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		user = self._user()
 		begun, _credential, _auth = self._register(user)
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "required")
+
+	def test_explicit_flow_without_credprops_stores_discoverable_yes(self):
+		"""S11: an explicit-flow success with NO credProps (Safari ships none) still
+		stored a discoverable credential — the flow pins residentKey="required", so
+		``discoverable`` must be "Yes" even though ``result.discoverable`` is
+		"Unknown". Before the fix it stored "Unknown"."""
+		user = self._user()
+		frappe.set_user(user)
+		self._seed_sudo(user, "password")
+		begun = registration.begin_registration(flow="explicit")
+		auth = SoftAuthenticator(seed="s11-no-credprops")
+		credential = auth.registration(
+			challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN
+		)  # credprops_rk defaults to None → clientExtensionResults == {}
+		self.assertEqual(credential["clientExtensionResults"], {})  # sanity: Safari case
+		result = registration.verify_registration(begun["state_id"], credential)
+		self.assertEqual(
+			frappe.db.get_value("WebAuthn Credential", result["name"], "discoverable"), "Yes"
+		)

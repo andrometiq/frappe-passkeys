@@ -107,6 +107,27 @@ class TestBackupFlagPolicy(IntegrationTestCase):
 		self.assertTrue(result.backup_eligible)
 
 
+class TestCredPropsExtraction(IntegrationTestCase):
+	def test_credprops_null_is_unknown_not_500(self):
+		"""C6: an explicit ``clientExtensionResults: {"credProps": null}`` must read
+		as unknown (discoverable "Unknown"), never raise ``AttributeError`` → 500 —
+		the ``.get`` default only substitutes for a MISSING key, not an explicit
+		null. (Safari-style omission — ``{}`` — is the neighbouring already-handled
+		case; this pins the explicit-null one.)"""
+		auth = SoftAuthenticator()
+		challenge = _challenge()
+		credential = auth.registration(challenge_b64=challenge, rp_id=RP_ID, origin=ORIGIN)
+		credential["clientExtensionResults"] = {"credProps": None}
+		result = engine.verify_registration(
+			credential=credential,
+			expected_challenge=challenge,
+			expected_rp_id=RP_ID,
+			expected_origin=ORIGIN,
+		)
+		self.assertIsNone(result.credprops_rk)
+		self.assertEqual(result.discoverable, "Unknown")
+
+
 class TestUvPolicy(IntegrationTestCase):
 	def test_passwordless_outcome_matrix(self):
 		self.assertEqual(policy.passwordless_uv_outcome(True, True), policy.UV_SESSION)

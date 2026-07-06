@@ -84,7 +84,12 @@ def _classify_login_method() -> str | None:
 	  ``frappe.local.flags.passkey_login`` before ``login_as``.
 	* ``password`` — a core username+password login (the ``/api/method/login``
 	  endpoint, or the v15/v16 ``cmd=login`` trigger), where a password was
-	  verified by ``authenticate``.
+	  verified by ``authenticate``; ALSO the app's own plain-password arm
+	  (``login_with_password``'s LDAP-style finish for a passkey-less, 2FA-less
+	  user), which sets ``frappe.local.flags.passkeys_password_login`` — its
+	  endpoint path is not ``/api/method/login``, so without the flag the
+	  core-path heuristic below would mis-classify a real password login as
+	  ``weak`` and re-fire the §8.4 conditional-create nudge (S3).
 	* ``weak`` — anything else that reached a real (non-Guest) session via
 	  ``login_as``: email-link (``login_via_key``), OAuth / social.
 
@@ -96,6 +101,8 @@ def _classify_login_method() -> str | None:
 	flags = getattr(frappe.local, "flags", None)
 	if flags is not None and flags.get("passkey_login"):
 		return "passkey"
+	if flags is not None and flags.get("passkeys_password_login"):
+		return "password"
 	if _is_core_password_login():
 		return "password"
 	return "weak"

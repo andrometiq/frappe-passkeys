@@ -175,29 +175,38 @@ def verify_login(state_id: str, credential):
 	if not handle_user or cred.user != handle_user or not cint(cred.enabled):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
-	# 7-9. verify the assertion (crossOrigin/BE-BS/sign-count enforced app-side)
-	result = engine.verify_authentication(
-		credential=credential,
-		expected_challenge=record["challenge_b64"],
-		expected_rp_id=record["rp_id"],
-		expected_origin=record["origins"],
-		credential_public_key=cred.public_key,
-		stored_sign_count=cint(cred.sign_count),
-		stored_backup_eligible=bool(cint(cred.backup_eligible)),
-		require_user_verification=False,  # §3.7 layered below, never at the library
-		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
-	)
-
-	# 10. account still enabled?
-	if not cint(frappe.db.get_value("User", cred.user, "enabled")):
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-
-	# 11. UV gate (§3.7): passwordless ONLY on UV=1 ∧ uv_initialized=1
-	outcome = policy.passwordless_uv_outcome(result.user_verified, bool(cint(cred.uv_initialized)))
-	if outcome == policy.UV_REJECT:
-		raise frappe.AuthenticationError(
-			_("This passkey can't complete a passwordless sign-in. Please verify another way.")
+	# 7-11. verify the assertion (crossOrigin/BE-BS/sign-count enforced app-side) +
+	# the account-enabled recheck + the UV gate. Any genuine FAILURE past credential
+	# resolution feeds core's LoginAttemptTracker for this user (§3/§6.3, S6) so a
+	# passkey brute-force shares the same consecutive-failure lockout as a bad
+	# password — without leaking user existence (the wire stays a uniform 401; no
+	# lock exception is raised here). UV_SETUP is a legitimate step-up, NOT a failure,
+	# so it is handled OUTSIDE this guard.
+	try:
+		result = engine.verify_authentication(
+			credential=credential,
+			expected_challenge=record["challenge_b64"],
+			expected_rp_id=record["rp_id"],
+			expected_origin=record["origins"],
+			credential_public_key=cred.public_key,
+			stored_sign_count=cint(cred.sign_count),
+			stored_backup_eligible=bool(cint(cred.backup_eligible)),
+			require_user_verification=False,  # §3.7 layered below, never at the library
+			sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
 		)
+		# 10. account still enabled?
+		if not cint(frappe.db.get_value("User", cred.user, "enabled")):
+			raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		# 11. UV gate (§3.7): passwordless ONLY on UV=1 ∧ uv_initialized=1
+		outcome = policy.passwordless_uv_outcome(result.user_verified, bool(cint(cred.uv_initialized)))
+		if outcome == policy.UV_REJECT:
+			raise frappe.AuthenticationError(
+				_("This passkey can't complete a passwordless sign-in. Please verify another way.")
+			)
+	except frappe.AuthenticationError:
+		_track_verify_failure(cred.user)
+		raise
+
 	if outcome == policy.UV_SETUP:
 		setup_id = state.store_uv_setup(
 			{
@@ -206,6 +215,11 @@ def verify_login(state_id: str, credential):
 				"credential": cred.name,
 				"binder_sha256": record.get("binder_sha256"),
 				"sign_count_to_store": result.sign_count_to_store,
+				# SEC-2: carry the regression signal — this leg does NOT call
+				# _advance_credential (the sole flag+notify site), so complete_uv_setup
+				# must re-apply the flag; without it a clone's first-UV=1 regression
+				# is lost under the default soft policy.
+				"sign_count_regression": bool(result.sign_count_regression),
 				"backup_state": int(result.backup_state),
 			}
 		)
@@ -261,23 +275,36 @@ def complete_uv_setup(setup_id: str, pwd: str):
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
 		state.record_password_failure(user)
+		_track_verify_failure(user)  # S6: a wrong-password step-up feeds the tracker too
 		raise frappe.AuthenticationError(_("Incorrect password."))
 	state.clear_password_failures(user)
 
+	# C4: the uv-setup record lives up to 180 s post-assertion — re-check
+	# User.enabled just before minting, exactly as verify_login step 10 does, so a
+	# mid-window admin disable fails closed (no session, no credential mutation).
+	if not cint(frappe.db.get_value("User", user, "enabled")):
+		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+
 	credential = record.get("credential")
 	if credential and frappe.db.exists("WebAuthn Credential", credential):
-		frappe.db.set_value(
-			"WebAuthn Credential",
-			credential,
-			{
-				"uv_initialized": 1,
-				"sign_count": cint(record.get("sign_count_to_store")),
-				"backup_state": cint(record.get("backup_state")),
-				"last_used_at": now_datetime(),
-				"last_used_ip": _request_ip(),
-			},
-			update_modified=False,
-		)
+		# SEC-3: the stashed sign_count is an ABSOLUTE captured at verify_login time;
+		# a concurrent 2FA/confirm advance may have raised the stored counter past it.
+		# Re-read the live value and store the upward-only policy max — never regress
+		# a counter a concurrent advance already raised (weakening clone detection).
+		fresh = cint(frappe.db.get_value("WebAuthn Credential", credential, "sign_count"))
+		values = {
+			"uv_initialized": 1,
+			"sign_count": policy.sign_count_to_store(fresh, cint(record.get("sign_count_to_store"))),
+			"backup_state": cint(record.get("backup_state")),
+			"last_used_at": now_datetime(),
+			"last_used_ip": _request_ip(),
+		}
+		# SEC-2: this uv-setup leg is the SOLE advance for its assertion — re-apply the
+		# flagged sign-count regression + owner notification exactly as
+		# _advance_credential would (soft policy: flag, never block).
+		newly_flagged = _apply_sign_count_flag(credential, bool(record.get("sign_count_regression")), values)
+		frappe.db.set_value("WebAuthn Credential", credential, values, update_modified=False)
+		_notify_if_newly_flagged(credential, newly_flagged)
 
 	frappe.local.flags.passkey_login = True
 	_mint_session(user)
@@ -370,9 +397,14 @@ def login_with_password(usr: str, pwd: str):
 		# involvement on every branch (§6.2).
 		authenticate_for_2factor(user)
 		return None
-	# Neither passkey nor OTP: plain login (the LDAP finish).
+	# Neither passkey nor OTP: plain login (the LDAP finish). Flag it as an app
+	# password login (S3) so seed_sudo_window classifies the window "password", not
+	# "weak": this endpoint's path is NOT /api/method/login, so _classify_login_method's
+	# core-path heuristic would otherwise mis-seed "weak" and the §8.4 conditional-create
+	# nudge would re-prompt seconds after a genuine password login.
 	frappe.form_dict.pop("pwd", None)
 	frappe.local.flags.passkey_login = False
+	frappe.local.flags.passkeys_password_login = True
 	_mint_session(user)
 	return None
 
@@ -473,6 +505,10 @@ def verify_second_factor(state_id: str, credential):
 	try:
 		cred, result = _verify_second_factor_assertion(record, credential, engine, settings)
 	except frappe.AuthenticationError:
+		# S6: the user is resolved from leg 1 (record["user"]) — feed the tracker
+		# before re-arming so a wrong leg-2 passkey feeds the same lockout as a bad
+		# password (§6.3), without disturbing the re-arm/uniform-401 wire contract.
+		_track_verify_failure(record.get("user"))
 		raise _rearm_second_factor(record)
 
 	# F14 core-leg-2-equivalent re-authentication BEFORE minting (fails closed;
@@ -789,20 +825,56 @@ def _advance_credential(name: str, result) -> None:
 		"last_used_at": now_datetime(),
 		"last_used_ip": _request_ip(),
 	}
-	newly_flagged = False
-	if result.sign_count_regression:
-		values["flagged"] = 1
-		values["flagged_reason"] = "sign_count_regression"
-		newly_flagged = not cint(frappe.db.get_value("WebAuthn Credential", name, "flagged"))
+	newly_flagged = _apply_sign_count_flag(name, bool(result.sign_count_regression), values)
 	frappe.db.set_value("WebAuthn Credential", name, values, update_modified=False)
-	if newly_flagged:
-		# §8.3 out-of-band "passkey flagged" notice on the unflagged→flagged edge
-		# only (a repeatedly-regressing credential does not re-spam the owner).
-		from passkeys import notifications
+	_notify_if_newly_flagged(name, newly_flagged)
 
-		row = frappe.db.get_value("WebAuthn Credential", name, ["user", "label"], as_dict=True)
-		if row:
-			notifications.notify_credential_flagged(row.user, row.label, "sign_count_regression")
+
+def _apply_sign_count_flag(name: str, regression: bool, values: dict) -> bool:
+	"""Fold a sign-count regression into a pending credential-write ``values`` dict
+	and report whether this is the unflagged→flagged rising edge (§3.6). Shared by
+	:func:`_advance_credential` and the uv-setup completion (SEC-2) so both advance
+	sites flag identically — the uv-setup login leg was the SOLE advance for its
+	assertion yet dropped the flag entirely before this factoring."""
+	if not regression:
+		return False
+	values["flagged"] = 1
+	values["flagged_reason"] = "sign_count_regression"
+	return not cint(frappe.db.get_value("WebAuthn Credential", name, "flagged"))
+
+
+def _notify_if_newly_flagged(name: str, newly_flagged: bool) -> None:
+	"""Fire the §8.3 out-of-band "passkey flagged" notice on the unflagged→flagged
+	edge only (a repeatedly-regressing credential does not re-spam the owner)."""
+	if not newly_flagged:
+		return
+	from passkeys import notifications
+
+	row = frappe.db.get_value("WebAuthn Credential", name, ["user", "label"], as_dict=True)
+	if row:
+		notifications.notify_credential_flagged(row.user, row.label, "sign_count_regression")
+
+
+def _track_verify_failure(user: str | None) -> None:
+	"""Feed frappe's ``LoginAttemptTracker`` on a passkey verify FAILURE for a
+	RESOLVED user (§3 preamble / §6.3 normative, S6): a passkey brute-force must
+	feed the same consecutive-failure lockout counter as a failed password login —
+	core's ``LoginManager.authenticate`` calls the identical ``add_failure_attempt``
+	on a bad password. ``raise_locked_exception=False``: the counter is fed but the
+	lock is never *raised here*, so the wire answer stays the uniform 401 and never
+	leaks that this user exists / is locked out. Called only where a user is
+	actually resolved (a pre-resolution failure has no user to track). Best-effort —
+	a tracker failure must never turn a 401 into a 500."""
+	if not user:
+		return
+	try:
+		from frappe.auth import get_login_attempt_tracker
+
+		tracker = get_login_attempt_tracker(user, raise_locked_exception=False)
+		if tracker:
+			tracker.add_failure_attempt()
+	except Exception:
+		frappe.log_error(title="passkeys: login-failure tracking failed")
 
 
 # ---------------------------------------------------------------------------
@@ -819,6 +891,15 @@ def _enforce_request_host(origins: list) -> None:
 	if origin is None:
 		return
 	if origin not in origins:
+		# §9.2 / B-F10: one structured log on EVERY host-mismatch refusal. Previously
+		# only the registration path logged; begin_login / begin_confirmation / the
+		# verify legs (which route here, and via confirm.py's delegating shim) were
+		# silent. The ``origins`` list leads with ``https://<rp_id>`` (the configured
+		# RP ID). Ops-diagnosable; the wire answer stays the uniform 401.
+		frappe.log_error(
+			title="passkeys: request host not in configured origins",
+			message=f"request origin {origin} not in {origins}",
+		)
 		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
 
 
@@ -833,7 +914,20 @@ def _request_ip() -> str | None:
 
 
 def _b64url_decode(value: str) -> bytes:
-	return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+	"""Base64url-decode a credential id (tolerating stripped padding). A malformed
+	value raises the uniform ``AuthenticationError`` — never a raw
+	``binascii.Error`` / ``ValueError`` / ``TypeError`` (C5): those would escape as
+	a 500, breaking the §3.0 uniform-401 contract. Critically, in
+	``verify_second_factor`` this call runs AFTER the single-use state consume,
+	inside a ``try`` that catches only ``AuthenticationError`` — so a raw exception
+	would burn the 2FA state with NO re-arm; raising ``AuthenticationError`` here
+	routes a garbage id through the existing re-arm path instead."""
+	import binascii
+
+	try:
+		return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+	except (binascii.Error, ValueError, TypeError) as exc:
+		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
 
 
 def _as_dict(value):

@@ -413,8 +413,14 @@ def _known_transports(transports) -> list | None:
 
 def _credprops_rk(credential: dict) -> bool | None:
 	"""Read ``credProps.rk`` from the RAW credential JSON — py_webauthn drops
-	``clientExtensionResults`` at parse, so this is the only source (§3.5)."""
-	rk = (credential.get("clientExtensionResults") or {}).get("credProps", {}).get("rk")
+	``clientExtensionResults`` at parse, so this is the only source (§3.5). An
+	explicit ``credProps: null`` (or a non-object at either level) is treated as
+	unknown, never a 500 (C6): the ``.get`` default only substitutes for a MISSING
+	key, so ``{"credProps": null}`` would surface ``None.get("rk")`` — guard each
+	level with ``isinstance(..., dict)``."""
+	exts = credential.get("clientExtensionResults")
+	props = exts.get("credProps") if isinstance(exts, dict) else None
+	rk = props.get("rk") if isinstance(props, dict) else None
 	return rk if isinstance(rk, bool) else None
 
 

@@ -400,6 +400,74 @@ class SecondFactorTest(IntegrationTestCase):
 		# the floor still holds
 		self.assertEqual(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"), 1)
 
+	# ======================================================================
+	# C5 — a malformed credential id is a uniform 401 + re-arm (not a 500)
+	# ======================================================================
+
+	def test_garbage_credential_id_rearms_not_500(self):
+		"""C5: a malformed base64url credential id past the single-use state consume
+		must raise the uniform 401 (never a raw binascii/500) AND route through the
+		re-arm path — so the 2FA leg is NOT burned. A retry with a valid assertion on
+		the re-armed state then completes."""
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+
+		# "AAAAA" = 5 base64url data chars (≡ 1 mod 4) — undecodable. Before the fix it
+		# raised binascii.Error → 500 with the state already consumed (dead 2FA leg).
+		garbage = {"id": "AAAAA", "rawId": "AAAAA", "response": {}, "type": "public-key"}
+		with self.assertRaises(CeremonyExpired):
+			self._leg2(resp["tmp_id"], garbage, binder)
+		fresh_sid = frappe.local.response.get("state_id")
+		self.assertTrue(fresh_sid, "state must be re-armed, not burned, on a garbage id")
+		fresh_options = frappe.local.response["verification"]["options"]
+
+		good = self._assert(auth, fresh_options, sign_count=8)
+		self._leg2(fresh_sid, good, binder)
+		self.assertEqual(frappe.session.user, user)
+
+	# ======================================================================
+	# S3 — the app's plain-password arm seeds a "password" sudo window
+	# ======================================================================
+
+	def test_app_plain_password_arm_seeds_password_window(self):
+		"""S3: the app's own plain-password arm (a passkey-less, 2FA-less user's
+		LDAP-style finish in ``login_with_password``) mints a session whose sudo
+		window is classified "password", not "weak". Its endpoint path is not
+		/api/method/login, so ``_classify_login_method`` would otherwise mis-seed
+		"weak" and re-fire the §8.4 conditional-create nudge seconds after login."""
+		user = self._user()  # no passkey enrolled, no 2FA role → plain finish
+		self._leg1(user, PWD)
+		self.assertEqual(frappe.session.user, user)
+		window = state.get_sudo_window(frappe.session.sid)
+		self.assertEqual((window or {}).get("seeded_by"), "password")
+
+	# ======================================================================
+	# S6 — a failed leg-2 passkey feeds core's LoginAttemptTracker
+	# ======================================================================
+
+	def test_failed_second_factor_feeds_login_attempt_tracker(self):
+		"""S6: a wrong leg-2 passkey feeds core's LoginAttemptTracker for the resolved
+		(leg-1) user, exactly as a bad password would (§6.3) — without leaking user
+		existence (the wire stays the re-arm 401)."""
+		from frappe.auth import get_login_attempt_tracker
+
+		user = self._user()
+		auth = self._enroll(user)
+		del get_login_attempt_tracker(user, raise_locked_exception=False).login_failed_count
+
+		resp, binder = self._leg1(user, PWD)
+		sid = resp["tmp_id"]
+		for _n in range(2):
+			bad = auth.assertion(challenge_b64=frappe.generate_hash(), rp_id=RP_ID, origin=ORIGIN)
+			with self.assertRaises(CeremonyExpired):
+				self._leg2(sid, bad, binder)
+			sid = frappe.local.response.get("state_id")
+			self.assertTrue(sid)
+
+		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
+		self.assertEqual(int(fresh.login_failed_count or 0), 2)
+
 
 def _b64url_decode(value: str) -> bytes:
 	import base64

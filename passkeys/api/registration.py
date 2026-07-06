@@ -122,6 +122,13 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	)
 
 	raw_id = base64.urlsafe_b64decode(_pad(result.credential_id))
+	# S11: the explicit flow pins resident_key="required" (§9.1) — a success without
+	# credProps (Safari ships none, so result.discoverable is "Unknown") is STILL a
+	# discoverable credential. Promote Unknown→Yes for explicit; conditional-create
+	# keeps "Unknown" (rk genuinely unknown there).
+	discoverable = result.discoverable
+	if discoverable == "Unknown" and flow == "explicit":
+		discoverable = "Yes"
 	doc = frappe.get_doc(
 		{
 			"doctype": "WebAuthn Credential",
@@ -139,7 +146,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 			"backup_eligible": int(result.backup_eligible),
 			"backup_state": int(result.backup_state),
 			"uv_initialized": int(result.user_verified),  # this ceremony's UV bit (§3.2/§3.7)
-			"discoverable": result.discoverable,
+			"discoverable": discoverable,
 			"authenticator_attachment": result.authenticator_attachment or "",
 			"rp_id": record["rp_id"],  # descriptive only — verification never reads it
 		}
