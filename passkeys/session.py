@@ -23,7 +23,7 @@ import json
 import frappe
 from frappe.utils import cint, now
 
-from passkeys import state
+from passkeys import install, state
 
 # Built-in action for the app's own management surface (§7.1 / §7.2).
 MANAGE_ACTION = "passkeys.manage"
@@ -50,6 +50,8 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 	method (§7.1). Exception-hardened: a failure here must never take down a
 	login (this hook runs on every login of every user)."""
 	try:
+		if install.dormant():
+			return  # §11 dormant-shell: core owns sudo seeding — silent no-op
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return
@@ -93,6 +95,8 @@ def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
 def clear_sudo_window(login_manager=None, **kwargs) -> None:
 	"""on_logout: drop this session's sudo window (§7.5). Exception-hardened."""
 	try:
+		if install.dormant():
+			return  # §11 dormant-shell: core owns logout teardown — silent no-op
 		sid = frappe.session.sid
 		if sid:
 			state.clear_sudo_window(sid)

@@ -42,9 +42,66 @@ def before_uninstall():
 	_remove_registry_property_setter()
 
 
+_CORE_NATIVE: bool | None = None
+
+# Cache key for the one-time dormant-shell advisory (§11). Same cache-flag idiom
+# as passkey._observe_2fa_floor_desync's once-daily observer.
+_DORMANT_ADVISORY_KEY = "passkeys:dormant_uninstall_advisory"
+
+
 def is_core_native() -> bool:
-	"""Stage-2 detection (§11): core owns passkeys when `frappe.passkey` exists."""
-	return importlib.util.find_spec("frappe.passkey") is not None
+	"""Stage-2 detection (§11): core owns passkeys when `frappe.passkey` exists.
+
+	Cached once per process (§11 "checked once per process, cached") — every
+	dormant-shell guard queries this switch on every hook + endpoint, so after the
+	first ``find_spec`` (which walks the import system) it must be O(1). The result
+	is immutable for the life of the process: a running site cannot grow/lose
+	``frappe.passkey`` without a restart."""
+	global _CORE_NATIVE
+	if _CORE_NATIVE is None:
+		_CORE_NATIVE = importlib.util.find_spec("frappe.passkey") is not None
+	return _CORE_NATIVE
+
+
+def dormant() -> bool:
+	"""The §11 runtime dormant-shell switch shared by every hook and endpoint guard:
+	``True`` iff core serves passkeys natively, emitting the one-time uninstall
+	advisory on the first engagement.
+
+	Kept distinct from :func:`is_core_native` (the pure predicate) because
+	``before_install`` uses that predicate to REFUSE a fresh install — a context
+	where an "app is dormant, uninstall it" advisory would be nonsense. Hooks call
+	``if dormant(): return`` (a silent no-op — a hook that raises would break core
+	logins); endpoints wrap it in ``passkey.refuse_if_core_native`` → 417."""
+	if not is_core_native():
+		return False
+	_advise_dormant_once()
+	return True
+
+
+def _advise_dormant_once() -> None:
+	"""One structured operator advisory the first time dormancy engages (§11: "The
+	app logs a one-time uninstall advisory"). Cache-flag idiom (cf.
+	``passkey._observe_2fa_floor_desync``) so it fires once, never per request.
+	Non-blocking — an advisory failure must never disturb the guarded surface that
+	rides on it."""
+	try:
+		key = frappe.cache.make_key(_DORMANT_ADVISORY_KEY)
+		if frappe.cache.get(key):
+			return
+		frappe.cache.set(key, "1")
+		frappe.log_error(
+			title="passkeys: dormant — core serves passkeys natively",
+			message=(
+				"This site serves passkeys natively (frappe.passkey), so the passkeys "
+				"app has gone dormant: every whitelisted endpoint now returns HTTP 417 "
+				"PasskeyServedByCore and every hook is a no-op. The app is an upgrade "
+				"vehicle for sites that predate the native implementation and is now "
+				"safe to uninstall (bench --site <site> uninstall-app passkeys)."
+			),
+		)
+	except Exception:
+		pass
 
 
 def check_frappe_version(current: str | None = None):

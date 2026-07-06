@@ -16,6 +16,8 @@ failure here degrades to a passkey-less login page, never a broken one.
 import frappe
 from frappe.utils import cint
 
+from passkeys import install
+
 # Served statically from the app's public/ tree at /assets/passkeys/… . The
 # login bundle is a plain IIFE (no ES imports), so it needs no esbuild entry;
 # referencing the full /assets path bypasses the bundle map entirely and is
@@ -31,6 +33,9 @@ LOGIN_CSS = ("/assets/passkeys/css/passkey_login.css",)
 def website_context(context) -> None:
 	"""Append the passkey login assets on the login page when any mode is on."""
 	try:
+		if install.dormant():
+			return  # §11 dormant-shell: append no login bundle — the /login page ships
+			# zero passkey bytes, so there is nothing client-side to self-remove
 		if context.get("path") != "login":
 			return
 		if not _any_login_mode_enabled():

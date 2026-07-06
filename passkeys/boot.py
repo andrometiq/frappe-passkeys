@@ -21,7 +21,7 @@ import json
 import frappe
 from frappe.utils import cint, get_datetime, now_datetime
 
-from passkeys.install import DEFAULTS_PARENT, is_core_native
+from passkeys.install import DEFAULTS_PARENT, dormant
 
 # record_nudge event vocabulary (§3.0 row 13 / §8.4).
 NUDGE_EVENTS = ("shown", "declined", "opt_out")
@@ -206,8 +206,9 @@ def extend_bootinfo(bootinfo=None):
 	try:
 		if bootinfo is None:
 			bootinfo = frappe.local.boot
-		if is_core_native():
-			return
+		if dormant():
+			return  # §11 dormant-shell: publish no bootinfo.passkeys, so the desk +
+			# portal bundles self-remove on the absent `frappe.boot.passkeys` flag
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return

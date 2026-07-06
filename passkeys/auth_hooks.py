@@ -17,6 +17,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from passkeys import install
+
 
 def on_login_veto(login_manager=None, **kwargs):
 	"""``on_login`` veto for ``passkey_only_login`` users (DESIGN-v1 §9.3 / F2).
@@ -60,6 +62,8 @@ def on_login_veto(login_manager=None, **kwargs):
 	never be locked out through this veto. Exception-hardened only around the
 	session-state and role reads — a genuine veto MUST propagate to abort the
 	login."""
+	if install.dormant():
+		return  # §11 dormant-shell: core owns the veto — silent no-op, never a throw
 	target = getattr(login_manager, "user", None) if login_manager is not None else None
 
 	# Impersonation / already-authenticated re-login: a non-Guest session at hook
@@ -118,6 +122,8 @@ def guard_system_settings(doc, method=None):
 	posture) would deadlock System Settings entirely. The runtime desync that a
 	console edit can still create is surfaced by the leg-1 daily observation log
 	(``passkeys.passkey`` — §6.1c)."""
+	if install.dormant():
+		return  # §11 dormant-shell: core owns the 2FA floor — silent no-op
 	new_value = cint(doc.enable_two_factor_auth)
 	if new_value:
 		return  # staying on / turning on — nothing to guard

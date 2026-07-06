@@ -18,7 +18,7 @@ import frappe
 from frappe import _
 
 from passkeys import policy, state
-from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
+from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired, refuse_if_core_native
 
 MANAGE_ACTION = "passkeys.manage"
 
@@ -35,6 +35,7 @@ def begin_registration(flow: str = "explicit"):
 	window (§7.1): explicit needs any sudo window (weak-login only bootstraps a
 	first credential); conditional-create needs a **password**-seeded window
 	(the just-typed password is the freshness proof)."""
+	refuse_if_core_native()  # §11 dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
 	if flow not in ("explicit", "conditional_create"):
@@ -99,6 +100,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	(§3.2). Consumes the single-use challenge before verifying (§4.2); the
 	global ``credential_id_sha256`` unique index is the final arbiter of both
 	duplicate registration and cross-account hijack."""
+	refuse_if_core_native()  # §11 dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
 	# §3.0 row 8: 20/hr/user — BEFORE the single-use consume, so a rate-limited

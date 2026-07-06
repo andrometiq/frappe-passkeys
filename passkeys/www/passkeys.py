@@ -17,7 +17,7 @@ moves to ``frappe/www/passkeys.py`` verbatim (§11).
 
 import frappe
 
-from passkeys import boot
+from passkeys import boot, install
 
 no_cache = 1
 
@@ -41,6 +41,10 @@ def get_context(context):
 	consumes (enabled, modes, credential_count, nudge_state, post_login_method,
 	conditional_create, upsell_eligible, settings_context, rp_id) and append the
 	portal management assets. Server state only — nothing client-supplied is echoed."""
+	if install.dormant():
+		# §11 dormant-shell: the app must not shadow core's native /passkeys — this
+		# UI surface goes dark (404) instead of rendering a parallel management page.
+		raise frappe.DoesNotExistError(frappe._("Passkeys are served natively by this site."))
 	if frappe.session.user in ("Guest", None, ""):
 		frappe.local.flags.redirect_location = "/login?redirect-to=/passkeys"
 		raise frappe.Redirect

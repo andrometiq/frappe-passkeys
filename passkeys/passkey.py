@@ -22,7 +22,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
-from passkeys import policy, state
+from passkeys import install, policy, state
 
 # Attempt cap for the failed-passkey second-factor retry (§6.3 / A37): a leg-2
 # verify failure re-arms a fresh state up to this many attempts, then falls back
@@ -57,8 +57,28 @@ class PasskeyServedByCore(frappe.ValidationError):
 	http_status_code = 417
 
 
+def refuse_if_core_native() -> None:
+	"""Dormant-shell contract (§11): the canonical FIRST guard on every whitelisted
+	app endpoint. The moment core serves passkeys natively the app raises the typed
+	417 so the two implementations never mint sessions or mutate credentials in
+	parallel (§11: "every app endpoint raises typed PasskeyServedByCore"). Every
+	endpoint module — confirm.py, passkey.py, api/registration.py, api/credentials.py
+	— routes through THIS one helper (no duplicated switch logic), and it rides the
+	shared ``install.dormant`` switch so the first guarded surface hit also emits the
+	one-time uninstall advisory."""
+	if install.dormant():
+		raise PasskeyServedByCore(_("This site serves passkeys natively."))
+
+
 def cascade_delete_user_artifacts(doc, method=None):
-	"""User on_trash: drop the user's credential and handle rows (§2.2)."""
+	"""User on_trash: drop the user's credential and handle rows (§2.2).
+
+	Dormant no-op when core serves passkeys natively (§11): core owns the cascade
+	then, so a parallel app cascade would be the "double on_trash" coupling §11
+	calls out. A silent return — never a raise: a doc-event throw would block User
+	deletion site-wide."""
+	if install.dormant():
+		return
 	for doctype in ("WebAuthn Credential", "WebAuthn User Handle"):
 		frappe.db.delete(doctype, {"user": doc.name})
 
@@ -79,6 +99,7 @@ def begin_login():
 	Always answers 200 with the mode flags (the bundle's only config channel);
 	``state_id`` + ``options`` + binder cookie are minted **only** when
 	``login_with_passkey`` is on (§3.0 enablement matrix)."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first_factor = bool(cint(settings.login_with_passkey))
 	second_factor = bool(cint(settings.passkey_as_second_factor))
@@ -132,6 +153,7 @@ def verify_login(state_id: str, credential):
 	``post_login`` (``message: "Logged In"``, ``home_page``) stays at the top
 	level — the client redirects via the returned ``home_page`` only, never a
 	hardcoded ``/app`` or ``/desk``."""
+	refuse_if_core_native()  # §11 dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
 	credential = _as_dict(credential)
@@ -253,6 +275,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	``frappe.local.flags.passkey_login`` before ``login_as`` (F3-2) so a
 	``passkey_only_login=1`` user repairing a conditional-create credential does
 	not trip their own §9.3 veto mid-repair."""
+	refuse_if_core_native()  # §11 dormant-shell (before the password-check import)
 	from frappe.utils.password import check_password
 
 	record = state.consume_uv_setup(setup_id)
@@ -344,6 +367,7 @@ def login_with_password(usr: str, pwd: str):
 	Returns ``None`` and sets the envelope on ``frappe.local.response`` (core's
 	own idiom — ``authenticate_for_2factor`` does the same), so ``verification``
 	and ``tmp_id`` land at the JSON top level where the bundle reads them."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	from frappe.twofactor import authenticate_for_2factor, should_run_2fa
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -482,6 +506,7 @@ def verify_second_factor(state_id: str, credential):
 	the presence of those body keys. This keeps retry and OTP fallback alive
 	without weakening single-use consume (a wrong passkey must not burn the only
 	2FA state)."""
+	refuse_if_core_native()  # §11 dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
 	credential = _as_dict(credential)
@@ -642,6 +667,7 @@ def fallback_to_otp(state_id: str):
 	and the stored ``pwd`` into ``frappe.form_dict`` and hand off to core's own
 	``authenticate_for_2factor`` — core's OTP UI and core's leg 2 then complete
 	natively."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	from frappe.twofactor import authenticate_for_2factor
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -749,6 +775,7 @@ def get_app_translations(version: str | None = None):
 	as ``begin_login``); a ``version``-keyed long-lived Cache-Control lets the
 	browser reuse the catalog until the client mints a new ``version`` (a new URL
 	⇒ a cache miss), so this endpoint is normally hit once per catalog release."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	from frappe.translate import get_translations_from_apps
 
 	lang = getattr(frappe.local, "lang", None) or "en"
@@ -784,6 +811,7 @@ def get_signal_data():
 	only). The desk/portal bundle fires the signal fire-and-forget in-session so a
 	deleted credential is pruned from the browser's autofill list. Identity is
 	strictly ``frappe.session.user``; no client param selects the account."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_authed_user()
 	state.rate_limit_user("get_signal_data", 60, 60)  # §3.0 row 12: 60/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -801,6 +829,7 @@ def record_nudge(event: str):
 	(§8.4 / §3.0 row 13). ``event`` ∈ {``shown``, ``declined``, ``opt_out``}. The
 	counters are **server-side per-user** so a three-browser user gets N prompts
 	total (not 3N); capability checks stay client-side."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_authed_user()
 	state.rate_limit_user("record_nudge", 30, 3600)  # §3.0 row 13: 30/hr/user
 	from passkeys import boot

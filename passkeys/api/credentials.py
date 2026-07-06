@@ -19,6 +19,11 @@ from frappe.utils import cint
 
 from passkeys import session, state
 
+# §11 dormant-shell guard. Imported from passkey.py, which is webauthn-free at
+# module scope (the crypto engine is imported lazily inside its ceremony bodies),
+# so this management module stays webauthn-free at import time (§1.3).
+from passkeys.passkey import refuse_if_core_native
+
 CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 
 
@@ -31,6 +36,7 @@ CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 def list_credentials():
 	"""Return the caller's own credentials for the management cards (§8.2). A
 	read — not sudo-gated; ownership is implicit (filtered to the session user)."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_user()
 	state.rate_limit_user("list_credentials", 60, 60)  # §3.0 row 9: 60/min/user
 	rows = frappe.get_all(
@@ -70,6 +76,7 @@ def list_credentials():
 def rename_credential(name: str, label: str):
 	"""Rename the caller's own credential (§8.2). Display-only, so no sudo gate;
 	the DocType ``validate`` sanitizes + length-caps the label (stored-XSS)."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # §3.0 row 10: 20/hr/user
 	doc = _own_credential(user, name)
@@ -92,6 +99,7 @@ def delete_credential(name: str):
 	re-seeds it (§7.1). Refuses to drop the last passkey-capable credential of a
 	``passkey_only_login`` user (or under site ``disable_user_pass_login``), the
 	endpoint enforcement of the §2.2 handle-row floor (F3-3 / F-B3)."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_user()
 	state.rate_limit_user("delete_credential", 10, 3600)  # §3.0 row 11: 10/hr/user
 	session.require_management_sudo(user)
@@ -142,6 +150,7 @@ def set_passkey_only_login(enabled):
 	``@passkey_protected`` decorator — that MINTER is not yet built. This
 	endpoint wires the fully-real *consumer* guard (§7.2); until P5 ships the
 	ceremony, a grant can only be produced by that phase's passkey assertion."""
+	refuse_if_core_native()  # §11 dormant-shell: 417 the moment core is native
 	user = _require_user()
 	enabled_int = cint(enabled)
 	payload = {"enabled": bool(enabled_int)}

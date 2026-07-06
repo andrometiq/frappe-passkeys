@@ -563,13 +563,12 @@ def _has_enabled_passkey(user: str) -> bool:
 
 
 def _refuse_if_core_native() -> None:
-	"""Dormant-shell contract (§11): every app endpoint raises the typed 417 once
-	core serves passkeys natively."""
-	from passkeys.install import is_core_native
-	from passkeys.passkey import PasskeyServedByCore
+	"""Dormant-shell contract (§11): delegate to the canonical guard so the confirm
+	surface raises the SAME typed 417 (and rides the same one-time advisory) as
+	every other app endpoint — no duplicated switch logic (§11)."""
+	from passkeys.passkey import refuse_if_core_native
 
-	if is_core_native():
-		raise PasskeyServedByCore(_("This site serves passkeys natively."))
+	refuse_if_core_native()
 
 
 def _require_user() -> str:
