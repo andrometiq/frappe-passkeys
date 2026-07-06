@@ -15,6 +15,10 @@ frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
 		var M = frappe.passkeys_manage_common;
 		if (!M) return;
+		// Baseline for the RP-ID one-way-door revert (§9.1): the last-saved value to
+		// fall back to if the user backs out of the confirm. refresh() re-fires after
+		// every load and save, so this always tracks the persisted RP ID.
+		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
 		paintBanners(frm, M);
 	},
 	// Repaint on any knob change so the matrix stays live before save.
@@ -24,17 +28,35 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_origins: repaint,
 	passkey_rp_id: function (frm) {
 		repaint(frm);
+		var M = frappe.passkeys_manage_common;
+		if (!M) return;
 		// One-way door (§9.1/§9.2): changing the RP ID after enrollment invalidates
 		// every passkey. Loud typed confirm before the value can be saved.
 		if (frm.doc.__islocal || !frm.doc.passkey_rp_id) return;
 		if (frm._passkey_rpid_ack === frm.doc.passkey_rp_id) return;
-		frappe.warn(
+		var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) ||
+			frm._passkey_rpid_saved || "";
+		var proceeded = false;
+		var d = frappe.warn(
 			__("Change the RP ID?"),
 			__(M.COPY.rpIdOneWayDoor),
-			function () { frm._passkey_rpid_ack = frm.doc.passkey_rp_id; },
+			function () { proceeded = true; frm._passkey_rpid_ack = frm.doc.passkey_rp_id; },
 			__("Yes, change it"),
-			true // set_danger
+			true // set_danger — Cancel is the safe default
 		);
+		// Cancel / Esc / backdrop dismissal MUST revert the field, so a backed-out
+		// change can never be saved (the confirm has to actually gate the save, §9.1).
+		// The modal hide event is the reliable catch-all across dismissal routes
+		// (same idiom as the desk nudge dialog + passkey_confirm.js::wireCancel).
+		if (d && d.$wrapper && d.$wrapper.on) {
+			d.$wrapper.on("hide.bs.modal", function () {
+				if (proceeded) return;
+				// Ack the reverted value first so set_value's change event short-circuits
+				// (no re-opening the warn).
+				frm._passkey_rpid_ack = saved;
+				frm.set_value("passkey_rp_id", saved);
+			});
+		}
 	},
 });
 
@@ -110,8 +132,15 @@ function buildContext(frm) {
 	};
 }
 
+// Derive the resolved origins the same way the server does (policy.resolve_origins):
+// the implicit https://<rp_id> origin is ALWAYS included, then the custom lines.
+// Delegates to the pure, node-tested helper so this stays a thin DOM glue file.
 function parseOrigins(raw, rpId) {
+	var M = typeof frappe !== "undefined" && frappe.passkeys_manage_common;
+	if (M && M.deriveOrigins) return M.deriveOrigins(raw, rpId);
+	// Fallback if the pure lib is missing — still include the implicit origin so a
+	// healthy site never shows a false host-mismatch (mirror the server).
 	var lines = String(raw || "").split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
-	if (!lines.length && rpId) return ["https://" + rpId];
+	if (rpId && lines.indexOf("https://" + rpId) === -1) lines.unshift("https://" + rpId);
 	return lines;
 }

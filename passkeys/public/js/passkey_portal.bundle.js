@@ -169,13 +169,70 @@
 			mountRoot.innerHTML = "";
 			var res = r[0], map = r[1];
 			if (!res || !res.ok) { mountRoot.appendChild(el("div", "passkey-cards-error", t("Couldn't load your passkeys."))); return; }
-			var creds = (unwrap(res.body) || {}).credentials || [];
+			var payload = unwrap(res.body) || {};
+			var creds = payload.credentials || [];
 			if (!creds.length) { mountRoot.appendChild(emptyState()); return; }
 			var list = el("ul", "passkey-card-list"); list.setAttribute("role", "list");
 			creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map }))); });
 			mountRoot.appendChild(list);
 			mountRoot.appendChild(addRow());
+			mountRoot.appendChild(passkeyOnlyRow(creds, payload)); // §9.3 F19 passwordless-login switch
 		});
+	}
+
+	// §9.3 F19: the per-user passwordless-login switch. Current value rides the list
+	// payload (server-authoritative), boot as fallback; OFF when neither ships it.
+	// Disabled with no usable (enabled) passkey — enabling needs a passkey grant.
+	function isPasskeyOnly(payload) {
+		if (payload && payload.passkey_only_login !== undefined) return !!payload.passkey_only_login;
+		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
+		return !!(b && b.passkey_only_login);
+	}
+	function passkeyOnlyRow(creds, payload) {
+		var enabledCount = 0;
+		creds.forEach(function (c) { if (M.credentialViewModel(c).enabled) enabledCount += 1; });
+		var current = isPasskeyOnly(payload);
+		var row = el("div", "passkey-only-row");
+		var main = el("div", "passkey-only-main");
+		main.appendChild(el("div", "passkey-only-label", t(M.COPY.passkeyOnlyLabel)));
+		main.appendChild(el("div", "passkey-only-help", t(M.COPY.passkeyOnlyHelp)));
+		row.appendChild(main);
+		var toggle = document.createElement("input");
+		toggle.type = "checkbox"; toggle.className = "passkey-only-toggle"; toggle.checked = current;
+		toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-checked", current ? "true" : "false");
+		toggle.setAttribute("aria-label", t(M.COPY.passkeyOnlyLabel));
+		if (enabledCount === 0) { toggle.disabled = true; toggle.setAttribute("title", t(M.COPY.passkeyOnlyHelp)); }
+		toggle.addEventListener("change", function () {
+			var desired = toggle.checked;
+			toggle.checked = current; // don't flip until the sudo-gated call confirms
+			confirmPasskeyOnly(desired, current);
+		});
+		row.appendChild(toggle);
+		return row;
+	}
+	// Sudo-gated (§9.3 F19): confirm + single-use PASSKEY grant only. engine.call runs
+	// the §7.2 401 confirm dance; the boolean {enabled} payload matches the fingerprint
+	// the server binds the grant to ({"enabled": <bool>}). Mirrors deleteCard's flow.
+	function confirmPasskeyOnly(desired, current) {
+		if (desired === current) return;
+		var modal = buildModal({ title: desired ? t("Turn on passwordless login?") : t("Turn off passwordless login?") });
+		modal.body.appendChild(el("p", "", desired
+			? t("Turning on passwordless login means you will not be able to log in with a password — only a passkey. Keep at least two passkeys so a lost device never locks you out.")
+			: t("Password login will be allowed for your account again.")));
+		modal.actions.appendChild(primary(desired ? t("Turn on passwordless login") : t("Turn off passwordless login"), function () {
+			modal.close();
+			announce(t("Confirming it's you…"));
+			engine.call(METHODS.setPasskeyOnly, { enabled: !!desired }).then(function () {
+				announce(desired ? t("Passwordless login is on.") : t("Passwordless login is off."));
+				render();
+			}).catch(function (err) {
+				if (err && err.code === "user_cancelled") { render(); return; }
+				announce((err && err.message) || t("Couldn't change passwordless login."));
+				render();
+			});
+		}));
+		modal.actions.appendChild(link(t("Cancel"), modal.close));
+		modal.open();
 	}
 	function emptyState() {
 		var w = el("div", "passkey-empty");

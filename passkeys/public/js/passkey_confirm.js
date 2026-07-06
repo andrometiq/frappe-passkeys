@@ -202,6 +202,12 @@
 			// reject (user_cancelled) if the user dismisses the dialog.
 			collectPassword: function () {
 				return new Promise(function (resolve, reject) {
+					// The engine can route STRAIGHT to the password leg (caps.passkey
+					// false — a zero-credential user, or the sudo window expired) WITHOUT
+					// ever calling chooseMethod, so the dialog may not exist yet. Create
+					// it here too — mirrors the portal bundle's `if (!modal)` guard — or
+					// setContent()/bodyEl() dereference a null dialog (TypeError crash).
+					ensureDialog();
 					var lead = t("Confirm your password to continue.");
 					var html = [
 						'<div class="passkey-confirm" role="group" aria-label="' +
@@ -366,5 +372,12 @@
 		}
 		if (!f.passkeys.confirm) f.passkeys.confirm = unavailable;
 		if (!f.passkeys.call) f.passkeys.call = unavailable;
+	}
+
+	// Node-only test seam (UMD-lite, mirrors passkey_common.js): expose the dialog
+	// UI factory so `node --test` can exercise the straight-to-password route
+	// without a bench/jsdom. No-op in the browser — `module` is undefined there.
+	if (typeof module === "object" && module.exports) {
+		module.exports = { makeDialogUI: makeDialogUI, minimalDialog: minimalDialog };
 	}
 })();

@@ -426,6 +426,21 @@
 		return banners;
 	}
 
+	// Client mirror of server policy.resolve_origins (§9.2): the implicit
+	// `https://<rp_id>` origin is ALWAYS present, then each non-empty
+	// `passkey_origins` line (exact-string, dedup, order preserved). The settings
+	// form must derive origins THIS way — omitting the implicit origin for a
+	// non-empty list makes a healthy site show a false host-mismatch banner, since
+	// the server never actually drops it.
+	function deriveOrigins(raw, rpId) {
+		var origins = rpId ? ["https://" + rpId] : [];
+		String(raw || "").split(/\r?\n/).forEach(function (line) {
+			line = line.trim();
+			if (line && origins.indexOf(line) === -1) origins.push(line);
+		});
+		return origins;
+	}
+
 	// Exact-host membership for an origins allowlist (host compare, scheme-tolerant).
 	function originsIncludeHost(origins, host) {
 		host = String(host || "").toLowerCase();
@@ -479,6 +494,7 @@
 		upsellDecision: upsellDecision,
 		deleteGuard: deleteGuard,
 		settingsBanners: settingsBanners,
+		deriveOrigins: deriveOrigins,
 		originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
 		signalPayload: signalPayload,

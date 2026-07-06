@@ -636,7 +636,16 @@
 		}
 
 		function httpError(res) {
-			return new ConfirmError(CONFIRM_CODES.NETWORK, tr("Couldn't reach the server — try again."));
+			// `res` is a REAL HTTP response that isn't the 401 retry contract (417
+			// served-by-core, other 4xx, or 5xx with a non-contract body). The server
+			// was reached and refused — that is NOT a transport failure. A dropped
+			// fetch (offline/DNS) rejects the promise and is mapped to `network` at the
+			// call site below; distinguishing the two lets callers tell "offline" from
+			// "the server said no". Stays inside the fixed §7.3 taxonomy (A44): a
+			// reached-but-failed request is `confirmation_failed`, never `network`.
+			void res;
+			return new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
+				tr("The action couldn't be confirmed — please try again."));
 		}
 
 		return { confirm: confirm, call: call, run: run, _inflight: inflight };

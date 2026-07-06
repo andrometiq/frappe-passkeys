@@ -217,7 +217,8 @@
 				container.appendChild(el("div", "passkey-cards-error", t("Couldn't load your passkeys.")));
 				return;
 			}
-			var creds = (unwrap(res.body) || {}).credentials || [];
+			var payload = unwrap(res.body) || {};
+			var creds = payload.credentials || [];
 			if (!creds.length) {
 				container.appendChild(emptyState(opts));
 				return;
@@ -230,6 +231,9 @@
 			});
 			container.appendChild(list);
 			container.appendChild(addButtonRow(opts));
+			// §9.3 F19: the per-user passwordless-login switch. Own view only — never
+			// on the System-Manager read-only inventory of another user.
+			if (!opts.readOnly) container.appendChild(passkeyOnlyRow(creds, payload, opts));
 		});
 	}
 
@@ -332,6 +336,82 @@
 				});
 			},
 		});
+		d.show();
+	}
+
+	// §9.3 F19 passwordless-login switch. Current value rides the list payload
+	// (server-authoritative), with the boot flag as a fallback; defaults OFF when
+	// neither ships it yet. Disabled when the user has no usable (enabled) passkey —
+	// you can't go passwordless with none, and enabling needs a passkey grant anyway.
+	function isPasskeyOnly(payload) {
+		if (payload && payload.passkey_only_login !== undefined) return !!payload.passkey_only_login;
+		var b = boot();
+		return !!(b && b.passkey_only_login);
+	}
+
+	function passkeyOnlyRow(creds, payload, opts) {
+		var enabledCount = 0;
+		creds.forEach(function (c) { if (M.credentialViewModel(c).enabled) enabledCount += 1; });
+		var current = isPasskeyOnly(payload);
+
+		var row = el("div", "passkey-only-row");
+		var main = el("div", "passkey-only-main");
+		main.appendChild(el("div", "passkey-only-label", t(M.COPY.passkeyOnlyLabel)));
+		main.appendChild(el("div", "passkey-only-help", t(M.COPY.passkeyOnlyHelp)));
+		row.appendChild(main);
+
+		var toggle = document.createElement("input");
+		toggle.type = "checkbox";
+		toggle.className = "passkey-only-toggle";
+		toggle.checked = current;
+		toggle.setAttribute("role", "switch");
+		toggle.setAttribute("aria-checked", current ? "true" : "false");
+		toggle.setAttribute("aria-label", t(M.COPY.passkeyOnlyLabel));
+		if (enabledCount === 0) {
+			toggle.disabled = true;
+			toggle.setAttribute("title", t(M.COPY.passkeyOnlyHelp));
+		}
+		toggle.addEventListener("change", function () {
+			var desired = toggle.checked;
+			// Don't optimistically flip — the change only takes effect once the
+			// sudo-gated call confirms. Snap back until then.
+			toggle.checked = current;
+			confirmPasskeyOnly(desired, current, opts);
+		});
+		row.appendChild(toggle);
+		return row;
+	}
+
+	// Sudo-gated toggle (§9.3 F19): confirm + a single-use PASSKEY grant only —
+	// mirrors deleteCard's sudo dance. guardedCall runs the §7.2 401 confirm and
+	// retries with the grant; the boolean {enabled} payload matches the fingerprint
+	// the server binds the grant to ({"enabled": <bool>}).
+	function confirmPasskeyOnly(desired, current, opts) {
+		if (desired === current) return;
+		var warn = desired
+			? t("Turning on passwordless login means you will not be able to log in with a password — only a passkey. Keep at least two passkeys so a lost device never locks you out.")
+			: t("Password login will be allowed for your account again.");
+		var d = new frappe.ui.Dialog({
+			title: desired ? t("Turn on passwordless login?") : t("Turn off passwordless login?"),
+			indicator: desired ? "red" : "blue",
+			fields: [{ fieldtype: "HTML", options: "<p>" + escapeHtml(warn) + "</p>" }],
+			primary_action_label: desired ? t("Turn on passwordless login") : t("Turn off passwordless login"),
+			primary_action: function () {
+				d.hide();
+				announce(t("Confirming it's you…"));
+				guardedCall(METHODS.setPasskeyOnly, { enabled: !!desired }).then(function () {
+					announce(desired ? t("Passwordless login is on.") : t("Passwordless login is off."));
+					refresh(opts);
+				}).catch(function (err) {
+					if (err && err.code === "user_cancelled") { refresh(opts); return; } // reset the toggle
+					var msg = (err && (err.userMessage || err.message)) || t("Couldn't change passwordless login.");
+					frappe.msgprint({ title: t("Couldn't change passwordless login"), message: escapeHtml(msg), indicator: "orange" });
+					refresh(opts);
+				});
+			},
+		});
+		// Close / Esc / backdrop dismiss leaves the switch as it was — the toggle was
+		// already snapped back to its current value before this dialog opened.
 		d.show();
 	}
 

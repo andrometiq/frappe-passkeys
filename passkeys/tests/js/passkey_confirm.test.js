@@ -244,3 +244,59 @@ test("concurrency (A44): identical concurrent confirms share ONE ceremony", asyn
 	assert.strictEqual(b, "G");
 	assert.strictEqual(beginCount, 1, "identical concurrent confirms must not start two ceremonies");
 });
+
+// ----------------------------------------------------- HTTP vs network (C11)
+// A dropped fetch (transport failure) stays `network`; a REACHED server that
+// returned a non-contract error (417/4xx/5xx) is `confirmation_failed` — never
+// `network`. Codes stay inside the fixed §7.3 taxonomy (A44), and callers (which
+// branch only on user_cancelled) keep working.
+
+test("call(): transport failure (fetch rejects) -> network", async () => {
+	const post = makePost({ "myapp.api.x": [new Error("offline")] });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI() });
+	await assert.rejects(engine.call("myapp.api.x", {}), (e) => e.code === C.CONFIRM_CODES.NETWORK);
+});
+
+test("call(): reached server returns a non-contract HTTP error -> confirmation_failed (not network)", async () => {
+	const post = makePost({ "myapp.api.x": [{ ok: false, status: 500, body: { some: "error" } }] });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI() });
+	await assert.rejects(engine.call("myapp.api.x", {}), (e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED);
+});
+
+test("call(): 417 served-by-core on the protected method -> confirmation_failed (not network)", async () => {
+	const post = makePost({ "myapp.api.x": [{ ok: false, status: 417, body: { exc_type: "PasskeyServedByCore" } }] });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI() });
+	await assert.rejects(engine.call("myapp.api.x", {}), (e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED);
+});
+
+// ------------------------------------------------- passkey-only switch (C2-UI)
+// The §9.3 F19 toggle sends a BOOLEAN {enabled} payload through frappe.passkeys.call;
+// the server 401 binds the grant to a fingerprint over {"enabled": <bool>}, the
+// engine echoes that fingerprint VERBATIM (A36) into begin_confirmation, and the
+// retry re-sends the SAME boolean payload with the grant header.
+
+test("call(): set_passkey_only_login(true) echoes the {enabled:true} fingerprint + retries with grant", async () => {
+	const SWITCH = "passkeys.api.credentials.set_passkey_only_login";
+	const post = makePost({
+		[SWITCH]: [
+			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "passkeys.set_passkey_only_login", payload_fingerprint: "FP-ENABLED", methods: ["passkey"] } },
+			{ ok: true, status: 200, body: { message: { passkey_only_login: 1 } } },
+		],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "FP-ENABLED", methods: ["passkey"] } } }],
+		"passkeys.confirm.verify_confirmation": [{ ok: true, status: 200, body: { message: { grant: "PK-GRANT" } } }],
+	});
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI({ method: "passkey" }) });
+	const result = await engine.call(SWITCH, { enabled: true });
+	assert.deepStrictEqual(result, { passkey_only_login: 1 });
+	// the payload is a real boolean, not 0/1 (the fingerprint is over {"enabled": <bool>})
+	const initial = post.calls.filter((c) => c.method === SWITCH)[0];
+	assert.deepStrictEqual(initial.body, { enabled: true });
+	assert.strictEqual(typeof initial.body.enabled, "boolean");
+	// begin echoed the server fingerprint verbatim for the switch action (A36)
+	const begin = post.calls.find((c) => c.method === "passkeys.confirm.begin_confirmation");
+	assert.deepStrictEqual(begin.body, { action: "passkeys.set_passkey_only_login", payload_hash: "FP-ENABLED" });
+	// retry re-sent the SAME boolean payload + attached the grant header
+	const retry = post.calls.filter((c) => c.method === SWITCH)[1];
+	assert.deepStrictEqual(retry.body, { enabled: true });
+	assert.deepStrictEqual(retry.headers, { "X-Passkey-Grant": "PK-GRANT" });
+});

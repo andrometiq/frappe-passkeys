@@ -282,3 +282,46 @@ test("signalPayload: shapes user_handle + credential_ids, else null", () => {
 	assert.strictEqual(M.signalPayload({ signal: { user_handle: "uh" } }), null);
 	assert.strictEqual(M.signalPayload(null), null);
 });
+
+// ------------------------------------------------------- deriveOrigins (C7)
+// Client mirror of server policy.resolve_origins: the implicit https://<rp_id>
+// origin is ALWAYS included, then the custom lines (deduped, order preserved).
+
+test("deriveOrigins: implicit https://<rp_id> origin always leads the list", () => {
+	assert.deepStrictEqual(M.deriveOrigins("", "example.com"), ["https://example.com"]);
+	assert.deepStrictEqual(M.deriveOrigins("   \n\n", "example.com"), ["https://example.com"]);
+	assert.deepStrictEqual(
+		M.deriveOrigins("https://app.example.com\nhttps://admin.example.com", "example.com"),
+		["https://example.com", "https://app.example.com", "https://admin.example.com"]
+	);
+});
+
+test("deriveOrigins: dedupes an explicitly-listed implicit origin (no double entry)", () => {
+	assert.deepStrictEqual(
+		M.deriveOrigins("https://example.com\nhttps://app.example.com", "example.com"),
+		["https://example.com", "https://app.example.com"]
+	);
+});
+
+test("C7: a non-empty origins list without the rp_id origin does NOT show a false host-mismatch", () => {
+	// The settings form used to drop the implicit origin for a non-empty list, so a
+	// healthy site (rp_id == current host) got a bogus level:error mismatch banner.
+	const rpId = "example.com";
+	const origins = M.deriveOrigins("https://app.example.com", rpId); // list omits the bare host
+	const ctx = { currentHost: "example.com", resolvedRpId: rpId, resolvedOrigins: origins };
+	const banners = M.settingsBanners({ login_with_passkey: 1, passkey_notify_on_change: 1 }, ctx);
+	const mismatch = banners.some((b) => b.level === "error" && b.key === M.COPY.hostMismatch);
+	assert.strictEqual(mismatch, false, "implicit https://<rp_id> origin must suppress the false mismatch");
+});
+
+// ------------------------------------------------------------------ C8 (note)
+// The RP-ID "one-way door" confirm now GATES the save: on Cancel/Esc/backdrop the
+// passkey_settings.js handler reverts passkey_rp_id to its last-saved value via
+// `frm.set_value(...)` on the dialog's `hide.bs.modal`, and acks the reverted value
+// first so the re-fired change event short-circuits (no re-prompt loop). That path
+// is frappe-form + frappe.warn (bootstrap modal) bound, so it cannot run under
+// `node --test` (no bench/jsdom). MANUAL CHECK on a bench:
+//   1. Open Passkey Settings on a saved doc, change the RP ID, Cancel the warn →
+//      the field snaps back to the saved value and the doc is NOT dirty.
+//   2. Change it again, click "Yes, change it" → the value sticks and can be saved.
+//   3. Esc / click-outside the warn behaves like Cancel (reverts).
