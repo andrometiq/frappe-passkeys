@@ -4,8 +4,8 @@
 """Action-confirmation / "passkey signing" primitive (DESIGN-v1 §7.2 / J6).
 
 This is the **public API surface** other Frappe apps use to require a fresh
-passkey confirmation before a sensitive whitelisted action — Karthi's
-"give any other approvals" primitive:
+passkey confirmation before a sensitive whitelisted action — the
+"approve any other action with a passkey" primitive:
 
     from passkeys.confirm import passkey_protected
 

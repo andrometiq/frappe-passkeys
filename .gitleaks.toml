@@ -1,0 +1,16 @@
+# gitleaks allowlist — deliberate, non-secret material only.
+# Everything here is public or intentionally fake; nothing below is a credential.
+
+[allowlist]
+description = "Vendored public data, deliberately-fake test vectors, and research notes"
+paths = [
+  # Vendored community AAGUID→provider map (MIT, public authenticator-model UUIDs
+  # — not keys; provenance in docs/aaguid-map.md). UUIDs trip generic-api-key.
+  '''passkeys/public/aaguid-map\.json''',
+  # The 35-vector WebAuthn fixture pack: deliberately-generated fake keys,
+  # signatures, and credential blobs for negative-path tests. Never real secrets.
+  '''spikes/webauthn-fixtures/.*''',
+  # Research syntheses quote vendor docs and spec fragments; entropy/keyword
+  # false positives only (e.g. the literal string "2FA-equivalent").
+  '''research/.*''',
+]
