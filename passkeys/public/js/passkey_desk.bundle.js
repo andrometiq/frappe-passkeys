@@ -30,6 +30,23 @@
 	var t = C.t;
 	var METHODS = M.MANAGE_METHODS;
 
+	// A pending conditionalCreate() (mediation:"conditional") holds a WebAuthn
+	// request open for the whole tab; the platform serializes credential requests,
+	// so any later EXPLICIT ceremony (registration or a confirm gesture) throws
+	// "A request is already pending" until it's aborted. Mirror the login bundle's
+	// AbortController discipline: store the controller, pass its signal into
+	// create(), and abort it before any explicit ceremony in this tab.
+	var _conditionalCreateAbort = null;
+	function newAbortController() {
+		return typeof AbortController === "function" ? new AbortController() : null;
+	}
+	function abortConditionalCreate() {
+		if (_conditionalCreateAbort) {
+			try { _conditionalCreateAbort.abort(); } catch (e) { /* noop */ }
+			_conditionalCreateAbort = null;
+		}
+	}
+
 	// ------------------------------------------------------------ AAGUID asset
 	// Client provider snapshot (§8.2). Optional release asset; absent ⇒ {} ⇒ cards
 	// fall back to the server-supplied `provider` field or "Unknown provider".
@@ -74,6 +91,9 @@
 	// client owns that dialog + a11y), then retry once with the grant header. The
 	// confirmation re-seeds the full-sudo window (§7.1) so the retry passes.
 	function guardedCall(method, args) {
+		// The confirm engine runs a WebAuthn get() gesture; abort any pending
+		// conditionalCreate() first so it doesn't serialize behind it (A1).
+		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.call) {
 			return window.frappe.passkeys.call(method, args || {});
 		}
@@ -88,6 +108,8 @@
 	// (registration is begin→create→verify, so it can't ride guardedCall's single
 	// retry). Returns a promise that resolves once the window is seeded.
 	function ensureManageSudo() {
+		// Same as guardedCall: the confirm gesture is an explicit ceremony (A1).
+		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.confirm) {
 			return window.frappe.passkeys.confirm(M.MANAGE_ACTION);
 		}
@@ -100,6 +122,9 @@
 	// modal create() (with the credProps extension, §3.5) and verify.
 	function addPasskey(opts) {
 		opts = opts || {};
+		// Serialize-safety: an explicit registration must not race a pending
+		// conditionalCreate() get/create held open in this tab (A1).
+		abortConditionalCreate();
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
 			frappe.msgprint({ title: t("Passkeys unavailable"), message: t("This browser can't create passkeys."), indicator: "orange" });
 			return Promise.reject(new Error("not_supported"));
@@ -593,13 +618,23 @@
 			var options;
 			try { options = parseCreate(begin.options); } catch (e) { return; }
 			options.extensions = Object.assign({}, options.extensions || {}, { credProps: true });
-			navigator.credentials.create({ publicKey: options, mediation: "conditional" }).then(function (cred) {
+			// An explicit ceremony may already be in flight (e.g. the user clicked
+			// "Add" before the silent upgrade armed) — don't serialize behind it.
+			abortConditionalCreate();
+			var controller = newAbortController();
+			_conditionalCreateAbort = controller;
+			navigator.credentials.create({
+				publicKey: options,
+				mediation: "conditional",
+				signal: controller ? controller.signal : undefined,
+			}).then(function (cred) {
+				_conditionalCreateAbort = null;
 				if (!cred) return;
 				var payload = cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
 				post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (v) {
 					if (v && v.ok) fireSignal(unwrap(v.body));
 				});
-			}).catch(function () { /* silent on decline/absence */ });
+			}).catch(function () { _conditionalCreateAbort = null; /* silent on decline/absence/abort */ });
 		}).catch(function () {});
 	}
 

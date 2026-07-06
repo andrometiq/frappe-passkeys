@@ -13,7 +13,10 @@ const { defineConfig } = require("cypress");
 module.exports = defineConfig({
 	adminPassword: "admin",
 	defaultCommandTimeout: 20000,
-	pageLoadTimeout: 15000,
+	// Cold, dev-mode desk loads (unminified assets + first-visit download) can
+	// exceed a tight page-load budget; give the initial /app visit room so the
+	// specs don't flake on asset download time.
+	pageLoadTimeout: 60000,
 	viewportHeight: 960,
 	viewportWidth: 1400,
 	retries: { runMode: 1, openMode: 0 },

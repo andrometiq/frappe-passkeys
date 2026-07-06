@@ -223,7 +223,7 @@ Cypress.Commands.add("register_passkey", (user, password) => {
 	cy.window().its("frappe").should("exist");
 	cy.window().then((win) =>
 		win.frappe
-			.call("passkeys.passkey.begin_registration", { flow: "explicit" })
+			.call("passkeys.api.registration.begin_registration", { flow: "explicit" })
 			.then((r) => {
 				const opts = r.message.options;
 				// Parse the L3 JSON options → CredentialCreationOptions, add the
@@ -233,7 +233,7 @@ Cypress.Commands.add("register_passkey", (user, password) => {
 				return navigator.credentials
 					.create({ publicKey: create_opts })
 					.then((cred) =>
-						win.frappe.call("passkeys.passkey.verify_registration", {
+						win.frappe.call("passkeys.api.registration.verify_registration", {
 							state_id: r.message.state_id,
 							credential: JSON.stringify(cred.toJSON()),
 						})
