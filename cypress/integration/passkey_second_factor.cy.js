@@ -7,8 +7,9 @@
 //      onto OTP);
 //   2. the OTP-fallback secondary action hands off to core's own OTP UI
 //      (`#login_token`) when passkey_2fa_allow_otp_fallback is on;
-//   3. a failed leg-2 verify re-arms a fresh state and a second gesture succeeds
-//      WITHOUT ever re-POSTing an assertion (§6.3 / A37).
+//   3. a failed leg-2 verify re-arms the UI and a second gesture succeeds WITHOUT
+//      ever re-POSTing an assertion (§6.3 / A37; fresh server re-arm is covered
+//      by passkeys/tests/test_second_factor.py).
 //
 // The second factor is hard-exempt for Administrator (§6.2), so these run as a
 // dedicated non-admin user registered while a first-factor mode is on, then
@@ -16,7 +17,7 @@
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 
-const SF_USER = "passkey-sf-ui@example.com";
+const SF_USER = `passkey-sf-ui-${Date.now()}@example.com`;
 const SF_PW = "Secret_passw0rd_9x!";
 const ADMIN_PW = () => Cypress.env("adminPassword") || "admin";
 
@@ -27,18 +28,18 @@ chromium_only("password → passkey second factor", () => {
 		// 1. as admin: enable a first-factor mode + create the user, so the
 		//    committed registration ceremony can seed a real resident credential.
 		cy.login("Administrator", ADMIN_PW());
-		cy.visit("/app");
+		cy.visit_desk("Administrator");
 		cy.setup_passkey_settings({ second_factor: false });
 		cy.ensure_sf_user(SF_USER, SF_PW);
 		cy.purge_server_passkeys(SF_USER);
 
 		// 2. register a passkey AS the user (still 2FA-uncovered ⇒ plain login).
-		cy.register_passkey(SF_USER, SF_PW);
+		cy.register_passkey(SF_USER, SF_PW, { surface: "portal" });
 
 		// 3. flip the site to second-factor mode (core 2FA ON is the floor) and
 		//    cover the user with a 2FA role AFTER the passkey exists.
 		cy.login("Administrator", ADMIN_PW());
-		cy.visit("/app");
+		cy.visit_desk("Administrator");
 		cy.setup_second_factor({ first_factor: false, otp_fallback: true });
 		cy.enroll_user_2fa(SF_USER);
 		cy.call("logout");
@@ -46,7 +47,7 @@ chromium_only("password → passkey second factor", () => {
 
 	after(() => {
 		cy.login("Administrator", ADMIN_PW());
-		cy.visit("/app");
+		cy.visit_desk("Administrator");
 		cy.teardown_second_factor();
 		cy.delete_test_user(SF_USER);
 		cy.disable_virtual_authenticator();
@@ -58,7 +59,7 @@ chromium_only("password → passkey second factor", () => {
 	});
 
 	function submitPassword() {
-		cy.visit("/login");
+		cy.visit_login();
 		cy.get("#login_email").clear().type(SF_USER);
 		cy.get("#login_password").clear().type(SF_PW, { log: false });
 		cy.get(".form-login").first().submit();
@@ -66,10 +67,12 @@ chromium_only("password → passkey second factor", () => {
 	}
 
 	it("password submit drives the passkey step-up and mints a session", () => {
+		cy.intercept_frappe_method("passkeys.passkey.verify_second_factor", "verify_sf");
 		submitPassword();
 		cy.contains(".passkey-dialog button", "Use a passkey").click();
-		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk)/);
-		cy.window().its("frappe.session.user").should("eq", SF_USER);
+		cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 200);
+		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
+		cy.assert_logged_user(SF_USER);
 	});
 
 	it("offers the OTP fallback and hands off to core's OTP UI", () => {
@@ -84,31 +87,31 @@ chromium_only("password → passkey second factor", () => {
 
 	it("re-arms on a failed passkey then succeeds on a fresh gesture (no re-POST)", () => {
 		const sf = {};
-		const assertionIds = [];
+		const assertionPayloads = [];
 		let verifyCalls = 0;
 
 		// capture leg 1's still-unconsumed state + options so the stubbed re-arm
 		// can hand them back (the real state is untouched — the first verify is
 		// short-circuited before it reaches the server).
-		cy.intercept("POST", "**/passkeys.passkey.login_with_password", (req) => {
+		cy.intercept_frappe_method("passkeys.passkey.login_with_password", "pw", (req) => {
 			req.continue((res) => {
 				sf.tmpId = res.body.tmp_id;
 				sf.options = res.body.verification && res.body.verification.options;
 			});
-		}).as("pw");
+		});
 
-		cy.intercept("POST", "**/passkeys.passkey.verify_second_factor", (req) => {
+		cy.intercept_frappe_method("passkeys.passkey.verify_second_factor", "verify_sf", (req, body) => {
 			verifyCalls += 1;
 			try {
-				const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 				const cred = typeof body.credential === "string" ? JSON.parse(body.credential) : body.credential;
-				assertionIds.push(cred && cred.id);
+				assertionPayloads.push(JSON.stringify(cred));
 			} catch (e) {
-				assertionIds.push(null);
+				assertionPayloads.push(null);
 			}
 			if (verifyCalls === 1) {
-				// server-shaped re-arm: CeremonyExpired + a fresh state_id/options
-				// (here the still-live leg-1 pair) — the bundle retries on it.
+				// server-shaped re-arm: CeremonyExpired + state_id/options. This client
+				// spec reuses the still-live leg-1 pair so the second verify can fall
+				// through to the real server; Python covers fresh server re-arm.
 				req.reply({
 					statusCode: 401,
 					body: {
@@ -120,20 +123,23 @@ chromium_only("password → passkey second factor", () => {
 				});
 			}
 			// verifyCalls === 2 falls through to the real server (consumes leg 1).
-		}).as("verify_sf");
+		});
 
 		submitPassword();
 		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		cy.wait("@verify_sf", { timeout: 20000 });
 		// re-arm keeps the dialog open with an inline error; a fresh gesture retries
 		cy.get(".passkey-dialog .passkey-dialog-error", { timeout: 15000 }).should("not.be.empty");
 		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		cy.wait("@verify_sf", { timeout: 20000 });
 
-		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk)/);
-		cy.window().its("frappe.session.user").should("eq", SF_USER);
+		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
+		cy.assert_logged_user(SF_USER);
 
 		cy.then(() => {
 			expect(verifyCalls, "a second verify happened").to.be.greaterThan(1);
-			const nonNull = assertionIds.filter(Boolean);
+			const nonNull = assertionPayloads.filter(Boolean);
+			expect(nonNull.length, "each verify payload was captured").to.eq(verifyCalls);
 			// each verify carried a freshly-minted assertion — never a replay
 			expect(new Set(nonNull).size, "no assertion was re-POSTed").to.eq(nonNull.length);
 		});

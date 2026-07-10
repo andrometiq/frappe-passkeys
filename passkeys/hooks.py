@@ -30,6 +30,23 @@ app_include_css = [
 	"/assets/passkeys/css/passkey_manage.css",
 ]
 
+# Native Desk user-menu entry (§8.1 / F3-9). Frappe syncs this hook into the
+# Navbar Settings Single on install/migrate, then develop's sidebar renders it
+# through frappe.ui.create_menu from frappe.boot.navbar_settings.settings_dropdown.
+# The condition is only the runtime off/dormant gate. Older desks can evaluate
+# navbar conditions before this bundle publishes frappe.passkeys.manage; the
+# action itself is still available by the time the rendered menu item is clicked.
+standard_navbar_items = [
+	{
+		"item_label": "My Passkeys",
+		"item_type": "Action",
+		"action": "frappe.passkeys.manage.openManagerDialog()",
+		"condition": "!!(frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.enabled)",
+		"icon": "key",
+		"is_standard": 1,
+	}
+]
+
 # DocType client scripts (§8.1 / §9.4 — P6 frontend)
 # --------------------------------------------------
 # User form: the "Passkeys" section (own form ⇒ interactive cards + add; another
@@ -57,7 +74,10 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 # Migration
 # ---------
 # Programmatic registry Property Setter — never a fixtures/ fixture (§14).
-after_migrate = ["passkeys.install.sync_registry_fixture"]
+after_migrate = [
+	"passkeys.install.sync_registry_fixture",
+	"passkeys.install.sync_standard_navbar_items",
+]
 
 # Website integration
 # -------------------

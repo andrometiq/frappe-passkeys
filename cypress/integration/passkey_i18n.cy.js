@@ -16,7 +16,7 @@ const FR_LABEL = "Se connecter avec une clé d'accès";
 chromium_only("passkey guest i18n", () => {
 	before(() => {
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		// Guest language resolves from the preferred_language cookie.
 		cy.call("logout");
@@ -28,7 +28,7 @@ chromium_only("passkey guest i18n", () => {
 
 	it("renders passkey strings in the request language via the app endpoint", () => {
 		cy.setCookie("preferred_language", "fr");
-		cy.visit("/login");
+		cy.visit_login();
 		// The label starts English and is replaced once the merged catalog lands;
 		// cypress retries the assertion until the merge completes.
 		cy.get("#passkey-login-btn", { timeout: 20000 }).should("have.text", FR_LABEL);
@@ -36,7 +36,7 @@ chromium_only("passkey guest i18n", () => {
 
 	it("does not clobber the rest of frappe._messages", () => {
 		cy.setCookie("preferred_language", "fr");
-		cy.visit("/login");
+		cy.visit_login();
 		cy.get("#passkey-login-btn").should("exist");
 		cy.window().then((win) => {
 			// merge is additive: the passkey key is present and _messages is an object

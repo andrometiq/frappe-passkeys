@@ -17,55 +17,74 @@ chromium_only("passkey action-confirmation — grant semantics", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		cy.login(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	it("a consumed grant is rejected on replay (single-use)", () => {
-		cy.visit("/app");
-		cy.window().then((win) =>
-			cy.wrap(win.frappe.passkeys.confirm(ACTION, { token: "G1" }), { timeout: 20000 }).then(
-				(grant) => {
-					const first = win.frappe.call({
-						method: PROBE,
-						args: { token: "G1" },
-						headers: { "X-Passkey-Grant": grant },
-					});
-					return cy.wrap(first).then((r1) => {
-						expect(r1.message.confirmed).to.eq(true);
-						// replay the same grant → 401 retry contract (rejected server-side)
-						const replay = win.frappe
-							.call({
-								method: PROBE,
-								args: { token: "G1" },
-								headers: { "X-Passkey-Grant": grant },
-							})
-							.then(
-								() => "ACCEPTED",
-								() => "REJECTED"
-							);
-						return cy.wrap(replay).should("eq", "REJECTED");
-					});
-				}
-			)
-		);
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
+		cy.window().then((win) => {
+			const p = win.frappe.passkeys.confirm(ACTION, { token: "G1" });
+			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			return cy.wrap(p, { timeout: 20000 }).then((grant) => {
+				const first = win.frappe.call({
+					method: PROBE,
+					args: { token: "G1" },
+					headers: { "X-Passkey-Grant": grant },
+				});
+				return cy.wrap(first).then((r1) => {
+					expect(r1.message.confirmed).to.eq(true);
+					// replay the same grant → 401 retry contract (rejected server-side)
+					const replay = win.frappe
+						.call({
+							method: PROBE,
+							args: { token: "G1" },
+							headers: { "X-Passkey-Grant": grant },
+						})
+						.then(
+							() => "ACCEPTED",
+							() => "REJECTED"
+						);
+					return cy.wrap(replay).should("eq", "REJECTED");
+				});
+			});
+		});
 	});
 
 	it("burns the grant even when the wrapped action fails (A-F20)", () => {
-		cy.visit("/app");
-		cy.window().then((win) =>
-			cy.wrap(win.frappe.passkeys.confirm(PROBE_FAIL, { token: "G2" }), { timeout: 20000 }).then(
-				(grant) => {
-					// the action throws AFTER the grant is consumed → the gesture is spent
-					const failed = win.frappe
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
+		cy.window().then((win) => {
+			const p = win.frappe.passkeys.confirm(PROBE_FAIL, { token: "G2" });
+			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			return cy.wrap(p, { timeout: 20000 }).then((grant) => {
+				// the action throws AFTER the grant is consumed → the gesture is spent
+				const failed = win.frappe
+					.call({
+						method: PROBE_FAIL,
+						args: { token: "G2" },
+						headers: { "X-Passkey-Grant": grant },
+					})
+					.then(
+						() => "ACCEPTED",
+						() => "FAILED"
+					);
+				return cy.wrap(failed).then((outcome) => {
+					expect(outcome).to.eq("FAILED");
+					// the same grant no longer authorizes a retry — it was burned
+					const replay = win.frappe
 						.call({
 							method: PROBE_FAIL,
 							args: { token: "G2" },
@@ -73,25 +92,11 @@ chromium_only("passkey action-confirmation — grant semantics", () => {
 						})
 						.then(
 							() => "ACCEPTED",
-							() => "FAILED"
+							() => "REJECTED"
 						);
-					return cy.wrap(failed).then((outcome) => {
-						expect(outcome).to.eq("FAILED");
-						// the same grant no longer authorizes a retry — it was burned
-						const replay = win.frappe
-							.call({
-								method: PROBE_FAIL,
-								args: { token: "G2" },
-								headers: { "X-Passkey-Grant": grant },
-							})
-							.then(
-								() => "ACCEPTED",
-								() => "REJECTED"
-							);
-						return cy.wrap(replay).should("eq", "REJECTED");
-					});
-				}
-			)
-		);
+					return cy.wrap(replay).should("eq", "REJECTED");
+				});
+			});
+		});
 	});
 });

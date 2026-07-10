@@ -12,17 +12,49 @@ const USER = "Administrator";
 const PW = () => Cypress.env("adminPassword") || "admin";
 const CLEAR_SUDO = "passkeys.tests.ui_test_helpers.clear_sudo_window";
 
+const visit_user_passkeys = () => {
+	cy.visit_desk(USER);
+	cy.window().its("cur_frm.doc.name", { timeout: 20000 }).should("eq", USER);
+	cy.document().then((doc) => {
+		const tabs = Array.from(doc.querySelectorAll("a, button, [role='tab']"));
+		const tab = tabs.find(
+			(el) =>
+				(el.textContent || "").trim() === "Connections" ||
+				el.getAttribute("href") === "#user-connections_tab" ||
+				el.getAttribute("data-target") === "#user-connections_tab" ||
+				el.getAttribute("data-bs-target") === "#user-connections_tab" ||
+				el.getAttribute("aria-controls") === "user-connections_tab"
+		);
+		expect(tab, "Connections tab").to.exist;
+		tab.click();
+	});
+	cy.get("#user-connections_tab", { timeout: 20000 }).should("be.visible");
+};
+
+const own_passkey_root = () => cy.get(".passkey-cards-root:visible", { timeout: 20000 }).last();
+
 chromium_only("passkey management — sudo-gated delete", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
+	});
+
+	beforeEach(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
+		cy.clear_virtual_credentials();
 		cy.register_passkey(USER, PW());
+		cy.clear_virtual_credentials();
+		cy.register_passkey(USER, PW());
+		cy.login(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
@@ -30,27 +62,23 @@ chromium_only("passkey management — sudo-gated delete", () => {
 
 	it("deletes without a re-prompt while the fresh-login sudo window is live", () => {
 		cy.login(USER, PW()); // fresh window
-		cy.register_passkey(USER, PW()); // a second credential so the last-method guard doesn't fire
-		cy.login(USER, PW());
-		cy.visit("/app/user/" + USER);
-		cy.get(".passkey-card", { timeout: 20000 }).should("have.length", 2);
-		cy.get(".passkey-card .passkey-delete").first().click();
+		visit_user_passkeys();
+		own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 2);
+		own_passkey_root().find(".passkey-card .passkey-delete").first().click();
 		cy.get(".modal-dialog .btn-primary").contains("Remove passkey").click();
-		cy.get(".passkey-card", { timeout: 20000 }).should("have.length", 1);
+		own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 	});
 
 	it("prompts a passkey confirmation when the sudo window is cold, then completes", () => {
 		cy.login(USER, PW());
-		cy.register_passkey(USER, PW()); // ensure >=2 so last-method guard is clear
-		cy.login(USER, PW());
-		cy.visit("/app/user/" + USER);
+		visit_user_passkeys();
 		// expire the fresh-login window so delete must re-confirm (§7.4)
 		cy.call(CLEAR_SUDO, {});
-		cy.get(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
+		own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
 		cy.get(".modal-dialog .btn-primary").contains("Remove passkey").click();
 		// the sudo dance dialog appears — a passkeys.manage confirmation
 		cy.get(".passkey-confirm-passkey", { timeout: 20000 }).should("be.visible").click();
 		// virtual authenticator auto-UV completes the ceremony → credential removed
-		cy.get(".passkey-card", { timeout: 20000 }).should("have.length", 1);
+		own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 	});
 });

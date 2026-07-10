@@ -2,10 +2,10 @@
 // License: MIT. See LICENSE
 //
 // P3 spec 7 — accessibility contract (DESIGN-v1 §5.5). One polite live region for
-// async outcomes; the injected button carries an accessible name; the step-up
-// dialog is role="dialog" + aria-modal, traps focus, is Esc-dismissable, and
-// returns focus to its opener. Presence is HELD so the "waiting for your passkey"
-// dialog stays open for inspection.
+// async outcomes; the injected button carries an accessible name; first-factor
+// passkey login delegates to the browser's native WebAuthn sheet, so this spec
+// asserts the native get() handoff and cancellation feedback rather than an app
+// dialog.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";
@@ -15,40 +15,55 @@ chromium_only("passkey login accessibility", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	it("exposes a live region and an accessibly-named button", () => {
-		cy.visit("/login");
-		cy.get(".passkey-sr-only").should("exist");
+		cy.visit_login_without_conditional();
+		cy.get("#passkey-live-region")
+			.should("have.attr", "role", "status")
+			.and("have.attr", "aria-live", "polite")
+			.and("have.attr", "aria-atomic", "true")
+			.and("have.class", "passkey-sr-only");
 		cy.get("#passkey-login-btn")
 			.should("have.text", "Sign in with a passkey")
 			.and("have.attr", "type", "button");
 	});
 
-	it("opens a modal dialog that traps + returns focus and is Esc-dismissable", () => {
-		cy.visit("/login");
-		cy.hold_passkey_taps(); // keep the ceremony pending → dialog stays open
-		cy.get("#passkey-login-btn").click();
-
-		cy.get(".passkey-dialog")
-			.should("have.attr", "role", "dialog")
-			.and("have.attr", "aria-modal", "true")
-			.and("have.attr", "aria-labelledby");
-
-		// Esc closes and focus returns to the opener
-		cy.get("body").type("{esc}");
-		cy.get(".passkey-dialog").should("not.exist");
+	it("announces native prompt cancellation and returns focus", () => {
+		cy.visit_login_without_conditional({
+			onBeforeLoad(win) {
+				const creds = win.navigator && win.navigator.credentials;
+				if (!creds || !creds.get) return;
+				win.__passkey_get_calls = [];
+				Object.defineProperty(creds, "get", {
+					configurable: true,
+					value(options) {
+						win.__passkey_get_calls.push(options);
+						return Promise.reject(new win.DOMException("cancelled", "NotAllowedError"));
+					},
+				});
+			},
+		});
+		cy.get("#passkey-login-btn").focus().click();
+		cy.window().should((win) => {
+			const call = (win.__passkey_get_calls || [])[0];
+			expect(call, "native get call").to.exist;
+			expect(call.publicKey, "publicKey options").to.exist;
+			expect(call.mediation, "explicit request has no conditional mediation").to.be.undefined;
+		});
+		cy.get("#passkey-live-region").should("contain", "Couldn't use a passkey");
+		cy.get(".login-error-banner:visible").should("contain", "Couldn't use a passkey");
+		cy.get("#login_email").should("be.visible");
 		cy.focused().should("have.id", "passkey-login-btn");
-		cy.simulate_passkey_tap(); // release for teardown hygiene
 	});
 });

@@ -15,7 +15,7 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 	});
 

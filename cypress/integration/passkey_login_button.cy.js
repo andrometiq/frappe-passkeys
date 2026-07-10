@@ -15,13 +15,14 @@ chromium_only("passkey explicit-button login", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
 		cy.setup_passkey_settings(); // re-enable (the disabled-mode test turns it off)
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
@@ -29,7 +30,7 @@ chromium_only("passkey explicit-button login", () => {
 	});
 
 	it("shows an accessible button mounted as the first alternate method", () => {
-		cy.visit("/login");
+		cy.visit_login_without_conditional();
 		cy.get("#passkey-login-btn")
 			.should("be.visible")
 			.and("have.text", "Sign in with a passkey")
@@ -41,15 +42,19 @@ chromium_only("passkey explicit-button login", () => {
 	});
 
 	it("completes a passwordless session on click", () => {
-		cy.visit("/login");
+		cy.stub_post_login_shell();
+		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify_login");
+		cy.visit_login_without_conditional();
 		cy.get("#passkey-login-btn").click();
+		cy.wait("@verify_login", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
 		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
-		cy.window().its("frappe.session.user").should("eq", USER);
+		cy.assert_logged_user(USER);
 	});
 
 	it("removes itself when every login mode is off", () => {
+		cy.login(USER, PW());
 		cy.disable_passkey_login();
-		cy.visit("/login");
+		cy.visit_login_without_conditional();
 		cy.get("#login_email").should("exist"); // page rendered
 		cy.get("#passkey-login-btn").should("not.exist");
 	});

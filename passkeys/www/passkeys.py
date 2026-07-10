@@ -16,6 +16,7 @@ moves to ``frappe/www/passkeys.py`` verbatim (§11).
 ``webauthn`` is never imported here (this is a website-render path, §1.3)."""
 
 import frappe
+from frappe.sessions import get_csrf_token
 
 from passkeys import boot, install
 
@@ -53,7 +54,11 @@ def get_context(context):
 		raise frappe.Redirect
 
 	context.no_cache = 1
+	context.csrf_token = get_csrf_token()
 	context.passkeys = boot.build_passkeys_boot(frappe.session.user)
+	if isinstance(context.get("boot"), dict):
+		context.boot["csrf_token"] = context.csrf_token
+		context.boot["passkeys"] = context.passkeys
 
 	js = context.setdefault("web_include_js", [])
 	for asset in PORTAL_JS:

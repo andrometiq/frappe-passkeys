@@ -14,7 +14,7 @@ const PW = () => Cypress.env("adminPassword") || "admin";
 describe("passkey login without WebAuthn support", () => {
 	before(() => {
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.call("logout");
 	});
@@ -22,7 +22,7 @@ describe("passkey login without WebAuthn support", () => {
 	after(() => cy.clearCookies());
 
 	it("no-ops with no button and a working password form", () => {
-		cy.visit("/login", {
+		cy.visit_login({
 			onBeforeLoad(win) {
 				// Strip WebAuthn so layered detection short-circuits.
 				try {
@@ -44,9 +44,13 @@ describe("passkey login without WebAuthn support", () => {
 		cy.get(".login-error-banner:visible").should("not.exist");
 
 		// password login remains fully functional
+		cy.stub_post_login_shell();
+		cy.intercept("POST", "/api/method/login").as("password_login");
 		cy.get("#login_email").type(USER);
 		cy.get("#login_password").type(PW());
 		cy.get(".btn-login").first().click();
+		cy.wait("@password_login").its("response.statusCode").should("be.within", 200, 299);
 		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
+		cy.assert_logged_user(USER);
 	});
 });

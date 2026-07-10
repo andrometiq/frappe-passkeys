@@ -15,20 +15,24 @@ chromium_only("passkey action-confirmation — accessibility", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		cy.login(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	it("is a labelled modal dialog, Esc-cancels, and returns focus to the opener", () => {
-		cy.visit("/app");
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.hold_passkey_taps(); // keep the ceremony pending → the dialog stays open
 		cy.window().then((win) => {
 			// an invoking control that owns focus before the dialog opens
@@ -43,13 +47,18 @@ chromium_only("passkey action-confirmation — accessibility", () => {
 				.catch((err) => (win.__confirm_reject = err));
 		});
 
-		cy.get(".passkey-dialog")
-			.should("have.attr", "role", "dialog")
-			.and("have.attr", "aria-labelledby");
-		cy.get(".passkey-dialog [aria-live]").should("exist");
+		cy.get(".modal.show").should(($modal) => {
+			const modal = $modal[0];
+			expect(modal.getAttribute("role"), "modal role").to.eq("dialog");
+			expect(modal.querySelector(".passkey-confirm"), "passkey confirm body").to.exist;
+			const title = modal.querySelector(".modal-title");
+			expect(title && title.textContent.trim(), "dialog title").to.not.eq("");
+		});
+		cy.get(".modal.show .passkey-confirm-msg").should("have.attr", "aria-live", "polite");
 
-		cy.get("body").type("{esc}");
-		cy.get(".passkey-dialog").should("not.exist");
+		cy.focused().type("{esc}");
+		cy.get(".modal.show").should("not.exist");
+		cy.get(".passkey-confirm").should("not.be.visible");
 		cy.focused().should("have.id", "confirm-opener");
 		cy.window().its("__confirm_reject.code").should("eq", "user_cancelled");
 		cy.simulate_passkey_tap();

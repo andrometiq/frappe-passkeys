@@ -43,6 +43,7 @@ exception-hardened: a failure here degrades to a nudge-less page, never a broken
 """
 
 import frappe
+from frappe.sessions import get_csrf_token
 
 from passkeys import boot, install
 from passkeys.shims.login_page import _any_login_mode_enabled
@@ -74,9 +75,13 @@ def website_context(context) -> None:
 		# passkeys, so publish the single boot contract (build_passkeys_boot) into
 		# context.boot; base.html renders it into frappe.boot. Only reached for an authed
 		# user on an enabled site — the Desk pays the identical build per boot (§8.1).
+		csrf_token = get_csrf_token()
 		existing_boot = context.get("boot")
-		if isinstance(existing_boot, dict) and "passkeys" not in existing_boot:
-			existing_boot["passkeys"] = boot.build_passkeys_boot(user)
+		if isinstance(existing_boot, dict):
+			if "passkeys" not in existing_boot:
+				existing_boot["passkeys"] = boot.build_passkeys_boot(user)
+			if "csrf_token" not in existing_boot:
+				existing_boot["csrf_token"] = csrf_token
 
 		# Same bundle set as /passkeys (§5.1) — idempotent append; the bundle self-gates
 		# on the #passkey-portal-root mount (cards only there) and the nudge verdict.

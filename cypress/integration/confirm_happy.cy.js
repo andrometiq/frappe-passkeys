@@ -16,39 +16,43 @@ chromium_only("passkey action-confirmation — happy path", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		cy.login(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	it("confirm(action, params) resolves a grant token that authorizes the action", () => {
-		cy.visit("/app");
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.window().its("frappe.passkeys").should("exist");
-		cy.window().then((win) =>
-			cy
-				.wrap(win.frappe.passkeys.confirm(ACTION, { token: "T1" }), { timeout: 20000 })
-				.then((grant) => {
-					expect(grant, "grant token").to.be.a("string").and.have.length.greaterThan(10);
-					return cy
-						.wrap(
-							win.frappe.call({
-								method: PROBE,
-								args: { token: "T1" },
-								headers: { "X-Passkey-Grant": grant },
-							})
-						)
-						.then((r) => {
-							expect(r.message.confirmed).to.eq(true);
-							expect(r.message.token).to.eq("T1");
-						});
-				})
-		);
+		cy.window().then((win) => {
+			const p = win.frappe.passkeys.confirm(ACTION, { token: "T1" });
+			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			return cy.wrap(p, { timeout: 20000 }).then((grant) => {
+				expect(grant, "grant token").to.be.a("string").and.have.length.greaterThan(10);
+				return cy
+					.wrap(
+						win.frappe.call({
+							method: PROBE,
+							args: { token: "T1" },
+							headers: { "X-Passkey-Grant": grant },
+						})
+					)
+					.then((r) => {
+						expect(r.message.confirmed).to.eq(true);
+						expect(r.message.token).to.eq("T1");
+					});
+			});
+		});
 	});
 });

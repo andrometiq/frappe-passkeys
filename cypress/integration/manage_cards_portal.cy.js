@@ -15,20 +15,29 @@ chromium_only("passkey management — portal /passkeys", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	it("mounts the card component into #passkey-portal-root", () => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
+		cy.purge_server_passkeys(USER);
+		cy.intercept("POST", "**/api/method/passkeys.api.credentials.list_credentials").as("portalList");
 		cy.visit("/passkeys");
 		cy.get("#passkey-portal-root", { timeout: 20000 }).should("exist");
+		cy.wait("@portalList").then(({ response }) => {
+			expect(response.statusCode, JSON.stringify(response.body)).to.eq(200);
+		});
 		// no credentials yet ⇒ empty-state hero
 		cy.get("#passkey-portal-root .passkey-empty", { timeout: 20000 }).should("exist");
 	});

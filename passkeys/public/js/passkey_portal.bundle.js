@@ -42,8 +42,8 @@
 	function jsonHeaders(extra) {
 		var h = { "Content-Type": "application/json", Accept: "application/json" };
 		var f = window.frappe;
-		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token;
+		var token = f && (f.csrf_token || (f.boot && f.boot.csrf_token) || (f.session && f.session.csrf_token));
+		if (token && token !== "None") h["X-Frappe-CSRF-Token"] = token;
 		if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
 		return h;
 	}

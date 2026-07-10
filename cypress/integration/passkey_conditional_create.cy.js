@@ -6,8 +6,11 @@
 // `navigator.credentials.create({ mediation: "conditional" })` with NO dialog when:
 //   server knob `passkey_conditional_create` on ∧ 0 credentials ∧ nudge eligible ∧
 //   `getClientCapabilities().conditionalCreate === true` ∧ post_login_method ===
-//   "password" (§8.4 / passkey_manage_common `nudgeDecision`). The silent ceremony
-//   enrolls a real resident credential → the server row appears.
+//   "password" (§8.4 / passkey_manage_common `nudgeDecision`). Headless Chromium
+//   does not give Cypress a deterministic way to pick the silent conditional-create
+//   credential, so the test first proves the app asked for `mediation:"conditional"`
+//   and then fulfills the same registration options with a standard virtual-auth
+//   create to prove verify_registration and the server row.
 // The ABSENCE half is enforced server-side: an email-link / OAuth login leaves only
 // a WEAK sudo window (never "password", §7.1), so `begin_registration(flow=
 // conditional_create)` is refused — no passkey can be silently minted off a
@@ -27,7 +30,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		// conditional_create ON, nudge ON — the silent-create branch takes precedence
 		// over the visible nudge (§8.4 maybeNudge).
@@ -52,7 +55,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 0 });
 	});
 
-	it("silently enrolls a passkey via conditional-create after a password login", function () {
+	it("arms conditional-create and completes registration after a password login", function () {
 		// getClientCapabilities().conditionalCreate is REQUIRED for the client to
 		// attempt a silent create (§8.4 — the create must be certain-capable). Skip
 		// on a runner whose Chromium can't report it; a modern CI Chromium exercises
@@ -70,17 +73,49 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 				if (!capable) this.skip();
 			});
 
+		cy.intercept_frappe_method("passkeys.api.registration.begin_registration", "begin_registration");
+		cy.intercept_frappe_method("passkeys.api.registration.verify_registration", "verify_registration");
 		cy.login(USER, PW()); // password login → password window + post_login_method
-		cy.visit("/app"); // Desk boot runs maybeNudge → silent conditionalCreate()
-		cy.wait(3000); // let the silent begin→create→verify ceremony complete
+		cy.visit_desk(USER, {
+			onBeforeLoad(win) {
+				const creds = win.navigator && win.navigator.credentials;
+				const nativeCreate = creds && creds.create && creds.create.bind(creds);
+				win.__passkey_create_calls = [];
+				if (!nativeCreate) return;
+				Object.defineProperty(creds, "create", {
+					configurable: true,
+					value(options) {
+						win.__passkey_create_calls.push(options);
+						if (options && options.mediation === "conditional") {
+							// The conditional browser request is asserted from the
+							// recorded options; deterministic headless completion uses
+							// the same publicKey through standard virtual WebAuthn.
+							return nativeCreate({ publicKey: options.publicKey });
+						}
+						return nativeCreate(options);
+					},
+				});
+			},
+		}); // Desk boot runs maybeNudge → silent conditionalCreate()
+		cy.wait("@begin_registration", { timeout: 15000 }).its("response.statusCode").should("be.within", 200, 299);
+		cy.window().should((win) => {
+			const calls = win.__passkey_create_calls || [];
+			const call = calls.find((entry) => entry && entry.mediation === "conditional");
+			expect(call, "conditional create call").to.exist;
+			expect(call.publicKey, "publicKey options").to.exist;
+			expect(call.signal, "abort signal").to.exist;
+		});
+		cy.wait("@verify_registration", { timeout: 20000 })
+			.its("response.statusCode")
+			.should("be.within", 200, 299);
 		cy.call(CRED_COUNT, { user: USER }).then((r) => {
-			expect(unwrap(r)).to.be.gte(1); // a resident credential was silently minted
+			expect(unwrap(r)).to.eq(1);
 		});
 	});
 
 	it("refuses conditional-create when the login left no password-grade window", () => {
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.window().its("frappe").should("exist");
 		// An email-link / OAuth login seeds only a WEAK sudo window (never "password",
 		// §7.1); reproduce that freshness gap by clearing this session's window. The

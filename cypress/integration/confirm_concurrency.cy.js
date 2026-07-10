@@ -14,20 +14,24 @@ chromium_only("passkey action-confirmation — concurrency", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		cy.login(USER, PW());
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
-	it("two identical concurrent call()s share a single ceremony", () => {
-		cy.visit("/app");
+	it("two identical concurrent call()s share one ceremony but only one single-use grant", () => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		let begins = 0;
 		cy.intercept("POST", "**/passkeys.confirm.begin_confirmation", (req) => {
 			begins += 1;
@@ -35,16 +39,25 @@ chromium_only("passkey action-confirmation — concurrency", () => {
 		});
 		cy.window().then((win) => {
 			const args = { token: "C1" };
-			const both = Promise.all([
+			win.__passkey_confirm_results = Promise.allSettled([
 				win.frappe.passkeys.call(PROBE, args),
 				win.frappe.passkeys.call(PROBE, args),
 			]);
-			return cy.wrap(both, { timeout: 20000 }).then(([a, b]) => {
-				expect(a.confirmed).to.eq(true);
-				expect(b.confirmed).to.eq(true);
-				expect(begins, "one shared begin_confirmation").to.eq(1);
-				cy.get(".passkey-dialog").should("not.exist");
-			});
 		});
+		cy.get(".modal.show").should("be.visible");
+		cy.get(".passkey-confirm-passkey").should("be.visible").click();
+		cy.window().then((win) =>
+			cy.wrap(win.__passkey_confirm_results, { timeout: 20000 }).then((results) => {
+				const fulfilled = results.filter((r) => r.status === "fulfilled");
+				const rejected = results.filter((r) => r.status === "rejected");
+				expect(fulfilled, "one retried action uses the grant").to.have.length(1);
+				expect(rejected, "the second retry cannot reuse the grant").to.have.length(1);
+				expect(fulfilled[0].value.confirmed).to.eq(true);
+				expect(rejected[0].reason.code).to.eq("confirmation_failed");
+				expect(begins, "one shared begin_confirmation").to.eq(1);
+			})
+		);
+		cy.get(".modal.show", { timeout: 10000 }).should("not.exist");
+		cy.get(".passkey-confirm").should("not.be.visible");
 	});
 });

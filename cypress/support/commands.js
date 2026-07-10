@@ -37,7 +37,9 @@ const DEFAULT_AUTHENTICATOR_OPTIONS = {
 // ---------------------------------------------------------------------------
 Cypress.Commands.add("enable_virtual_authenticator", (options = {}) =>
 	cy.wrap(null, { log: false }).then(() =>
-		cdp("WebAuthn.enable", { enableUI: false })
+		cdp("WebAuthn.disable")
+			.catch(() => {})
+			.then(() => cdp("WebAuthn.enable", { enableUI: false }))
 			.then(() =>
 				cdp("WebAuthn.addVirtualAuthenticator", {
 					options: { ...DEFAULT_AUTHENTICATOR_OPTIONS, ...options },
@@ -120,30 +122,57 @@ Cypress.Commands.add("clear_virtual_credentials", (id) =>
 // ---------------------------------------------------------------------------
 // Frappe idiom (mirrors frappe/cypress/support/commands.js)
 // ---------------------------------------------------------------------------
-Cypress.Commands.add("login", (email, password) => {
+Cypress.Commands.add("login", (email, password, attempt = 0) => {
 	if (!email) email = Cypress.config("testUser") || "Administrator";
 	if (!password) password = Cypress.env("adminPassword") || "admin";
 	return cy.request({
 		url: "/api/method/login",
 		method: "POST",
 		body: { usr: email, pwd: password },
+		failOnStatusCode: false,
+	}).then((res) => {
+		if (res.status >= 500 && attempt < 2) {
+			return cy.wait(250, { log: false }).then(() => cy.login(email, password, attempt + 1));
+		}
+		expect(res.status).to.be.within(200, 399);
+		return res;
 	});
 });
 
+const normalize_csrf = (token) => (token && token !== "None" ? token : null);
+
+const csrf_from_html = (html) => {
+	const match = String(html || "").match(/frappe\.csrf_token\s*=\s*"([^"]+)"/);
+	return normalize_csrf(match && match[1]);
+};
+
+const csrf_for_call = () =>
+	cy.window({ log: false }).then((win) => {
+		const frappe = win && win.frappe;
+		const token = normalize_csrf(frappe && (frappe.csrf_token || (frappe.boot && frappe.boot.csrf_token)));
+		if (token) return token;
+		return cy
+			.request({
+				url: "/desk",
+				method: "GET",
+				failOnStatusCode: false,
+			})
+			.then((page) => csrf_from_html(page.body));
+	});
+
 Cypress.Commands.add("call", (method, args) =>
-	cy
-		.window()
-		.its("frappe.csrf_token")
-		.then((csrf_token) =>
-			cy
-				.request({
-					url: `/api/method/${method}`,
-					method: "POST",
-					body: args,
-					headers: { "X-Frappe-CSRF-Token": csrf_token, Accept: "application/json" },
-				})
-				.then((res) => res.body)
-		)
+	csrf_for_call()
+		.then((csrf_token) => {
+			const headers = { Accept: "application/json" };
+			if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
+			return cy.request({
+				url: `/api/method/${method}`,
+				method: "POST",
+				body: args,
+				headers,
+			});
+		})
+		.then((res) => res.body)
 );
 
 // ---------------------------------------------------------------------------
@@ -156,6 +185,116 @@ Cypress.Commands.add("call", (method, args) =>
 // browser ceremony to succeed.
 const site_origin = () => new URL(Cypress.config("baseUrl")).origin;
 const site_host = () => new URL(Cypress.config("baseUrl")).hostname;
+
+// Cypress can mis-wait on the Desk base redirect chain; navigate to a concrete
+// route so the transition to the booted app shell always resolves and `cy.visit`
+// can finish waiting on `load`.
+Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
+	const deskUser = encodeURIComponent(String(user || "Administrator"));
+	return cy.visit(`/app/user/${deskUser}`, options).window().its("frappe").should("exist");
+});
+
+// Login-page specs often configure site state while authenticated, then need to
+// exercise the Guest login route. Clear only auth cookies so deliberate request
+// state such as preferred_language survives.
+Cypress.Commands.add("visit_login", (options = {}) => {
+	return cy.getCookie("preferred_language", { log: false }).then((language) => {
+		cy.clearCookies({ log: false });
+		if (language && language.value) {
+			cy.setCookie("preferred_language", language.value, { log: false });
+		}
+		return cy.visit("/login", options);
+	});
+});
+
+const disable_conditional_mediation = (win) => {
+	const PKC = win && win.PublicKeyCredential;
+	if (!PKC) return;
+	try {
+		Object.defineProperty(PKC, "getClientCapabilities", {
+			configurable: true,
+			value() {
+				return Promise.resolve({
+					conditionalCreate: false,
+					conditionalGet: false,
+					userVerifyingPlatformAuthenticator: true,
+					hybridTransport: true,
+				});
+			},
+		});
+	} catch (e) {
+		/* ignore read-only browser statics */
+	}
+	try {
+		Object.defineProperty(PKC, "isConditionalMediationAvailable", {
+			configurable: true,
+			value() {
+				return Promise.resolve(false);
+			},
+		});
+	} catch (e) {
+		/* ignore read-only browser statics */
+	}
+};
+
+Cypress.Commands.add("visit_login_without_conditional", (options = {}) => {
+	const onBeforeLoad = options.onBeforeLoad;
+	return cy.visit_login({
+		...options,
+		onBeforeLoad(win) {
+			disable_conditional_mediation(win);
+			if (onBeforeLoad) onBeforeLoad(win);
+		},
+	});
+});
+
+Cypress.Commands.add("assert_logged_user", (user) =>
+	cy
+		.request("/api/method/frappe.auth.get_logged_user")
+		.its("body.message")
+		.should("eq", user)
+);
+
+const request_body_params = (body) => {
+	if (!body) return {};
+	if (typeof body === "object") return body;
+	const raw = String(body);
+	try {
+		return JSON.parse(raw);
+	} catch (e) {
+		/* not JSON */
+	}
+	try {
+		return Object.fromEntries(new URLSearchParams(raw));
+	} catch (e) {
+		return {};
+	}
+};
+
+Cypress.Commands.add("intercept_frappe_method", (method, alias, handler) =>
+	cy.intercept("POST", "**", (req) => {
+		const params = request_body_params(req.body);
+		const urlMethod = String(req.url || "").match(/\/api\/method\/([^/?#]+)/);
+		const requestMethod = params.cmd || (urlMethod && decodeURIComponent(urlMethod[1]));
+		if (requestMethod !== method) return;
+		req.alias = alias;
+		if (handler) return handler(req, params);
+	})
+);
+
+Cypress.Commands.add("stub_post_login_shell", () => {
+	const page = "<!doctype html><html><body data-cypress-desk-navigation=\"stub\"></body></html>";
+	cy.intercept("GET", "/desk*", {
+		statusCode: 200,
+		headers: { "content-type": "text/html; charset=utf-8" },
+		body: page,
+	}).as("desk_navigation");
+	cy.intercept("GET", "/app*", {
+		statusCode: 200,
+		headers: { "content-type": "text/html; charset=utf-8" },
+		body: page,
+	}).as("app_navigation");
+});
 
 // Configure Passkey Settings for this test site.
 Cypress.Commands.add("setup_passkey_settings", (opts = {}) =>
@@ -178,6 +317,14 @@ Cypress.Commands.add("disable_passkey_login", () =>
 
 Cypress.Commands.add("purge_server_passkeys", (user) =>
 	cy.call("passkeys.tests.ui_test_helpers.purge_passkeys", { user })
+);
+
+Cypress.Commands.add("clear_registration_rate_limit", (user) =>
+	cy.call("passkeys.tests.ui_test_helpers.clear_registration_rate_limit", { user })
+);
+
+Cypress.Commands.add("clear_password_failures", (user) =>
+	cy.call("passkeys.tests.ui_test_helpers.clear_password_failures", { user })
 );
 
 // --- second-factor (P4, §6) scaffolding ------------------------------------
@@ -212,33 +359,45 @@ Cypress.Commands.add("delete_test_user", (email) =>
 );
 
 // Seed a real discoverable credential for `user`: log in over the password leg
-// (which seeds a sudo window), drive the committed registration ceremony from
-// the page (virtual authenticator generates the ES256 key — no injection), then
-// log out. Leaves a resident credential on the authenticator AND a server row,
-// so the subsequent login specs are a true end-to-end round trip.
-Cypress.Commands.add("register_passkey", (user, password) => {
-	cy.login(user, password);
-	// Visit a Desk page so window.frappe (+ csrf_token + the JSON shim) exist.
-	cy.visit("/app");
-	cy.window().its("frappe").should("exist");
-	cy.window().then((win) =>
-		win.frappe
-			.call("passkeys.api.registration.begin_registration", { flow: "explicit" })
-			.then((r) => {
-				const opts = r.message.options;
-				// Parse the L3 JSON options → CredentialCreationOptions, add the
-				// credProps extension exactly as the bundle does (§3.5).
-				const create_opts = win.PublicKeyCredential.parseCreationOptionsFromJSON(opts);
-				create_opts.extensions = { ...(create_opts.extensions || {}), credProps: true };
-				return navigator.credentials
-					.create({ publicKey: create_opts })
-					.then((cred) =>
-						win.frappe.call("passkeys.api.registration.verify_registration", {
-							state_id: r.message.state_id,
-							credential: JSON.stringify(cred.toJSON()),
-						})
-					);
-			})
-	);
-	cy.call("logout");
+// (which seeds a sudo window), then drive the committed registration ceremony
+// from the page (virtual authenticator generates the ES256 key — no injection).
+// Leaves a resident credential on the authenticator AND a server row, so the
+// subsequent login specs are a true end-to-end round trip.
+Cypress.Commands.add("register_passkey", (user, password, options = {}) => {
+	return cy
+		.clear_registration_rate_limit(user)
+		.then(() => cy.login(user, password))
+		.then(() => {
+			if (options.surface === "portal") {
+				return cy.visit("/passkeys");
+			}
+			return cy.visit_desk(user, { onBeforeLoad: disable_conditional_mediation });
+		})
+		.then(() => cy.window().its("frappe").should("exist"))
+		.then(() =>
+			cy.window().then((win) =>
+				win.frappe
+					.call("passkeys.api.registration.begin_registration", { flow: "explicit" })
+					.then((r) => {
+						const opts = r.message.options;
+						// Parse the L3 JSON options → CredentialCreationOptions, add the
+						// credProps extension exactly as the bundle does (§3.5).
+						const create_opts = win.PublicKeyCredential.parseCreationOptionsFromJSON(opts);
+						create_opts.extensions = { ...(create_opts.extensions || {}), credProps: true };
+						return win.navigator.credentials
+							.create({ publicKey: create_opts })
+							.catch((err) => {
+								throw new Error(
+									`navigator.credentials.create failed: ${err && err.name}: ${err && err.message}`
+								);
+							})
+							.then((cred) =>
+								win.frappe.call("passkeys.api.registration.verify_registration", {
+									state_id: r.message.state_id,
+									credential: JSON.stringify(cred.toJSON()),
+								})
+							);
+					})
+			)
+		);
 });

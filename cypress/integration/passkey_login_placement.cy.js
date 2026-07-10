@@ -14,14 +14,13 @@ const PW = () => Cypress.env("adminPassword") || "admin";
 chromium_only("passkey login DOM contract", () => {
 	before(() => {
 		cy.login(USER, PW());
-		cy.visit("/app");
 		cy.setup_passkey_settings();
 	});
 
 	after(() => cy.clearCookies());
 
 	it("mounts the button and patches the username field on this branch markup", () => {
-		cy.visit("/login");
+		cy.visit_login();
 		// button mount point resolved (§5.2: .btn-login-option / .social-logins / form)
 		cy.get("#passkey-login-btn").should("exist");
 		cy.get(".form-login, form.form-signin").should("exist");
@@ -35,7 +34,7 @@ chromium_only("passkey login DOM contract", () => {
 	});
 
 	it("keeps a usable password form alongside the passkey affordance", () => {
-		cy.visit("/login");
+		cy.visit_login();
 		cy.get("#login_email").should("be.visible");
 		cy.get("#login_password").should("exist");
 	});

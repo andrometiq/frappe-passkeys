@@ -31,6 +31,7 @@ def before_install():
 def after_install():
 	_ensure_settings_defaults()
 	sync_registry_fixture()
+	sync_standard_navbar_items()
 
 
 def before_uninstall():
@@ -177,6 +178,24 @@ def sync_registry_fixture():
 		_create_registry_property_setter()
 	else:
 		_remove_registry_property_setter()
+
+
+def sync_standard_navbar_items():
+	"""Sync the app's ``standard_navbar_items`` hook into Navbar Settings.
+
+	v16/develop expose the migrate-time sync helper on Navbar Settings. v15 only
+	has the older site-install helper; when that helper no-ops on an already
+	populated Navbar Settings, the Desk bundle's old-navbar DOM fallback still
+	covers v15.
+	"""
+	try:
+		from frappe.core.doctype.navbar_settings.navbar_settings import sync_standard_items
+	except ImportError:
+		from frappe.utils.install import add_standard_navbar_items
+
+		add_standard_navbar_items()
+	else:
+		sync_standard_items()
 
 
 def two_factor_registry_available() -> bool:

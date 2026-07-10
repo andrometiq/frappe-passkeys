@@ -199,7 +199,7 @@
 		var btn = document.createElement("button");
 		btn.type = "button";
 		btn.id = "passkey-login-btn";
-		btn.className = "btn btn-sm btn-block btn-login btn-login-option btn-passkey-login";
+		btn.className = "btn btn-sm btn-block btn-login-option btn-passkey-login";
 		btn.setAttribute("aria-label", t("Sign in with a passkey"));
 		btn.innerHTML =
 			'<svg class="icon icon-sm passkey-glyph" aria-hidden="true" focusable="false" ' +
@@ -234,7 +234,12 @@
 		});
 	}
 
-	function onButtonClick() {
+	function onButtonClick(e) {
+		if (e) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+		}
 		if (state.busyModal) return;
 		abortConditional(); // Chromium rejects overlapping requests (§5.2 step 3)
 		modalGet({ source: "button" });

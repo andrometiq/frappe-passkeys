@@ -173,6 +173,35 @@ def purge_passkeys(user: str) -> dict:
 
 
 @frappe.whitelist()
+def clear_registration_rate_limit(user: str) -> dict:
+	"""Clear the test-setup registration throttles for ``user``.
+
+	Cypress specs call the real registration ceremony many times while seeding
+	fixtures. The production limit is still tested below the API layer; this helper
+	only keeps repeated local UI-suite runs from depending on Redis TTL expiry."""
+	_guard()
+	from passkeys import state
+
+	for method in ("begin_registration", "verify_registration"):
+		state.clear_counter(f"{state.RATE_LIMIT_PREFIX}{method}:{user}")
+	return {"ok": 1}
+
+
+@frappe.whitelist()
+def clear_password_failures(user: str) -> dict:
+	"""Clear the app-owned password-oracle throttle for ``user``.
+
+	UI specs that intentionally exercise wrong-password or interrupted password
+	step-up paths run repeatedly on a shared bench. The production throttle remains
+	covered in server tests; this helper keeps setup from depending on Redis TTLs."""
+	_guard()
+	from passkeys import state
+
+	state.clear_password_failures(user)
+	return {"ok": 1}
+
+
+@frappe.whitelist()
 def make_uv_uninitialized(user: str) -> dict:
 	"""Force ``uv_initialized=0`` on the user's credential(s) so a UV=1 assertion
 	drives the §3.4 uv-setup step-up (the conditional-create-born state, produced

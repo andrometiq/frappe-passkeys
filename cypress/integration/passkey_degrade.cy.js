@@ -13,7 +13,7 @@ const PW = () => Cypress.env("adminPassword") || "admin";
 chromium_only("passkey login degradation", () => {
 	before(() => {
 		cy.login(USER, PW());
-		cy.visit("/app");
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.call("logout");
 	});
@@ -22,21 +22,28 @@ chromium_only("passkey login degradation", () => {
 
 	it("stays a usable password login when begin_login 500s", () => {
 		cy.intercept("POST", "**/passkeys.passkey.begin_login", { statusCode: 500, body: {} }).as("begin");
-		cy.visit("/login");
+		cy.visit_login();
 		cy.wait("@begin");
 		cy.get("#passkey-login-btn").should("not.exist");
 		cy.get(".login-error-banner:visible").should("not.exist");
 		// password login still works end to end
+		cy.stub_post_login_shell();
+		cy.intercept("POST", "/api/method/login").as("password_login");
 		cy.get("#login_email").type(USER);
 		cy.get("#login_password").type(PW());
 		cy.get(".form-login .btn-login, .btn-login").first().click();
+		cy.wait("@password_login").its("response.statusCode").should("be.within", 200, 299);
 		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
+		cy.assert_logged_user(USER);
 	});
 
 	it("stays usable on a begin_login network failure", () => {
 		cy.call("logout");
 		cy.intercept("POST", "**/passkeys.passkey.begin_login", { forceNetworkError: true }).as("begin_ne");
-		cy.visit("/login");
+		cy.visit_login();
+		cy.wait("@begin_ne").should((interception) => {
+			expect(interception.error, "begin_login network error").to.exist;
+		});
 		cy.get("#login_email").should("be.visible");
 		cy.get("#passkey-login-btn").should("not.exist");
 		cy.get(".login-error-banner:visible").should("not.exist");

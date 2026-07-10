@@ -491,10 +491,30 @@
 
 	// ---------------------------------------------------------- navbar dialog
 	var _managerDialog = null;
+	function isEscapeEvent(e) {
+		return e && (e.key === "Escape" || e.key === "Esc" || e.code === "Escape" || e.keyCode === 27 || e.which === 27);
+	}
+	function wireManagerDialogEsc(d) {
+		if (!d || d._passkeyEscWired) return;
+		d._passkeyEscWired = true;
+		document.addEventListener("keydown", function (e) {
+			if (!isEscapeEvent(e) || !d.$wrapper || !d.$wrapper.is(":visible")) return;
+			var visibleModals = $(".modal:visible").get();
+			if (visibleModals.length && visibleModals[visibleModals.length - 1] !== d.$wrapper.get(0)) return;
+			e.preventDefault();
+			d.hide();
+		}, true);
+	}
 	function openManagerDialog() {
-		if (_managerDialog) { _managerDialog.show(); refresh({ dialog: _managerDialog }); return _managerDialog; }
+		if (_managerDialog) {
+			wireManagerDialogEsc(_managerDialog);
+			_managerDialog.show();
+			refresh({ dialog: _managerDialog });
+			return _managerDialog;
+		}
 		var d = new frappe.ui.Dialog({ title: t("My Passkeys"), size: "large" });
 		_managerDialog = d;
+		wireManagerDialogEsc(d);
 		var body = d.$body ? d.$body.get(0) : null;
 		if (body) {
 			var root = el("div", "passkey-manager");
@@ -516,9 +536,24 @@
 		document.dispatchEvent(new CustomEvent("passkey:changed"));
 	}
 
-	// Inject the "My Passkeys" item into the Desk navbar user dropdown (F3-9:
-	// JS-side injection from this bundle). Selectors drift across frappe versions,
-	// so try a few and no-op silently if none match.
+	// Native Frappe integration syncs "My Passkeys" into Navbar Settings. Keep the
+	// old DOM injection only as an unmigrated/old-layout fallback; if boot already
+	// carries the standard item, Frappe's navbar/sidebar owns rendering it.
+	function hasNativeNavbarItem() {
+		var settings = window.frappe && frappe.boot && frappe.boot.navbar_settings;
+		var items = settings && settings.settings_dropdown;
+		if (!Array.isArray(items)) return false;
+		return items.some(function (item) {
+			return item
+				&& item.item_label === "My Passkeys"
+				&& item.item_type === "Action"
+				&& String(item.action || "").indexOf("frappe.passkeys.manage.openManagerDialog") !== -1;
+		});
+	}
+
+	// Inject the "My Passkeys" item into older Desk navbar user dropdowns (F3-9
+	// fallback). Selectors drift across frappe versions, so try a few and no-op
+	// silently if none match.
 	function injectNavbarItem() {
 		if (document.getElementById("passkey-navbar-item")) return true;
 		var menus = [
@@ -691,7 +726,7 @@
 		// Management surfaces gate on ANY passkey mode (§3.0 matrix): both modes off
 		// (or a dormant/uninstalled app ⇒ no bootinfo) ⇒ the UI removes itself.
 		if (!b || b.enabled === false) return;
-		injectNavbarItemWithRetry();
+		if (!hasNativeNavbarItem()) injectNavbarItemWithRetry();
 		maybeNudge();
 		refreshSignalsInSession();
 	}

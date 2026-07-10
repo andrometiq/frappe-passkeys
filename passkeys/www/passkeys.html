@@ -32,6 +32,16 @@
 	</div>
 </div>
 
+{# Frappe's base website template appends its generic csrf bridge after
+   web_include_js; the portal bundle needs the token before it makes its first
+   fetch. The controller generates this for authenticated renders only. #}
+{% if csrf_token is defined %}
+<script>
+	window.frappe = window.frappe || {};
+	frappe.csrf_token = {{ csrf_token | tojson }};
+</script>
+{% endif %}
+
 {# Bridge the controller's server-truth boot payload (context.passkeys =
    boot.build_passkeys_boot) into frappe.boot.passkeys, so the portal bundle reads
    the SAME contract as the Desk surfaces (modes / credential_count / nudge_state /
@@ -41,6 +51,9 @@
 	window.frappe = window.frappe || {};
 	frappe.boot = frappe.boot || {};
 	if (!frappe.boot.passkeys) frappe.boot.passkeys = {{ passkeys | tojson }};
+	{% if csrf_token is defined %}
+	if (!frappe.boot.csrf_token) frappe.boot.csrf_token = {{ csrf_token | tojson }};
+	{% endif %}
 </script>
 {% endif %}
 {% endblock %}
