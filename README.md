@@ -118,6 +118,11 @@ plan and the concrete patches. On a Frappe that serves passkeys natively, the ap
 refuses fresh installs, and every endpoint returns a typed "served by core" response so it can be
 uninstalled cleanly.
 
+## Contributing
+
+Bug reports, fixes, and features are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the branch
+model, commit-message conventions, and how to run the test suites.
+
 ## License
 
 [MIT](LICENSE)
