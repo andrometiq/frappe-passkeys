@@ -13,7 +13,7 @@
 </div>
 
 <div align="center">
-	<img src=".github/screenshots/login.png" alt="Sign in with a passkey" width="440" />
+	<img src=".github/screenshots/login.png" alt="Sign in with a passkey" width="371" />
 </div>
 
 ## Passkeys for Frappe
