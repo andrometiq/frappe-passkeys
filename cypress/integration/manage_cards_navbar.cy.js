@@ -36,6 +36,29 @@ function assertNativePasskeysEntryRegistered() {
 	});
 }
 
+// The desk user menu is wired by frappe.ui.create_menu during desk boot, so its
+// toggle can be in the DOM before its click handler is bound — a single force-click
+// is then silently lost (visit_desk only waits for the `frappe` global, not a fully
+// booted sidebar). Click the visible user-menu toggle, re-clicking until the menu
+// opens (bounded), which removes that boot-race flake. develop exposes the toggle as
+// .sidebar-user-button in the sidebar; older desks use the classic navbar toggle.
+function openUserMenu(attempt = 0) {
+	const MENU = ".frappe-menu.context-menu:visible, .dropdown-menu:visible";
+	return cy.get("body").then(($body) => {
+		if ($body.find(MENU).length) return; // already open — don't toggle it shut
+		const toggle =
+			[
+				".sidebar-user-button:visible",
+				".dropdown-navbar-user:visible",
+				".sidebar-header:visible",
+				".dropdown-toggle:visible",
+			].find((sel) => $body.find(sel).length) || ".dropdown-toggle:visible";
+		cy.get(toggle).first().click({ force: true });
+		if (attempt >= 5) return; // stop re-clicking; the caller's assertion reports failure
+		return cy.wait(400, { log: false }).then(() => openUserMenu(attempt + 1));
+	});
+}
+
 function openNativePasskeysEntry() {
 	return assertNativePasskeysEntryRegistered().then(() => {
 		return cy.get("body").then(($body) => {
@@ -45,15 +68,8 @@ function openNativePasskeysEntry() {
 				cy.get("#passkey-navbar-item:visible").click();
 				return;
 			}
-			// Native Navbar Settings item: open the user menu (a real click, not
-			// trigger, so older Bootstrap desks open too), then click the item.
-			if ($body.find(".dropdown-navbar-user").length) {
-				cy.get(".dropdown-navbar-user").last().click({ force: true });
-			} else if ($body.find(".sidebar-header").length) {
-				cy.get(".sidebar-header").first().click({ force: true });
-			} else {
-				cy.get(".dropdown-toggle:visible").last().click({ force: true });
-			}
+			// Native Navbar Settings item: open the user menu, then click the item.
+			openUserMenu();
 			cy.get(".frappe-menu.context-menu:visible, .dropdown-menu:visible", { timeout: 10000 })
 				.should("contain.text", "My Passkeys")
 				.then(($menu) => {
