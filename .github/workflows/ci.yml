@@ -241,6 +241,10 @@ jobs:
           bench --site test_site set-config developer_mode 1 --parse
           bench --site test_site set-config allow_tests 1 --parse
           bench --site test_site set-config ignore_csrf 1 --parse
+          # Disable the scheduler on the ephemeral UI-test site: its every-minute job
+          # writes contend with the desk-boot tabSessions write on CI's constrained
+          # tmpfs MariaDB, occasionally deadlocking into a transient HTTP 508.
+          bench --site test_site scheduler disable
           bench --site test_site execute frappe.utils.install.complete_setup_wizard
           bench --site test_site execute frappe.tests.ui_test_helpers.create_test_user
 

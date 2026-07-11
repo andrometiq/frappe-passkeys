@@ -189,7 +189,12 @@ const site_host = () => new URL(Cypress.config("baseUrl")).hostname;
 // can finish waiting on `load`.
 Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
 	const deskUser = encodeURIComponent(String(user || "Administrator"));
-	return cy.visit(`/app/user/${deskUser}`, options).window().its("frappe").should("exist");
+	// The desk GET writes tabSessions; under CI's constrained MariaDB it can
+	// transiently deadlock / lock-wait-timeout, which Frappe returns as HTTP 508.
+	// Retry the visit on a transient non-2xx/network blip rather than failing a
+	// before/after hook on the first hiccup.
+	const opts = { retryOnNetworkFailure: true, retryOnStatusCodeFailure: true, ...options };
+	return cy.visit(`/app/user/${deskUser}`, opts).window().its("frappe").should("exist");
 });
 
 // Login-page specs often configure site state while authenticated, then need to
