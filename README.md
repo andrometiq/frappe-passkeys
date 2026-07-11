@@ -26,7 +26,8 @@ install on anything older with a clear message. See [`docs/install.md`](docs/ins
 ## Quickstart
 
 ```bash
-bench get-app https://github.com/frappe/passkeys   # or your fork
+# Pick the branch that matches your Frappe version: version-15, version-16, or develop
+bench get-app --branch version-16 https://github.com/andrometiq/frappe-passkeys
 bench --site <site> install-app passkeys
 ```
 
