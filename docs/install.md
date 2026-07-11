@@ -24,7 +24,7 @@ documentation, a `before_install` runtime check, and CI.
 
 ```bash
 # Pick the branch that matches your Frappe version: version-15, version-16, or develop
-bench get-app --branch version-16 https://github.com/andrometiq/frappe-passkeys
+bench get-app --branch version-16 https://github.com/Andrometiq/frappe-passkeys
 bench --site <site> install-app passkeys
 ```
 
