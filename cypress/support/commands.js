@@ -3,8 +3,7 @@
 //
 // Cypress support commands for the P3 passwordless-login specs (DESIGN-v1
 // §12.3/§12.4). Two families:
-//   1. CDP WebAuthn virtual-authenticator drivers (ported verbatim in intent
-//      from spikes/cypress-virtual-authenticator/commands.js; Chromium-only).
+//   1. CDP WebAuthn virtual-authenticator drivers (Chromium-only).
 //   2. Frappe idiom (`cy.login`, `cy.call`) + higher-level app helpers that seed
 //      a real resident credential through the committed registration ceremony,
 //      so the login specs assert an end-to-end round trip with no key injection.

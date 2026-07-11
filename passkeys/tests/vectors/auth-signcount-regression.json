@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 42,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "HswzHrp7PzyIPZl3PgH8ohXau91SvNq_Nl7Zm39SjJE",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAKQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSHN3ekhycDdQenlJUFpsM1BnSDhvaFhhdTkxU3ZOcV9ObDdabTM5U2pKRSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEQCIAm4Ye2X0BPiNlDe881QoYkpisKe5mlNZrmVN9q2Brv3AiBFBSGXzWm_ZE9FK2J0jR3ezQzvIAKUaQHe41ZZ0zpDZw",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "Sign count regression: response count 41 while the server has already seen 42 (possible cloned authenticator); must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "sign count",
+  "kind": "authentication",
+  "name": "auth-signcount-regression"
+}

@@ -9,8 +9,5 @@ paths = [
   '''passkeys/public/aaguid-map\.json''',
   # The 35-vector WebAuthn fixture pack: deliberately-generated fake keys,
   # signatures, and credential blobs for negative-path tests. Never real secrets.
-  '''spikes/webauthn-fixtures/.*''',
-  # Research syntheses quote vendor docs and spec fragments; entropy/keyword
-  # false positives only (e.g. the literal string "2FA-equivalent").
-  '''research/.*''',
+  '''passkeys/tests/vectors/.*''',
 ]

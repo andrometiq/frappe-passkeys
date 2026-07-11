@@ -20,13 +20,6 @@ frappe = ">=15.107.0,<18.0.0"
 [tool.ruff]
 line-length = 110
 target-version = "py310"
-# `spikes/` is dev-only WebAuthn fixture generators + selfchecks (run by the
-# pre-push golden-vector check), NOT the shipped package — the CI compileall and
-# import gate both scope to `passkeys/`. Keep the shipped-code ruleset (UP pyupgrade
-# to py310 `dict`/`list`, etc.) off the throwaway generators. `force-exclude` makes
-# the exclude apply even when pre-commit passes those paths explicitly.
-extend-exclude = ["spikes"]
-force-exclude = true
 
 [tool.ruff.lint]
 select = [

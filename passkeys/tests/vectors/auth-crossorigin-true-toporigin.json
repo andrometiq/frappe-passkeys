@@ -1,0 +1,38 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "ILPovd0cC4D7pDsBiOlVjGjrppzplH_EDJ8IrjlojtQ",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSUxQb3ZkMGNDNEQ3cERzQmlPbFZqR2pycHB6cGxIX0VESjhJcmpsb2p0USIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6dHJ1ZSwidG9wT3JpZ2luIjoiaHR0cHM6Ly9lbWJlZGRlci5leGFtcGxlLm9yZyJ9",
+      "signature": "MEUCIBmXBp7zkbwDABW7gSHlVZ7DXDnt3NmsCwrRZOlyRMlzAiEA5J__fINOCJmSPfV3MPPyuWTX-tgyHvhC1GUt__Msp28",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "Assertion clientDataJSON has crossOrigin:true plus topOrigin naming the embedding page; the verifier must reject this APP-SIDE \u2014 py_webauthn 2.8 accepts it (topOrigin is not even parsed).",
+  "expect": "fail",
+  "expected_error": null,
+  "expected_error_substring": null,
+  "kind": "authentication",
+  "library_expect": "pass",
+  "library_expected": {
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "new_sign_count": 1,
+    "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+    "user_verified": true
+  },
+  "name": "auth-crossorigin-true-toporigin"
+}

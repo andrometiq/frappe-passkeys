@@ -1,0 +1,35 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "WboKxafGBW79pu4j1aAqIqUwQXz_bMtFos7YWOyt7yk",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": false
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcBAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiV2JvS3hhZkdCVzc5cHU0ajFhQXFJcVV3UVh6X2JNdEZvczdZV095dDd5ayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEUCIQDW9MtVSHOkXfui-7QrYg7iUDp_vihkqbGbx-GzbddXkwIgRBMxc1FHjGT5obgKvHvGzWYcsPRZ1XD1he1xpUF6KUw",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ES256 assertion without user verification (UV=0); server verifies with require_user_verification=False.",
+  "expect": "pass",
+  "expected": {
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "new_sign_count": 1,
+    "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+    "user_verified": false
+  },
+  "kind": "authentication",
+  "name": "auth-es256-nouv"
+}

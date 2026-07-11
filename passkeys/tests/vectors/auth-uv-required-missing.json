@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "8Eqf9XzqHuCqMqAdykugh9dhobxg6cbJuilFqZxbbtY",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcBAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOEVxZjlYenFIdUNxTXFBZHlrdWdoOWRob2J4ZzZjYkp1aWxGcVp4YmJ0WSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEUCID-6NTzYak9EvNABQbVYKx22ruyIfSFXqmd-fi2qaVbUAiEA_2Sxll8RKQPMywyPMr6fnDhU3RO4cl7vS_nxsGx3G8o",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "UV flag is 0 but the server requires user verification; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "verification",
+  "kind": "authentication",
+  "name": "auth-uv-required-missing"
+}

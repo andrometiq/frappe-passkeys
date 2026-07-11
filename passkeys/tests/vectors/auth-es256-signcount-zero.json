@@ -1,0 +1,35 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "mr8QId9JpPi00SWBU0d4SRBwMeNmeSII_L8mrxCzWFk",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAA",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoibXI4UUlkOUpwUGkwMFNXQlUwZDRTUkJ3TWVObWVTSUlfTDhtcnhDeldGayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEQCID9DaenH3AHpwLZw6sudr6xVZf9VvvBWIK9Akri9fkdTAiBe_82QrHPOlclNhNbhtuV1Zp31JVKMQ413NfRzQufIeQ",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ES256 assertion from a counter-less authenticator: stored count 0 and response count 0 must be accepted.",
+  "expect": "pass",
+  "expected": {
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "new_sign_count": 0,
+    "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+    "user_verified": true
+  },
+  "kind": "authentication",
+  "name": "auth-es256-signcount-zero"
+}

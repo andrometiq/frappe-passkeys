@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "-eV7cdVeZC2uxzMg6g5kvf9aAsK9ecu7niydhthaeT8",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "BEgEWSoRnfQXmiFfLO7zLBKGZFHTyLlgof9rig9ua8EFAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiLWVWN2NkVmVaQzJ1eHpNZzZnNWt2ZjlhQXNLOWVjdTduaXlkaHRoYWVUOCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEYCIQDaa5cblPM4XNB-vz7lRbRJa8ry89tszY8gBBQQxOSpYQIhAIDXc4teBuWw0rHAUWuMQBMlNnfGFNLOr9rF8THnPtIh",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "authData rpIdHash computed over a different RP ID; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "RP ID",
+  "kind": "authentication",
+  "name": "auth-rpidhash-mismatch"
+}

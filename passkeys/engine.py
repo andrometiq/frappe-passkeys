@@ -10,7 +10,7 @@ bodies only** (§1.3 hook-path import discipline): a broken ``webauthn`` /
 the top-level ``import webauthn`` lives here and nowhere a hook can reach.
 
 Normative py_webauthn (>=2.8,<3) behaviors honored here (proven, not
-re-derived — ``spikes/webauthn-fixtures/README.md`` + ``PROBE-pywebauthn.md``):
+re-derived — see the golden-vector pack in ``passkeys/tests/vectors/``):
 
 * ``verify_authentication_response`` hard-rejects sign-count regressions
   *internally*; we pass ``credential_current_sign_count=0`` to disable that and

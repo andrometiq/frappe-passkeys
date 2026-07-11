@@ -1,0 +1,40 @@
+{
+  "context": {
+    "expected_challenge": "cQWhUFgkhMi2_6E-DcQFJxQRVA_Ss3mm0eFqb8kfyKo",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+    "rawId": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViBo3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIP5mDardFjr1SHQFnOVVEUg_i5TRy5KlrSpGl6FWqgtQpAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIP5mDardFjr1SHQFnOVVEUg_i5TRy5KlrSpGl6FWqgtQpAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiY1FXaFVGZ2toTWkyXzZFLURjUUZKeFFSVkFfU3MzbW0wZUZxYjhrZnlLbyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MCowBQYDK2VwAyEAsJq-f-Rbp65uRSuMmu8t__uZfDj5bqWTt3VcxsDBtTc",
+      "publicKeyAlgorithm": -8,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ED25519 registration, UP+UV set, attestation none.",
+  "expect": "pass",
+  "expected": {
+    "alg": -8,
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+    "credential_public_key": "pAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+    "sign_count": 0,
+    "user_verified": true
+  },
+  "kind": "registration",
+  "name": "reg-ed25519-uv"
+}

@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "0WjgynZMip0STwjMuG_jcl6nyyusdCBXEJA8ApndzAQ",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiMFdqZ3luWk1pcDBTVHdqTXVHX2pjbDZueXl1c2RDQlhFSkE4QXBuZHpBUSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEUCIQD5GWzKmFDqueB-ppg948qUg2NCSqsMH8P1El99n50HiwIgYpMLt3ND9cgYNILnb4KxFr_DwCUkQqnDVlw0_Igg_IU",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "clientDataJSON type is webauthn.create inside an authentication ceremony; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "client data type",
+  "kind": "authentication",
+  "name": "auth-type-mismatch"
+}

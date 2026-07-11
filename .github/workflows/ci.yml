@@ -125,9 +125,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # Scoped to the shipped package: spikes/ and design/ may legitimately hold
-      # py3.14-only code, but everything under passkeys/ must compile on the
-      # v15 cell's Python 3.10 (the straddle floor).
+      # Everything under passkeys/ must compile on the v15 cell's Python 3.10
+      # (the straddle floor).
       - name: Validate package syntax on this Python
         run: python -m compileall -q -f passkeys
 

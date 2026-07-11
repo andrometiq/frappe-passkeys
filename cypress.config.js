@@ -3,7 +3,7 @@
 //
 // App-local Cypress config (DESIGN-v1 §12.3/§12.4). `bench run-ui-tests passkeys`
 // does `os.chdir(<app base>)` and runs Cypress from here, so the app ships its
-// own config + `cypress/` tree (spikes/cypress-virtual-authenticator/NOTES.md §2).
+// own config + `cypress/` tree.
 // Mirrors frappe's own `cypress.config.js`, minus coverage/split. baseUrl and
 // adminPassword are overridden by CYPRESS_baseUrl / CYPRESS_adminPassword that
 // bench exports at launch.

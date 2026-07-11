@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "gCOegh4_TWtDbruVU_7k9DZrkjngyOMSdueiZQhEE8I",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoicnpId1k5ZlY3RW9adzRuT0lkcDFrTk5qVGRabnBVTHBrQ0JidEdraFIzWSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEQCIDFsAu1xlrmZWf6R5QazBC1maKv6-6n047e61hOTJ0dbAiAbHkVG2zbN72CVfzOjN4e9iLS4MWwPERl_EJl_e0rX3A",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "clientDataJSON carries a different challenge than the server issued; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "challenge",
+  "kind": "authentication",
+  "name": "auth-challenge-mismatch"
+}

@@ -1,0 +1,40 @@
+{
+  "context": {
+    "expected_challenge": "a6FrSYVEbEjdtldsX7_HmoFGLmMeg2h1DocqcB1QC-Q",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+    "rawId": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVkBZ6N5pvbur7mlXjeMEYA04nUeaC-rny0wqxPSElWGzhlHRQAAAAAAAAAAAAAAAAAAAAAAAAAAACDNfoKrgV0h_sei0GsrUGh_j3hQvrXusFx5qOknaNb9z6QBAwM5AQAgWQEA8_yVqi5D9oIATaYqlXWvZNJB65nUIedEJBCkUCx8OAtKEb7hJ5gHQ9dwSOXML46JJpKmns0yAG4OAQgZBsqDlHgGN_d9zXs_K4yEOsaI5xC4_K4quTfXQXDNzioGe44fJ5xTiRIKYda3OKq7E_YP07Qx6BV6nhk1tI6h-5-oBT2xe_5cI__I_14AfaYaAwlvBMELb3g9bffjO9UJfMnrDW0nVVJyD5C_I_f_kUi3i6Otw-gS9MwpYTKTG0HNor7XO6Rh3UYPktf0vQ8EPZTJOyUWn__DJxh68UOC414L27DEddtVSJWuJfxhU4voCfGVF_tVxjgEO_ZazDzR9OXy8yFDAQAB",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIM1-gquBXSH-x6LQaytQaH-PeFC-te6wXHmo6Sdo1v3PpAEDAzkBACBZAQDz_JWqLkP2ggBNpiqVda9k0kHrmdQh50QkEKRQLHw4C0oRvuEnmAdD13BI5cwvjokmkqaezTIAbg4BCBkGyoOUeAY3933Nez8rjIQ6xojnELj8riq5N9dBcM3OKgZ7jh8nnFOJEgph1rc4qrsT9g_TtDHoFXqeGTW0jqH7n6gFPbF7_lwj_8j_XgB9phoDCW8EwQtveD1t9-M71Ql8yesNbSdVUnIPkL8j9_-RSLeLo63D6BL0zClhMpMbQc2ivtc7pGHdRg-S1_S9DwQ9lMk7JRaf_8MnGHrxQ4LjXgvbsMR121VIla4l_GFTi-gJ8ZUX-1XGOAQ79lrMPNH05fLzIUMBAAE",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiYTZGclNZVkViRWpkdGxkc1g3X0htb0ZHTG1NZWcyaDFEb2NxY0IxUUMtUSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8_yVqi5D9oIATaYqlXWvZNJB65nUIedEJBCkUCx8OAtKEb7hJ5gHQ9dwSOXML46JJpKmns0yAG4OAQgZBsqDlHgGN_d9zXs_K4yEOsaI5xC4_K4quTfXQXDNzioGe44fJ5xTiRIKYda3OKq7E_YP07Qx6BV6nhk1tI6h-5-oBT2xe_5cI__I_14AfaYaAwlvBMELb3g9bffjO9UJfMnrDW0nVVJyD5C_I_f_kUi3i6Otw-gS9MwpYTKTG0HNor7XO6Rh3UYPktf0vQ8EPZTJOyUWn__DJxh68UOC414L27DEddtVSJWuJfxhU4voCfGVF_tVxjgEO_ZazDzR9OXy8wIDAQAB",
+      "publicKeyAlgorithm": -257,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "Valid RS256 registration, UP+UV set, attestation none.",
+  "expect": "pass",
+  "expected": {
+    "alg": -257,
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+    "credential_public_key": "pAEDAzkBACBZAQDz_JWqLkP2ggBNpiqVda9k0kHrmdQh50QkEKRQLHw4C0oRvuEnmAdD13BI5cwvjokmkqaezTIAbg4BCBkGyoOUeAY3933Nez8rjIQ6xojnELj8riq5N9dBcM3OKgZ7jh8nnFOJEgph1rc4qrsT9g_TtDHoFXqeGTW0jqH7n6gFPbF7_lwj_8j_XgB9phoDCW8EwQtveD1t9-M71Ql8yesNbSdVUnIPkL8j9_-RSLeLo63D6BL0zClhMpMbQc2ivtc7pGHdRg-S1_S9DwQ9lMk7JRaf_8MnGHrxQ4LjXgvbsMR121VIla4l_GFTi-gJ8ZUX-1XGOAQ79lrMPNH05fLzIUMBAAE",
+    "sign_count": 0,
+    "user_verified": true
+  },
+  "kind": "registration",
+  "name": "reg-rs256-uv"
+}

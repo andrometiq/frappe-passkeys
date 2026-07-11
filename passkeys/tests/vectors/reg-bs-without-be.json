@@ -1,0 +1,33 @@
+{
+  "context": {
+    "expected_challenge": "U12VKqRsYDCNYk-CxwjY8QDZUDsN9dIbK74jwnFWVuU",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdVAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdVAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVTEyVktxUnNZRENOWWstQ3h3alk4UURaVURzTjlkSWJLNzRqd25GV1Z1VSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+      "publicKeyAlgorithm": -7,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "BS=1 with BE=0 is an impossible backup state per the WebAuthn spec; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidBackupFlags",
+  "expected_error_substring": "backed up",
+  "kind": "registration",
+  "name": "reg-bs-without-be"
+}

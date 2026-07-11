@@ -1,0 +1,45 @@
+{
+  "context": {
+    "expected_challenge": "OG7tsN7WKb243arw9VwRzpmXoATXENOx39VoFSHSwWg",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {
+      "credProps": {
+        "rk": true
+      }
+    },
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiT0c3dHNON1dLYjI0M2FydzlWd1J6cG1Yb0FUWEVOT3gzOVZvRlNIU3dXZyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+      "publicKeyAlgorithm": -7,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ES256 registration where the client requested the credProps extension and the client reported rk:true in clientExtensionResults. py_webauthn 2.8 drops clientExtensionResults when parsing and returns no extension output, so the verifier must read credProps.rk from the credential JSON itself and mark the credential discoverable.",
+  "expect": "pass",
+  "expected": {
+    "alg": -7,
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "credprops_rk": true,
+    "sign_count": 0,
+    "user_verified": true
+  },
+  "kind": "registration",
+  "name": "reg-es256-credprops"
+}

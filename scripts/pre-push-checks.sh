@@ -7,11 +7,7 @@
 #   2. python3.10 -m compileall on the shipped package (passkeys/) — the v15
 #      syntax floor: py3.11+/3.14-only syntax must fail HERE, not in the v15
 #      CI cell. Falls back to `uv run --python 3.10` when python3.10 is absent.
-#   3. WebAuthn golden-vector self-check (spikes/webauthn-fixtures) —
-#      venv-agnostic: uses the current interpreter when it already has
-#      webauthn/pytest/cbor2/cryptography, else builds a cached venv under
-#      ${XDG_CACHE_HOME:-$HOME/.cache}/frappe-passkeys/.
-#   4. (opt-in) one real matrix cell: server tests on your dev bench —
+#   3. (opt-in) one real matrix cell: server tests on your dev bench —
 #      export PASSKEYS_DEV_BENCH=/path/to/frappe-bench and
 #      PASSKEYS_DEV_SITE=<site> to enable.
 #
@@ -121,42 +117,11 @@ else
   skip "compileall: passkeys/ package not scaffolded yet"
 fi
 
-# ------------------------------------- 3. webauthn fixture self-check
-fixtures_dir="spikes/webauthn-fixtures"
-selfcheck_deps='import webauthn, pytest, cbor2, cryptography'
-if [ -f "$fixtures_dir/test_vectors_selfcheck.py" ]; then
-  selfcheck_py=""
-  if python3 -c "$selfcheck_deps" >/dev/null 2>&1; then
-    selfcheck_py="python3"
-  else
-    venv_dir="${XDG_CACHE_HOME:-$HOME/.cache}/frappe-passkeys/selfcheck-venv"
-    venv_py="$venv_dir/bin/python"
-    if [ ! -x "$venv_py" ] || ! "$venv_py" -c "$selfcheck_deps" >/dev/null 2>&1; then
-      note "building self-check venv at $venv_dir (one-time; reused afterwards)"
-      rm -rf "$venv_dir"
-      if python3 -m venv "$venv_dir" \
-        && "$venv_py" -m pip install --quiet --upgrade pip \
-        && "$venv_py" -m pip install --quiet "cryptography>=42" cbor2 "webauthn>=2.8,<3" pytest; then
-        selfcheck_py="$venv_py"
-      else
-        fail "could not build the self-check venv (network/pip problem?)"
-      fi
-    else
-      selfcheck_py="$venv_py"
-    fi
-  fi
-  if [ -n "$selfcheck_py" ]; then
-    if "$selfcheck_py" -m pytest -q "$fixtures_dir/test_vectors_selfcheck.py"; then
-      ok "webauthn golden-vector self-check"
-    else
-      fail "webauthn golden-vector self-check is red — vectors and py_webauthn disagree"
-    fi
-  fi
-else
-  skip "fixture self-check: $fixtures_dir/test_vectors_selfcheck.py not found"
-fi
+# The WebAuthn golden-vector pack (passkeys/tests/vectors/) is validated by the
+# frappe test suite (passkeys.tests.test_engine_vectors), run by CI and by the
+# opt-in dev-bench cell below.
 
-# --------------------------- 4. opt-in: server tests on the dev bench
+# --------------------------- 3. opt-in: server tests on the dev bench
 if [ -n "${PASSKEYS_DEV_BENCH:-}" ] && [ -n "${PASSKEYS_DEV_SITE:-}" ]; then
   if (cd "$PASSKEYS_DEV_BENCH" && bench --site "$PASSKEYS_DEV_SITE" run-tests --app passkeys); then
     ok "server tests on dev bench ($PASSKEYS_DEV_SITE)"

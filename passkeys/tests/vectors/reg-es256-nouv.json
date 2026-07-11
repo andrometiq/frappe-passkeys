@@ -1,0 +1,40 @@
+{
+  "context": {
+    "expected_challenge": "IryjY1YLvRRMRQnGB0ry_EmencHyDkht-3mhnKVmQvw",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": false
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSXJ5alkxWUx2UlJNUlFuR0IwcnlfRW1lbmNIeURraHQtM21obktWbVF2dyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+      "publicKeyAlgorithm": -7,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ES256 registration without user verification (UV=0); server verifies with require_user_verification=False.",
+  "expect": "pass",
+  "expected": {
+    "alg": -7,
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "sign_count": 0,
+    "user_verified": false
+  },
+  "kind": "registration",
+  "name": "reg-es256-nouv"
+}

@@ -1,9 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""The golden-vector conformance gate (DESIGN-v1 §12.1). Drives the engine
-verify path directly with the 35 committed deterministic vectors
-(``spikes/webauthn-fixtures/vectors/``, schema in that dir's README):
+"""The golden-vector conformance gate. Drives the engine verify path directly
+with the 35 committed deterministic vectors (``passkeys/tests/vectors/``, schema
+in that dir's README):
 
 * every POSITIVE vector must verify and extract the declared values;
 * every NEGATIVE vector must be refused with an engine-typed error, and the
@@ -18,7 +18,7 @@ from pathlib import Path
 from passkeys import engine
 from passkeys.tests.compat import IntegrationTestCase
 
-VECTORS_DIR = Path(__file__).resolve().parents[2] / "spikes" / "webauthn-fixtures" / "vectors"
+VECTORS_DIR = Path(__file__).resolve().parent / "vectors"
 
 
 def _load() -> list:

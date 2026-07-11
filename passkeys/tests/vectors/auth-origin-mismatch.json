@@ -1,0 +1,29 @@
+{
+  "context": {
+    "credential_current_sign_count": 0,
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "expected_challenge": "rNIBffIMntKovgJEgwKx437uCoKDO-8T-t6IULfSROY",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoick5JQmZmSU1udEtvdmdKRWd3S3g0Mzd1Q29LRE8tOFQtdDZJVUxmU1JPWSIsIm9yaWdpbiI6Imh0dHBzOi8vZXZpbC5leGFtcGxlLm9yZyIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "signature": "MEUCIQCfJM_84yh9mCEk_8V_idJjL0Xk3w6OdC2L6E3jlU6viQIgE6_hVknlOSdVZtEVK8Xb1-W4f-bQdH3cJMuMIc_BhQI",
+      "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+    },
+    "type": "public-key"
+  },
+  "description": "clientDataJSON origin differs from the expected origin; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidAuthenticationResponse",
+  "expected_error_substring": "origin",
+  "kind": "authentication",
+  "name": "auth-origin-mismatch"
+}

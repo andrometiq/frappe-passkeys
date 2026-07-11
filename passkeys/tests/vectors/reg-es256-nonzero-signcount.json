@@ -1,0 +1,40 @@
+{
+  "context": {
+    "expected_challenge": "h3GQgaCsKeQtF_egE_LHmZIE1MQiMhNyraPTys3EQu0",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAKgAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAKgAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiaDNHUWdhQ3NLZVF0Rl9lZ0VfTEhtWklFMU1RaU1oTnlyYVBUeXMzRVF1MCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+      "publicKeyAlgorithm": -7,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "Valid ES256 registration with an initial sign count of 42; the server must store 42 as the credential's starting counter.",
+  "expect": "pass",
+  "expected": {
+    "alg": -7,
+    "credential_backed_up": false,
+    "credential_device_type": "single_device",
+    "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+    "sign_count": 42,
+    "user_verified": true
+  },
+  "kind": "registration",
+  "name": "reg-es256-nonzero-signcount"
+}

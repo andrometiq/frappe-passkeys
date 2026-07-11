@@ -1,0 +1,33 @@
+{
+  "context": {
+    "expected_challenge": "WbjtlndQCSbhHZBACN3ehAO8fMXw9RxXAn821eLKI6w",
+    "expected_origin": "https://example.com",
+    "expected_rp_id": "example.com",
+    "require_user_presence": true,
+    "require_user_verification": true
+  },
+  "credential": {
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiV2JqdGxuZFFDU2JoSFpCQUNOM2VoQU84Zk1YdzlSeFhBbjgyMWVMS0k2dyIsIm9yaWdpbiI6Imh0dHBzOi8vZXZpbC5leGFtcGxlLm9yZyIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+      "publicKeyAlgorithm": -7,
+      "transports": [
+        "internal",
+        "hybrid"
+      ]
+    },
+    "type": "public-key"
+  },
+  "description": "clientDataJSON origin is a different origin than the server expects; must be rejected.",
+  "expect": "fail",
+  "expected_error": "InvalidRegistrationResponse",
+  "expected_error_substring": "origin",
+  "kind": "registration",
+  "name": "reg-origin-mismatch"
+}

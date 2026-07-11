@@ -5,9 +5,8 @@
 integration round-trips (the golden vectors are the static conformance anchor;
 this complements them where the challenge is minted live by an endpoint, §12.1).
 
-Not a test module. Adapted from ``spikes/webauthn-fixtures/generator.py`` and
-kept ES256/Ed25519-only (RS256's embedded PEMs are unnecessary here). Produces
-WebAuthn L3 JSON exactly as ``PublicKeyCredential.toJSON()`` would.
+Not a test module. Kept ES256/Ed25519-only (RS256's embedded PEMs are unnecessary
+here). Produces WebAuthn L3 JSON exactly as ``PublicKeyCredential.toJSON()`` would.
 """
 
 import base64
