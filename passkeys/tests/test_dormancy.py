@@ -293,9 +293,7 @@ class DormantAdvisoryTest(IntegrationTestCase):
 					pass
 				auth_hooks.on_login_veto(login_manager=_LM("Guest"))  # hook guard → dormant()
 		advisory = [
-			call
-			for call in mock_log.call_args_list
-			if "dormant" in str(call.kwargs.get("title", "")).lower()
+			call for call in mock_log.call_args_list if "dormant" in str(call.kwargs.get("title", "")).lower()
 		]
 		self.assertEqual(len(advisory), 1)
 
@@ -304,8 +302,6 @@ class DormantAdvisoryTest(IntegrationTestCase):
 		with patch.object(frappe, "log_error") as mock_log:
 			self.assertFalse(install.dormant())
 		advisory = [
-			call
-			for call in mock_log.call_args_list
-			if "dormant" in str(call.kwargs.get("title", "")).lower()
+			call for call in mock_log.call_args_list if "dormant" in str(call.kwargs.get("title", "")).lower()
 		]
 		self.assertEqual(advisory, [])

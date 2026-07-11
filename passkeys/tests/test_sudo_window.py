@@ -89,9 +89,7 @@ class SudoWindowTest(IntegrationTestCase):
 		make_credential(user)  # ≥1 enabled credential
 		frappe.set_user(user)
 		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
-		self.addCleanup(
-			frappe.db.set_single_value, "Passkey Settings", "passkey_notify_password_login", 0
-		)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_notify_password_login", 0)
 
 		def seed_as_password():
 			frappe.local.form_dict["cmd"] = "login"  # classify the window as password

@@ -715,9 +715,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		(the raw JSON write ``_put_json``) to simulate the outage, and assert the
 		injected failure escapes uncaught — begin_login never swallows it."""
 		self._request("/api/method/passkeys.passkey.begin_login")
-		with patch(
-			"passkeys.state._put_json", side_effect=redis.exceptions.ConnectionError("store down")
-		):
+		with patch("passkeys.state._put_json", side_effect=redis.exceptions.ConnectionError("store down")):
 			with self.assertRaises(redis.exceptions.ConnectionError):
 				passkey.begin_login()
 

@@ -152,9 +152,7 @@ def rate_limit_user(name: str, limit: int, ttl: int) -> None:
 	throttle fails open, exactly like the password-failure counter."""
 	user = frappe.session.user or "Guest"
 	if bump_counter(f"{RATE_LIMIT_PREFIX}{name}:{user}", ttl) > limit:
-		raise frappe.TooManyRequestsError(
-			frappe._("You've hit the rate limit. Please try again shortly.")
-		)
+		raise frappe.TooManyRequestsError(frappe._("You've hit the rate limit. Please try again shortly."))
 
 
 # ---------------------------------------------------------------------------

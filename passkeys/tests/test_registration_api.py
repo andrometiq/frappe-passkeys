@@ -212,6 +212,4 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		)  # credprops_rk defaults to None → clientExtensionResults == {}
 		self.assertEqual(credential["clientExtensionResults"], {})  # sanity: Safari case
 		result = registration.verify_registration(begun["state_id"], credential)
-		self.assertEqual(
-			frappe.db.get_value("WebAuthn Credential", result["name"], "discoverable"), "Yes"
-		)
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", result["name"], "discoverable"), "Yes")
