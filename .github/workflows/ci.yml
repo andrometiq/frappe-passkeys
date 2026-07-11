@@ -273,11 +273,43 @@ jobs:
           cat /home/runner/frappe-bench/bench_start.log || true
           tail -n 200 /home/runner/frappe-bench/logs/*.log* || true
 
+  node-tests:
+    name: Node (JS unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Dependency-free node:test suites (no package.json / jest) covering the client
+      # ceremony + policy logic. The glob is required on node 24 (a bare dir errors).
+      - name: Run JS unit tests
+        run: node --test 'passkeys/tests/js/*.test.js'
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — gitleaks scans every commit, not just the tip
+
+      # Reads the repo's curated .gitleaks.toml allowlist. Free for public repos.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   success:
     # Single required check for branch protection ("CI / Success") —
     # fan-in pattern from frappe/frappe ui-tests.yml.
     name: Success
-    needs: [lint, server-tests, ui-tests]
+    needs: [lint, node-tests, server-tests, ui-tests, secrets]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -285,5 +317,7 @@ jobs:
       - name: Evaluate results
         run: |
           test "${{ needs.lint.result }}" = "success"
+          test "${{ needs.node-tests.result }}" = "success"
           test "${{ needs.server-tests.result }}" = "success"
           test "${{ needs.ui-tests.result }}" = "success"
+          test "${{ needs.secrets.result }}" = "success"
