@@ -1,5 +1,5 @@
 // passkey_portal.bundle.js — the portal /passkeys page component + the portal
-// enrollment-nudge banner (DESIGN-v1 §8.1/§8.4). Delivered via web_include_js on
+// enrollment-nudge banner. Delivered via web_include_js on
 // authenticated portal pages when a passkey mode is enabled (the shim gates it;
 // see the build manifest). Loaded AFTER passkey_common.js
 // (frappe.passkeys_common) and passkey_manage_common.js
@@ -9,7 +9,7 @@
 // Portal pages do NOT ship frappe.ui.Dialog or the desk confirm bundle, so this
 // file builds:
 //   * its own confirm engine from the node-tested pure C.createConfirmEngine,
-//     wired to a self-contained, a11y-correct modal (§5.5), and
+//     wired to a self-contained, a11y-correct modal, and
 //   * a compact card renderer over the pure passkey_manage_common view-models.
 // The card DOM differs from the desk bundle only in its framework glue.
 //
@@ -50,7 +50,7 @@
 	function unwrap(body) { return C.unwrapMessage(body); }
 
 	// -------------------------------------------------------- self-contained modal
-	// role=dialog + aria-modal + focus trap + Esc + focus return (§5.5). Mirrors the
+	// role=dialog + aria-modal + focus trap + Esc + focus return. Mirrors the
 	// login bundle's buildDialog; portal has no frappe.ui.Dialog.
 	function buildModal(cfg) {
 		var restore = C.captureFocus(document);
@@ -97,7 +97,7 @@
 	// ----------------------------------------------- confirm engine (sudo dance)
 	// The portal's frappe.passkeys.confirm/call, built from the pure engine + a
 	// portal modal adapter (chooseMethod / collectPassword). Used for the delete
-	// sudo gate (§7.4).
+	// sudo gate.
 	function makeConfirmUI() {
 		var modal = null;
 		return {
@@ -176,11 +176,11 @@
 			creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map }))); });
 			mountRoot.appendChild(list);
 			mountRoot.appendChild(addRow());
-			mountRoot.appendChild(passkeyOnlyRow(creds, payload)); // §9.3 F19 passwordless-login switch
+			mountRoot.appendChild(passkeyOnlyRow(creds, payload)); // passwordless-login switch
 		});
 	}
 
-	// §9.3 F19: the per-user passwordless-login switch. Current value rides the list
+	// the per-user passwordless-login switch. Current value rides the list
 	// payload (server-authoritative), boot as fallback; OFF when neither ships it.
 	// Disabled with no usable (enabled) passkey — enabling needs a passkey grant.
 	function isPasskeyOnly(payload) {
@@ -210,8 +210,8 @@
 		row.appendChild(toggle);
 		return row;
 	}
-	// Sudo-gated (§9.3 F19): confirm + single-use PASSKEY grant only. engine.call runs
-	// the §7.2 401 confirm dance; the boolean {enabled} payload matches the fingerprint
+	// Sudo-gated: confirm + single-use PASSKEY grant only. engine.call runs
+	// the 401 confirm dance; the boolean {enabled} payload matches the fingerprint
 	// the server binds the grant to ({"enabled": <bool>}). Mirrors deleteCard's flow.
 	function confirmPasskeyOnly(desired, current) {
 		if (desired === current) return;
@@ -244,7 +244,7 @@
 	function addRow() { var row = el("div", "passkey-card-add-row"); row.appendChild(primary(t(M.COPY.addButton), addPasskey)); return row; }
 	function cardEl(vm) {
 		var li = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled")); li.setAttribute("data-name", vm.name);
-		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.textContent = "🔑"; li.appendChild(g);
+		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.innerHTML = '<svg class="icon" focusable="false"><use href="#icon-key"></use></svg>'; li.appendChild(g);
 		var main = el("div", "passkey-card-main");
 		var lr = el("div", "passkey-card-labelrow");
 		var le = el("span", "passkey-card-label", vm.label); le.setAttribute("title", vm.label); lr.appendChild(le);
@@ -260,8 +260,8 @@
 		if (vm.flagged) { var fb = el("div", "passkey-card-flagged", t(M.COPY.flaggedBanner)); fb.setAttribute("role", "alert"); main.appendChild(fb); }
 		li.appendChild(main);
 		var actions = el("div", "passkey-card-actions");
-		actions.appendChild(iconBtn("passkey-rename", "✏️", vm.a11y.rename, function () { renameCard(vm); }));
-		actions.appendChild(iconBtn("passkey-delete", "🗑️", vm.a11y.del, function () { deleteCard(vm); }));
+		actions.appendChild(iconBtn("passkey-rename", "pencil", vm.a11y.rename, function () { renameCard(vm); }));
+		actions.appendChild(iconBtn("passkey-delete", "trash", vm.a11y.del, function () { deleteCard(vm); }));
 		li.appendChild(actions);
 		return li;
 	}
@@ -340,7 +340,7 @@
 	}
 
 	// ------------------------------------------------------- portal nudge banner
-	// A dismissible inline banner (§8.4 "portal nudge banner") — never a modal.
+	// A dismissible inline banner ("portal nudge banner") — never a modal.
 	function maybeNudgeBanner() {
 		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
 		if (!b) return;
@@ -371,10 +371,10 @@
 	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
 	function primary(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-primary btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
 	function link(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-link btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
-	function iconBtn(cls, glyph, name, on) {
+	function iconBtn(cls, iconName, name, on) {
 		var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-xs btn-default passkey-icon-btn " + cls;
 		b.setAttribute("aria-label", name); b.setAttribute("title", name);
-		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.textContent = glyph; b.appendChild(g);
+		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.innerHTML = '<svg class="icon icon-sm" focusable="false"><use href="#icon-' + iconName + '"></use></svg>'; b.appendChild(g);
 		b.addEventListener("click", on); return b;
 	}
 	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) {} return String(v); }

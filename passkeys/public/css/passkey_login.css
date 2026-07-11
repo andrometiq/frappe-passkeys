@@ -2,7 +2,7 @@
  * Inherits core .btn / focus-ring styling; adds only what core doesn't ship.
  * Destination on core merge: frappe/public/scss/website/login.scss. */
 
-/* Screen-reader-only live region (aria-live announcements, §5.5): present in the DOM,
+/* Screen-reader-only live region (aria-live announcements): present in the DOM,
  * announced by AT, invisible on screen. Never display:none (that suppresses announcements). */
 .passkey-sr-only {
 	position: absolute !important;
@@ -16,22 +16,20 @@
 	border: 0;
 }
 
-/* Explicit "Sign in with a passkey" button — mirrors the alternative-method button idiom. */
-.btn-passkey-login {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 0.5rem;
-}
+/* The "Sign in with a passkey" button IS a Frappe login option: it reuses core's
+ * native .btn-login-option (flex layout, centring, type scale, colours, hover) via
+ * its .page-card-actions mount, so it needs no layout CSS of its own. The only
+ * adjustment core doesn't cover is fitting the shared icon sprite into an icon+label
+ * button: core .icon defaults to `margin: 0 auto` (right for icon-only buttons, but
+ * here it would absorb the row's free space and shove the label off-centre) and to a
+ * grey --icon-fill; cancel the auto side-margins, add Frappe's standard icon/label
+ * gap, and paint the lucide key outline in the button's text colour. */
 .btn-passkey-login .passkey-glyph {
-	width: 1em;
-	height: 1em;
-	flex: 0 0 auto;
+	margin: 0 var(--padding-xs, 4px) 0 0;
+	--icon-stroke: currentColor;
+	fill: none;
 }
-.btn-passkey-login .passkey-label {
-	line-height: 1.2;
-}
-/* Keep a visible focus ring even if a theme strips it (WCAG 2.4.7, §5.5). */
+/* Keep a visible focus ring even if a theme strips it (WCAG 2.4.7). */
 .btn-passkey-login:focus-visible,
 .passkey-dialog button:focus-visible {
 	outline: 2px solid var(--primary, #2490ef);
@@ -60,7 +58,7 @@
 }
 .passkey-dialog-title {
 	margin: 0 0 0.75rem;
-	font-size: 1.1rem;
+	font-size: var(--text-lg, 1.1rem);
 }
 .passkey-dialog-body {
 	margin-bottom: 1rem;
@@ -72,12 +70,8 @@
 	color: var(--red-500, #e24c4c);
 	min-height: 1.2em;
 	margin: 0.5rem 0 0;
-	font-size: 0.85rem;
+	font-size: var(--text-sm, 0.85rem);
 }
 
-@media (prefers-color-scheme: dark) {
-	.passkey-dialog {
-		background: var(--card-bg, #1c1c1c);
-		color: var(--text-color, #f5f5f5);
-	}
-}
+/* Dark mode needs no scheme-specific overrides: the dialog is painted with Frappe's
+ * --card-bg / --text-color tokens, which flip under [data-theme="dark"]. */

@@ -1,14 +1,14 @@
-// passkey_login.bundle.js — passkey login-page bundle (J1 conditional UI, J2 explicit
-// button, J3 cross-device, J4 password->passkey second factor, uv-setup step-up).
+// passkey_login.bundle.js — passkey login-page bundle (conditional UI, explicit
+// button, cross-device, password->passkey second factor, uv-setup step-up).
 //
 // Delivered via update_website_context -> context.web_include_js on /login when any mode is
-// enabled (§5.1). Loaded AFTER passkey_common.js (which sets frappe.passkeys_common) and
+// enabled. Loaded AFTER passkey_common.js (which sets frappe.passkeys_common) and
 // AFTER frappe-web.bundle.js (which defines window.__). Owns its own lifecycle: boots once on
-// login_rendered, with a DOMContentLoaded fallback and an idempotent guard (§5.2). Any JS
+// login_rendered, with a DOMContentLoaded fallback and an idempotent guard. Any JS
 // failure degrades to the untouched core password form — the page is never deadened.
 //
 // The whole file is an IIFE (classic script) so it needs no bundler module resolution and is
-// `node --check`-able as-is. Server contracts are the FROZEN spec's pinned wire shapes (§3).
+// `node --check`-able as-is. Server contracts are the FROZEN spec's pinned wire shapes.
 //
 // eslint-env browser
 (function () {
@@ -29,7 +29,7 @@
 		get_signal_data: "passkeys.passkey.get_signal_data",
 		app_translations: "passkeys.passkey.get_app_translations",
 	};
-	var HINT_KEY = "passkey_used_here"; // localStorage promote-only hint (§5.2 step 4)
+	var HINT_KEY = "passkey_used_here"; // localStorage promote-only hint
 	var BOOTED = false;
 
 	// bundle-scoped runtime state
@@ -46,13 +46,13 @@
 		if (BOOTED) return; // idempotent injection guard (login_rendered is one-shot)
 		BOOTED = true;
 		C.ensureLiveRegion(document);
-		// merge our own guest translation catalog (REQUIRED on v15/v16, §5.6), then start.
+		// merge our own guest translation catalog (REQUIRED on v15/v16), then start.
 		loadAppTranslations()
 			.catch(noop) // English fallback is acceptable; never block boot
 			.then(start);
 	}
 
-	// listen once + DOMContentLoaded fallback (the event is one-shot, §5.2)
+	// listen once + DOMContentLoaded fallback (the event is one-shot)
 	document.addEventListener("login_rendered", boot, { once: true });
 	if (document.readyState === "loading") {
 		document.addEventListener("DOMContentLoaded", function () {
@@ -65,7 +65,7 @@
 
 	// ---------------------------------------------------------- i18n loader
 	// Fetch the app guest translations endpoint once, memoize, MERGE (never clobber) into
-	// frappe._messages (§5.6). On develop, also await frappe._translations_loaded so the
+	// frappe._messages. On develop, also await frappe._translations_loaded so the
 	// core catalog is in place before our first translated paint.
 	function loadAppTranslations() {
 		var jobs = [];
@@ -126,7 +126,7 @@
 		});
 	}
 
-	// begin_login via raw fetch (silent config channel, §5.2 step 2). Returns
+	// begin_login via raw fetch (silent config channel). Returns
 	// {enabled, modes, state_id?, options?} or null on any failure.
 	function beginLogin() {
 		return fetch(methodUrl(API.begin_login), {
@@ -143,18 +143,18 @@
 			.catch(function () { return null; });
 	}
 
-	// ------------------------------------------------------- conditional UI (J1)
+	// ------------------------------------------------------- conditional UI
 	function startConditional() {
 		var input = C.resolveIdentifierInput(document);
 		if (input) {
-			// the one-token S6 seam: username -> "username webauthn" (§5.2 step 3)
+			// the one-token seam: username -> "username webauthn"
 			var ac = input.getAttribute("autocomplete") || "username";
 			if (ac.indexOf("webauthn") === -1) {
 				input.setAttribute("autocomplete", (ac + " webauthn").trim());
 			}
 		} else {
 			// input-selector miss (core redesign): skip autocomplete patch AND conditional
-			// get(); keep the explicit button. DOM-contract CI is the drift alarm (§5.2 step 3).
+			// get(); keep the explicit button. DOM-contract CI is the drift alarm.
 			return;
 		}
 		if (!navigator.credentials || typeof navigator.credentials.get !== "function") return;
@@ -179,7 +179,7 @@
 				// AbortError is expected (we aborted for a modal get / re-begin) -> ignore.
 				if (err && err.name === "AbortError") return;
 				// A conditional failure is silent by design (no user gesture yet); a stale
-				// challenge re-arms conditional (§5.2.10 case b) via the verify path only.
+				// challenge re-arms conditional via the verify path only.
 			});
 	}
 
@@ -190,7 +190,7 @@
 		}
 	}
 
-	// ------------------------------------------------------- explicit button (J2)
+	// ------------------------------------------------------- explicit button
 	function mountButton(caps) {
 		if (document.getElementById("passkey-login-btn")) return; // idempotent
 		var target = C.resolveButtonMount(document);
@@ -201,22 +201,21 @@
 		btn.id = "passkey-login-btn";
 		btn.className = "btn btn-sm btn-block btn-login-option btn-passkey-login";
 		btn.setAttribute("aria-label", t("Sign in with a passkey"));
+		// Frappe's own icon sprite (web_include_icons ships lucide on /login) — no custom
+		// glyph art. .passkey-glyph is a bare test hook; core .icon/.icon-sm size it.
 		btn.innerHTML =
-			'<svg class="icon icon-sm passkey-glyph" aria-hidden="true" focusable="false" ' +
-			'viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5c0 1.9 1.06 ' +
-			'3.55 2.62 4.4A7 7 0 0 0 4 18v1h9.3a5.5 5.5 0 0 1-.3-1.8c0-1.2.38-2.3 1.02-3.2A5 5 0 ' +
-			'0 0 12 2Zm7 9a3 3 0 0 0-1 5.83V22l1 1 1.5-1.5L21 20l-1-1 1-1-1.5-1.17A3 3 0 0 0 19 ' +
-			'11Zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg>' +
+			'<svg class="icon icon-sm passkey-glyph" aria-hidden="true" focusable="false">' +
+			'<use href="#icon-key"></use></svg>' +
 			'<span class="passkey-label"></span>';
 		// text set via textContent to avoid any interpolation surprises
 		btn.querySelector(".passkey-label").textContent = t("Sign in with a passkey");
 
-		// promote-only hint: never gates visibility, may reorder to the top (§5.2 step 4)
+		// promote-only hint: never gates visibility, may reorder to the top
 		var promote = false;
 		try { promote = window.localStorage && localStorage.getItem(HINT_KEY) === "1"; } catch (e) { /* ignore */ }
 
 		if (target.mode === "actions" || target.mode === "providers") {
-			// insert as the FIRST alternative-method button (FIDO principle 8, §5.2 step 5)
+			// insert as the FIRST alternative-method button (FIDO principle 8)
 			var firstAlt = target.mount.querySelector(".btn-login-option, .social-logins, .btn-ldap-login");
 			if (firstAlt && !promote) {
 				target.mount.insertBefore(btn, firstAlt);
@@ -241,13 +240,13 @@
 			if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 		}
 		if (state.busyModal) return;
-		abortConditional(); // Chromium rejects overlapping requests (§5.2 step 3)
+		abortConditional(); // Chromium rejects overlapping requests
 		modalGet({ source: "button" });
 	}
 
-	// ------------------------------------------- modal get() with pre-freshness (J2/J3)
+	// ------------------------------------------- modal get() with pre-freshness
 	function modalGet(ctx) {
-		// §5.2.10 case a: pre-modal freshness — if the held state is stale, re-begin FIRST,
+		// pre-modal freshness — if the held state is stale, re-begin FIRST,
 		// then run the single get() (one gesture, not two failures).
 		var proceed = function () {
 			if (!state.login.stateId || !state.login.options) {
@@ -321,7 +320,7 @@
 	function handleFirstFactor401(data, ctx, attachment) {
 		var kind = C.mapServerExcType(data && data.exc_type);
 		if (kind === "ceremony_expired") {
-			// §5.2.10 case c: re-begin + ONE fresh ceremony, at most once. NEVER re-POST.
+			// re-begin + ONE fresh ceremony, at most once. NEVER re-POST.
 			if (state.login.canRearm()) {
 				state.login.markRearm();
 				rebegin().then(function (ok) {
@@ -354,7 +353,7 @@
 	}
 
 	// after any user-visible failure that consumed the state, re-begin once to re-arm
-	// conditional UI + the button (bounded; never a loop) — §5.2.10 re-arm rule.
+	// conditional UI + the button (bounded; never a loop).
 	function rearmAfterVisibleFailure(ctx) {
 		if (!state.login.canRearm()) return;
 		state.login.markRearm();
@@ -363,7 +362,7 @@
 		});
 	}
 
-	// ---------------------------------------------- uv-setup step-up (§3.4)
+	// ---------------------------------------------- uv-setup step-up
 	function openUvSetup(setupId) {
 		if (!setupId) { neutralFail(); return; }
 		var restore = C.captureFocus(document);
@@ -401,13 +400,13 @@
 		if (pwdInput) pwdInput.focus();
 	}
 
-	// ----------------------------------------- second factor interception (J4)
+	// ----------------------------------------- second factor interception
 	function installSecondFactorInterception() {
 		if (state.sfInterceptor) return;
 		state.sfInterceptor = function (event) {
 			var form = event.target && event.target.closest && event.target.closest(".form-login");
 			if (!form) return; // not the login form
-			// Degrade rule (verbatim, §5.2 step 7): ANY JS error => remove the listener and
+			// Degrade rule (verbatim): ANY JS error => remove the listener and
 			// let the native submit proceed. Never deaden the login page.
 			try {
 				var usr = valueOf("#login_email");
@@ -448,8 +447,8 @@
 		}));
 	}
 
-	// leg 2: modal get() with the server's RequestOptionsJSON (UV discouraged, §3.7) ->
-	// verify_second_factor. Re-arm (fresh state in the 401 body) + OTP fallback per §6.3.
+	// leg 2: modal get() with the server's RequestOptionsJSON (UV discouraged) ->
+	// verify_second_factor. Re-arm (fresh state in the 401 body) + OTP fallback.
 	function driveSecondFactor(env) {
 		var verification = env.verification || {};
 		var tmpId = env.tmp_id;
@@ -547,7 +546,7 @@
 	}
 
 	function postLoginUpsell(attachment, data) {
-		// §5.2 step 8: cross-device assertion + local UVPAA => flag "add a passkey to this
+		// cross-device assertion + local UVPAA => flag "add a passkey to this
 		// device" for the post-login surface. We stash a hint the desk/portal bundle reads.
 		try {
 			if (attachment === "cross-platform" && window.localStorage) {
@@ -561,7 +560,7 @@
 	// ---------------------------------------------------- frappe.call plumbing
 	// Composed handler set: {...login.login_handlers, 200: wrapped, 401: app, 429: app}
 	// so core paints Logged In / OTP / Password Reset natively while typed passkey errors
-	// (exc_type) route to us and unknown types delegate back to core's painter (§5.2 step 6).
+	// (exc_type) route to us and unknown types delegate back to core's painter.
 	function composedHandlers(app) {
 		var base = (window.login && window.login.login_handlers) || {};
 		var merged = {};
@@ -589,7 +588,7 @@
 		};
 
 		merged[429] = function (xhr) {
-			// degrade rules (§5.2 steps 2/10): show core's throttle copy, never crash
+			// degrade rules: show core's throttle copy, never crash
 			if (base[429]) base[429](xhr, (xhr && xhr.responseJSON) || {});
 		};
 
@@ -704,7 +703,7 @@
 	function openDialog(dlg) {
 		(document.body || document.documentElement).appendChild(dlg.overlay);
 		document.addEventListener("keydown", dlg.onKey, true);
-		// initial focus on the primary action (§5.5) unless the caller focuses an input
+		// initial focus on the primary action unless the caller focuses an input
 		setTimeout(function () { if (dlg.primary) dlg.primary.focus(); }, 0);
 	}
 
@@ -720,7 +719,7 @@
 		neutralInline(t(m.messageKey));
 		announce(t(m.messageKey));
 		// user cancel/timeout: untouched form + one neutral message, then re-arm once so the
-		// user is never dead-ended (§5.2 step 10).
+		// user is never dead-ended.
 		rearmAfterVisibleFailure(ctx);
 	}
 
@@ -753,7 +752,7 @@
 	function jsonHeaders() {
 		var h = { "Content-Type": "application/json", Accept: "application/json" };
 		var token = window.frappe && (window.frappe.csrf_token || (window.frappe.session && window.frappe.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token; // guests are CSRF-exempt (§3); harmless if sent
+		if (token) h["X-Frappe-CSRF-Token"] = token; // guests are CSRF-exempt; harmless if sent
 		return h;
 	}
 	function newAbortController() { return (typeof AbortController === "function") ? new AbortController() : null; }
@@ -764,7 +763,7 @@
 	}
 	function noop() {}
 
-	// expose a tiny surface for the DOM-contract Cypress job (§12.4) to assert against
+	// expose a tiny surface for the DOM-contract Cypress job to assert against
 	window.frappe = window.frappe || {};
 	window.frappe._passkey_login = { boot: boot, _state: state, API: API };
 })();

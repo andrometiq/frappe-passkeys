@@ -1,4 +1,4 @@
-/* passkey_confirm.css — §7 action-confirmation dialog (Desk + portal).
+/* passkey_confirm.css — action-confirmation dialog (Desk + portal).
  * Rides inside frappe.ui.Dialog's $body; only the confirmation-specific bits
  * live here. The shared .passkey-sr-only live-region rule lives in
  * passkey_login.css — if this bundle ships without the login CSS, the fallback
@@ -99,12 +99,5 @@
 	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
 }
 
-@media (prefers-color-scheme: dark) {
-	.passkey-confirm-modal-body {
-		background: var(--card-bg, #1c2126);
-		color: var(--text-color, #e2e6ea);
-	}
-	.passkey-confirm-msg {
-		color: var(--text-muted, #9aa4ae);
-	}
-}
+/* Dark mode needs no scheme-specific overrides: the modal is painted with Frappe's
+ * --card-bg / --text-color / --text-muted tokens, which flip under [data-theme="dark"]. */

@@ -1,5 +1,5 @@
 /* passkey_manage.css — credential-management cards, badges, enrollment nudges,
- * the portal page, and the settings banners (DESIGN-v1 §8/§9.4). Loaded on Desk
+ * the portal page, and the settings banners. Loaded on Desk
  * (app_include_css) and portal (web_include_css). Inherits core .btn / focus
  * styles; adds only what core doesn't ship. Destination on core merge:
  * frappe/public/scss/passkey.scss.
@@ -50,9 +50,12 @@
 }
 
 .passkey-card-glyph {
-	font-size: 1.4rem;
-	line-height: 1.4;
 	flex: 0 0 auto;
+	line-height: 0;
+}
+.passkey-card-glyph .icon {
+	--icon-stroke: currentColor;
+	fill: none;
 }
 
 .passkey-card-main {
@@ -102,13 +105,17 @@
 .passkey-icon-btn {
 	line-height: 1;
 }
+.passkey-icon-btn .icon {
+	--icon-stroke: currentColor;
+	fill: none;
+}
 
 /* ----------------------------------------------------------------- badges */
 .passkey-badge {
 	display: inline-block;
 	padding: 0.1rem 0.45rem;
 	border-radius: 999px;
-	font-size: 0.7rem;
+	font-size: var(--text-xs, 0.7rem);
 	font-weight: 600;
 	letter-spacing: 0.01em;
 	white-space: nowrap;
@@ -217,7 +224,44 @@
 	margin: 0 0 1.5rem;
 }
 
-/* ------------------------------------- portal self-contained modal (§5.5) */
+/* --------------------------------------- passwordless-login-only switch */
+.passkey-only-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-top: 1.25rem;
+	padding: 0.85rem 1rem;
+	border: 1px solid var(--border-color, #e2e6ea);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--card-bg, #fff);
+}
+.passkey-only-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.passkey-only-label {
+	font-weight: 600;
+}
+.passkey-only-help {
+	margin-top: 0.25rem;
+	font-size: var(--text-sm, 0.82rem);
+	color: var(--text-muted, #6b7280);
+}
+.passkey-only-toggle {
+	flex: 0 0 auto;
+	width: 1.05rem;
+	height: 1.05rem;
+	margin: 0.15rem 0 0;
+	cursor: pointer;
+	accent-color: var(--primary, #2490ef);
+}
+.passkey-only-toggle:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+/* ------------------------------------------- portal self-contained modal */
 .passkey-portal-overlay {
 	position: fixed;
 	inset: 0;
@@ -241,7 +285,7 @@
 
 .passkey-portal-overlay .passkey-dialog-title {
 	margin: 0 0 0.75rem;
-	font-size: 1.1rem;
+	font-size: var(--text-lg, 1.1rem);
 }
 
 .passkey-portal-overlay .passkey-dialog-actions {
@@ -251,7 +295,7 @@
 	margin-top: 1rem;
 }
 
-/* Keep a visible focus ring even when a theme strips it (WCAG 2.4.7, §5.5). */
+/* Keep a visible focus ring even when a theme strips it (WCAG 2.4.7). */
 .passkey-card-actions .btn:focus-visible,
 .passkey-btn:focus-visible,
 .passkey-icon-btn:focus-visible,
@@ -261,15 +305,11 @@
 	outline-offset: 2px;
 }
 
-@media (prefers-color-scheme: dark) {
-	.passkey-card,
-	.passkey-portal-overlay .passkey-dialog {
-		background: var(--card-bg, #1c2126);
-		color: var(--text-color, #e2e6ea);
-		border-color: var(--border-color, #2b333b);
-	}
-	.passkey-nudge-banner {
-		background: var(--blue-900, #16273c);
-		border-color: var(--blue-700, #2b6cb0);
-	}
+/* Frappe flips its semantic tokens (--card-bg, --text-color, --border-color) under
+ * [data-theme="dark"], so the cards and dialogs adapt automatically. Only the nudge
+ * banner uses a different blue ramp per theme, so it gets an explicit dark override
+ * keyed off Frappe's actual mechanism (not prefers-color-scheme, which Frappe ignores). */
+[data-theme="dark"] .passkey-nudge-banner {
+	background: var(--blue-900, #16273c);
+	border-color: var(--blue-700, #2b6cb0);
 }

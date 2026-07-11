@@ -1,5 +1,5 @@
-// passkey_desk.bundle.js — Desk-wide credential management + enrollment nudges
-// (DESIGN-v1 §8). Loaded via app_include_js on every Desk page, AFTER
+// passkey_desk.bundle.js — Desk-wide credential management + enrollment nudges.
+// Loaded via app_include_js on every Desk page, AFTER
 // passkey_common.js (frappe.passkeys_common), passkey_manage_common.js
 // (frappe.passkeys_manage_common) and passkey_confirm.js (frappe.passkeys.confirm/
 // call). Destination on core merge: frappe/public/js/frappe/passkey/desk.js.
@@ -11,8 +11,8 @@
 //   addPasskey(opts)                    — the registration ceremony (sudo-gated)
 //   refresh()                           — re-fetch + repaint any live surface
 //
-// It also, at Desk boot: injects the navbar "My Passkeys" item (F3-9), runs the
-// §8.4 post-login enrollment nudge / conditional-create / post-hybrid upsell off
+// It also, at Desk boot: injects the navbar "My Passkeys" item, runs the
+// post-login enrollment nudge / conditional-create / post-hybrid upsell off
 // frappe.boot.passkeys, and fires signalAllAcceptedCredentials fire-and-forget.
 //
 // The DOM/frappe wiring lives here; all pure decisions (view-models, nudge
@@ -48,7 +48,7 @@
 	}
 
 	// ------------------------------------------------------------ AAGUID asset
-	// Client provider snapshot (§8.2). Optional release asset; absent ⇒ {} ⇒ cards
+	// Client provider snapshot. Optional release asset; absent ⇒ {} ⇒ cards
 	// fall back to the server-supplied `provider` field or "Unknown provider".
 	var _aaguidMap = null;
 	function loadAaguidMap() {
@@ -60,7 +60,7 @@
 	}
 
 	// ---------------------------------------------------------------- transport
-	// Raw fetch so we own the 401 body (the §7.2 retry contract for sudo-gated
+	// Raw fetch so we own the 401 body (the retry contract for sudo-gated
 	// mutations). Resolves {ok, status, body} for ANY status; rejects only on a
 	// transport failure. Mirrors passkey_confirm.js::post.
 	function post(method, body, headers) {
@@ -86,13 +86,13 @@
 	function unwrap(body) { return C.unwrapMessage(body); }
 
 	// -------------------------------------------------------------- sudo dance
-	// A sudo-gated mutation: call the method; on the §7.2 401 contract run a
+	// A sudo-gated mutation: call the method; on the 401 contract run a
 	// passkeys.manage confirmation (passkey-first, password fallback — the confirm
 	// client owns that dialog + a11y), then retry once with the grant header. The
-	// confirmation re-seeds the full-sudo window (§7.1) so the retry passes.
+	// confirmation re-seeds the full-sudo window so the retry passes.
 	function guardedCall(method, args) {
 		// The confirm engine runs a WebAuthn get() gesture; abort any pending
-		// conditionalCreate() first so it doesn't serialize behind it (A1).
+		// conditionalCreate() first so it doesn't serialize behind it.
 		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.call) {
 			return window.frappe.passkeys.call(method, args || {});
@@ -108,7 +108,7 @@
 	// (registration is begin→create→verify, so it can't ride guardedCall's single
 	// retry). Returns a promise that resolves once the window is seeded.
 	function ensureManageSudo() {
-		// Same as guardedCall: the confirm gesture is an explicit ceremony (A1).
+		// Same as guardedCall: the confirm gesture is an explicit ceremony.
 		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.confirm) {
 			return window.frappe.passkeys.confirm(M.MANAGE_ACTION);
@@ -117,13 +117,13 @@
 	}
 
 	// ---------------------------------------------------------- registration
-	// Add a passkey (§3.2 explicit flow, §8.2). Sudo-gated: try begin; on the 401
+	// Add a passkey (explicit flow). Sudo-gated: try begin; on the 401
 	// contract run a management confirmation then retry begin. On success run the
-	// modal create() (with the credProps extension, §3.5) and verify.
+	// modal create() (with the credProps extension) and verify.
 	function addPasskey(opts) {
 		opts = opts || {};
 		// Serialize-safety: an explicit registration must not race a pending
-		// conditionalCreate() get/create held open in this tab (A1).
+		// conditionalCreate() get/create held open in this tab.
 		abortConditionalCreate();
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
 			frappe.msgprint({ title: t("Passkeys unavailable"), message: t("This browser can't create passkeys."), indicator: "orange" });
@@ -134,7 +134,7 @@
 			try {
 				options = parseCreate(begin.options);
 			} catch (e) { throw friendly("addFailed"); }
-			// §3.5: inject credProps for EVERY registration ceremony (py_webauthn
+			// inject credProps for EVERY registration ceremony (py_webauthn
 			// emits no extensions member; the tri-state stays Unknown without this).
 			options.extensions = Object.assign({}, options.extensions || {}, { credProps: true });
 			return navigator.credentials.create({ publicKey: options }).then(function (cred) {
@@ -222,9 +222,9 @@
 	}
 
 	// ============================================================ card component
-	// The shared card component (§8.2). Renders the caller's own credentials into
+	// The shared card component. Renders the caller's own credentials into
 	// `container`; wires rename (inline, no sudo) + delete (confirm + sudo gate) +
-	// the empty-state "Create a passkey" hero + the add button. a11y per §5.5.
+	// the empty-state "Create a passkey" hero + the add button. a11y.
 	function renderCards(container, opts) {
 		opts = opts || {};
 		if (!container) return;
@@ -256,7 +256,7 @@
 			});
 			container.appendChild(list);
 			container.appendChild(addButtonRow(opts));
-			// §9.3 F19: the per-user passwordless-login switch. Own view only — never
+			// the per-user passwordless-login switch. Own view only — never
 			// on the System-Manager read-only inventory of another user.
 			if (!opts.readOnly) container.appendChild(passkeyOnlyRow(creds, payload, opts));
 		});
@@ -285,7 +285,7 @@
 
 		var glyph = el("span", "passkey-card-glyph");
 		glyph.setAttribute("aria-hidden", "true");
-		glyph.textContent = "🔑";
+		glyph.innerHTML = '<svg class="icon" focusable="false"><use href="#icon-key"></use></svg>';
 		li.appendChild(glyph);
 
 		var main = el("div", "passkey-card-main");
@@ -293,7 +293,7 @@
 		var labelEl = el("span", "passkey-card-label", vm.label);
 		labelEl.setAttribute("title", vm.label);
 		labelRow.appendChild(labelEl);
-		// Synced / Device-bound badge with a TEXT equivalent (§5.5).
+		// Synced / Device-bound badge with a TEXT equivalent.
 		var badge = el("span", "passkey-badge passkey-badge-" + (vm.badge.synced ? "synced" : "device"), t(vm.badge.key));
 		badge.setAttribute("title", t(vm.badge.hintKey));
 		labelRow.appendChild(badge);
@@ -315,14 +315,14 @@
 
 		if (!opts.readOnly) {
 			var actions = el("div", "passkey-card-actions");
-			actions.appendChild(iconButton("passkey-rename", "✏️", vm.a11y.rename, function () { renameCard(vm, opts); }));
-			actions.appendChild(iconButton("passkey-delete", "🗑️", vm.a11y.del, function () { deleteCard(vm, opts); }));
+			actions.appendChild(iconButton("passkey-rename", "pencil", vm.a11y.rename, function () { renameCard(vm, opts); }));
+			actions.appendChild(iconButton("passkey-delete", "trash", vm.a11y.del, function () { deleteCard(vm, opts); }));
 			li.appendChild(actions);
 		}
 		return li;
 	}
 
-	// Inline rename (display-only, no sudo, §8.2).
+	// Inline rename (display-only, no sudo).
 	function renameCard(vm, opts) {
 		var d = new frappe.ui.Dialog({
 			title: t("Rename passkey"),
@@ -339,7 +339,7 @@
 		d.show();
 	}
 
-	// Delete: confirm dialog + sudo gate (§7.4/§8.3). The client-side last-method
+	// Delete: confirm dialog + sudo gate. The client-side last-method
 	// guard is advisory; the server enforces it authoritatively.
 	function deleteCard(vm, opts) {
 		var d = new frappe.ui.Dialog({
@@ -364,7 +364,7 @@
 		d.show();
 	}
 
-	// §9.3 F19 passwordless-login switch. Current value rides the list payload
+	// passwordless-login switch. Current value rides the list payload
 	// (server-authoritative), with the boot flag as a fallback; defaults OFF when
 	// neither ships it yet. Disabled when the user has no usable (enabled) passkey —
 	// you can't go passwordless with none, and enabling needs a passkey grant anyway.
@@ -407,8 +407,8 @@
 		return row;
 	}
 
-	// Sudo-gated toggle (§9.3 F19): confirm + a single-use PASSKEY grant only —
-	// mirrors deleteCard's sudo dance. guardedCall runs the §7.2 401 confirm and
+	// Sudo-gated toggle: confirm + a single-use PASSKEY grant only —
+	// mirrors deleteCard's sudo dance. guardedCall runs the 401 confirm and
 	// retries with the grant; the boolean {enabled} payload matches the fingerprint
 	// the server binds the grant to ({"enabled": <bool>}).
 	function confirmPasskeyOnly(desired, current, opts) {
@@ -453,7 +453,7 @@
 		});
 	}
 
-	// System-Manager read-only inventory of ANOTHER user (§8.1/§8.6). list_* only
+	// System-Manager read-only inventory of ANOTHER user. list_* only
 	// ever returns the SESSION user's rows, so we read the DocType directly (System
 	// Manager has read); disable/delete happen on the WebAuthn Credential DocType.
 	function renderReadOnlyInventory(container, user) {
@@ -551,8 +551,8 @@
 		});
 	}
 
-	// Inject the "My Passkeys" item into older Desk navbar user dropdowns (F3-9
-	// fallback). Selectors drift across frappe versions, so try a few and no-op
+	// Inject the "My Passkeys" item into older Desk navbar user dropdowns (fallback).
+	// Selectors drift across frappe versions, so try a few and no-op
 	// silently if none match.
 	function injectNavbarItem() {
 		if (document.getElementById("passkey-navbar-item")) return true;
@@ -585,7 +585,7 @@
 		})();
 	}
 
-	// ============================================================ §8.4 nudges
+	// ============================================================ nudges
 	function boot() { return (window.frappe && frappe.boot && frappe.boot.passkeys) || null; }
 
 	function maybeNudge() {
@@ -596,7 +596,7 @@
 			var clientCaps = {
 				supported: caps.supported,
 				uvpaa: caps.uvpaa,
-				conditionalCreate: r[1] === true, // certain-true only (§8.4)
+				conditionalCreate: r[1] === true, // certain-true only
 			};
 			// post-hybrid upsell takes precedence (the login just happened over hybrid)
 			var upsell = M.upsellDecision(b, clientCaps, storageGet, Date.now());
@@ -610,7 +610,7 @@
 	}
 
 	// getClientCapabilities().conditionalCreate — the only reliable signal for the
-	// silent upgrade (§8.4). Unknown / absent ⇒ false (silent create must be certain).
+	// silent upgrade. Unknown / absent ⇒ false (silent create must be certain).
 	function probeConditionalCreate() {
 		var PKC = window.PublicKeyCredential;
 		if (!PKC || typeof PKC.getClientCapabilities !== "function") return Promise.resolve(false);
@@ -630,14 +630,14 @@
 			body.appendChild(el("p", "passkey-nudge-body", t(bodyKey)));
 			var actions = el("div", "passkey-nudge-actions");
 			actions.appendChild(primaryButton(t(M.COPY.nudgeCta), function () {
-				// CTA runs under the fresh-login sudo window — zero re-prompt (§8.4).
+				// CTA runs under the fresh-login sudo window — zero re-prompt.
 				d._acted = true; d.hide(); triggerAdd({});
 			}));
 			actions.appendChild(linkButton(t(M.COPY.nudgeLater), function () { act(M.NUDGE_EVENTS.DECLINED); }));
 			actions.appendChild(linkButton(t(M.COPY.nudgeNever), function () { act(M.NUDGE_EVENTS.OPT_OUT); }));
 			body.appendChild(actions);
 		}
-		// Esc / backdrop dismiss = "Not now" semantics (§5.5): the modal's hide event
+		// Esc / backdrop dismiss = "Not now" semantics: the modal's hide event
 		// is the one reliable catch-all across dismissal routes (cf. passkey_confirm.js).
 		if (d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () { if (!d._acted) { d._acted = true; recordNudge(M.NUDGE_EVENTS.DECLINED); } });
@@ -648,7 +648,7 @@
 	function conditionalCreate() {
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") return;
 		post(METHODS.beginRegistration, { flow: "conditional_create" }).then(function (res) {
-			if (!res || !res.ok) return; // silent no-op (§8.4)
+			if (!res || !res.ok) return; // silent no-op
 			var begin = unwrap(res.body) || {};
 			var options;
 			try { options = parseCreate(begin.options); } catch (e) { return; }
@@ -684,13 +684,14 @@
 	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
 	function primaryButton(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-primary btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
 	function linkButton(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-link btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
-	function iconButton(cls, glyph, name, on) {
+	function iconButton(cls, iconName, name, on) {
 		var b = document.createElement("button");
 		b.type = "button";
 		b.className = "btn btn-xs btn-default passkey-icon-btn " + cls;
-		b.setAttribute("aria-label", name); // accessible name for icon-only action (§5.5)
+		b.setAttribute("aria-label", name); // accessible name for icon-only action
 		b.setAttribute("title", name);
-		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.textContent = glyph;
+		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true");
+		g.innerHTML = '<svg class="icon icon-sm" focusable="false"><use href="#icon-' + iconName + '"></use></svg>';
 		b.appendChild(g);
 		b.addEventListener("click", on);
 		return b;
@@ -723,7 +724,7 @@
 	// ------------------------------------------------------------- desk boot
 	function onReady() {
 		var b = boot();
-		// Management surfaces gate on ANY passkey mode (§3.0 matrix): both modes off
+		// Management surfaces gate on ANY passkey mode: both modes off
 		// (or a dormant/uninstalled app ⇒ no bootinfo) ⇒ the UI removes itself.
 		if (!b || b.enabled === false) return;
 		if (!hasNativeNavbarItem()) injectNavbarItemWithRetry();
