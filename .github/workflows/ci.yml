@@ -234,6 +234,13 @@ jobs:
       - name: Site setup for UI tests
         working-directory: /home/runner/frappe-bench
         run: |
+          # Cypress drives a LIVE bench (never frappe.flags.in_test), so mark the
+          # ephemeral CI site a developer/test bench: developer_mode satisfies the
+          # app's UI-test-helper guard, allow_tests mirrors frappe's own UI CI, and
+          # ignore_csrf skips CSRF for the automated cross-origin cy.request calls.
+          bench --site test_site set-config developer_mode 1 --parse
+          bench --site test_site set-config allow_tests 1 --parse
+          bench --site test_site set-config ignore_csrf 1 --parse
           bench --site test_site execute frappe.utils.install.complete_setup_wizard
           bench --site test_site execute frappe.tests.ui_test_helpers.create_test_user
 
