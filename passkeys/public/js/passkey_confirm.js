@@ -267,7 +267,18 @@
 
 			done: function (ok) {
 				void ok;
-				try { if (dialog && dialog.hide) dialog.hide(); } catch (e) { /* ignore */ }
+				try {
+					if (dialog && dialog.hide) dialog.hide();
+					// Bootstrap 4's modal("hide") silently no-ops (and never retries) when
+					// called during the ~300ms show transition (_isTransitioning), which a
+					// fast ceremony can hit — leaving .modal.fade.show stuck open. Re-hide
+					// once the show transition settles so the close can't get swallowed.
+					if (dialog && dialog.$wrapper && dialog.$wrapper.one) {
+						dialog.$wrapper.one("shown.bs.modal", function () {
+							try { dialog.$wrapper.modal("hide"); } catch (e) { /* ignore */ }
+						});
+					}
+				} catch (e) { /* ignore */ }
 				if (restoreFocus) restoreFocus(); // focus returns to invoking control
 			},
 
