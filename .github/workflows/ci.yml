@@ -259,6 +259,10 @@ jobs:
       # spec run is skipped — the install/resolver legs above still validated the cell.
       - name: Run Cypress UI tests
         working-directory: /home/runner/frappe-bench
+        env:
+          # The desk user-menu dropdown DOM varies by Frappe version; the navbar specs
+          # gate their menu-navigation tests to develop via this value (upstream S2).
+          CYPRESS_frappeBranch: ${{ matrix.frappe-branch }}
         run: |
           if [ ! -f "${GITHUB_WORKSPACE}/cypress.config.js" ] && [ ! -f "${GITHUB_WORKSPACE}/cypress.config.ts" ]; then
             echo "::warning::no cypress config at app root yet — UI specs skipped for this cell"
