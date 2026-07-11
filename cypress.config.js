@@ -8,9 +8,10 @@
 // adminPassword are overridden by CYPRESS_baseUrl / CYPRESS_adminPassword that
 // bench exports at launch.
 
-const { defineConfig } = require("cypress");
-
-module.exports = defineConfig({
+// `defineConfig` is only an editor-typings identity wrapper; export a plain object
+// so this config never has to `require("cypress")`, which is not resolvable from the
+// app directory when bench runs Cypress from apps/frappe (as it does in CI).
+module.exports = {
 	adminPassword: "admin",
 	defaultCommandTimeout: 20000,
 	// Cold, dev-mode desk loads (unminified assets + first-visit download) can
@@ -58,4 +59,4 @@ module.exports = defineConfig({
 		specPattern: ["./cypress/integration/*.cy.js"],
 		supportFile: "./cypress/support/e2e.js",
 	},
-});
+};
