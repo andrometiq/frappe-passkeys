@@ -1,14 +1,14 @@
-// passkey_confirm.test.js — dependency-free unit harness for the PURE §7
+// passkey_confirm.test.js — dependency-free unit harness for the PURE
 // action-confirmation logic in passkey_common.js::createConfirmEngine + helpers.
 // Runs WITHOUT the bench and WITHOUT jsdom:  node --test passkeys/tests/js
 //
 // Covers: 401 contract parsing (exc_type match only), grant-header build,
 // signature dedupe, capability parsing, grant extraction (message-wrapped),
 // the full begin->gesture->verify->grant happy path, the frappe.passkeys.call
-// 401 retry + VERBATIM payload_fingerprint echo (A36) + grant-header attach,
+// 401 retry + VERBATIM payload_fingerprint echo + grant-header attach,
 // params/payload_hash mutual exclusion, password-fallback leg, fallback_unavailable,
 // user-cancel mapping, DOMException mapping through the gesture, single-retry cap,
-// and concurrent-invocation dialog sharing (A44).
+// and concurrent-invocation dialog sharing.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -114,7 +114,7 @@ test("confirm(): begin(params) -> gesture -> verify -> grant token", async () =>
 	});
 	const grant = await engine.confirm("myapp.release_payment", { payment_id: "PAY-1" });
 	assert.strictEqual(grant, "GRANT-1");
-	// begin got RAW params, never a hash (A36)
+	// begin got RAW params, never a hash
 	assert.deepStrictEqual(post.calls[0].body, { action: "myapp.release_payment", params: { payment_id: "PAY-1" } });
 	assert.ok(!("payload_hash" in post.calls[0].body));
 	// gesture ran on the server options; verify posted the assertion + state_id
@@ -134,7 +134,7 @@ test("call(): 401 -> echo payload_fingerprint VERBATIM -> confirm -> retry with 
 	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI({ method: "passkey" }) });
 	const result = await engine.call("myapp.api.release_payment", { payment_id: "PAY-2" });
 	assert.strictEqual(result, "done");
-	// begin echoed the fingerprint verbatim as payload_hash, and sent NO params (A36 mutual exclusion)
+	// begin echoed the fingerprint verbatim as payload_hash, and sent NO params (mutual exclusion)
 	const beginCall = post.calls.find((c) => c.method === "passkeys.confirm.begin_confirmation");
 	assert.deepStrictEqual(beginCall.body, { action: "myapp.release_payment", payload_hash: "SERVER-FP" });
 	assert.ok(!("params" in beginCall.body));
@@ -248,7 +248,7 @@ test("concurrency (A44): identical concurrent confirms share ONE ceremony", asyn
 // ----------------------------------------------------- HTTP vs network (C11)
 // A dropped fetch (transport failure) stays `network`; a REACHED server that
 // returned a non-contract error (417/4xx/5xx) is `confirmation_failed` — never
-// `network`. Codes stay inside the fixed §7.3 taxonomy (A44), and callers (which
+// `network`. Codes stay inside the fixed taxonomy, and callers (which
 // branch only on user_cancelled) keep working.
 
 test("call(): transport failure (fetch rejects) -> network", async () => {
@@ -270,9 +270,9 @@ test("call(): 417 served-by-core on the protected method -> confirmation_failed 
 });
 
 // ------------------------------------------------- passkey-only switch (C2-UI)
-// The §9.3 F19 toggle sends a BOOLEAN {enabled} payload through frappe.passkeys.call;
+// The toggle sends a BOOLEAN {enabled} payload through frappe.passkeys.call;
 // the server 401 binds the grant to a fingerprint over {"enabled": <bool>}, the
-// engine echoes that fingerprint VERBATIM (A36) into begin_confirmation, and the
+// engine echoes that fingerprint VERBATIM into begin_confirmation, and the
 // retry re-sends the SAME boolean payload with the grant header.
 
 test("call(): set_passkey_only_login(true) echoes the {enabled:true} fingerprint + retries with grant", async () => {
@@ -292,7 +292,7 @@ test("call(): set_passkey_only_login(true) echoes the {enabled:true} fingerprint
 	const initial = post.calls.filter((c) => c.method === SWITCH)[0];
 	assert.deepStrictEqual(initial.body, { enabled: true });
 	assert.strictEqual(typeof initial.body.enabled, "boolean");
-	// begin echoed the server fingerprint verbatim for the switch action (A36)
+	// begin echoed the server fingerprint verbatim for the switch action
 	const begin = post.calls.find((c) => c.method === "passkeys.confirm.begin_confirmation");
 	assert.deepStrictEqual(begin.body, { action: "passkeys.set_passkey_only_login", payload_hash: "FP-ENABLED" });
 	// retry re-sent the SAME boolean payload + attached the grant header

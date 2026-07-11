@@ -1,15 +1,15 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Desk ``extend_bootinfo`` (DESIGN-v1 §8.1) + per-user enrollment-nudge state
-(§2.3 / §8.4). Folds into ``frappe/passkey.py`` on the core merge.
+"""Desk ``extend_bootinfo`` + per-user enrollment-nudge state.
+Folds into ``frappe/passkey.py`` on the core merge.
 
-**Hook-path import discipline (§1.3):** ``extend_bootinfo`` fires on **every**
+**Hook-path import discipline:** ``extend_bootinfo`` fires on **every**
 Desk boot, so this module MUST NOT import ``webauthn`` (directly or
 transitively). It imports only ``frappe`` and :mod:`passkeys.install` (the
 ``CORE_NATIVE`` switch + the ``__passkeys`` Defaults parent), both webauthn-free.
 
-Nudge state is stored **exactly the twofactor way** (§2.3): site-wide
+Nudge state is stored **exactly the twofactor way**: site-wide
 ``DefaultValue`` rows with a user-prefixed key under a dedicated parent —
 ``get_default("{user}_passkey_nudge", parent="__passkeys")`` — never
 user-parented ``frappe.defaults`` rows and never on the lazily-created handle
@@ -23,7 +23,7 @@ from frappe.utils import cint, get_datetime, now_datetime
 
 from passkeys.install import DEFAULTS_PARENT, dormant
 
-# record_nudge event vocabulary (§3.0 row 13 / §8.4).
+# record_nudge event vocabulary.
 NUDGE_EVENTS = ("shown", "declined", "opt_out")
 
 _EMPTY_NUDGE = {"declines": 0, "last_shown": None, "opt_out": 0}
@@ -34,7 +34,7 @@ def _nudge_key(user: str) -> str:
 
 
 def get_nudge_state(user: str) -> dict:
-	"""The user's ``{declines, last_shown, opt_out}`` nudge blob (§2.3). Absent or
+	"""The user's ``{declines, last_shown, opt_out}`` nudge blob. Absent or
 	malformed ⇒ a fresh zero-state (never raises — a bad row must not brick boot)."""
 	raw = frappe.db.get_default(_nudge_key(user), parent=DEFAULTS_PARENT)
 	if not raw:
@@ -55,8 +55,8 @@ def _save_nudge_state(user: str, state: dict) -> None:
 
 
 def record_nudge_event(user: str, event: str) -> dict:
-	"""Fold a ``record_nudge`` event into the user's state (§8.4). ``shown`` is the
-	cadence counter event (A-F24: a network-retried ``shown`` double-increments —
+	"""Fold a ``record_nudge`` event into the user's state. ``shown`` is the
+	cadence counter event (a network-retried ``shown`` double-increments —
 	accepted bounded drift, never gains a prompt); ``declined`` ("Not now") only
 	refreshes the cooldown anchor (the preceding ``shown`` already counted);
 	``opt_out`` ("Don't ask again") is terminal. Returns the new state."""
@@ -75,9 +75,9 @@ def record_nudge_event(user: str, event: str) -> dict:
 
 
 def _cadence_ok(settings, state: dict) -> bool:
-	"""Shared nudge/upsell cadence (§8.4). All thresholds come from Passkey Settings
+	"""Shared nudge/upsell cadence. All thresholds come from Passkey Settings
 	knobs (``passkey_enrollment_nudge`` / ``passkey_nudge_max_prompts`` /
-	``passkey_nudge_cooldown_days``, per pass-3 F3-8 — never hardcoded): knob on ∧
+	``passkey_nudge_cooldown_days`` — never hardcoded): knob on ∧
 	not opted out ∧ declines < cap ∧ cooldown elapsed. The **credential-count** gate
 	is applied by the caller — the enrollment nudge requires 0 credentials, the
 	post-hybrid upsell does not (the user just signed in, so they hold ≥1)."""
@@ -100,7 +100,7 @@ def _cadence_ok(settings, state: dict) -> bool:
 
 
 def nudge_eligible(user: str, settings, credential_count: int, state: dict | None = None) -> bool:
-	"""Server-side enrollment-nudge cadence gate (§8.4): the shared cadence AND
+	"""Server-side enrollment-nudge cadence gate: the shared cadence AND
 	``credential_count == 0``. The client ANDs this with its own layered capability
 	detection; the server never trusts a client capability claim for cadence."""
 	if cint(credential_count) > 0:
@@ -110,36 +110,35 @@ def nudge_eligible(user: str, settings, credential_count: int, state: dict | Non
 
 
 def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
-	"""Post-hybrid upsell cadence (§8.4): the shared nudge cadence WITHOUT the
+	"""Post-hybrid upsell cadence: the shared nudge cadence WITHOUT the
 	0-credential gate — the user just completed a hybrid (QR) assertion, so they
 	already hold ≥1 credential and ``nudge_state.eligible`` (which requires 0) is the
-	wrong signal (build-p6-frontend-manifest.md §3, addition 2)."""
+	wrong signal."""
 	state = state if state is not None else get_nudge_state(user)
 	return _cadence_ok(settings, state)
 
 
 def build_passkeys_boot(user: str) -> dict:
-	"""The desk/portal boot payload the P6 management + nudge + settings surfaces read
-	(§8.1). Server state only — no client-supplied value is echoed. This is the single
-	contract both the Desk boot flag and the portal ``/passkeys`` controller expose
-	(build-p6-frontend-manifest.md §3):
+	"""The desk/portal boot payload the management + nudge + settings surfaces read.
+	Server state only — no client-supplied value is echoed. This is the single
+	contract both the Desk boot flag and the portal ``/passkeys`` controller expose:
 
 	  * ``enabled``            — ANY mode on; the desk navbar + User-form section gate
-	    on it (both modes off / dormant ⇒ the management UI removes itself, §3.0).
+	    on it (both modes off / dormant ⇒ the management UI removes itself).
 	  * ``modes``              — ``{first_factor, second_factor}``.
 	  * ``credential_count``   — the user's ENABLED credentials.
 	  * ``passkey_only_login`` — the caller's per-user password-login-disable flag
-	    (§9.3; 0 when no handle row yet); the management toggle reflects it.
+	    (0 when no handle row yet); the management toggle reflects it.
 	  * ``nudge_state``        — ``{declines, last_shown, opt_out, eligible}``;
-	    ``eligible`` is the SERVER cadence verdict (§8.4 — "never client-side-only caps").
+	    ``eligible`` is the SERVER cadence verdict ("never client-side-only caps").
 	  * ``post_login_method``  — the sudo window's seeding class this session
-	    (``password``/``passkey``/``weak``/``reauth``/``None``); drives §8.4's
+	    (``password``/``passkey``/``weak``/``reauth``/``None``); drives the
 	    conditional-create (password only) and the fresh-login nudge window.
-	  * ``conditional_create`` — the ``passkey_conditional_create`` knob (§8.4 silent
+	  * ``conditional_create`` — the ``passkey_conditional_create`` knob (silent
 	    upgrade); the client fails safe OFF when absent.
 	  * ``upsell_eligible``    — post-hybrid upsell cadence WITHOUT the 0-credential gate.
 	  * ``settings_context``   — ``{core_two_factor_auth, disable_user_pass_login,
-	    passkey_only_user_count}`` for the §9.4 cross-flag banners; System-Manager-only
+	    passkey_only_user_count}`` for the cross-flag banners; System-Manager-only
 	    (empty for everyone else — the settings form is admin-only, and the passkey-only
 	    user count is not shipped to every Desk boot).
 	  * ``rp_id``              — the resolved RP ID for ``signalAllAcceptedCredentials``.
@@ -155,7 +154,7 @@ def build_passkeys_boot(user: str) -> dict:
 		"enabled": first or second,
 		"modes": {"first_factor": first, "second_factor": second},
 		"credential_count": credential_count,
-		# §9.3: the caller's own passkey_only_login flag (0 when no handle row) —
+		# The caller's own passkey_only_login flag (0 when no handle row) —
 		# the desk/portal management toggle reflects it on boot (client parity with
 		# list_credentials' payload).
 		"passkey_only_login": cint(
@@ -174,7 +173,7 @@ def build_passkeys_boot(user: str) -> dict:
 
 
 def _settings_context(user: str) -> dict:
-	"""§9.4 cross-flag banner context (``core_two_factor_auth`` /
+	"""Cross-flag banner context (``core_two_factor_auth`` /
 	``disable_user_pass_login`` / ``passkey_only_user_count``). Only the Passkey
 	Settings form reads it, and that form is System-Manager-only — so this ships an
 	empty dict for everyone else (avoids the per-boot count query + not exposing the
@@ -197,17 +196,17 @@ def _post_login_method(user: str) -> str | None:
 
 
 def extend_bootinfo(bootinfo=None):
-	"""``extend_bootinfo`` hook (§8.1): publish ``bootinfo.passkeys``. Called by
+	"""``extend_bootinfo`` hook: publish ``bootinfo.passkeys``. Called by
 	``frappe/sessions.py`` as ``extend_bootinfo(bootinfo=bootinfo)``.
 
 	Exception-hardened + ``CORE_NATIVE`` no-op + Guest no-op: this fires on every
-	Desk boot (§1.3), so it must never raise, never import ``webauthn``, and never
-	render when core serves passkeys natively (§11 dormant shell)."""
+	Desk boot, so it must never raise, never import ``webauthn``, and never
+	render when core serves passkeys natively (dormant shell)."""
 	try:
 		if bootinfo is None:
 			bootinfo = frappe.local.boot
 		if dormant():
-			return  # §11 dormant-shell: publish no bootinfo.passkeys, so the desk +
+			return  # dormant-shell: publish no bootinfo.passkeys, so the desk +
 			# portal bundles self-remove on the absent `frappe.boot.passkeys` flag
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):

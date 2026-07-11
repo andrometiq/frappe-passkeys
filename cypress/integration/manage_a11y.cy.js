@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — accessibility of the management surfaces (DESIGN-v1 §5.5/§12.4). Cards
+// Accessibility of the management surfaces. Cards
 // use list semantics; icon-only actions carry accessible names ("Rename passkey
 // ⟨label⟩" / "Delete passkey ⟨label⟩"); badges have text equivalents; a polite
 // live region announces async outcomes; dialogs trap + return focus and are

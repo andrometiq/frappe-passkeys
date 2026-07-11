@@ -1,8 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// Cypress support commands for the P3 passwordless-login specs (DESIGN-v1
-// §12.3/§12.4). Two families:
+// Cypress support commands for the passwordless-login specs. Two families:
 //   1. CDP WebAuthn virtual-authenticator drivers (Chromium-only).
 //   2. Frappe idiom (`cy.login`, `cy.call`) + higher-level app helpers that seed
 //      a real resident credential through the committed registration ceremony,
@@ -11,7 +10,7 @@
 // Chromium-family browsers only. Specs guard with Cypress.isBrowser({family}).
 
 // ---------------------------------------------------------------------------
-// Low-level CDP bridge (NOTES.md §3) — undocumented but long-lived.
+// Low-level CDP bridge — undocumented but long-lived.
 // ---------------------------------------------------------------------------
 const cdp = (command, params = {}) =>
 	Cypress.automation("remote:debugger:protocol", { command, params });
@@ -326,7 +325,7 @@ Cypress.Commands.add("clear_password_failures", (user) =>
 	cy.call("passkeys.tests.ui_test_helpers.clear_password_failures", { user })
 );
 
-// --- second-factor (P4, §6) scaffolding ------------------------------------
+// --- second-factor scaffolding ------------------------------------
 // Turn on core 2FA (the structural floor) + passkey_as_second_factor, pointed at
 // this UI-test origin. `first_factor`/`otp_fallback` toggle the co-features.
 Cypress.Commands.add("setup_second_factor", (opts = {}) =>
@@ -343,7 +342,7 @@ Cypress.Commands.add("teardown_second_factor", () =>
 );
 
 // A non-admin user with a known password (the passkey second factor is hard-
-// exempt for Administrator, §6.2).
+// exempt for Administrator).
 Cypress.Commands.add("ensure_sf_user", (email, pwd) =>
 	cy.call("passkeys.tests.ui_test_helpers.ensure_second_factor_user", { email, pwd })
 );
@@ -380,7 +379,7 @@ Cypress.Commands.add("register_passkey", (user, password, options = {}) => {
 					.then((r) => {
 						const opts = r.message.options;
 						// Parse the L3 JSON options → CredentialCreationOptions, add the
-						// credProps extension exactly as the bundle does (§3.5).
+						// credProps extension exactly as the bundle does.
 						const create_opts = win.PublicKeyCredential.parseCreationOptionsFromJSON(opts);
 						create_opts.extensions = { ...(create_opts.extensions || {}), credProps: true };
 						return win.navigator.credentials

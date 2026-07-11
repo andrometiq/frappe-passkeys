@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""AAGUID → provider display name (DESIGN-v1 §8.2, §2.1).
+"""AAGUID → provider display name.
 
 Backed by the vendored community snapshot ``public/aaguid-map.json`` (the
 ``passkey-authenticator-aaguids`` combined list, MIT — provenance + refresh
@@ -9,13 +9,13 @@ steps in ``docs/aaguid-map.md``). The same file is served to the client at
 ``/assets/passkeys/aaguid-map.json``, so server and browser resolve from one
 snapshot.
 
-Display/telemetry only, never policy (§2.1): an AAGUID is authenticator-
+Display/telemetry only, never policy: an AAGUID is authenticator-
 asserted and unverified under ``attestation="none"``. Zero / empty / unknown
-AAGUIDs are normal (§8.2 — Safari ships all-zeros), so ``provider_name``
+AAGUIDs are normal (Safari ships all-zeros), so ``provider_name``
 answers ``None`` and callers fall back to a generic label; an unreadable or
-empty snapshot degrades the same way (§2.3 "tolerant of empty payloads").
+empty snapshot degrades the same way ("tolerant of empty payloads").
 
-Deliberately frappe-free and ``webauthn``-free (§1.3 import discipline —
+Deliberately frappe-free and ``webauthn``-free (import discipline —
 importable from any hook path); the file is read once per process
 (``lru_cache``).
 """

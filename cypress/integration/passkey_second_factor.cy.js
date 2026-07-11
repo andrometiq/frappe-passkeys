@@ -1,17 +1,17 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P4 spec — password → passkey second factor (DESIGN-v1 §6, §12.3). Three
+// Password → passkey second factor. Three
 // journeys against the real committed bundle + a CDP virtual authenticator:
 //   1. password submit → passkey step-up dialog → session (dispatch, not stacked
 //      onto OTP);
 //   2. the OTP-fallback secondary action hands off to core's own OTP UI
 //      (`#login_token`) when passkey_2fa_allow_otp_fallback is on;
 //   3. a failed leg-2 verify re-arms the UI and a second gesture succeeds WITHOUT
-//      ever re-POSTing an assertion (§6.3 / A37; fresh server re-arm is covered
+//      ever re-POSTing an assertion (fresh server re-arm is covered
 //      by passkeys/tests/test_second_factor.py).
 //
-// The second factor is hard-exempt for Administrator (§6.2), so these run as a
+// The second factor is hard-exempt for Administrator, so these run as a
 // dedicated non-admin user registered while a first-factor mode is on, then
 // covered by a core-2FA role once the passkey exists.
 
@@ -78,7 +78,7 @@ chromium_only("password → passkey second factor", () => {
 	it("offers the OTP fallback and hands off to core's OTP UI", () => {
 		submitPassword();
 		// the secondary action exists only because passkey_2fa_allow_otp_fallback
-		// is on AND the user is OTP-capable (server-gated, §6.3).
+		// is on AND the user is OTP-capable (server-gated).
 		cy.contains(".passkey-dialog button", "Use a verification code instead").click();
 		// core's own OTP form paints its token input — the passkey app got out of
 		// the way (dispatch to core's leg 2, no stacking).

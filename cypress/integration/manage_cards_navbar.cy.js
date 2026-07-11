@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — the desk "My Passkeys" surface (DESIGN-v1 §8.1, F3-9). On develop the
+// The desk "My Passkeys" surface. On develop the
 // supported entry lives in Frappe's user menu settings dropdown, rendered from
 // Navbar Settings via frappe.ui.create_menu; older desks may still expose the same
 // entry through the classic top navbar.

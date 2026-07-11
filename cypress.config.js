@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// App-local Cypress config (DESIGN-v1 §12.3/§12.4). `bench run-ui-tests passkeys`
+// App-local Cypress config. `bench run-ui-tests passkeys`
 // does `os.chdir(<app base>)` and runs Cypress from here, so the app ships its
 // own config + `cypress/` tree.
 // Mirrors frappe's own `cypress.config.js`, minus coverage/split. baseUrl and
@@ -31,7 +31,7 @@ module.exports = defineConfig({
 					// *.localhost / 127.0.0.1 over plain http; any other CI site
 					// name (e.g. test_site) is not trustworthy → PublicKeyCredential
 					// is absent. Push the fallbacks for those hosts so the specs run
-					// regardless of the site name CI injects (NOTES.md §8).
+					// regardless of the site name CI injects.
 					try {
 						const u = new URL(config.baseUrl);
 						const host = u.hostname;

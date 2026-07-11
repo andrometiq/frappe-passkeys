@@ -1,18 +1,18 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3/P6 spec — §8.4 conditional create (silent enrollment after a PASSWORD login).
+// Conditional create (silent enrollment after a PASSWORD login).
 // After an interactive password login the Desk bundle's post-login check runs a
 // `navigator.credentials.create({ mediation: "conditional" })` with NO dialog when:
 //   server knob `passkey_conditional_create` on ∧ 0 credentials ∧ nudge eligible ∧
 //   `getClientCapabilities().conditionalCreate === true` ∧ post_login_method ===
-//   "password" (§8.4 / passkey_manage_common `nudgeDecision`). Headless Chromium
+//   "password" (passkey_manage_common `nudgeDecision`). Headless Chromium
 //   does not give Cypress a deterministic way to pick the silent conditional-create
 //   credential, so the test first proves the app asked for `mediation:"conditional"`
 //   and then fulfills the same registration options with a standard virtual-auth
 //   create to prove verify_registration and the server row.
 // The ABSENCE half is enforced server-side: an email-link / OAuth login leaves only
-// a WEAK sudo window (never "password", §7.1), so `begin_registration(flow=
+// a WEAK sudo window (never "password"), so `begin_registration(flow=
 // conditional_create)` is refused — no passkey can be silently minted off a
 // non-password login. CI-gated (CDP virtual authenticator); not run locally.
 
@@ -33,7 +33,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		// conditional_create ON, nudge ON — the silent-create branch takes precedence
-		// over the visible nudge (§8.4 maybeNudge).
+		// over the visible nudge (maybeNudge).
 		cy.call(CONFIGURE_NUDGE, {
 			enrollment_nudge: 1,
 			max_prompts: 3,
@@ -57,7 +57,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 
 	it("arms conditional-create and completes registration after a password login", function () {
 		// getClientCapabilities().conditionalCreate is REQUIRED for the client to
-		// attempt a silent create (§8.4 — the create must be certain-capable). Skip
+		// attempt a silent create (the create must be certain-capable). Skip
 		// on a runner whose Chromium can't report it; a modern CI Chromium exercises
 		// it. (The server gate is pinned unconditionally in the next test.)
 		cy.window()
@@ -117,8 +117,8 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.window().its("frappe").should("exist");
-		// An email-link / OAuth login seeds only a WEAK sudo window (never "password",
-		// §7.1); reproduce that freshness gap by clearing this session's window. The
+		// An email-link / OAuth login seeds only a WEAK sudo window (never "password");
+		// reproduce that freshness gap by clearing this session's window. The
 		// silent conditional-create ceremony must then be REFUSED server-side.
 		cy.call(CLEAR_WINDOW, {});
 		cy.window()
@@ -131,7 +131,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 					headers: { "X-Frappe-CSRF-Token": csrf, Accept: "application/json" },
 					failOnStatusCode: false,
 				}).then((res) => {
-					// the §7.2 PasskeyConfirmationRequired retry contract, not a ceremony
+					// the PasskeyConfirmationRequired retry contract, not a ceremony
 					expect(res.status).to.be.gte(400);
 				});
 			});

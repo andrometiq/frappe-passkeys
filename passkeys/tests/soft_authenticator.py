@@ -3,7 +3,7 @@
 
 """Deterministic software authenticator — a test helper for **dynamic-challenge**
 integration round-trips (the golden vectors are the static conformance anchor;
-this complements them where the challenge is minted live by an endpoint, §12.1).
+this complements them where the challenge is minted live by an endpoint).
 
 Not a test module. Kept ES256/Ed25519-only (RS256's embedded PEMs are unnecessary
 here). Produces WebAuthn L3 JSON exactly as ``PublicKeyCredential.toJSON()`` would.

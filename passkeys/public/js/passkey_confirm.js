@@ -1,8 +1,8 @@
-// passkey_confirm.js — the client half of the §7 action-confirmation
+// passkey_confirm.js — the client half of the action-confirmation
 // ("passkey signing") primitive. Publishes the public JS API other Desk / portal
 // apps call to require a fresh passkey confirmation for a sensitive action.
 //
-// Public API (§7.3):
+// Public API:
 //   const grant = await frappe.passkeys.confirm("myapp.release_payment", {payment_id});
 //   await frappe.passkeys.call("myapp.api.release_payment", {payment_id});
 // Core destination namespace: frappe.ui.passkey.* (aliased here for forward-compat).
@@ -10,10 +10,10 @@
 // This file is the browser/frappe-bound wiring: raw fetch (CSRF + credentials),
 // the WebAuthn L3 gesture, and the frappe.ui.Dialog confirmation UI + a11y. ALL
 // protocol/state-machine logic (begin -> gesture -> verify -> grant, the 401
-// retry / verbatim payload_fingerprint echo of A36, concurrency dedupe, the
+// retry / verbatim payload_fingerprint echo, concurrency dedupe, the
 // typed rejection taxonomy) lives in passkey_common.js::createConfirmEngine so
 // it is unit-testable under `node --test` without a bench. JS NEVER computes a
-// payload hash (A36) — begin_confirmation is handed raw params, or echoes back a
+// payload hash — begin_confirmation is handed raw params, or echoes back a
 // server-issued payload_fingerprint verbatim.
 //
 // Loaded as an app_include_js entry AFTER passkey_common.js (which sets the
@@ -39,13 +39,13 @@
 		var h = { "Content-Type": "application/json", Accept: "application/json" };
 		var f = window.frappe;
 		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token; // authed POSTs require CSRF (§3)
+		if (token) h["X-Frappe-CSRF-Token"] = token; // authed POSTs require CSRF
 		if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
 		return h;
 	}
 
 	// Raw fetch so we own the 401 body (the retry contract) and can attach the
-	// grant header on retry — bypasses frappe's global error painter (§7.3).
+	// grant header on retry — bypasses frappe's global error painter.
 	// Resolves to {ok, status, body} for ANY HTTP status; rejects only on a
 	// transport-level failure (offline / DNS), which the engine maps to `network`.
 	function post(method, body, headers) {
@@ -66,7 +66,7 @@
 
 	// ------------------------------------------------------------------ gesture
 	// Parse the L3 RequestOptionsJSON, run a MODAL get() (UV is wire-required by
-	// the server options, §7.2), serialize the assertion to AuthenticationJSON.
+	// the server options), serialize the assertion to AuthenticationJSON.
 	function runGesture(optionsJSON) {
 		if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
 			var e = new Error("not supported");
@@ -92,7 +92,7 @@
 	// A frappe.ui.Dialog-backed confirmation UI. Returns the `ui` controller the
 	// engine drives (chooseMethod / collectPassword / announce / busy / done).
 	// One dialog instance per ceremony; the engine guarantees only one is live
-	// at a time (concurrency dedupe, A44), so we mint a fresh controller each run.
+	// at a time (concurrency dedupe), so we mint a fresh controller each run.
 	function makeDialogUI() {
 		var dialog = null;
 		var restoreFocus = C.captureFocus(document);
@@ -268,7 +268,7 @@
 			done: function (ok) {
 				void ok;
 				try { if (dialog && dialog.hide) dialog.hide(); } catch (e) { /* ignore */ }
-				if (restoreFocus) restoreFocus(); // focus returns to invoking control (§5.5)
+				if (restoreFocus) restoreFocus(); // focus returns to invoking control
 			},
 
 			close: function () { controller.done(false); },
@@ -357,7 +357,7 @@
 		f.passkeys = f.passkeys || {};
 		f.passkeys.confirm = api.confirm;
 		f.passkeys.call = api.call;
-		// forward-compat with the core destination namespace (§7.3)
+		// forward-compat with the core destination namespace
 		f.ui = f.ui || {};
 		f.ui.passkey = f.ui.passkey || {};
 		if (!f.ui.passkey.confirm) f.ui.passkey.confirm = api.confirm;

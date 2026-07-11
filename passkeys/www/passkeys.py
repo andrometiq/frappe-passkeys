@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Portal ``/passkeys`` management page controller (DESIGN-v1 §8.1). Website
+"""Portal ``/passkeys`` management page controller. Website
 users manage their passkeys with the same card component the Desk User form
 uses, driven by the whitelisted management endpoints
 (``passkeys.api.credentials.*`` + ``passkeys.passkey.get_signal_data`` /
@@ -11,9 +11,9 @@ uses, driven by the whitelisted management endpoints
 frontend bundle; this controller supplies context + the guest guard only. The
 context mirrors the Desk ``bootinfo.passkeys`` shape (``boot.build_passkeys_boot``)
 so the card component reads one contract on both surfaces. On the core merge this
-moves to ``frappe/www/passkeys.py`` verbatim (§11).
+moves to ``frappe/www/passkeys.py`` verbatim.
 
-``webauthn`` is never imported here (this is a website-render path, §1.3)."""
+``webauthn`` is never imported here (this is a website-render path)."""
 
 import frappe
 from frappe.sessions import get_csrf_token
@@ -22,13 +22,13 @@ from passkeys import boot, install
 
 no_cache = 1
 
-# The portal management bundle (frontend manifest §2.5). Order is load-bearing:
+# The portal management bundle (frontend manifest). Order is load-bearing:
 # passkey_common.js sets the confirm engine + JSON-shim globals, passkey_manage_
 # common.js sets the shared card view-models, and passkey_portal.bundle.js reads
 # BOTH and mounts into ``#passkey-portal-root``. Delivered page-scoped here for the
 # /passkeys management page; the SAME set also reaches other authenticated portal
-# pages via ``shims/portal_nudge.py`` so the §8.4 nudge finds portal-only users
-# (§5.1 "on authenticated web pages when enabled"), where the bundle self-gates to
+# pages via ``shims/portal_nudge.py`` so the nudge finds portal-only users
+# ("on authenticated web pages when enabled"), where the bundle self-gates to
 # the nudge alone (no mount). Portal pages ship no ``frappe.ui.Dialog`` / desk
 # confirm bundle, so passkey_common.js is required.
 PORTAL_JS = (
@@ -40,13 +40,13 @@ PORTAL_CSS = ("/assets/passkeys/css/passkey_manage.css",)
 
 
 def get_context(context):
-	"""Guest ⇒ redirect to login (``/login?redirect-to=/passkeys``, §8.1). Otherwise
+	"""Guest ⇒ redirect to login (``/login?redirect-to=/passkeys``). Otherwise
 	expose ``context.passkeys`` = the server-truth boot payload the card component
 	consumes (enabled, modes, credential_count, nudge_state, post_login_method,
 	conditional_create, upsell_eligible, settings_context, rp_id) and append the
 	portal management assets. Server state only — nothing client-supplied is echoed."""
 	if install.dormant():
-		# §11 dormant-shell: the app must not shadow core's native /passkeys — this
+		# dormant-shell: the app must not shadow core's native /passkeys — this
 		# UI surface goes dark (404) instead of rendering a parallel management page.
 		raise frappe.DoesNotExistError(frappe._("Passkeys are served natively by this site."))
 	if frappe.session.user in ("Guest", None, ""):

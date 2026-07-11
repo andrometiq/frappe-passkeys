@@ -1,10 +1,10 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — the /passkeys portal management page (DESIGN-v1 §8.1). Website users
+// The /passkeys portal management page. Website users
 // get the same card component from passkey_portal.bundle.js, rendered into
 // #passkey-portal-root. Guests are redirected to /login (server controller). The
-// portal delete path reuses the confirm engine's sudo dance (§7.4) with a
+// portal delete path reuses the confirm engine's sudo dance with a
 // self-contained modal (portal has no frappe.ui.Dialog).
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;

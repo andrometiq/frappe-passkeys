@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 5 — rejection taxonomy (DESIGN-v1 §7.3 A44). Both helpers reject with a
+// Rejection taxonomy. Both helpers reject with a
 // fixed, exhaustive {code}: user_cancelled (NotAllowedError / timeout), no_credentials,
 // not_supported (417 PasskeyServedByCore), network (offline). Codes are what
 // consuming apps program against.

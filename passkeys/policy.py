@@ -1,8 +1,8 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""RP ID / origin policy (DESIGN-v1 §9.2; folds into ``frappe/passkey.py``).
-The UV / sign-count / BE-BS matrices (§3.6/§3.7) arrive with the ceremony
+"""RP ID / origin policy (folds into ``frappe/passkey.py``).
+The UV / sign-count / BE-BS matrices arrive with the ceremony
 engine. Resolution happens at enable time from pinned configuration — never on
 a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
 
@@ -21,7 +21,7 @@ def webauthn_available() -> bool:
 
 def resolve_rp_id(settings) -> str | None:
 	"""Explicit `passkey_rp_id`, else the EXACT host of the site's configured
-	``host_name`` — never a derived registrable/parent domain (pass-3 F3-1);
+	``host_name`` — never a derived registrable/parent domain;
 	widening is an explicit admin action via the knob."""
 	explicit = (settings.get("passkey_rp_id") or "").strip().lower()
 	if explicit:
@@ -56,10 +56,10 @@ def resolve_origins(settings, rp_id: str) -> list[str]:
 
 
 def validate_origins(settings, rp_id: str) -> None:
-	"""Enable-time, fail-closed (§9.2): HTTPS only (``http://localhost`` under
+	"""Enable-time, fail-closed: HTTPS only (``http://localhost`` under
 	developer mode), and every origin host within the RP ID's registrable
 	scope — an out-of-scope origin passes every server check and then dies
-	client-side with a browser SecurityError, forever (B-F11)."""
+	client-side with a browser SecurityError, forever."""
 	for origin in resolve_origins(settings, rp_id):
 		parts = urlsplit(origin)
 		host = (parts.hostname or "").lower()
@@ -88,10 +88,10 @@ def _is_dev_localhost(host: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# UV policy (§3.7 per-ceremony matrix; wire vs enforcement)
+# UV policy (per-ceremony matrix; wire vs enforcement)
 # ---------------------------------------------------------------------------
 
-# Wire `userVerification` requested per ceremony (§3.7 table). The wire value is
+# Wire `userVerification` requested per ceremony. The wire value is
 # advisory; server enforcement is the functions below, never the wire string.
 UV_WIRE = {
 	"first_factor": "preferred",
@@ -101,14 +101,14 @@ UV_WIRE = {
 	"confirmation": "required",
 }
 
-# First-factor UV enforcement outcomes (§3.1 step 11 / §3.7).
+# First-factor UV enforcement outcomes.
 UV_SESSION = "session"  # UV=1 ∧ uv_initialized=1 → passwordless session
-UV_SETUP = "uv_setup"  # UV=1 ∧ uv_initialized=0 → §3.4 inline step-up
+UV_SETUP = "uv_setup"  # UV=1 ∧ uv_initialized=0 → inline step-up
 UV_REJECT = "reject"  # UV=0 → a UV-less assertion never yields a passwordless session
 
 
 def passwordless_uv_outcome(uv_bit: bool, uv_initialized: bool) -> str:
-	"""§3.7 first-factor gate. Passwordless requires **UV=1 AND uv_initialized**
+	"""First-factor gate. Passwordless requires **UV=1 AND uv_initialized**
 	(the L3 §4 ``uvInitialized`` MUST-NOT: a false→true flip needs a second
 	factor, so a bare UV=1 assertion never completes passwordless login by
 	itself). Returns :data:`UV_SESSION` / :data:`UV_SETUP` / :data:`UV_REJECT`."""
@@ -118,13 +118,13 @@ def passwordless_uv_outcome(uv_bit: bool, uv_initialized: bool) -> str:
 
 
 def resident_key_for_flow(flow: str) -> str:
-	"""§3.2 / §9.1 fixed policy: ``required`` for an explicit add (discoverable
+	"""Fixed policy: ``required`` for an explicit add (discoverable
 	first-factor credential), ``preferred`` for a conditional-create upgrade."""
 	return "required" if flow == "explicit" else "preferred"
 
 
 # ---------------------------------------------------------------------------
-# Sign-count policy (§3.6; app-side — the library check is disabled by passing
+# Sign-count policy (app-side — the library check is disabled by passing
 # credential_current_sign_count=0, else its internal hard-reject would silently
 # turn the log+flag default into permanent hard-fail).
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ SIGN_COUNT_REGRESSION = "regression"  # new < stored — log+flag; reject iff ha
 
 
 def classify_sign_count(stored: int, asserted: int) -> str:
-	"""§3.6 matrix. Never writes the stored counter downward (the caller stores
+	"""Matrix. Never writes the stored counter downward (the caller stores
 	:func:`sign_count_to_store`)."""
 	stored, asserted = int(stored), int(asserted)
 	if asserted == 0 and stored == 0:
@@ -155,14 +155,14 @@ def sign_count_to_store(stored: int, asserted: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Backup eligibility / state (§3.6)
+# Backup eligibility / state
 # ---------------------------------------------------------------------------
 
 
 def backup_eligibility_mutated(stored_be: bool, asserted_be: bool) -> bool:
-	"""BE is write-once at registration (§2.1). An assertion whose BE flag
+	"""BE is write-once at registration. An assertion whose BE flag
 	differs from the stored value is a clone/forgery signal and fails the
-	ceremony (stricter-than-spec, stated §3.6). BS-without-BE illegality is
+	ceremony (stricter-than-spec). BS-without-BE illegality is
 	caught inside py_webauthn (``InvalidBackupFlags``); this is the app-side
 	mutation check the library does not perform."""
 	return bool(stored_be) != bool(asserted_be)

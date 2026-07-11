@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 8 — guest i18n delivery (DESIGN-v1 §5.6). On v15/v16 core ships NO
+// Guest i18n delivery. On v15/v16 core ships NO
 // guest translations, so the bundle fetches passkeys.passkey.get_app_translations
 // and Object.assign-merges the catalog into frappe._messages. With the site
 // language set to French, the passkey button must render its French label —

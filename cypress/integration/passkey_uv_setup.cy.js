@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 5 — uv-setup inline step-up (DESIGN-v1 §3.4/§3.7). A credential born
+// uv-setup inline step-up. A credential born
 // uv_initialized=0 (the conditional-create shape, forced server-side here) yields
 // UVSetupRequired on a UV=1 assertion; the bundle opens a one-time password
 // dialog (#passkey-uv-pwd), complete_uv_setup flips the bit and mints the

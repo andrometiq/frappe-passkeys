@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 2 — call-with-retry + verbatim fingerprint echo (DESIGN-v1 §7.2 A36).
+// Call-with-retry + verbatim fingerprint echo.
 // `frappe.passkeys.call` calls the protected method, catches the 401 contract,
 // runs the confirmation dialog, and retries ONCE with X-Passkey-Grant. The begin
 // request MUST echo the 401's payload_fingerprint verbatim as `payload_hash` and
@@ -44,7 +44,7 @@ chromium_only("passkey action-confirmation — call() retry", () => {
 			});
 		});
 		cy.wait("@begin").then(({ request }) => {
-			// A36: the retry sent the server's fingerprint verbatim, never raw params.
+			// the retry sent the server's fingerprint verbatim, never raw params.
 			expect(request.body).to.have.property("payload_hash");
 			expect(request.body).to.not.have.property("params");
 		});

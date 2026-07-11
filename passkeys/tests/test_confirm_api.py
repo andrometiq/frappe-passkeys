@@ -1,8 +1,8 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Action-confirmation / "passkey signing" battery on the live bench (DESIGN-v1
-§7.2 / §7.3 / §9.3 F19). Drives the full confirm ceremony end to end with the
+"""Action-confirmation / "passkey signing" battery on the live bench. Drives the
+full confirm ceremony end to end with the
 soft authenticator — begin_confirmation → UV assertion → verify_confirmation →
 single-use grant — and pins the grant-binding invariants (single-use, ≤180 s,
 user+sid+action+payload bound, server-computed hash authority, UV-required), the
@@ -43,8 +43,8 @@ class ConfirmationTest(IntegrationTestCase):
 		settings.passkey_rp_id = RP_ID
 		settings.passkey_origins = ""
 		settings.passkey_sign_count_hard_fail = 0
-		# A login mode must be on for `_enroll`'s begin_registration (§3.0 gates
-		# registration on any-mode-on); confirm.* itself is mode-independent (A39),
+		# A login mode must be on for `_enroll`'s begin_registration (gates
+		# registration on any-mode-on); confirm.* itself is mode-independent,
 		# but enrolling the test credential to confirm with needs a mode. Hermetic —
 		# don't depend on ambient Passkey Settings state (mirrors RegistrationCeremonyTest).
 		settings.login_with_passkey = 1
@@ -81,7 +81,7 @@ class ConfirmationTest(IntegrationTestCase):
 	def _enroll(self, user, seed="c1", uv=True) -> SoftAuthenticator:
 		"""Enroll one real credential for ``user`` (real crypto for verify).
 		``uv=False`` registers a ``uv_initialized=0`` credential (the
-		conditional-create-style population, §3.7)."""
+		conditional-create-style population)."""
 		frappe.set_user(user)
 		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
 		self._request("/api/method/passkeys.api.registration.begin_registration")
@@ -134,7 +134,7 @@ class ConfirmationTest(IntegrationTestCase):
 		frappe.set_user(user)
 
 		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
-		self.assertEqual(begun["options"]["userVerification"], "required")  # §7.2
+		self.assertEqual(begun["options"]["userVerification"], "required")
 		self.assertIn("passkey", begun["methods"])
 		self.assertEqual(begun["payload_fingerprint"], session.payload_hash({"payment_id": "PAY-1"}))
 
@@ -148,7 +148,7 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertTrue(session.consume_action_grant(user, "myapp.release_payment", {"payment_id": "PAY-1"}))
 
 	def test_grant_issuance_and_consumption_write_activity_log(self):
-		"""S9 (§7.2): every grant issuance/consumption leaves an Activity Log row —
+		"""Every grant issuance/consumption leaves an Activity Log row —
 		routed through notifications._activity_log, not just a logger line."""
 		user = self._user()
 		auth = self._enroll(user)
@@ -181,7 +181,7 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertFalse(session.consume_action_grant(user, "myapp.act", {"x": 1}))
 
 	# ======================================================================
-	# grant TTL is the pinned 180 s cap (Redis ex is the sole authority, §4.2)
+	# grant TTL is the pinned 180 s cap (Redis ex is the sole authority)
 	# ======================================================================
 
 	def test_grant_ttl_is_capped_at_180s(self):
@@ -262,7 +262,7 @@ class ConfirmationTest(IntegrationTestCase):
 			self._begin("myapp.pay", params={"a": 1}, payload_hash="deadbeef")
 
 	def test_a_lied_fingerprint_mints_a_grant_the_consumer_rejects(self):
-		# A36 correctness contract: echoing a bogus payload_hash only mints a grant
+		# correctness contract: echoing a bogus payload_hash only mints a grant
 		# bound to that bogus hash — recomputation from real kwargs refuses it.
 		user = self._user()
 		auth = self._enroll(user)
@@ -274,7 +274,7 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertFalse(session.consume_action_grant(user, "myapp.pay", {"amount": 100}))
 
 	# ======================================================================
-	# UV-absent assertion is refused (confirmation requires UV, §7.2)
+	# UV-absent assertion is refused (confirmation requires UV)
 	# ======================================================================
 
 	def test_uv_absent_assertion_refused(self):
@@ -287,7 +287,7 @@ class ConfirmationTest(IntegrationTestCase):
 			self._verify(begun["state_id"], no_uv)
 
 	def test_uv_uninitialized_without_password_window_refused_no_grant(self):
-		"""S1 regression (§3.7 / §12.5 uninitialized-UV row): while
+		"""Regression (uninitialized-UV row): while
 		``uv_initialized=0`` the assertion's UV bit MUST NOT count as a
 		verification factor — without a password-seeded sudo window the typed
 		error routes the dialog to its password tab and NO grant is minted."""
@@ -300,14 +300,14 @@ class ConfirmationTest(IntegrationTestCase):
 		credential = self._assert(auth, begun["options"], uv=True)
 		with self.assertRaises(PasskeyConfirmationRequired):
 			self._verify(begun["state_id"], credential)
-		# the §3 wire contract routes to the password tab...
+		# the wire contract routes to the password tab...
 		self.assertEqual(frappe.local.response.get("methods"), ["password"])
-		# ...and the flag did NOT flip on possession alone (L3 §4 MUST NOT)
+		# ...and the flag did NOT flip on possession alone (L3 MUST NOT)
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
 	def test_uv_uninitialized_with_password_window_flips_and_mints(self):
-		"""S1 regression, the sanctioned path (§3.7): a password-seeded sudo
+		"""Regression, the sanctioned path: a password-seeded sudo
 		window is the accompanying knowledge factor — the grant mints and
 		``uv_initialized`` flips false→true."""
 		user = self._user()
@@ -426,8 +426,8 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertFalse(session.consume_action_grant(user, "myapp.other", {"amount": 50}))
 
 	# ======================================================================
-	# P6 fix (a): a completed passkeys.manage confirmation seeds the full-sudo
-	# window (§7.1 / build-p6-frontend-manifest.md §5) — the sudo-gated management
+	# fix (a): a completed passkeys.manage confirmation seeds the full-sudo
+	# window — the sudo-gated management
 	# endpoints check the window, not the grant, so the confirm→retry dance would
 	# re-fail without this. Both doors, plus the scoping guard.
 	# ======================================================================
@@ -441,7 +441,7 @@ class ConfirmationTest(IntegrationTestCase):
 		begun = self._begin(session.MANAGE_ACTION)
 		out = self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True))
 		self.assertIn("grant", out)
-		self.assertTrue(session.has_management_sudo(user))  # re-seeded (§7.1)
+		self.assertTrue(session.has_management_sudo(user))  # re-seeded
 
 	def test_manage_confirmation_password_door_seeds_sudo_window(self):
 		user = self._user(with_password=True)
@@ -469,7 +469,7 @@ class ConfirmationTest(IntegrationTestCase):
 			self._reauth("wrong-password")
 
 	def test_reauth_refuses_password_grant_for_passkey_only_action(self):
-		# F19: reauth_password will not mint a password grant for an action whose
+		# reauth_password will not mint a password grant for an action whose
 		# policy is allow_password_fallback=False (set_passkey_only_login).
 		user = self._user(with_password=True)
 		frappe.set_user(user)
@@ -482,7 +482,7 @@ class ConfirmationTest(IntegrationTestCase):
 
 	def test_f19_password_grant_can_never_satisfy_set_passkey_only(self):
 		# even a hand-crafted password-method grant bound perfectly to the action
-		# is refused by the F19-strict consumer (method must be "passkey").
+		# is refused by the strict consumer (method must be "passkey").
 		user = self._user(with_password=True)
 		frappe.set_user(user)
 		token = frappe.generate_hash()
@@ -509,16 +509,16 @@ class ConfirmationTest(IntegrationTestCase):
 		frappe.set_user(user)
 		begun = self._begin(session.SET_PASSKEY_ONLY_ACTION, params={"enabled": True})
 		self.assertIn("passkey", begun["methods"])
-		self.assertNotIn("password", begun["methods"])  # F19 — never a password door
+		self.assertNotIn("password", begun["methods"])  # never a password door
 		self.assertNotIn("sudo", begun["methods"])
 
 	# ======================================================================
-	# A59 (§7.2) — the confirm assertion options carry a wire timeout equal to
+	# the confirm assertion options carry a wire timeout equal to
 	# THIS ceremony's server-side TTL, not the engine's 300 s default
 	# ======================================================================
 
 	def test_begin_confirmation_wire_timeout_matches_ceremony_ttl(self):
-		"""A59 (§7.2): begin_confirmation's assertion options carry a browser wire
+		"""begin_confirmation's assertion options carry a browser wire
 		timeout equal to the server-side ceremony TTL (state.CONFIRM_CEREMONY_TTL =
 		180 s), NOT the engine's 300 s default — otherwise a slow hybrid cross-device
 		confirmation (3-5 min) clears the browser gesture only to fail server-side on
@@ -532,11 +532,11 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertEqual(begun["options"]["timeout"], state.CONFIRM_CEREMONY_TTL * 1000)
 
 	# ======================================================================
-	# grant user-binding is independent of sid-binding (§7.2 record.user == user)
+	# grant user-binding is independent of sid-binding (record.user == user)
 	# ======================================================================
 
 	def test_grant_wrong_user_same_sid_is_refused(self):
-		"""§7.2 (session consume path, record.user == user): a grant forged for user A
+		"""Session consume path (record.user == user): a grant forged for user A
 		cannot be consumed as user B even on the SAME sid — the user binding is not a
 		by-product of the sid binding. Positive control: the same shape consumed as A
 		on that identical sid succeeds, isolating the refusal to the user check."""
@@ -570,12 +570,12 @@ class ConfirmationTest(IntegrationTestCase):
 		self.assertTrue(session.consume_action_grant(user_a, "myapp.act", {"x": 1}))
 
 	# ======================================================================
-	# F19/A-F20 — a matched grant whose method the policy rejects is BURNED,
+	# A matched grant whose method the policy rejects is BURNED,
 	# not merely refused (session.consume_action_grant)
 	# ======================================================================
 
 	def test_password_grant_burned_on_method_mismatch(self):
-		"""§7.2 / A-F20 (session.consume_action_grant): a password-method grant that
+		"""session.consume_action_grant: a password-method grant that
 		matches action+payload but whose method the action policy rejects
 		(allow_password_fallback=False) is BURNED on the refused consume — the single-
 		use consume runs before the policy check (one gesture = one attempt). Proven by
@@ -610,11 +610,11 @@ class ConfirmationTest(IntegrationTestCase):
 		)
 
 	# ======================================================================
-	# A49/§3.0 — reauth_password consults the per-user password-oracle throttle
+	# reauth_password consults the per-user password-oracle throttle
 	# ======================================================================
 
 	def test_reauth_password_refuses_when_password_throttled(self):
-		"""A49/§3.0 (confirm.reauth_password): the endpoint checks the per-user
+		"""confirm.reauth_password: the endpoint checks the per-user
 		password-oracle throttle before touching the password. With the failure counter
 		already at the limit, a reauth attempt is refused THROTTLED — even with the
 		CORRECT password, never a password-oracle read. (test_state pins the counter's

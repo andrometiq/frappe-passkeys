@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Ceremony / sudo / grant / uv-setup state store (DESIGN-v1 §4; folds into
+"""Ceremony / sudo / grant / uv-setup state store (folds into
 ``frappe/passkey.py``).
 
 Every single-use ``passkeys:*`` key uses **only raw ``redis.Redis`` operations
@@ -9,7 +9,7 @@ on the made key** (``frappe.cache`` *is* a ``redis.Redis``). The wrapper's
 ``set_value``/``get_value``/``delete_value`` are banned for these keys:
 ``set_value`` pickles, ``delete_value`` discards the delete count, and
 ``get_value`` serves a request-local copy that is provably stale after a
-remote consume (§4.2, PROBE-bench). Values are JSON, never pickle. Redis
+remote consume (PROBE-bench). Values are JSON, never pickle. Redis
 ``ex`` is the sole expiry authority — records never re-derive expiry from
 their own timestamps with the consuming worker's clock.
 """
@@ -20,7 +20,7 @@ import json
 import frappe
 import redis
 
-# TTLs are code constants, not knobs (§9.1 fixed policy); the sudo window is
+# TTLs are code constants, not knobs (fixed policy); the sudo window is
 # the one settings-driven lifetime (`passkey_reauth_window`, later phase).
 CEREMONY_TTL = 300
 CONFIRM_CEREMONY_TTL = 180
@@ -36,7 +36,7 @@ UV_SETUP_PREFIX = "passkeys:uvsetup:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
 RATE_LIMIT_PREFIX = "passkeys:ratelimit:"
 
-# Guest-ceremony browser binder (§4.3). Ephemeral cookie; the ceremony record
+# Guest-ceremony browser binder. Ephemeral cookie; the ceremony record
 # stores only sha256(value). Max-Age = 2x ceremony TTL (sliding), so a slow
 # hybrid-QR ceremony begun minutes after page load never outlives the cookie.
 BINDER_COOKIE = "passkey_binder"
@@ -49,7 +49,7 @@ def new_id() -> str:
 
 
 # ---------------------------------------------------------------------------
-# single-use records (atomic consume; §4.2)
+# single-use records (atomic consume)
 # ---------------------------------------------------------------------------
 
 
@@ -78,7 +78,7 @@ def consume_uv_setup(setup_id: str) -> dict | None:
 
 
 def store_grant(token_hash: str, record: dict, ttl: int = GRANT_TTL) -> None:
-	"""Keyed by sha256(token) — only the hash is ever stored (§4.1)."""
+	"""Keyed by sha256(token) — only the hash is ever stored."""
 	_put_json(GRANT_PREFIX + token_hash, record, ttl)
 
 
@@ -87,7 +87,7 @@ def consume_grant(token_hash: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# reusable records (sudo window; §7.1 — same raw treatment uniformly)
+# reusable records (sudo window; same raw treatment uniformly)
 # ---------------------------------------------------------------------------
 
 
@@ -105,7 +105,7 @@ def clear_sudo_window(sid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# counters (pwfail + per-user rate shapes; TTL guaranteed at creation — §4.2)
+# counters (pwfail + per-user rate shapes; TTL guaranteed at creation)
 # ---------------------------------------------------------------------------
 
 
@@ -142,12 +142,12 @@ def clear_password_failures(user: str) -> None:
 
 
 def rate_limit_user(name: str, limit: int, ttl: int) -> None:
-	"""§3.0 per-user rate limit for the authenticated endpoints. Core
+	"""Per-user rate limit for the authenticated endpoints. Core
 	``@rate_limit`` cannot key on ``frappe.session.user`` — it keys on IP and/or a
 	spoofable ``form_dict`` field (``frappe/rate_limiter.py:142``), which 429s a
 	NAT'd campus and is forgeable — so the app owns a cache counter keyed on the
 	session user (one per ``(endpoint, user)``), sharing :func:`bump_counter`'s
-	TTL-at-creation guarantee (§4.2). The ``limit``-th call in the window passes;
+	TTL-at-creation guarantee. The ``limit``-th call in the window passes;
 	the next raises the 429 wire contract. Eviction resets the counter — the
 	throttle fails open, exactly like the password-failure counter."""
 	user = frappe.session.user or "Guest"
@@ -158,7 +158,7 @@ def rate_limit_user(name: str, limit: int, ttl: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# guest browser binder cookie (§4.3 — the login-CSRF defence)
+# guest browser binder cookie (the login-CSRF defence)
 # ---------------------------------------------------------------------------
 
 
@@ -174,7 +174,7 @@ def read_binder_cookie() -> str | None:
 
 
 def set_binder_cookie() -> str | None:
-	"""Set-iff-absent + sliding refresh (§4.3): reuse the request's existing
+	"""Set-iff-absent + sliding refresh: reuse the request's existing
 	binder value if present, else mint one; (re)send it with a fresh Max-Age.
 	Returns the value whose sha256 the ceremony record should store, or ``None``
 	when there is no cookie manager (no HTTP context) — the caller then stores a
@@ -199,7 +199,7 @@ def binder_hash(value: str | None) -> str | None:
 
 
 def binder_matches(stored_hash: str | None) -> bool:
-	"""Fail-closed match (§4.3): the request must carry a binder cookie whose
+	"""Fail-closed match: the request must carry a binder cookie whose
 	sha256 equals the value stored at begin time. A missing stored hash (record
 	minted without a cookie manager) or a missing/mismatched request cookie both
 	return ``False`` — an attacker cannot set or read this HttpOnly cookie
@@ -211,7 +211,7 @@ def binder_matches(stored_hash: str | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# raw idioms (§4.2 — normative)
+# raw idioms (normative)
 # ---------------------------------------------------------------------------
 
 

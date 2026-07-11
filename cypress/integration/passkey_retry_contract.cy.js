@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 6 — retry contract (DESIGN-v1 §3.1 step 1, §5.2.10). An assertion is
+// Retry contract. An assertion is
 // NEVER re-POSTed: a `CeremonyExpired` on verify_login must be recovered by a
 // fresh begin_login + a fresh gesture, not by replaying the stale signed
 // assertion. This spec injects one CeremonyExpired at verify time and asserts the

@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — Passkey Settings form UX (DESIGN-v1 §9.4). The form paints the §9.4
+// Passkey Settings form UX. The form paints the
 // banner matrix (from the pure passkey_manage_common.settingsBanners) and puts the
 // loud one-way-door confirm on the RP-ID field. The banner decisions are unit-
 // tested in passkey_manage_common.test.js; this spec checks they surface on the

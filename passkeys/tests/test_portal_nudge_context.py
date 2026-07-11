@@ -1,13 +1,13 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Portal enrollment-nudge delivery on authenticated website renders (DESIGN-v1
-§5.1 / §8.4). ``shims/portal_nudge.website_context`` carries the portal bundle +
+"""Portal enrollment-nudge delivery on authenticated website renders.
+``shims/portal_nudge.website_context`` carries the portal bundle +
 the ``frappe.boot.passkeys`` bridge to EVERY authenticated portal page (not only
 ``/passkeys``), so a portal-only user who never opens ``/passkeys`` still meets the
-§8.4 adoption nudge. Mirrors the login-shim ``website_context`` test idiom
+adoption nudge. Mirrors the login-shim ``website_context`` test idiom
 (``test_dormancy.test_website_context_appends_no_login_bundle``); the dormant no-op
-leg lives with the other §11 hook no-ops in ``test_dormancy.py``."""
+leg lives with the other hook no-ops in ``test_dormancy.py``."""
 
 import frappe
 
@@ -67,7 +67,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		return frappe._dict(path=path, boot=frappe._dict(), **kw)
 
 	# (a) authed portal render on a NON-/passkeys route, a mode on ⇒ the full portal
-	#     bundle set (§5.1 — one self-gating bundle) + the server cadence verdict.
+	#     bundle set (one self-gating bundle) + the server cadence verdict.
 	def test_authed_portal_render_carries_nudge_bundle(self):
 		user = self._user()
 		frappe.set_user(user)
@@ -78,7 +78,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 			self.assertIn(asset, js)
 		for asset in PORTAL_CSS:
 			self.assertIn(asset, ctx.get("web_include_css", []))
-		# §8.4 boot bridge: frappe.boot.passkeys.nudge_state.eligible is the SERVER verdict
+		# boot bridge: frappe.boot.passkeys.nudge_state.eligible is the SERVER verdict
 		pk = ctx.boot.get("passkeys")
 		self.assertIsNotNone(pk)
 		self.assertIn("eligible", pk["nudge_state"])
@@ -103,7 +103,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		# ... and the live session CSRF token must NOT be in the (potentially cached) boot.
 		self.assertNotIn("csrf_token", ctx.boot)
 
-	# (b) Guest render ⇒ zero passkey bytes (the nudge is authenticated-only, §8.4).
+	# (b) Guest render ⇒ zero passkey bytes (the nudge is authenticated-only).
 	def test_guest_render_ships_no_bundle(self):
 		frappe.set_user("Guest")
 		ctx = self._ctx()
@@ -111,7 +111,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		self.assertNotIn("web_include_js", ctx)  # returns before touching the list
 		self.assertNotIn("passkeys", ctx.boot)
 
-	# (c) both modes off ⇒ nothing appended (the any-mode gate, §3.0).
+	# (c) both modes off ⇒ nothing appended (the any-mode gate).
 	def test_modes_off_ships_no_bundle(self):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)

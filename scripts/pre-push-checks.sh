@@ -1,6 +1,6 @@
 #!/bin/bash
-# Local pre-push gate for frappe-passkeys (design/ci-plan.md §10 item 1 —
-# the cheap, always-run half; the full 3x2 matrix stays CI's job).
+# Local pre-push gate for frappe-passkeys — the cheap, always-run half; the
+# full 3x2 matrix stays CI's job.
 #
 # Checks:
 #   1. Lint — pre-commit if configured, else ruff (reads pyproject.toml).

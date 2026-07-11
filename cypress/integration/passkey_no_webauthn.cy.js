@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 10 — no WebAuthn support (DESIGN-v1 §5.2 layered detection). When
+// No WebAuthn support. When
 // window.PublicKeyCredential is absent, the bundle must no-op cleanly: no passkey
 // button, no thrown error, password login intact. Simulated by deleting the
 // WebAuthn globals before the app scripts run.

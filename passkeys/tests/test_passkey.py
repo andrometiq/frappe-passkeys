@@ -1,8 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""P1 battery: DocType schemas, validator guards, Passkey Settings policy
-(DESIGN-v1 §2, §9.1-§9.2)."""
+"""P1 battery: DocType schemas, validator guards, Passkey Settings policy."""
 
 from unittest.mock import patch
 
@@ -33,7 +32,7 @@ class TestDocTypeSchemas(PasskeyTestCase):
 		self.assertEqual(meta.get_field("sign_count").fieldtype, "Long Int")
 		self.assertEqual(meta.get_field("credential_id").fieldtype, "Long Text")
 		self.assertEqual(meta.get_field("discoverable").default, "Unknown")
-		# permissions philosophy (§2): no role gets create
+		# permissions philosophy: no role gets create
 		self.assertFalse(any(perm.get("create") for perm in meta.permissions))
 		roles = {perm.role for perm in meta.permissions}
 		self.assertEqual(roles, {"System Manager"})
@@ -63,7 +62,7 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			("passkey_notify_password_fallback", "0"),
 		):
 			self.assertEqual(meta.get_field(fieldname).default, default, fieldname)
-		# install persisted the defaults with all modes OFF (§14)
+		# install persisted the defaults with all modes OFF
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_max_per_user"), 10)
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window"), 600)
 
@@ -242,7 +241,7 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		doc.save()
 
 	def test_disable_guard_protects_passkey_only_users(self):
-		"""§2.3 generalized guard (F3-3): a save leaving no passkey-capable
+		"""Generalized guard: a save leaving no passkey-capable
 		mode while flagged users exist is refused; the message lists them."""
 		user = self.make_user()
 		make_credential(user)
@@ -253,7 +252,7 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 			doc.save()
 		self.assertIn(user, str(ctx.exception))
 
-		# keeping one passkey-capable mode on: the save proceeds (§9.4 row 5)
+		# keeping one passkey-capable mode on: the save proceeds
 		doc = self._settings(login_with_passkey=1, passkey_as_second_factor=0, passkey_rp_id="example.com")
 		doc.save()
 

@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""P1 battery: install/uninstall guards (DESIGN-v1 §14) — the version floor,
+"""P1 battery: install/uninstall guards — the version floor,
 the fresh-install-onto-native-core refusal, the uninstall lockout guards and
 cleanup, and the registry Property Setter lifecycle."""
 
@@ -17,7 +17,7 @@ from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
 class TestVersionFloor(unittest.TestCase):
-	"""Pure unit tests of the floor check against fake versions (§14/§10)."""
+	"""Pure unit tests of the floor check against fake versions."""
 
 	def test_below_floor_refused(self):
 		for version in ("14.99.0", "15.0.0", "15.101.0", "15.106.9", "15.106.9-beta.1"):
@@ -112,7 +112,7 @@ class TestUninstallGuards(IntegrationTestCase):
 
 
 class TestRegistryPropertySetter(IntegrationTestCase):
-	"""§14: programmatic, module-tagged, guard-keyed — never a fixtures/ fixture."""
+	"""Programmatic, module-tagged, guard-keyed — never a fixtures/ fixture."""
 
 	def _setter_exists(self):
 		return frappe.db.exists("Property Setter", install._registry_property_setter_filters())

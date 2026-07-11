@@ -1,8 +1,8 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""First-factor passwordless login round-trip on the live bench (DESIGN-v1 §3.1,
-§3.4, §4.3, §12.2): register a discoverable UV credential → begin_login
+"""First-factor passwordless login round-trip on the live bench: register a
+discoverable UV credential → begin_login
 (discoverable, no identifier) → verify_login mints a session for the resolved
 user; the binder cookie is set-iff-absent with a sliding refresh and closes
 login-CSRF; the UV outcome policy gates passwordless vs uv-setup; the sign
@@ -154,11 +154,11 @@ class LoginCeremonyTest(IntegrationTestCase):
 
 	def test_passkey_only_user_passwordless_round_trip_seeds_passkey_window(self):
 		"""C1 regression: verify_login's SESSION leg sets
-		``frappe.local.flags.passkey_login`` itself (F3-2) — driven through the
+		``frappe.local.flags.passkey_login`` itself — driven through the
 		REAL begin→verify path with the real on_login hook firing, no manual flag.
-		Without the flag a ``passkey_only_login=1`` user trips their own §9.3 veto
+		Without the flag a ``passkey_only_login=1`` user trips their own veto
 		(total lockout from their only login method) and every passwordless
-		session seeds a "weak" sudo window instead of "passkey" (§7.1)."""
+		session seeds a "weak" sudo window instead of "passkey"."""
 		user = self._user()
 		auth, _handle = self._enroll(user)
 		frappe.db.set_value(
@@ -173,7 +173,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 
 		# the veto let the passkey leg through; the session minted for that user
 		self.assertEqual(frappe.session.user, user)
-		# ...and seed_sudo_window classified it as a full "passkey" window (§7.1)
+		# ...and seed_sudo_window classified it as a full "passkey" window
 		window = state.get_sudo_window(frappe.session.sid)
 		self.assertEqual((window or {}).get("seeded_by"), "passkey")
 
@@ -186,7 +186,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertIsNone(binder)  # no cookie minted when mode off
 
 	# ======================================================================
-	# binder cookie (§4.3) — set-if-absent, sliding refresh, fail closed
+	# binder cookie — set-if-absent, sliding refresh, fail closed
 	# ======================================================================
 
 	def test_binder_set_if_absent_and_sliding_refresh(self):
@@ -243,7 +243,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, user)
 
 	# ======================================================================
-	# discoverable user resolution (§3.1 step 6)
+	# discoverable user resolution
 	# ======================================================================
 
 	def test_resolves_correct_user_from_credential(self):
@@ -267,7 +267,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 			self._verify(begun["state_id"], credential, binder)
 
 	# ======================================================================
-	# UV outcomes (§3.7) + uv-setup step-up (§3.4)
+	# UV outcomes + uv-setup step-up
 	# ======================================================================
 
 	def test_uv_initialized_credential_gets_session(self):
@@ -282,7 +282,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		user = self._user()
 		auth, _ = self._enroll(user, uv=True)
 		begun, binder = self._begin()
-		# a UV-less assertion never yields a passwordless session (§3.7)
+		# a UV-less assertion never yields a passwordless session
 		credential = self._assert(auth, begun["options"], uv=False)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._verify(begun["state_id"], credential, binder)
@@ -350,7 +350,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 				self._begin()
 
 	# ======================================================================
-	# guest translations endpoint (§5.6)
+	# guest translations endpoint
 	# ======================================================================
 
 	def test_translations_endpoint_serves_app_strings_for_guest(self):
@@ -362,7 +362,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
 
 	def test_translations_versioned_request_sets_long_lived_cache_control(self):
-		"""S13: a version-keyed request carries a long-lived immutable Cache-Control
+		"""A version-keyed request carries a long-lived immutable Cache-Control
 		(the client mints a new version ⇒ a new URL ⇒ a cache miss)."""
 		from werkzeug.datastructures import Headers
 
@@ -375,7 +375,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertIn("immutable", cache_control)
 
 	def test_translations_endpoint_is_rate_limited(self):
-		"""S13: the previously-unlimited guest translations endpoint now carries
+		"""The previously-unlimited guest translations endpoint now carries
 		frappe's @rate_limit, like its sibling guest endpoints."""
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.RateLimitExceededError):
@@ -384,12 +384,12 @@ class LoginCeremonyTest(IntegrationTestCase):
 				passkey.get_app_translations()
 
 	# ======================================================================
-	# §12.5 security regression rows on the first-factor surface
+	# security regression rows on the first-factor surface
 	# ======================================================================
 
 	def test_splice_register_state_cannot_verify_a_login(self):
 		"""A register-type ceremony fed to verify_login is rejected before any
-		assertion is looked at (type-scoped records, §3.1 step 3 / §12.5 splice)."""
+		assertion is looked at (type-scoped records)."""
 		state_id = state.store_ceremony(
 			{
 				"v": 1,
@@ -405,7 +405,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 			passkey.verify_login(state_id, {"id": "z", "response": {"userHandle": "h"}})
 
 	def test_first_factor_cross_user_substitution_is_uniform_failure(self):
-		"""StrongKey class (§12.5): user B's valid assertion carrying user A's
+		"""StrongKey class: user B's valid assertion carrying user A's
 		userHandle must fail uniformly — a credential must belong to the account its
 		handle resolves to (both halves)."""
 		user_a = self._user()
@@ -422,10 +422,10 @@ class LoginCeremonyTest(IntegrationTestCase):
 			passkey.verify_login(begun["state_id"], credential)
 
 	def test_begin_login_refuses_a_foreign_request_origin(self):
-		"""Cross-site origin (§12.5): a request whose Origin is not in the configured
-		origins fails closed at begin (host-mismatch diagnosability, §9.2)."""
+		"""Cross-site origin: a request whose Origin is not in the configured
+		origins fails closed at begin (host-mismatch diagnosability)."""
 		# reset the request after us so the foreign Origin never leaks onto
-		# frappe.local.request into a later test (same discipline as the S10
+		# frappe.local.request into a later test (same discipline as the
 		# host-mismatch test below — never rely on lucky test ordering).
 		self.addCleanup(set_request, method="POST", path="/api/method/passkeys.passkey.begin_login")
 		set_request(
@@ -440,7 +440,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 			passkey.begin_login()
 
 	def test_host_mismatch_writes_structured_log(self):
-		"""S10 / §9.2 / B-F10: a host-mismatch refusal on the begin_login path writes
+		"""A host-mismatch refusal on the begin_login path writes
 		ONE structured log line (previously only the registration path logged; the
 		begin_login / begin_confirmation / verify legs were silent)."""
 		# reset the request after us so the foreign Origin never leaks into a later
@@ -538,7 +538,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 50)
 
 	def test_complete_uv_setup_refuses_when_password_throttled(self):
-		"""A49/§3.0: complete_uv_setup is a password oracle the app introduces (the
+		"""complete_uv_setup is a password oracle the app introduces (the
 		core tracker is off by default), so it consults the per-user password-failure
 		throttle BEFORE check_password. With the counter already at the limit the
 		endpoint refuses THROTTLED — even with the CORRECT password: no session, no
@@ -566,8 +566,8 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
 	def test_failed_verify_login_feeds_login_attempt_tracker(self):
-		"""S6: N failed passkey verifies feed core's LoginAttemptTracker for the
-		resolved user (§3/§6.3), exactly as a bad password would — without leaking
+		"""N failed passkey verifies feed core's LoginAttemptTracker for the
+		resolved user, exactly as a bad password would — without leaking
 		user existence (the wire is still a uniform 401, no lock raised here)."""
 		from frappe.auth import get_login_attempt_tracker
 
@@ -588,14 +588,14 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
 
 	# ======================================================================
-	# F3-2 (§3.4/§9.3/§16 A47) — passkey_only user × uv-setup repair, no self-veto
+	# passkey_only user × uv-setup repair, no self-veto
 	# ======================================================================
 
 	def test_passkey_only_user_completes_uv_setup_without_self_veto(self):
-		"""F3-2 / A47: a ``passkey_only_login=1`` user whose credential is
+		"""A ``passkey_only_login=1`` user whose credential is
 		``uv_initialized=0`` completes the FULL uv-setup repair (verify_login →
 		UVSetupRequired → complete_uv_setup with password) WITHOUT tripping their own
-		§9.3 on_login veto mid-repair. ``complete_uv_setup`` sets
+		on_login veto mid-repair. ``complete_uv_setup`` sets
 		``frappe.local.flags.passkey_login`` before ``login_as``, so the REAL on_login
 		hook exempts the minted session. Driven end-to-end through begin→verify→
 		complete with the real hooks; no manual flag setting. (The negative — flag
@@ -606,7 +606,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 		# the user opted into passkey-only sign-in — password/email-link/OAuth login
-		# is now vetoed for them (§9.3); only a passkey or the uv-setup repair gets in.
+		# is now vetoed for them; only a passkey or the uv-setup repair gets in.
 		frappe.db.set_value(
 			"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1, update_modified=False
 		)
@@ -623,7 +623,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 
 		# complete_uv_setup mints the session for the passkey_only user through the
 		# real login_as/post_login hooks WITHOUT the veto tripping (its own
-		# passkey_login flag exempts it, F3-2), and flips uv_initialized 0→1.
+		# passkey_login flag exempts it), and flips uv_initialized 0→1.
 		frappe.local.flags.pop("passkey_login", None)
 		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
 		passkey.complete_uv_setup(setup_id, PWD)
@@ -634,7 +634,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual((window or {}).get("seeded_by"), "passkey")
 
 	def test_passkey_only_user_real_core_password_login_is_vetoed(self):
-		"""The veto BLOCK leg end-to-end through the REAL hook chain (§9.3 / F2): a
+		"""The veto BLOCK leg end-to-end through the REAL hook chain: a
 		``passkey_only_login=1`` user attempting a genuine core username+password login
 		is aborted by ``on_login_veto`` BEFORE any session exists. ``authenticate``
 		verifies the CORRECT password (this is not a bad-password rejection), then the
@@ -661,17 +661,17 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertNotEqual(frappe.session.user, user)  # no session minted for the flagged user
 
 	# ======================================================================
-	# §13 M-cmd (§3.0) — spoofed cmd=login at an app endpoint mints no session
+	# M-cmd — spoofed cmd=login at an app endpoint mints no session
 	# ======================================================================
 
 	def test_cmd_login_at_app_endpoint_mints_no_session_and_documents_core_trigger(self):
-		"""§13 M-cmd / §3.0 (T4): the app's endpoints take JSON bodies only and never
+		"""M-cmd (T4): the app's endpoints take JSON bodies only and never
 		accept or forward a ``cmd`` form field. A request carrying a spoofed
 		``cmd=login&usr&pwd`` into an app endpoint path mints NO session via the app
 		on any branch — the app has no ``cmd``-driven session-minting side door. We
 		also DOCUMENT core's own v15/v16 behavior: ``session._is_core_password_login``
 		treats ``cmd=login`` as the core-login signal, but that is only a post-session
-		sudo-window CLASSIFIER (§7.1), never an app authentication path — enforcement
+		sudo-window CLASSIFIER, never an app authentication path — enforcement
 		lives inside core's own ``login()`` gate, not in routing."""
 		user = self._user()
 		frappe.set_user("Guest")
@@ -703,14 +703,14 @@ class LoginCeremonyTest(IntegrationTestCase):
 				form.pop(key, None)
 
 	# ======================================================================
-	# §4.2/§5.2.2 resilience — begin_login fails loud when the state store is DOWN
+	# resilience — begin_login fails loud when the state store is DOWN
 	# ======================================================================
 
 	def test_begin_login_fails_loud_when_state_store_down(self):
-		"""§4.2/§5.2.2 / §12.5: Redis is the sole expiry authority, so a DOWN state
+		"""Redis is the sole expiry authority, so a DOWN state
 		store must make ``begin_login`` FAIL LOUD — a 500-class exception propagates
 		— never return a fake success or an unusable ceremony with no server-side
-		state (B-F5: the bundle then degrades to no-op; the begin-side error
+		state (the bundle then degrades to no-op; the begin-side error
 		surfaces). We stub the narrowest seam ``state.store_ceremony`` delegates to
 		(the raw JSON write ``_put_json``) to simulate the outage, and assert the
 		injected failure escapes uncaught — begin_login never swallows it."""

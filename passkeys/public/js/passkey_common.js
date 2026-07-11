@@ -25,7 +25,7 @@
 
 	// ------------------------------------------------------------------ i18n
 	// window.__ === frappe._ is defined by frappe-web.bundle.js, loaded before every
-	// web_include_js entry on all three branches (§5.6). Fall back to identity so the
+	// web_include_js entry on all three branches. Fall back to identity so the
 	// pure logic is testable and never throws pre-boot.
 	function t(str, replacements) {
 		var g = typeof window !== "undefined" ? window : {};
@@ -37,7 +37,7 @@
 
 	// Merge (never clobber) an app translation catalog into frappe._messages.
 	// frappe._messages legitimately holds Web-Form strings on v15/v16 pages and the full
-	// core catalog on develop — Object.assign MERGES, spec §5.6.
+	// core catalog on develop — Object.assign MERGES.
 	function mergeAppTranslations(frappeRef, catalog) {
 		if (!frappeRef || !catalog) return;
 		frappeRef._messages = frappeRef._messages || {};
@@ -70,7 +70,7 @@
 	// ---------------------------------------------------- L3 JSON shim (request)
 	// Prefer the native WebAuthn L3 static (Chrome 119+/Safari 18+); polyfill elsewhere.
 	// NB: hybrid/QR cross-device must never be broken — we NEVER inject
-	// authenticatorAttachment and we preserve unknown transports verbatim (§5.4).
+	// authenticatorAttachment and we preserve unknown transports verbatim.
 	function parseRequestOptionsFromJSON(json, PKC) {
 		var Cred = PKC || (typeof window !== "undefined" ? window.PublicKeyCredential : undefined);
 		if (Cred && typeof Cred.parseRequestOptionsFromJSON === "function") {
@@ -122,7 +122,7 @@
 	}
 
 	// ---------------------------------------------------- feature detection
-	// Layered, never a single signal (the iOS 26.2 isUVPAA regression class, §5.2 step 1):
+	// Layered, never a single signal (the iOS 26.2 isUVPAA regression class):
 	//   window.PublicKeyCredential defined -> getClientCapabilities() (absent key = UNKNOWN,
 	//   not false) -> legacy statics isConditionalMediationAvailable / isUVPAA.
 	function detectCapabilities(env) {
@@ -183,7 +183,7 @@
 
 	// ------------------------------------------------------- error mapping
 	// Map a browser DOMException from navigator.credentials.get/create to a fixed code.
-	// Codes are the exhaustive rejection taxonomy shared with §7.3.
+	// Codes are the exhaustive rejection taxonomy.
 	function mapDomException(err) {
 		var name = err && (err.name || err.code);
 		switch (name) {
@@ -208,7 +208,7 @@
 		}
 	}
 
-	// Map a server typed error (exc_type — the class name is the wire value, §3) to a
+	// Map a server typed error (exc_type — the class name is the wire value) to a
 	// client action. Clients match on exc_type ONLY, never on message text.
 	function mapServerExcType(excType) {
 		switch (excType) {
@@ -217,7 +217,7 @@
 			case "UnknownCredential":
 				return "unknown_credential"; // signalUnknownCredential + neutral copy
 			case "UVSetupRequired":
-				return "uv_setup_required"; // inline password step-up (§3.4)
+				return "uv_setup_required"; // inline password step-up
 			case "PasskeyConfirmationRequired":
 				return "confirmation_required";
 			case "PasskeyServedByCore":
@@ -228,7 +228,7 @@
 	}
 
 	// -------------------------------------------------- selector resolution
-	// Two DOM generations, one contract (§5.2 step 5, §5.3). Probe selectors that no-op
+	// Two DOM generations, one contract. Probe selectors that no-op
 	// on drift: a miss returns null and callers skip the patch/button — never throw.
 	function resolveIdentifierInput(doc) {
 		if (!doc) return null;
@@ -282,7 +282,7 @@
 	}
 
 	// ---------------------------------------------------- retry state machine
-	// Pins the §5.2.10 retry contract. An assertion is NEVER re-POSTed; retry always
+	// Pins the retry contract. An assertion is NEVER re-POSTed; retry always
 	// means a NEW ceremony + a NEW get()/create(). Re-arm is bounded at one per
 	// user-visible failure, never an automatic loop.
 	function CeremonyState(opts) {
@@ -290,11 +290,11 @@
 		this.stateId = opts.stateId || null;
 		this.options = opts.options || null;
 		this.beginAt = typeof opts.beginAt === "number" ? opts.beginAt : Date.now();
-		this.ttlMs = typeof opts.ttlMs === "number" ? opts.ttlMs : 300000; // L3 §15.1
+		this.ttlMs = typeof opts.ttlMs === "number" ? opts.ttlMs : 300000;
 		this.rearmCount = 0;
 		this.maxRearm = typeof opts.maxRearm === "number" ? opts.maxRearm : 1;
 	}
-	// Pre-modal freshness (§5.2.10 case a): before any MODAL get(), if the held state's
+	// Pre-modal freshness: before any MODAL get(), if the held state's
 	// age >= TTL, re-begin FIRST then run the single get() — one gesture, not two failures.
 	CeremonyState.prototype.needsPreModalRebegin = function (now) {
 		now = typeof now === "number" ? now : Date.now();
@@ -338,7 +338,7 @@
 		if (region) region.textContent = message;
 	}
 	// Focus management: save the active element so it can be restored after the OS sheet
-	// or a dialog closes (§5.5). Returns a restore() closure.
+	// or a dialog closes. Returns a restore() closure.
 	function captureFocus(doc) {
 		var prev = doc && doc.activeElement;
 		return function restore() {
@@ -348,28 +348,28 @@
 		};
 	}
 
-	// ============================================================ §7 confirm
+	// ============================================================ confirm
 	// Action-confirmation ("passkey signing") primitive — the PURE protocol
 	// engine. Zero window/document/navigator/frappe references so the whole
 	// begin -> gesture -> verify -> grant flow (+ the 401 retry / fingerprint
-	// echo of §7.2 A36, + concurrency dedupe) is unit-testable under node:test
+	// echo, + concurrency dedupe) is unit-testable under node:test
 	// with injected deps. The frappe.ui.Dialog UI + fetch/navigator wiring live
-	// in passkey_confirm.js, which passes real deps here (§7.3).
+	// in passkey_confirm.js, which passes real deps here.
 
 	// Wire constants — MUST mirror passkeys/session.py GRANT_HEADER/GRANT_KWARG.
 	var GRANT_HEADER = "X-Passkey-Grant";
 	var GRANT_KWARG = "_passkey_grant";
 
-	// Method paths the confirm client calls (server whitelist names, §3.0 rows
-	// 14/15/16). Kept here so the P5-server phase can grep the exact strings.
+	// Method paths the confirm client calls (server whitelist names). Kept
+	// here so the server phase can grep the exact strings.
 	var CONFIRM_METHODS = {
 		begin: "passkeys.confirm.begin_confirmation",
 		verify: "passkeys.confirm.verify_confirmation",
 		reauth: "passkeys.confirm.reauth_password",
 	};
 
-	// The 401 retry-contract exc_type (§3 wire taxonomy) and the fixed,
-	// exhaustive rejection codes consuming apps program against (§7.3 A44).
+	// The 401 retry-contract exc_type (wire taxonomy) and the fixed,
+	// exhaustive rejection codes consuming apps program against.
 	var CONFIRM_EXC_TYPE = "PasskeyConfirmationRequired";
 	var CONFIRM_CODES = {
 		USER_CANCELLED: "user_cancelled",
@@ -381,8 +381,8 @@
 	};
 
 	// frappe wraps a whitelisted dict return as {message: <dict>}; typed-error
-	// bodies put their structured keys at TOP LEVEL via frappe.local.response
-	// (§3). So SUCCESS payloads are unwrapped from `.message`; ERROR payloads
+	// bodies put their structured keys at TOP LEVEL via frappe.local.response.
+	// So SUCCESS payloads are unwrapped from `.message`; ERROR payloads
 	// are read at top level (parseConfirmationRequired below).
 	function unwrapMessage(body) {
 		if (body && typeof body === "object" && "message" in body) return body.message;
@@ -390,7 +390,7 @@
 	}
 
 	// Parse a 401 body into the retry contract, or null if it isn't one. Clients
-	// match on exc_type ONLY (§3). Echoes payload_fingerprint VERBATIM (A36) —
+	// match on exc_type ONLY. Echoes payload_fingerprint VERBATIM —
 	// JS never computes a hash.
 	function parseConfirmationRequired(body) {
 		if (!body || typeof body !== "object") return null;
@@ -402,8 +402,8 @@
 		};
 	}
 
-	// The header a caller attaches to the protected call once it holds a grant
-	// (§7.2). Header is primary; the _passkey_grant kwarg is the server-side
+	// The header a caller attaches to the protected call once it holds a grant.
+	// Header is primary; the _passkey_grant kwarg is the server-side
 	// fallback (session.py) — the client uses the header.
 	function buildGrantHeaders(token) {
 		var h = {};
@@ -411,9 +411,9 @@
 		return h;
 	}
 
-	// Stable local key for concurrency dedupe ONLY (A44 "concurrent invocations
+	// Stable local key for concurrency dedupe ONLY ("concurrent invocations
 	// share one dialog"). NOT a security hash and NEVER sent to the server — the
-	// payload hash is server-computed (A36). Sorted keys for stability.
+	// payload hash is server-computed. Sorted keys for stability.
 	function confirmSignature(action, params, payloadFingerprint) {
 		if (payloadFingerprint) return "fp:" + action + ":" + payloadFingerprint;
 		var p = params || {};
@@ -437,7 +437,7 @@
 
 	// Available authentication methods for a confirmation, from a
 	// begin_confirmation response (authoritative, per-user) or a 401 body
-	// (policy hint). methods ⊆ ["passkey","password","sudo"] (A44).
+	// (policy hint). methods ⊆ ["passkey","password","sudo"].
 	function confirmCapabilities(methods) {
 		var m = Array.isArray(methods) ? methods : [];
 		return {
@@ -494,7 +494,7 @@
 		function ceremony(input) {
 			var action = input.action;
 			var beginBody = input.payloadFingerprint
-				? { action: action, payload_hash: input.payloadFingerprint } // echo verbatim (A36)
+				? { action: action, payload_hash: input.payloadFingerprint } // echo verbatim
 				: { action: action, params: input.params || {} };
 
 			return post(CONFIRM_METHODS.begin, beginBody, {}).then(function (res) {
@@ -558,7 +558,7 @@
 				})
 				.then(function (res) {
 					if (!res || !res.ok) {
-						// A35: an assertion is NEVER re-POSTed; failure = fresh ceremony.
+						// An assertion is NEVER re-POSTed; failure = fresh ceremony.
 						controller.announce(tr("That didn't work — please try again."));
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							tr("Couldn't confirm with your passkey."));
@@ -592,7 +592,7 @@
 			return attempt();
 		}
 
-		// Concurrency (A44): identical signatures share one in-flight promise;
+		// Concurrency: identical signatures share one in-flight promise;
 		// distinct confirmations serialize so two dialogs never stack.
 		function run(input) {
 			var sig = confirmSignature(input.action, input.params, input.payloadFingerprint);
@@ -606,13 +606,13 @@
 			return p;
 		}
 
-		// Public: low-level — run the ceremony, resolve to a grant token (§7.3).
+		// Public: low-level — run the ceremony, resolve to a grant token.
 		function confirm(action, params) {
 			return run({ action: action, params: params || {} });
 		}
 
 		// Public: high-level — call a protected method, catch the 401 contract,
-		// run the confirmation, retry ONCE with the grant header (§7.3).
+		// run the confirmation, retry ONCE with the grant header.
 		function call(method, args) {
 			args = args || {};
 			return post(method, args, {}).then(function (res) {
@@ -641,7 +641,7 @@
 			// was reached and refused — that is NOT a transport failure. A dropped
 			// fetch (offline/DNS) rejects the promise and is mapped to `network` at the
 			// call site below; distinguishing the two lets callers tell "offline" from
-			// "the server said no". Stays inside the fixed §7.3 taxonomy (A44): a
+			// "the server said no". Stays inside the fixed taxonomy: a
 			// reached-but-failed request is `confirmation_failed`, never `network`.
 			void res;
 			return new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
@@ -674,7 +674,7 @@
 		announce: announce,
 		captureFocus: captureFocus,
 		LIVE_REGION_ID: LIVE_REGION_ID,
-		// §7 action-confirmation ("passkey signing")
+		// action-confirmation ("passkey signing")
 		GRANT_HEADER: GRANT_HEADER,
 		GRANT_KWARG: GRANT_KWARG,
 		CONFIRM_METHODS: CONFIRM_METHODS,

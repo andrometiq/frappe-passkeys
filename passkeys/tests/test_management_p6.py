@@ -2,8 +2,8 @@
 # License: MIT. See LICENSE
 
 """Phase-6 management server behaviors on the live bench: out-of-band
-notifications (DESIGN-v1 §8.3), risk-event telemetry (§8.5), the admin
-lockout interlock (§8.6), and the §9.4 row-7 reauth refusal under
+notifications, risk-event telemetry, the admin
+lockout interlock, and the row-7 reauth refusal under
 ``disable_user_pass_login``."""
 
 import types
@@ -110,7 +110,7 @@ class NotificationTest(_Base):
 
 
 class AdminInterlockTest(_Base):
-	"""§8.6 lockout interlock: a System Manager cannot disable/delete the last
+	"""Lockout interlock: a System Manager cannot disable/delete the last
 	enabled credential of a passkey-only user; owner notice is still sent; the
 	User-delete cascade is never blocked by it."""
 
@@ -154,7 +154,7 @@ class AdminInterlockTest(_Base):
 		user = make_user()
 		make_credential(user)
 		make_handle(user, passkey_only_login=1)
-		# the User on_trash cascade uses raw db.delete (§2.2) — must NOT trip the
+		# the User on_trash cascade uses raw db.delete — must NOT trip the
 		# last-credential interlock, or a passkey-only user could never be deleted.
 		frappe.delete_doc("User", user, force=1, ignore_permissions=True)
 		self.assertFalse(frappe.db.exists("User", user))
@@ -162,7 +162,7 @@ class AdminInterlockTest(_Base):
 
 
 class ReauthUnderDisableUserPassTest(_Base):
-	"""§9.4 row 7 / §7.4: with site ``disable_user_pass_login`` on, a password can
+	"""With site ``disable_user_pass_login`` on, a password can
 	no longer re-auth for management once the user holds ≥1 passkey."""
 
 	def setUp(self):

@@ -1,11 +1,11 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — credential-management cards on the Desk User form (DESIGN-v1 §8.1/§8.2).
+// Credential-management cards on the Desk User form.
 // The user's own User form grows a "Passkeys" section with one card per credential
 // (label + Synced/Device-bound badge + rename/delete), plus add + empty state. The
 // card component is frappe.passkeys.manage.renderCards; rename is display-only (no
-// sudo), delete is confirm + sudo-gated (§7.4).
+// sudo), delete is confirm + sudo-gated.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";

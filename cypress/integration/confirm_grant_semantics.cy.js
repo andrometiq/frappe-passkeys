@@ -1,8 +1,8 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 7 — grant semantics (DESIGN-v1 §7.2). Single-use: a consumed grant is
-// rejected on replay. A-F20: the grant is burned even when the wrapped action then
+// Grant semantics. Single-use: a consumed grant is
+// rejected on replay. The grant is burned even when the wrapped action then
 // fails, so a retry needs a fresh ceremony. sid-bound: a grant is unusable after
 // logout.
 

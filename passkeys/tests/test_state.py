@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""P1 battery: challenge/state store (DESIGN-v1 §4.2, §12.5) — single-use
+"""P1 battery: challenge/state store — single-use
 atomic consume (incl. the two-connection race), TTL honesty, JSON-not-pickle,
 fail-closed on miss, the counter idiom, and the request-local staleness pin
 that keeps the wrapper banned for single-use keys."""
@@ -61,7 +61,7 @@ class TestStateStore(IntegrationTestCase):
 		state.consume_ceremony(state_id)
 
 	def test_getdel_race_exactly_one_winner(self):
-		"""§12.5 regression pin: two raw connections race the consume; exactly
+		"""Regression pin: two raw connections race the consume; exactly
 		one wins on every round (bench-proven 200/200 in PROBE-bench)."""
 		clients = (raw_connection(), raw_connection())
 		for _ in range(50):
@@ -120,10 +120,10 @@ class TestStateStore(IntegrationTestCase):
 		self.assertIsNone(state._consume_via_pipeline(key))
 
 	def test_wrapper_get_value_serves_stale_local_copy(self):
-		"""§4.2/§12.5 pin: the RedisWrapper request-local cache is provably
+		"""Pin: the RedisWrapper request-local cache is provably
 		stale after a remote delete — the reason wrapper ``*_value`` methods
 		stay banned for single-use keys. If this test ever fails, the wrapper
-		semantics changed; re-evaluate §4.2 before touching state.py."""
+		semantics changed; re-evaluate before touching state.py."""
 		key_name = f"passkeys:test:stale-{frappe.generate_hash(length=8)}"
 		frappe.cache.set_value(key_name, "v1")
 		self.assertEqual(frappe.cache.get_value(key_name), "v1")
@@ -134,7 +134,7 @@ class TestStateStore(IntegrationTestCase):
 		frappe.local.cache.pop(frappe.cache.make_key(key_name), None)
 
 	def test_get_value_expires_true_is_not_a_local_cache_bypass(self):
-		"""§4.2/§12.5 pin: ``get_value(expires=True)`` is NOT a fresh-read escape
+		"""Pin: ``get_value(expires=True)`` is NOT a fresh-read escape
 		hatch. In ``redis_wrapper.py`` the request-local-cache hit is checked BEFORE
 		the ``expires`` branch, so a key already resident in ``frappe.local.cache``
 		serves the STALE copy even with ``expires=True`` — only ``expires`` controls
@@ -160,7 +160,7 @@ class TestStateStore(IntegrationTestCase):
 
 		# state.py's raw idiom is the only correct read: set_sudo_window/get_sudo_window
 		# never touch frappe.local.cache, so a remote delete reads back None (real TTL
-		# / consume state honoured, §4.2), where the wrapper above lied.
+		# / consume state honoured), where the wrapper above lied.
 		sid = frappe.generate_hash()
 		state.set_sudo_window(sid, {"v": 1, "user": "x", "seeded_by": "password"}, ttl=60)
 		self.assertIsNotNone(state.get_sudo_window(sid))

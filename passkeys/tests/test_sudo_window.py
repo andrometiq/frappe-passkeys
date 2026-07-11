@@ -1,9 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sudo-window semantics on the live bench (DESIGN-v1 §7.1, §7.2, §9.3, §12.2):
+"""Sudo-window semantics on the live bench:
 seeding at ``on_session_creation`` classified by login method; TTL honesty;
-the management-sudo check helper; and the F19 passkey-grant-only guard on
+the management-sudo check helper; and the passkey-grant-only guard on
 ``set_passkey_only_login``."""
 
 import hashlib
@@ -43,7 +43,7 @@ class SudoWindowTest(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		return user
 
-	# ---- seeding at on_session_creation (§7.1) ----------------------------
+	# ---- seeding at on_session_creation ----------------------------
 
 	def test_passkey_login_seeds_full_sudo(self):
 		user = self._user()
@@ -71,7 +71,7 @@ class SudoWindowTest(IntegrationTestCase):
 		session.seed_sudo_window()
 		window = session.get_window(user, self.sid)
 		self.assertEqual(window["seeded_by"], "weak")
-		# a weak window never satisfies management (§7.1)
+		# a weak window never satisfies management
 		self.assertFalse(session.has_management_sudo(user, self.sid))
 
 	def test_guest_session_seeds_nothing(self):
@@ -81,7 +81,7 @@ class SudoWindowTest(IntegrationTestCase):
 		self.assertIsNone(state.get_sudo_window(frappe.session.sid))
 
 	def test_password_login_by_passkey_holder_risk_event_gated_by_knob(self):
-		"""C10/S8 (§8.5): a password-seeded window for a user holding an enabled
+		"""C10: a password-seeded window for a user holding an enabled
 		passkey records the ``password_login_by_passkey_holder`` risk event — but only
 		when the opt-in ``passkey_notify_password_login`` knob is on (default OFF ⇒ no
 		telemetry, and the enabled-credential read never touches the hot login path)."""
@@ -94,7 +94,7 @@ class SudoWindowTest(IntegrationTestCase):
 		)
 
 		def seed_as_password():
-			frappe.local.form_dict["cmd"] = "login"  # classify the window as password (§7.1)
+			frappe.local.form_dict["cmd"] = "login"  # classify the window as password
 			session.seed_sudo_window()
 
 		# knob OFF (default) → nothing recorded
@@ -111,7 +111,7 @@ class SudoWindowTest(IntegrationTestCase):
 		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
 		self.assertIn("passkeys:password_login_by_passkey_holder", contents)
 
-	# ---- TTL honesty (§4.2 — Redis ex is the sole expiry authority) -------
+	# ---- TTL honesty (Redis ex is the sole expiry authority) -------
 
 	def test_seed_ttl_is_bounded_by_settings_window(self):
 		user = self._user()
@@ -130,7 +130,7 @@ class SudoWindowTest(IntegrationTestCase):
 		time.sleep(1.2)
 		self.assertIsNone(session.get_window(user, self.sid))
 
-	# ---- check helper (§7.1) ----------------------------------------------
+	# ---- check helper ----------------------------------------------
 
 	def test_management_sudo_accepts_full_refuses_weak_and_foreign(self):
 		user = self._user()
@@ -157,7 +157,7 @@ class SudoWindowTest(IntegrationTestCase):
 		self.assertEqual(frappe.local.response.get("action"), session.MANAGE_ACTION)
 		self.assertIn("sudo", frappe.local.response.get("methods"))
 
-	# ---- F19 passkey-grant consumer (§7.2 / §9.3) -------------------------
+	# ---- passkey-grant consumer -------------------------
 
 	def _seed_grant(self, user, action, params, method="passkey"):
 		token = frappe.generate_hash()
@@ -189,7 +189,7 @@ class SudoWindowTest(IntegrationTestCase):
 		frappe.set_user(user)
 		params = {"enabled": True}
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, params, method="password")
-		# a password-minted grant never satisfies the F19 passkey-only gate
+		# a password-minted grant never satisfies the passkey-only gate
 		self.assertFalse(session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, params))
 
 	def test_grant_payload_and_action_are_bound(self):

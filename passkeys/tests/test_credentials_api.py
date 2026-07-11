@@ -1,10 +1,10 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Credential-management endpoints on the live bench (DESIGN-v1 §8, §9.3,
-§12.2, §12.5): ownership / uniform-not-found (no cross-user IDOR), sudo-gated
+"""Credential-management endpoints on the live bench: ownership /
+uniform-not-found (no cross-user IDOR), sudo-gated
 delete, the last-credential guard for passkey-only users, rename validation,
-and the F19 passkey-grant-only ``set_passkey_only_login`` gate."""
+and the passkey-grant-only ``set_passkey_only_login`` gate."""
 
 import hashlib
 
@@ -50,7 +50,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		)
 		frappe.local.form_dict[session.GRANT_KWARG] = token
 
-	# ---- list + ownership (§8.2, §3.0) ------------------------------------
+	# ---- list + ownership ------------------------------------
 
 	def test_list_returns_only_own_credentials(self):
 		user_a, user_b = self._user(), self._user()
@@ -62,7 +62,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		self.assertNotIn(cred_b.name, names)
 
 	def test_list_carries_server_resolved_provider(self):
-		"""S5 (§8.2): each row ships a `provider` key resolved from the vendored
+		"""Each row ships a `provider` key resolved from the vendored
 		AAGUID snapshot — a mapped AAGUID names its provider; an unmapped or
 		absent AAGUID ships None (the client's cue for "Unknown provider")."""
 		user = self._user()
@@ -75,7 +75,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		self.assertIsNone(by_name[unknown.name]["provider"])
 		self.assertIsNone(by_name[bare.name]["provider"])
 
-	# ---- rename (§8.2 — display-only, no sudo) ----------------------------
+	# ---- rename (display-only, no sudo) ----------------------------
 
 	def test_rename_happy_path(self):
 		user = self._user()
@@ -162,7 +162,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		credentials.delete_credential(two.name)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", two.name))
 
-	# ---- set_passkey_only_login (§9.3 / F19) — passkey grant only ----------
+	# ---- set_passkey_only_login — passkey grant only ----------
 
 	def test_set_passkey_only_refused_without_grant(self):
 		user = self._user()
@@ -179,7 +179,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		make_credential(user)
 		make_credential(user)
 		frappe.set_user(user)
-		# a password-seeded sudo window must NOT satisfy the flag toggle (§9.3)
+		# a password-seeded sudo window must NOT satisfy the flag toggle
 		self._seed_sudo(user, seeded_by="password")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			credentials.set_passkey_only_login(1)
@@ -263,13 +263,13 @@ class CredentialManagementTest(IntegrationTestCase):
 		self.assertEqual(credentials.list_credentials()["passkey_only_login"], 1)
 
 	def test_authed_rate_limit_is_per_user(self):
-		"""S4 (§3.0): an authed endpoint driven past its per-user limit 429s; a
+		"""An authed endpoint driven past its per-user limit 429s; a
 		different user is unaffected (the limit keys on frappe.session.user)."""
 		user_a, user_b = self._user(), self._user()
 		make_credential(user_a)
 		make_credential(user_b)
 		frappe.set_user(user_a)
-		for _ in range(60):  # list_credentials is 60/min/user (§3.0 row 9)
+		for _ in range(60):  # list_credentials is 60/min/user
 			credentials.list_credentials()
 		with self.assertRaises(frappe.TooManyRequestsError):
 			credentials.list_credentials()

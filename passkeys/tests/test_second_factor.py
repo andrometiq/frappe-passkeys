@@ -1,17 +1,17 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Second-factor (password → passkey step-up) battery on the live bench
-(DESIGN-v1 §6, §6.1, §6.3, §6.4, §12.2). Drives the two-leg flow end to end with
+"""Second-factor (password → passkey step-up) battery on the live bench.
+Drives the two-leg flow end to end with
 the soft authenticator: leg 1 verifies the password via core's own
 ``authenticate`` and returns core's ``verification``/``tmp_id`` envelope; leg 2
-verifies the passkey assertion, re-runs core-equivalent re-authentication (F14),
+verifies the passkey assertion, re-runs core-equivalent re-authentication,
 and mints via the one ``login_as`` choke point.
 
 Covered: full 2-leg success; wrong password ⇒ no challenge; wrong/absent
 assertion ⇒ typed re-arm with an attempt cap of 3 then terminal; binder
-set-if-absent on leg 1 (no prior ``begin_login``, F12); mid-ceremony password
-change AND user-disable both fail closed (F14); OTP fallback knob ON completes
+set-if-absent on leg 1 (no prior ``begin_login``); mid-ceremony password
+change AND user-disable both fail closed; OTP fallback knob ON completes
 via core OTP, knob OFF refuses server-side; the two-way 2FA floor guard; and
 compose-with-core-OTP (dispatch, never stack)."""
 
@@ -183,7 +183,7 @@ class SecondFactorTest(IntegrationTestCase):
 		auth = self._enroll(user)
 
 		resp, binder = self._leg1(user, PWD)
-		self.assertTrue(binder)  # F12: leg 1 minted the binder with no prior begin_login
+		self.assertTrue(binder)  # leg 1 minted the binder with no prior begin_login
 		self.assertEqual(resp["verification"]["method"], "Passkey")
 		self.assertIn("options", resp["verification"])
 		self.assertTrue(resp["tmp_id"])
@@ -196,11 +196,11 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 7)
 
 	def test_passkey_only_user_two_factor_mints_via_flag_and_seeds_passkey_window(self):
-		"""§9.3 / §6.3: a ``passkey_only_login=1`` user completes password+passkey 2FA.
+		"""A ``passkey_only_login=1`` user completes password+passkey 2FA.
 		Leg 2 (verify_second_factor) sets ``frappe.local.flags.passkey_login`` before
 		``login_as`` (passkey.py ~:549), so the REAL ``on_login`` veto EXEMPTS the mint
 		via that flag — a flagged user is not locked out of their own 2FA — and
-		``seed_sudo_window`` (§7.1) classifies the window "passkey", not "weak". The
+		``seed_sudo_window`` classifies the window "passkey", not "weak". The
 		second-factor analog of test_login_api's passkey_only passwordless round-trip."""
 		user = self._user()
 		auth = self._enroll(user)
@@ -240,7 +240,7 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")
 
 	# ======================================================================
-	# failed passkey ⇒ typed re-arm, attempt cap 3, then terminal (§6.3/A37)
+	# failed passkey ⇒ typed re-arm, attempt cap 3, then terminal
 	# ======================================================================
 
 	def test_failed_passkey_rearms_then_caps_at_three(self):
@@ -305,7 +305,7 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")
 
 	# ======================================================================
-	# F14 — mid-ceremony revocation must NOT mint a session
+	# mid-ceremony revocation must NOT mint a session
 	# ======================================================================
 
 	def test_password_change_between_legs_blocks_session(self):
@@ -337,7 +337,7 @@ class SecondFactorTest(IntegrationTestCase):
 		frappe.db.set_value("User", user, "enabled", 1)  # let the sweep delete it
 
 	# ======================================================================
-	# OTP fallback knob — both directions (§6.3)
+	# OTP fallback knob — both directions
 	# ======================================================================
 
 	def test_otp_fallback_on_completes_via_core_otp(self):
@@ -356,7 +356,7 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertNotEqual(frappe.local.response.get("verification", {}).get("method"), "Passkey")
 
 	def test_otp_fallback_records_risk_event_in_activity_log(self):
-		"""§6.3 / §8.5 FIDO-downgrade telemetry: when ``fallback_to_otp`` actually runs
+		"""FIDO-downgrade telemetry: when ``fallback_to_otp`` actually runs
 		(a passkey holder chooses phishable OTP), ``_record_fallback_used`` fires and
 		writes a ``RISK_FALLBACK_USED`` row to the Activity Log. The envelope test above
 		asserts only the core-OTP hand-off; this pins that the risk-event row is real."""
@@ -402,7 +402,7 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertTrue(frappe.local.response.get("tmp_id"))
 
 	# ======================================================================
-	# compose with core OTP (§6.4) — dispatch, never stack
+	# compose with core OTP — dispatch, never stack
 	# ======================================================================
 
 	def test_compose_passkey_holder_gets_passkey_passwordless_of_otp(self):
@@ -420,7 +420,7 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertNotEqual(resp.get("verification", {}).get("method"), "Passkey")
 
 	# ======================================================================
-	# 2FA floor — BOTH directions (§6.1)
+	# 2FA floor — BOTH directions
 	# ======================================================================
 
 	def test_floor_forward_settings_refuse_enabling_without_core_2fa(self):
@@ -469,15 +469,15 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, user)
 
 	# ======================================================================
-	# S3 — the app's plain-password arm seeds a "password" sudo window
+	# the app's plain-password arm seeds a "password" sudo window
 	# ======================================================================
 
 	def test_app_plain_password_arm_seeds_password_window(self):
-		"""S3: the app's own plain-password arm (a passkey-less, 2FA-less user's
+		"""The app's own plain-password arm (a passkey-less, 2FA-less user's
 		LDAP-style finish in ``login_with_password``) mints a session whose sudo
 		window is classified "password", not "weak". Its endpoint path is not
 		/api/method/login, so ``_classify_login_method`` would otherwise mis-seed
-		"weak" and re-fire the §8.4 conditional-create nudge seconds after login."""
+		"weak" and re-fire the conditional-create nudge seconds after login."""
 		user = self._user()  # no passkey enrolled, no 2FA role → plain finish
 		self._leg1(user, PWD)
 		self.assertEqual(frappe.session.user, user)
@@ -485,12 +485,12 @@ class SecondFactorTest(IntegrationTestCase):
 		self.assertEqual((window or {}).get("seeded_by"), "password")
 
 	# ======================================================================
-	# S6 — a failed leg-2 passkey feeds core's LoginAttemptTracker
+	# a failed leg-2 passkey feeds core's LoginAttemptTracker
 	# ======================================================================
 
 	def test_failed_second_factor_feeds_login_attempt_tracker(self):
-		"""S6: a wrong leg-2 passkey feeds core's LoginAttemptTracker for the resolved
-		(leg-1) user, exactly as a bad password would (§6.3) — without leaking user
+		"""A wrong leg-2 passkey feeds core's LoginAttemptTracker for the resolved
+		(leg-1) user, exactly as a bad password would — without leaking user
 		existence (the wire stays the re-arm 401)."""
 		from frappe.auth import get_login_attempt_tracker
 

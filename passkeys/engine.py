@@ -2,10 +2,10 @@
 # License: MIT. See LICENSE
 
 """WebAuthn engine — py_webauthn options/verify wrappers + app-side policy
-(DESIGN-v1 §3; folds into ``frappe/passkey.py``).
+(folds into ``frappe/passkey.py``).
 
 This is the crypto core. It is imported **lazily inside ceremony endpoint
-bodies only** (§1.3 hook-path import discipline): a broken ``webauthn`` /
+bodies only** (hook-path import discipline): a broken ``webauthn`` /
 ``cryptography`` wheel must never take down the ``on_login`` / boot chains, so
 the top-level ``import webauthn`` lives here and nowhere a hook can reach.
 
@@ -14,14 +14,14 @@ re-derived — see the golden-vector pack in ``passkeys/tests/vectors/``):
 
 * ``verify_authentication_response`` hard-rejects sign-count regressions
   *internally*; we pass ``credential_current_sign_count=0`` to disable that and
-  enforce the §3.6 log+flag policy app-side.
+  enforce the log+flag policy app-side.
 * ``InvalidBackupFlags`` is a **sibling** exception (not a subclass) — its own
   ``except`` branch, else a naive handler turns a 401 into a 500.
 * ``clientExtensionResults`` is dropped at parse — credProps is read from the
   **raw** credential JSON.
 * ``crossOrigin`` is accepted by the library and ``topOrigin`` is never parsed —
   the app-side check in :func:`_reject_cross_origin` is the SOLE enforcement of
-  security-checklist MUST #9 (§13 #9).
+  security-checklist MUST #9.
 * ``expected_origin`` — ``str`` = exact match, ``list`` = exact-member match.
 """
 
@@ -51,7 +51,7 @@ from webauthn.helpers.structs import (
 
 from passkeys import policy
 
-# COSE algorithm preference order (§9.1 fixed policy): EdDSA, ES256, RS256.
+# COSE algorithm preference order (fixed policy): EdDSA, ES256, RS256.
 SUPPORTED_ALGS = (
 	COSEAlgorithmIdentifier.EDDSA,
 	COSEAlgorithmIdentifier.ECDSA_SHA_256,
@@ -60,15 +60,15 @@ SUPPORTED_ALGS = (
 SUPPORTED_ALG_IDS = frozenset(int(a) for a in SUPPORTED_ALGS)
 
 # L3 §15.1 default; py_webauthn's own 60 s default is explicitly overridden
-# (phone-fetching hybrid users exceed short timeouts — §5.4).
+# (phone-fetching hybrid users exceed short timeouts).
 DEFAULT_TIMEOUT_MS = 300000
 
-# WebAuthn spec cap on credential id length (§2.1 / §3.2).
+# WebAuthn spec cap on credential id length.
 MAX_CREDENTIAL_ID_BYTES = 1023
 
 
 # ---------------------------------------------------------------------------
-# Engine exception taxonomy (§3.0). Every verification failure is a
+# Engine exception taxonomy. Every verification failure is a
 # ``frappe.AuthenticationError`` subclass ⇒ uniform 401 at the wire; the
 # distinct classes let the test battery assert *which* security reason fired.
 # The endpoint layer maps all of these to the uniform, non-enumerating 401
@@ -78,12 +78,12 @@ MAX_CREDENTIAL_ID_BYTES = 1023
 
 
 class PasskeyVerificationError(frappe.AuthenticationError):
-	"""Base for every engine-side ceremony rejection (§3.0)."""
+	"""Base for every engine-side ceremony rejection."""
 
 
 class InvalidClientData(PasskeyVerificationError):
 	"""App-side crossOrigin/topOrigin rejection — the SOLE enforcement of
-	checklist MUST #9 (py_webauthn accepts both; §13 #9)."""
+	checklist MUST #9 (py_webauthn accepts both)."""
 
 
 class RegistrationVerificationFailed(PasskeyVerificationError):
@@ -98,20 +98,20 @@ class AuthenticationVerificationFailed(PasskeyVerificationError):
 
 class BackupFlagViolation(PasskeyVerificationError):
 	"""BS-without-BE (library ``InvalidBackupFlags``, own branch) or a
-	write-once BE mutation on assertion (§3.6)."""
+	write-once BE mutation on assertion."""
 
 
 class SignCounterViolation(PasskeyVerificationError):
 	"""Replay (equal nonzero counter — always) or a regression under the
-	``passkey_sign_count_hard_fail`` knob (§3.6)."""
+	``passkey_sign_count_hard_fail`` knob."""
 
 
 class UnsupportedAlgorithm(PasskeyVerificationError):
-	"""The credential's COSE algorithm is outside the offered set (§3.2)."""
+	"""The credential's COSE algorithm is outside the offered set."""
 
 
 class CredentialTooLong(PasskeyVerificationError):
-	"""Credential id exceeds the WebAuthn 1023-byte cap (§3.2)."""
+	"""Credential id exceeds the WebAuthn 1023-byte cap."""
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ class CredentialTooLong(PasskeyVerificationError):
 @dataclass
 class RegistrationResult:
 	credential_id: str  # base64url
-	public_key: str  # base64url COSE bytes — stored verbatim (§2.1)
+	public_key: str  # base64url COSE bytes — stored verbatim
 	alg: int  # authoritative COSE alg from the public key (not client-reported)
 	sign_count: int
 	user_verified: bool
@@ -136,14 +136,14 @@ class RegistrationResult:
 	client_data_json: str = ""  # base64url
 	authenticator_attachment: str | None = None
 	credprops_rk: bool | None = None
-	discoverable: str = "Unknown"  # tri-state from credProps.rk (§3.5)
+	discoverable: str = "Unknown"  # tri-state from credProps.rk
 
 
 @dataclass
 class AuthenticationResult:
 	credential_id: str  # base64url
 	new_sign_count: int  # from the assertion's authenticatorData
-	sign_count_to_store: int  # upward-only (§3.6) — never below the stored value
+	sign_count_to_store: int  # upward-only — never below the stored value
 	sign_count_regression: bool  # flagged; login proceeds unless hard-fail
 	user_verified: bool
 	backup_eligible: bool  # asserted BE (derived from device type)
@@ -153,7 +153,7 @@ class AuthenticationResult:
 
 
 # ---------------------------------------------------------------------------
-# App-side clientDataJSON check (§3.1 step 5 / §13 #9)
+# App-side clientDataJSON check
 # ---------------------------------------------------------------------------
 
 
@@ -184,7 +184,7 @@ def _cose_alg(public_key_bytes: bytes) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Verification — registration (§3.2)
+# Verification — registration
 # ---------------------------------------------------------------------------
 
 
@@ -199,8 +199,8 @@ def verify_registration(
 ) -> RegistrationResult:
 	"""Verify a registration response and extract everything the credential row
 	stores. ``require_user_presence`` is waived for conditional-create (keyed to
-	the SERVER-stored flow, never client input — §3.2); ``require_user_verification``
-	is enforced app-side per §3.7, so ceremonies pass ``False`` and layer the UV
+	the SERVER-stored flow, never client input); ``require_user_verification``
+	is enforced app-side, so ceremonies pass ``False`` and layer the UV
 	matrix on the returned ``user_verified`` bit."""
 	_reject_cross_origin(credential)
 	try:
@@ -252,7 +252,7 @@ def verify_registration(
 
 
 # ---------------------------------------------------------------------------
-# Verification — authentication (§3.1 / §3.6). Shared by first-factor login,
+# Verification — authentication. Shared by first-factor login,
 # second factor, and action confirmation (Phase 2b/3 consumers).
 # ---------------------------------------------------------------------------
 
@@ -272,11 +272,11 @@ def verify_authentication(
 	"""Verify an assertion against a **stored** credential record.
 
 	The library counter check is disabled (``credential_current_sign_count=0``);
-	the §3.6 policy is applied app-side against ``stored_sign_count`` — replay
+	the policy is applied app-side against ``stored_sign_count`` — replay
 	(equal nonzero) always rejects; a regression rejects only under
 	``sign_count_hard_fail``, otherwise it is flagged and login proceeds.
 	``stored_backup_eligible`` (when not ``None``) enables the write-once
-	BE-mutation check (§3.6)."""
+	BE-mutation check."""
 	_reject_cross_origin(credential)
 	try:
 		verified = webauthn.verify_authentication_response(
@@ -285,7 +285,7 @@ def verify_authentication(
 			expected_rp_id=expected_rp_id,
 			expected_origin=expected_origin,
 			credential_public_key=base64url_to_bytes(credential_public_key),
-			credential_current_sign_count=0,  # disable the library counter check (§3.1 step 7)
+			credential_current_sign_count=0,  # disable the library counter check
 			require_user_verification=require_user_verification,
 		)
 	except InvalidBackupFlags as exc:  # sibling exception — own branch
@@ -325,7 +325,7 @@ def verify_authentication(
 
 
 # ---------------------------------------------------------------------------
-# Options construction (§3.2). ``options_to_json`` emits no ``extensions``
+# Options construction. ``options_to_json`` emits no ``extensions``
 # member on 2.8, so the client injects ``{credProps:true}`` after parsing.
 # ---------------------------------------------------------------------------
 
@@ -342,7 +342,7 @@ def build_registration_options(
 	timeout_ms: int = DEFAULT_TIMEOUT_MS,
 ) -> tuple[dict, str]:
 	"""Returns ``(options_json_dict, challenge_b64)``. ``authenticatorAttachment``
-	is never set (hybrid stays alive, §5.4)."""
+	is never set (hybrid stays alive)."""
 	options = webauthn.generate_registration_options(
 		rp_id=rp_id,
 		rp_name=rp_name,
@@ -413,7 +413,7 @@ def _known_transports(transports) -> list | None:
 
 def _credprops_rk(credential: dict) -> bool | None:
 	"""Read ``credProps.rk`` from the RAW credential JSON — py_webauthn drops
-	``clientExtensionResults`` at parse, so this is the only source (§3.5). An
+	``clientExtensionResults`` at parse, so this is the only source. An
 	explicit ``credProps: null`` (or a non-object at either level) is treated as
 	unknown, never a 500 (C6): the ``.get`` default only substitutes for a MISSING
 	key, so ``{"credProps": null}`` would surface ``None.get("rk")`` — guard each

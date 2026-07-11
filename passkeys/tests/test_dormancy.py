@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""CORE_NATIVE dormant-shell coverage (DESIGN-v1 §11).
+"""CORE_NATIVE dormant-shell coverage.
 
 Once core serves passkeys natively (``install.is_core_native`` → True) the app is
 a clean no-op so the two implementations never fight: EVERY whitelisted endpoint
@@ -26,7 +26,7 @@ from passkeys.tests.factories import make_credential, make_handle, make_user
 
 def _core_native():
 	"""Fake a passkey-native core — the same switch (``passkeys.install.is_core_native``)
-	the §14 install battery patches; every guard reads it through ``install.dormant``."""
+	the install battery patches; every guard reads it through ``install.dormant``."""
 	return patch("passkeys.install.is_core_native", return_value=True)
 
 
@@ -110,7 +110,7 @@ class DormantEndpointsTest(IntegrationTestCase):
 	def test_set_passkey_only_login_refused(self):
 		self._assert_417(credentials.set_passkey_only_login, 1)
 
-	# confirm.py — the action-signing surface (already guarded pre-S2; pinned here)
+	# confirm.py — the action-signing surface (already guarded; pinned here)
 	def test_confirm_begin_refused(self):
 		self._assert_417(confirm.begin_confirmation, "act")
 
@@ -202,7 +202,7 @@ class DormantHooksTest(IntegrationTestCase):
 		with _core_native():
 			boot.extend_bootinfo(bootinfo=info)
 		# no bootinfo.passkeys ⇒ the desk/portal bundles self-remove on the absent
-		# `frappe.boot.passkeys.enabled` flag (§11 client self-removal)
+		# `frappe.boot.passkeys.enabled` flag (client self-removal)
 		self.assertIsNone(info.get("passkeys"))
 
 	def test_website_context_appends_no_login_bundle(self):
@@ -241,7 +241,7 @@ class DormantHooksTest(IntegrationTestCase):
 		ctrl = frappe._dict(path="app/dashboard", boot=frappe._dict())
 		portal_nudge.website_context(ctrl)
 		self.assertTrue(any("passkey_portal" in a for a in ctrl.get("web_include_js", [])))
-		# dormant: nothing appended, no boot bridged (core serves the nudge natively, §11)
+		# dormant: nothing appended, no boot bridged (core serves the nudge natively)
 		context = frappe._dict(path="app/dashboard", boot=frappe._dict())
 		with _core_native():
 			portal_nudge.website_context(context)

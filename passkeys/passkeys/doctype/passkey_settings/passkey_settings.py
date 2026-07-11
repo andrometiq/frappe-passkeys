@@ -21,8 +21,8 @@ class PasskeySettings(Document):
 		return bool(cint(self.login_with_passkey) or cint(self.passkey_as_second_factor))
 
 	def _validate_enablement(self):
-		"""§2.3: enabling any mode requires an importable webauthn, a resolved
-		RP ID, and HTTPS origins within the RP ID's scope (§9.2)."""
+		"""Enabling any mode requires an importable webauthn, a resolved
+		RP ID, and HTTPS origins within the RP ID's scope."""
 		if not policy.webauthn_available():
 			frappe.throw(
 				_(
@@ -39,7 +39,7 @@ class PasskeySettings(Document):
 		policy.validate_origins(self, rp_id)
 
 	def _validate_second_factor_floor(self):
-		"""§6.1: the enforcement floor is structural — passkey second factor
+		"""The enforcement floor is structural — passkey second factor
 		requires core two-factor auth to stay ON (direct password POSTs then
 		face core's own OTP gate on every branch, with zero hook dependence)."""
 		if not cint(self.passkey_as_second_factor):
@@ -59,7 +59,7 @@ class PasskeySettings(Document):
 			)
 
 	def _enforce_passkey_only_login_guard(self):
-		"""§2.3 generalized disable-guard (pass-3 F3-3): no save may leave zero
+		"""Generalized disable-guard: no save may leave zero
 		passkey-capable login modes while any user has passkey_only_login=1."""
 		if self._any_mode_enabled():
 			return
@@ -72,7 +72,7 @@ class PasskeySettings(Document):
 			)
 
 	def _warn_risky_combinations(self):
-		# non-blocking warnings (§2.3) — the save proceeds
+		# non-blocking warnings — the save proceeds
 		if cint(self.passkey_as_second_factor) and cint(
 			frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 		):

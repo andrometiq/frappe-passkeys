@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Policy-matrix units (DESIGN-v1 §3.6/§3.7): the sign-count matrix incl. the
+"""Policy-matrix units: the sign-count matrix incl. the
 knob-off log+flag-proceed path (the vector gate runs hard-fail, so this is where
 "regression completes the login" is pinned), BE mutation, the UV outcome table,
 and per-flow residentKey."""

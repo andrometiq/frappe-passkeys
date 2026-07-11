@@ -1,11 +1,10 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Desk boot flag (DESIGN-v1 §8.1) + the Signal-API data endpoint (§8.3):
-``extend_bootinfo`` publishes the reconciled P6 boot contract (``enabled``,
+"""Desk boot flag + the Signal-API data endpoint:
+``extend_bootinfo`` publishes the reconciled boot contract (``enabled``,
 ``modes``, ``credential_count``, ``nudge_state``, ``post_login_method``,
-``conditional_create``, ``upsell_eligible``, ``settings_context``, ``rp_id`` —
-build-p6-frontend-manifest.md §3) for an authed user, no-ops for Guest, and
+``conditional_create``, ``upsell_eligible``, ``settings_context``, ``rp_id``) for an authed user, no-ops for Guest, and
 ``get_signal_data`` returns the caller's own handle + enabled credential ids."""
 
 import frappe
@@ -57,7 +56,7 @@ class BootInfoTest(IntegrationTestCase):
 		)
 		return user
 
-	# ---- extend_bootinfo shape (§8.1) -------------------------------------
+	# ---- extend_bootinfo shape -------------------------------------
 
 	def test_bootinfo_shape_for_authed_user(self):
 		user = self._user()
@@ -125,7 +124,7 @@ class BootInfoTest(IntegrationTestCase):
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertEqual(info.passkeys["post_login_method"], "password")
 
-	# ---- get_signal_data (§8.3) -------------------------------------------
+	# ---- get_signal_data -------------------------------------------
 
 	def test_get_signal_data_returns_own_handle_and_enabled_creds(self):
 		user = self._user()

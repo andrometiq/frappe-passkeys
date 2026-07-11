@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 6 — concurrency shares one ceremony (DESIGN-v1 §7.3 A44). Two identical
+// Concurrency shares one ceremony. Two identical
 // concurrent invocations share ONE in-flight dialog/ceremony — never two stacked
 // dialogs racing one gesture. Asserted by counting begin_confirmation requests: one.
 

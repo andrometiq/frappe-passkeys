@@ -1,13 +1,13 @@
-// passkey_manage_common.test.js — dependency-free unit harness for the PURE §8
-// credential-management + §8.4 nudge + §9.4 settings logic in
+// passkey_manage_common.test.js — dependency-free unit harness for the PURE
+// credential-management + nudge + settings logic in
 // passkey_manage_common.js. Runs WITHOUT the bench and WITHOUT jsdom:
 //   node --test passkeys/tests/js
 //
 // Covers: provider resolution (server-supplied / injected map / zero-AAGUID /
 // unknown), Synced-vs-Device-bound badge, the card view-model + accessible names,
-// the nudge cadence decision (every branch + knob-referenced caps per F3-8), the
+// the nudge cadence decision (every branch + knob-referenced caps), the
 // conditional-create gate (password-seeded window only), the post-hybrid upsell
-// gate, the last-method delete guard, the §9.4 settings-banner matrix, origin/host
+// gate, the last-method delete guard, the settings-banner matrix, origin/host
 // membership, and signal-payload shaping.
 
 const test = require("node:test");
@@ -44,7 +44,7 @@ test("backupBadge: backup_state truthy => Synced, else Device-bound", () => {
 	assert.strictEqual(M.backupBadge({}).synced, false);
 });
 
-// ------------------------------------------- vendored AAGUID snapshot (§8.2)
+// ------------------------------------------- vendored AAGUID snapshot
 // The REAL release asset the bundles fetch from /assets/passkeys/aaguid-map.json
 // (source + refresh: docs/aaguid-map.md). These pin its contract: lean flat map
 // (no icon blobs), lowercase-UUID keys, a skipped _meta provenance block.
@@ -68,7 +68,7 @@ test("viewmodel resolves a provider from the vendored map; label falls back to i
 	const vm = M.credentialViewModel({ name: "c1", aaguid: KNOWN_AAGUID }, { aaguidMap: VENDORED_MAP });
 	assert.strictEqual(vm.providerName, "Google Password Manager");
 	assert.strictEqual(vm.hasProvider, true);
-	// no user label ⇒ the provider name IS the card label (§8.2)
+	// no user label ⇒ the provider name IS the card label
 	assert.strictEqual(vm.label, "Google Password Manager");
 	// a server-supplied provider field still wins over the map (source of truth)
 	const vm2 = M.credentialViewModel(
@@ -199,7 +199,7 @@ test("nudgeDecision: client-knob FALLBACK when the server omits eligible (F3-8)"
 test("nudgeDecision: conditional create gated on server eligible ∧ knob ∧ caps ∧ password window", () => {
 	const caps = { supported: true, conditionalCreate: true };
 	assert.strictEqual(M.nudgeDecision(bootBase(), caps, NOW).allowConditionalCreate, true);
-	// email-link / weak login: window not password-seeded (§7.1)
+	// email-link / weak login: window not password-seeded
 	assert.strictEqual(M.nudgeDecision(bootBase({ post_login_method: "weak" }), caps, NOW).allowConditionalCreate, false);
 	// no client capability => no silent create (Firefox story)
 	assert.strictEqual(M.nudgeDecision(bootBase(), { supported: true, conditionalCreate: false }, NOW).allowConditionalCreate, false);

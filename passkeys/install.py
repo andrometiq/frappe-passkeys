@@ -1,9 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Install / uninstall / migrate guards (DESIGN-v1 §14).
+"""Install / uninstall / migrate guards.
 
-Hook-path import discipline (§1.3): this module MUST NOT import the
+Hook-path import discipline: this module MUST NOT import the
 ``webauthn`` library, directly or transitively."""
 
 import importlib.util
@@ -18,7 +18,7 @@ DEFAULTS_PARENT = "__passkeys"
 
 def before_install():
 	"""The abort-capable gate: a raise here leaves zero site state, while an
-	`after_install` raise would leave a half-installed, registered app (§14)."""
+	`after_install` raise would leave a half-installed, registered app."""
 	if is_core_native():
 		frappe.throw(
 			_(
@@ -37,14 +37,14 @@ def after_install():
 def before_uninstall():
 	"""Blocking lockout guard; then delete the app's DefaultValue rows (not
 	module-linked — nothing else ever cleans them) and the registry Property
-	Setter, so a reinstall is a true fresh start (§14)."""
+	Setter, so a reinstall is a true fresh start."""
 	_block_uninstall_lockout()
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
 	_remove_registry_property_setter()
 	# Remove the "My Passkeys" navbar entry we synced into Navbar Settings on
 	# v16/develop (v15 never syncs it). Keyed on our own action string so nothing
 	# else is touched — leaves a clean Navbar Settings for a true fresh reinstall
-	# and for the core-merge story (§14).
+	# and for the core-merge story.
 	frappe.db.delete(
 		"Navbar Item",
 		{"parent": "Navbar Settings", "action": "frappe.passkeys.manage.openManagerDialog()"},
@@ -54,15 +54,15 @@ def before_uninstall():
 
 _CORE_NATIVE: bool | None = None
 
-# Cache key for the one-time dormant-shell advisory (§11). Same cache-flag idiom
+# Cache key for the one-time dormant-shell advisory. Same cache-flag idiom
 # as passkey._observe_2fa_floor_desync's once-daily observer.
 _DORMANT_ADVISORY_KEY = "passkeys:dormant_uninstall_advisory"
 
 
 def is_core_native() -> bool:
-	"""Stage-2 detection (§11): core owns passkeys when `frappe.passkey` exists.
+	"""Stage-2 detection: core owns passkeys when `frappe.passkey` exists.
 
-	Cached once per process (§11 "checked once per process, cached") — every
+	Cached once per process ("checked once per process, cached") — every
 	dormant-shell guard queries this switch on every hook + endpoint, so after the
 	first ``find_spec`` (which walks the import system) it must be O(1). The result
 	is immutable for the life of the process: a running site cannot grow/lose
@@ -74,7 +74,7 @@ def is_core_native() -> bool:
 
 
 def dormant() -> bool:
-	"""The §11 runtime dormant-shell switch shared by every hook and endpoint guard:
+	"""The runtime dormant-shell switch shared by every hook and endpoint guard:
 	``True`` iff core serves passkeys natively, emitting the one-time uninstall
 	advisory on the first engagement.
 
@@ -90,7 +90,7 @@ def dormant() -> bool:
 
 
 def _advise_dormant_once() -> None:
-	"""One structured operator advisory the first time dormancy engages (§11: "The
+	"""One structured operator advisory the first time dormancy engages ("The
 	app logs a one-time uninstall advisory"). Cache-flag idiom (cf.
 	``passkey._observe_2fa_floor_desync``) so it fires once, never per request.
 	Non-blocking — an advisory failure must never disturb the guarded surface that
@@ -159,7 +159,7 @@ def _block_uninstall_lockout():
 
 def _ensure_settings_defaults():
 	"""Persist the Passkey Settings Single with its declared defaults — all
-	login modes OFF (installing is not enabling, §9.1)."""
+	login modes OFF (installing is not enabling)."""
 	doc = frappe.get_doc("Passkey Settings")
 	for df in doc.meta.fields:
 		if df.fieldtype in ("Section Break", "Column Break", "HTML"):
@@ -172,7 +172,7 @@ def _ensure_settings_defaults():
 
 
 # ---------------------------------------------------------------------------
-# registry Property Setter (programmatic — NOT a fixtures/ fixture; §14)
+# registry Property Setter (programmatic — NOT a fixtures/ fixture)
 # ---------------------------------------------------------------------------
 # frappe's installer runs sync_fixtures unconditionally, so a fixtures-machinery
 # Property Setter would land on v15/v16, where two_factor_method is a closed
@@ -209,7 +209,7 @@ def sync_standard_navbar_items():
 
 
 def two_factor_registry_available() -> bool:
-	"""Stage-1 registry detection (§6.5): keyed to a core symbol introduced by
+	"""Stage-1 registry detection: keyed to a core symbol introduced by
 	the upstream pluggable-2FA PR — the exact ``frappe.twofactor`` attribute is
 	pinned when that PR is authored (build phase 4). Never ``get_hooks`` (the
 	app's own static entry would self-poison it) and never version strings."""

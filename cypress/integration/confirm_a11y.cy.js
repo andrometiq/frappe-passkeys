@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 4 — confirmation dialog accessibility (DESIGN-v1 §5.5/§7.3). The dialog
+// Confirmation dialog accessibility. The dialog
 // is role="dialog" + aria-labelledby, traps focus, is Esc-dismissable (→
 // user_cancelled), exposes an aria-live outcome region, and returns focus to the
 // invoking control after close.

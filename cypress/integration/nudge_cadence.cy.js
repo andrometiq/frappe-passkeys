@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — enrollment-nudge cadence UX (DESIGN-v1 §8.4). The post-login nudge
+// Enrollment-nudge cadence UX. The post-login nudge
 // shows on Desk boot only when: the nudge knob is on ∧ credential_count == 0 ∧
 // detection passes ∧ server-side cadence allows (declines < max_prompts ∧
 // last_shown ≥ cooldown ∧ not opted out). Counters are SERVER-side per-user, so a

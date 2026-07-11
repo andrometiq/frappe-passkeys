@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 2 — J2 explicit "Sign in with a passkey" button (DESIGN-v1 §5.2). The
+// Explicit "Sign in with a passkey" button. The
 // button is always shown when a passkey login mode is enabled + WebAuthn is
 // detected; clicking it runs a modal get() (allowCredentials empty, discoverable)
 // → verify_login → redirect. When all modes are off, begin_login answers

@@ -22,7 +22,7 @@ class WebAuthnUserHandle(Document):
 			frappe.throw(_("A WebAuthn user handle is immutable."))
 
 	def _enforce_credential_floor(self):
-		"""§2.2: enabling passkey-only login requires ≥1 enabled credential.
+		"""Enabling passkey-only login requires ≥1 enabled credential.
 		This binds every writer (endpoint, Desk form, System Manager) — without
 		it, a toggle on a credential-less user is an instant total lockout."""
 		if not cint(self.passkey_only_login):

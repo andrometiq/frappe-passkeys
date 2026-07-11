@@ -1,6 +1,6 @@
-// passkey_settings.js — the Passkey Settings form UX (DESIGN-v1 §9.4). Wired via
+// passkey_settings.js — the Passkey Settings form UX. Wired via
 // `doctype_js = {"Passkey Settings": "public/js/passkey_settings.js"}` (see the
-// build manifest). Renders the §9.4 banner/dialog matrix on the settings form and
+// build manifest). Renders the banner/dialog matrix on the settings form and
 // puts the loud one-way-door confirm on the RP-ID field. Destination on core merge:
 // the passkey section of frappe/core/doctype/system_settings/system_settings.js.
 //
@@ -15,7 +15,7 @@ frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
 		var M = frappe.passkeys_manage_common;
 		if (!M) return;
-		// Baseline for the RP-ID one-way-door revert (§9.1): the last-saved value to
+		// Baseline for the RP-ID one-way-door revert: the last-saved value to
 		// fall back to if the user backs out of the confirm. refresh() re-fires after
 		// every load and save, so this always tracks the persisted RP ID.
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
@@ -30,7 +30,7 @@ frappe.ui.form.on("Passkey Settings", {
 		repaint(frm);
 		var M = frappe.passkeys_manage_common;
 		if (!M) return;
-		// One-way door (§9.1/§9.2): changing the RP ID after enrollment invalidates
+		// One-way door: changing the RP ID after enrollment invalidates
 		// every passkey. Loud typed confirm before the value can be saved.
 		if (frm.doc.__islocal || !frm.doc.passkey_rp_id) return;
 		if (frm._passkey_rpid_ack === frm.doc.passkey_rp_id) return;
@@ -45,7 +45,7 @@ frappe.ui.form.on("Passkey Settings", {
 			true // set_danger — Cancel is the safe default
 		);
 		// Cancel / Esc / backdrop dismissal MUST revert the field, so a backed-out
-		// change can never be saved (the confirm has to actually gate the save, §9.1).
+		// change can never be saved (the confirm has to actually gate the save).
 		// The modal hide event is the reliable catch-all across dismissal routes
 		// (same idiom as the desk nudge dialog + passkey_confirm.js::wireCancel).
 		if (d && d.$wrapper && d.$wrapper.on) {
@@ -78,7 +78,7 @@ function paintBanners(frm, M) {
 	banners.forEach(function (bn) {
 		host.appendChild(bannerEl(bn.level, M.format(__(bn.key), bn.args || [])));
 	});
-	// Resolved RP ID / origins read-only echo (§9.1 "Read-only display").
+	// Resolved RP ID / origins read-only echo ("Read-only display").
 	if (ctx.resolvedRpId || (ctx.resolvedOrigins && ctx.resolvedOrigins.length)) {
 		var lines = [];
 		if (ctx.resolvedRpId) lines.push(__("Resolved RP ID: {0}", [ctx.resolvedRpId]));
@@ -112,7 +112,7 @@ function bannerEl(level, msg) {
 }
 
 // Resolve the settings context. RP ID / origins are computed from the doc (blank
-// rp_id ⇒ the current host, §9.2 exact-host default). Cross-flag data rides
+// rp_id ⇒ the current host, exact-host default). Cross-flag data rides
 // frappe.boot.passkeys.settings_context when the server ships it (optional — the
 // pure matrix omits the banners that need it if absent).
 function buildContext(frm) {

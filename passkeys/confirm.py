@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Action-confirmation / "passkey signing" primitive (DESIGN-v1 §7.2 / J6).
+"""Action-confirmation / "passkey signing" primitive.
 
 This is the **public API surface** other Frappe apps use to require a fresh
 passkey confirmation before a sensitive whitelisted action — the
@@ -29,7 +29,7 @@ whitelisted method paths that bundle pins:
   (no action) OR mint a password-method action grant (``allow_password_fallback``).
 
 ``webauthn`` (via ``passkeys.engine``) is imported **lazily inside the ceremony
-bodies** (§1.3 hook-path import discipline); the decorator + ``session``/``state``
+bodies** (hook-path import discipline); the decorator + ``session``/``state``
 imports are webauthn-free, so an app can decorate a method at module import time
 without pulling the crypto wheel onto its import path.
 
@@ -47,7 +47,7 @@ from frappe.utils import cint, now_datetime
 from passkeys import policy, session, state
 
 # ---------------------------------------------------------------------------
-# Per-action policy registry (§7.2). The @passkey_protected decorator declares
+# Per-action policy registry. The @passkey_protected decorator declares
 # an action's fallback policy at import time; the minter endpoints consult the
 # registry so `begin_confirmation`'s `methods` and `reauth_password`'s
 # action-grant path honour the SAME policy the consumer enforces. The registry
@@ -82,17 +82,17 @@ def get_action_policy(action: str) -> ActionPolicy:
 	mirrors the decorator defaults (``allow_password_fallback=True``,
 	``allow_sudo_window=False``) so an app using only the imperative
 	:func:`require_passkey_confirmation` (no import-time decorator) still gets the
-	universal-re-auth behaviour. Actions that must never accept a password (F19)
+	universal-re-auth behaviour. Actions that must never accept a password
 	are pre-registered below, so the default can never weaken them."""
 	return _ACTION_POLICIES.get(action) or ActionPolicy(action=action)
 
 
-# Built-in actions the app's own surfaces confirm (§7.1 / §7.4 / §9.3). Registered
+# Built-in actions the app's own surfaces confirm. Registered
 # eagerly (this module is import-clean) so the minter serves them with the right
 # `methods` even when the consuming endpoint module hasn't been imported yet.
 register_action(
 	ActionPolicy(
-		action=session.MANAGE_ACTION,  # "passkeys.manage" — management surface (§7.4)
+		action=session.MANAGE_ACTION,  # "passkeys.manage" — management surface
 		bind_params=(),
 		allow_password_fallback=True,  # first-enrollment / passkey-less users
 		allow_sudo_window=True,  # GitHub-sudo ergonomics for management
@@ -100,7 +100,7 @@ register_action(
 )
 register_action(
 	ActionPolicy(
-		action=session.SET_PASSKEY_ONLY_ACTION,  # "passkeys.set_passkey_only_login" (§9.3 / F19)
+		action=session.SET_PASSKEY_ONLY_ACTION,  # "passkeys.set_passkey_only_login"
 		bind_params=("enabled",),
 		allow_password_fallback=False,  # a password must never disable "password-not-sufficient"
 		allow_sudo_window=False,
@@ -120,7 +120,7 @@ def passkey_protected(
 	allow_password_fallback: bool = True,
 	allow_sudo_window: bool = False,
 ):
-	"""Require a fresh passkey confirmation before a whitelisted method runs (§7.2).
+	"""Require a fresh passkey confirmation before a whitelisted method runs.
 
 	Put this **below** ``@frappe.whitelist`` on any sensitive server method::
 
@@ -156,7 +156,7 @@ def passkey_protected(
 	the ``frappe.passkeys.call`` client catches it, runs the confirmation dialog,
 	and retries once with the ``X-Passkey-Grant`` header. The grant is consumed
 	**before** the wrapped function runs — a failed action burns the gesture
-	(A-F20: one gesture = one action attempt)."""
+	(one gesture = one action attempt)."""
 	policy_ = ActionPolicy(
 		action=action,
 		bind_params=tuple(bind_params or ()),
@@ -190,7 +190,7 @@ def require_passkey_confirmation(
 	    require_passkey_confirmation("myapp.release_payment", {"payment_id": pid})
 
 	Consumes a matching grant (or a permitted fallback) and returns; otherwise
-	raises the §3 401 retry contract. Registers/updates the action policy so the
+	raises the 401 retry contract. Registers/updates the action policy so the
 	minter offers the same ``methods``."""
 	params = dict(params or {})
 	policy_ = _ACTION_POLICIES.get(action) or ActionPolicy(
@@ -259,8 +259,8 @@ def _bound_params(fn, args, kwargs, bind_params) -> dict:
 
 
 def _raise_confirmation_required(action: str, params: dict, policy_: ActionPolicy) -> None:
-	"""Emit the §3 401 retry contract with a SERVER-computed payload fingerprint
-	(A36) the client echoes back verbatim on the confirmation round-trip."""
+	"""Emit the 401 retry contract with a SERVER-computed payload fingerprint
+	the client echoes back verbatim on the confirmation round-trip."""
 	fingerprint = session.payload_hash(params)
 	methods = _confirm_methods(frappe.session.user, policy_)
 	session._raise_confirmation_required(action, methods=methods, payload_fingerprint=fingerprint)
@@ -268,7 +268,7 @@ def _raise_confirmation_required(action: str, params: dict, policy_: ActionPolic
 
 def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 	"""Authoritative per-user subset of ``["passkey", "password", "sudo"]`` the
-	dialog may offer for this action (§7.2 begin-response ``methods``)."""
+	dialog may offer for this action (begin-response ``methods``)."""
 	methods = []
 	if _enabled_credentials(user):
 		methods.append("passkey")
@@ -286,19 +286,19 @@ def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 
 @frappe.whitelist(methods=["POST"])
 def begin_confirmation(action: str, params=None, payload_hash=None):
-	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``
-	(§7.2). The client sends EITHER ``params`` (raw bound params — the server
-	computes the payload hash, A36) OR ``payload_hash`` (the verbatim
+	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``.
+	The client sends EITHER ``params`` (raw bound params — the server
+	computes the payload hash) OR ``payload_hash`` (the verbatim
 	``payload_fingerprint`` echoed from a prior 401); they are mutually exclusive
 	and **no hash is ever computed client-side**.
 
 	Returns ``{state_id, options, payload_fingerprint, methods}`` — ``options``
-	requests ``userVerification: "required"`` (§7.2); ``methods`` is the
+	requests ``userVerification: "required"``; ``methods`` is the
 	authoritative per-user subset of ``["passkey","password","sudo"]``. Raises
-	417 ``PasskeyServedByCore`` when core serves passkeys natively (§11)."""
+	417 ``PasskeyServedByCore`` when core serves passkeys natively."""
 	_refuse_if_core_native()
 	user = _require_user()
-	state.rate_limit_user("begin_confirmation", 30, 300)  # §3.0 row 14: 30/5 min/user
+	state.rate_limit_user("begin_confirmation", 30, 300)  # 30/5 min/user
 	action = _require_action(action)
 	fingerprint = _resolve_payload_hash(params, payload_hash)
 
@@ -317,8 +317,8 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 		allow_credentials=[
 			{"id": row.credential_id, "transports": _transports(row.transports)} for row in creds
 		],
-		user_verification=policy.UV_WIRE["confirmation"],  # "required" (§3.7 / §7.2)
-		# A59 (§7.2): pin the browser wire timeout to THIS ceremony's server-side TTL
+		user_verification=policy.UV_WIRE["confirmation"],  # "required"
+		# Pin the browser wire timeout to THIS ceremony's server-side TTL
 		# (state.CONFIRM_CEREMONY_TTL = 180 s), not the engine's 300 s default. The
 		# login/registration ceremonies inherit the 300 s default because their
 		# store_ceremony TTL is the matching 300 s CEREMONY_TTL; the confirm ceremony's
@@ -354,18 +354,18 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 
 @frappe.whitelist(methods=["POST"])
 def verify_confirmation(state_id: str, credential):
-	"""Verify the confirmation assertion and mint a single-use grant (§7.2).
+	"""Verify the confirmation assertion and mint a single-use grant.
 
-	§3.1 ladder + sid binding + **UV bit must be 1** (a UV-less completion is a
-	server-side dead end — confirmation always requires verification) + the §3.7
+	Ladder + sid binding + **UV bit must be 1** (a UV-less completion is a
+	server-side dead end — confirmation always requires verification) + the
 	``uv_initialized`` gate (flip iff a password-seeded sudo window accompanies
 	this session; otherwise route to the password tab). On success returns
 	``{grant: "<token>"}`` — the single-use, 180 s, user+sid+action+payload
 	bound, ``passkey``-method grant. Any failure raises the uniform typed error;
-	the client never re-POSTs an assertion (A35)."""
+	the client never re-POSTs an assertion."""
 	_refuse_if_core_native()
 	user = _require_user()
-	state.rate_limit_user("verify_confirmation", 30, 300)  # §3.0 row 15: 30/5 min/user
+	state.rate_limit_user("verify_confirmation", 30, 300)  # 30/5 min/user
 
 	from passkeys import engine
 
@@ -393,18 +393,18 @@ def verify_confirmation(state_id: str, credential):
 		credential_public_key=cred.public_key,
 		stored_sign_count=cint(cred.sign_count),
 		stored_backup_eligible=bool(cint(cred.backup_eligible)),
-		require_user_verification=False,  # UV enforced app-side below (§3.7 / §7.2)
+		require_user_verification=False,  # UV enforced app-side below
 		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
 	)
-	# UV bit MUST be 1 for a confirmation (§7.2) — a wire-`preferred` downgrade or
+	# UV bit MUST be 1 for a confirmation — a wire-`preferred` downgrade or
 	# a non-UV authenticator cannot mint an action grant.
 	if not result.user_verified:
 		raise frappe.AuthenticationError(_("Please verify it's you to confirm this action."))
-	# §3.7 uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
+	# uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
 	# MUST NOT be relied upon as a verification factor. The false→true flip is
 	# allowed iff a password accompanied this session (a password/reauth-seeded
 	# sudo window); otherwise the typed error routes the dialog to its password
-	# tab (§7.2) — possession alone never mints a confirmation grant.
+	# tab — possession alone never mints a confirmation grant.
 	uv_flip_pending = not cint(cred.uv_initialized)
 	if uv_flip_pending:
 		window = session.get_window(user)
@@ -413,19 +413,19 @@ def verify_confirmation(state_id: str, credential):
 				record["action"], methods=["password"], payload_fingerprint=record["payload_hash"]
 			)
 
-	# sign-count policy applies (upward-only store + flag/hard-fail; §3.6).
+	# sign-count policy applies (upward-only store + flag/hard-fail).
 	_advance_credential(cred.name, result)
 	if uv_flip_pending:
-		# the standard password-accompanied uv_initialized flip (§3.7 — the same
+		# the standard password-accompanied uv_initialized flip (the same
 		# idiom as the verified second-factor leg in passkey.py).
 		frappe.db.set_value("WebAuthn Credential", cred.name, "uv_initialized", 1, update_modified=False)
 
 	token = session.mint_action_grant(user, record["action"], record["payload_hash"], method="passkey")
-	# §7.1: a completed passkey confirmation for the built-in ``passkeys.manage``
+	# A completed passkey confirmation for the built-in ``passkeys.manage``
 	# action ALSO seeds the full-sudo window — the sudo-gated management endpoints
 	# (``delete_credential`` / explicit ``begin_registration``) check that window,
 	# not the grant, so without this the client's confirm→retry dance re-fails the
-	# window check (build-p6-frontend-manifest.md §5). Scoped strictly to
+	# window check. Scoped strictly to
 	# ``passkeys.manage``: a third-party action confirmation never mints a
 	# management sudo window (that would be a privilege leak).
 	if record.get("action") == session.MANAGE_ACTION:
@@ -435,34 +435,33 @@ def verify_confirmation(state_id: str, credential):
 
 @frappe.whitelist(methods=["POST"])
 def reauth_password(pwd: str, action=None, payload_fingerprint=None):
-	"""Password fallback (§7.2 / §3.0 row 16). Two modes on one endpoint:
+	"""Password fallback. Two modes on one endpoint:
 
 	* **No ``action``** — seed the full-sudo window for the app's own management
-	  surface (§7.1), so passkey-less users and first-enrollment stay usable.
+	  surface, so passkey-less users and first-enrollment stay usable.
 	* **With ``action`` (+ ``payload_fingerprint``)** — mint a ``password``-method
 	  action grant bound to ``(user, sid, action, payload_hash)``, **but only when
 	  that action declared ``allow_password_fallback=True``**. An action that
-	  requires passkey-grade assurance (F19's set_passkey_only_login) refuses here,
+	  requires passkey-grade assurance (set_passkey_only_login) refuses here,
 	  and even if it did not, its consumer rejects any non-passkey method.
 
 	``check_password`` + a per-user failure tracker + the app throttle guard the
-	password oracle (§3 preamble, A23/A49). Raises 417 when core is native (§11).
+	password oracle. Raises 417 when core is native.
 
 	.. note::
-	   The frozen spec (§7.2) pins ``reauth_password`` as *"reaches only the sudo
+	   The frozen spec pins ``reauth_password`` as *"reaches only the sudo
 	   window"* yet also requires an ``allow_password_fallback`` action-grant with a
 	   ``password``-method grant whose minting endpoint it never names. Rather than
 	   invent a new whitelist name, this endpoint's params are **extended**
 	   (``{pwd, action?, payload_fingerprint?}``): the bare-``pwd`` sudo-seed case is
-	   unchanged; ``action`` present adds the action-grant path. See
-	   ``local-notes/build-p5-server-notes.md`` improvisation 1."""
+	   unchanged; ``action`` present adds the action-grant path."""
 	from frappe.utils.password import check_password
 
 	_refuse_if_core_native()
 	user = _require_user()
-	state.rate_limit_user("reauth_password", 5, 300)  # §3.0 row 16: 5/5 min/user
+	state.rate_limit_user("reauth_password", 5, 300)  # 5/5 min/user
 
-	# §7.4 / §9.4 row 7: under site `disable_user_pass_login`, a password can no
+	# Under site `disable_user_pass_login`, a password can no
 	# longer re-auth for management once the user holds ≥1 passkey — only the
 	# passkey grant counts. Refuse before touching the password oracle at all.
 	if frappe.get_system_settings("disable_user_pass_login") and _has_enabled_passkey(user):
@@ -470,7 +469,7 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
 		)
 
-	# app-owned per-user password-oracle throttle (§3.0 / A49).
+	# app-owned per-user password-oracle throttle.
 	if state.is_password_throttled(user):
 		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
 	try:
@@ -484,23 +483,23 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 		action = _require_action(action)
 		policy_ = get_action_policy(action)
 		if not policy_.allow_password_fallback:
-			# passkey-only assurance action — no password grant is ever minted (F19).
+			# passkey-only assurance action — no password grant is ever minted.
 			raise frappe.AuthenticationError(
 				_("This action requires a passkey — a password can't confirm it.")
 			)
 		if not payload_fingerprint:
 			frappe.throw(_("Missing confirmation payload."), frappe.ValidationError)
 		token = session.mint_action_grant(user, action, str(payload_fingerprint), method="password")
-		# §7.1: the password door for ``passkeys.manage`` seeds the full-sudo window
+		# The password door for ``passkeys.manage`` seeds the full-sudo window
 		# too (same as the passkey door in ``verify_confirmation``), so the sudo-gated
 		# management endpoints pass on retry. Reachable only when this user may still
-		# password-re-auth for management — the §7.4/§9.4-row-7 refusal above already
+		# password-re-auth for management — the refusal above already
 		# blocks a passkey holder under ``disable_user_pass_login``.
 		if action == session.MANAGE_ACTION:
 			_seed_management_window(user, "reauth")
 		return {"grant": token}
 
-	# bare sudo seed (§7.1): a full-sudo window seeded by a fresh password re-auth.
+	# bare sudo seed: a full-sudo window seeded by a fresh password re-auth.
 	settings = frappe.get_cached_doc("Passkey Settings")
 	ttl = cint(settings.passkey_reauth_window) or 600
 	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "reauth"}, ttl)
@@ -514,9 +513,9 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 
 def _seed_management_window(user: str, seeded_by: str) -> None:
 	"""Seed the full-sudo window a completed ``passkeys.manage`` confirmation grants
-	(§7.1) — the window the sudo-gated management endpoints (``delete_credential`` /
+	— the window the sudo-gated management endpoints (``delete_credential`` /
 	explicit ``begin_registration``) check. ``seeded_by`` is ``passkey`` (a UV
-	assertion) or ``reauth`` (the password door); both are §7.1 full-sudo classes,
+	assertion) or ``reauth`` (the password door); both are full-sudo classes,
 	and both mirror the fresh-login / bare-``reauth_password`` seed shape + TTL."""
 	settings = frappe.get_cached_doc("Passkey Settings")
 	ttl = cint(settings.passkey_reauth_window) or 600
@@ -524,7 +523,7 @@ def _seed_management_window(user: str, seeded_by: str) -> None:
 
 
 def _resolve_payload_hash(params, payload_hash) -> str:
-	"""Server authority over the payload hash (A36). ``params`` ⇒ compute the hash
+	"""Server authority over the payload hash. ``params`` ⇒ compute the hash
 	with the pinned Python canonicalization; ``payload_hash`` ⇒ the verbatim echoed
 	fingerprint (a client lying here only mints a grant the consumer's own
 	recomputation rejects — a correctness contract, not a security one). Mutually
@@ -567,14 +566,14 @@ def _enabled_credentials(user: str) -> list:
 
 
 def _has_enabled_passkey(user: str) -> bool:
-	"""True iff the user holds ≥1 enabled credential (§7.4 / §9.4 row 7)."""
+	"""True iff the user holds ≥1 enabled credential."""
 	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
 
 
 def _refuse_if_core_native() -> None:
-	"""Dormant-shell contract (§11): delegate to the canonical guard so the confirm
+	"""Dormant-shell contract: delegate to the canonical guard so the confirm
 	surface raises the SAME typed 417 (and rides the same one-time advisory) as
-	every other app endpoint — no duplicated switch logic (§11)."""
+	every other app endpoint — no duplicated switch logic."""
 	from passkeys.passkey import refuse_if_core_native
 
 	refuse_if_core_native()

@@ -1,10 +1,10 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Registration ceremony round-trip on the live bench (DESIGN-v1 §3.2, §12.2):
+"""Registration ceremony round-trip on the live bench:
 begin issues options + caches the challenge; complete verifies + persists a
 credential row; the challenge is single-use; duplicate / cross-account
-credential ids are refused; registration is sudo-gated (J2)."""
+credential ids are refused; registration is sudo-gated."""
 
 import frappe
 
@@ -82,7 +82,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		# the store row is consumed — a replay of the same state fails closed
 		with self.assertRaises(CeremonyExpired):
 			registration.verify_registration(begun["state_id"], credential)
-		# ...while the reusable sudo window still holds (§12.5 store invariants)
+		# ...while the reusable sudo window still holds (store invariants)
 		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
 
 	def test_duplicate_credential_id_rejected(self):
@@ -106,7 +106,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			registration.verify_registration(begun_b["state_id"], credential_b)
 
-	# ---- sudo gating (J2) -------------------------------------------------
+	# ---- sudo gating -------------------------------------------------
 
 	def test_registration_requires_sudo_window(self):
 		user = self._user()
@@ -130,9 +130,9 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "preferred")
 
 	def test_weak_login_bootstrap_allows_only_first_enrollment(self):
-		"""§7.1 / §16 A7 weak-login bootstrap, BOTH directions: a weak-seeded window
+		"""Weak-login bootstrap, BOTH directions: a weak-seeded window
 		(email-link / OAuth / social class) authorizes ONLY a first explicit
-		enrollment (zero existing credentials) and records the §8.5 risk event; the
+		enrollment (zero existing credentials) and records the risk event; the
 		moment the user holds ≥1 credential the SAME weak window is refused —
 		management-grade (password/passkey/reauth) sudo is then required. A recovery
 		login must never silently mint general enrollment power."""
@@ -150,7 +150,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 
 		# direction 1 — zero credentials + weak window → first enrollment is allowed,
-		# and the §8.5 weak-login-bootstrap risk event is recorded.
+		# and the weak-login-bootstrap risk event is recorded.
 		self._seed_sudo(user, seeded_by="weak")
 		before = frappe.db.count("Activity Log", {"user": user})
 		begun = registration.begin_registration(flow="explicit")
@@ -167,13 +167,13 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		registration.verify_registration(begun["state_id"], credential)
 
 		# direction 2 — with ≥1 credential the SAME weak window no longer bootstraps:
-		# a second enrollment demands management-grade sudo (§7.1).
+		# a second enrollment demands management-grade sudo.
 		self._seed_sudo(user, seeded_by="weak")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 
 	def test_weak_login_bootstrap_refused_when_knob_off(self):
-		"""§7.1: even a first enrollment is refused from a weak window when
+		"""Even a first enrollment is refused from a weak window when
 		``passkey_allow_first_enrollment_on_weak_login`` is off — the bootstrap is an
 		opt-in allowance, not a default."""
 		user = self._user()
@@ -198,7 +198,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "required")
 
 	def test_explicit_flow_without_credprops_stores_discoverable_yes(self):
-		"""S11: an explicit-flow success with NO credProps (Safari ships none) still
+		"""An explicit-flow success with NO credProps (Safari ships none) still
 		stored a discoverable credential — the flow pins residentKey="required", so
 		``discoverable`` must be "Yes" even though ``result.discoverable`` is
 		"Unknown". Before the fix it stored "Unknown"."""

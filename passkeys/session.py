@@ -1,16 +1,16 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sudo-window semantics (DESIGN-v1 §7.1) + the passkey-grant consumer (§7.2)
+"""Sudo-window semantics + the passkey-grant consumer
 used by the management surface. Folds into ``frappe/passkey.py`` on the core
 merge.
 
-**Hook-path import discipline (§1.3):** this module sits on the
+**Hook-path import discipline:** this module sits on the
 ``on_session_creation`` / ``on_logout`` hook chains — which fire on *every*
 login/logout of *every* user — so it MUST NOT import ``webauthn`` (directly or
 transitively). It imports only ``frappe`` and :mod:`passkeys.state`.
 
-Placement note: DESIGN-v1 §1.3 sketches ``seed_sudo_window`` living in
+Placement note: ``seed_sudo_window`` would naturally live in
 ``auth_hooks.py`` (alongside the on_login veto + System Settings 2FA guard,
 which land in later phases). Those seams are unbuilt; keeping the sudo seed +
 check here in ``session.py`` avoids colliding with that future module and keeps
@@ -25,11 +25,11 @@ from frappe.utils import cint, now
 
 from passkeys import install, state
 
-# Built-in action for the app's own management surface (§7.1 / §7.2).
+# Built-in action for the app's own management surface.
 MANAGE_ACTION = "passkeys.manage"
 SET_PASSKEY_ONLY_ACTION = "passkeys.set_passkey_only_login"
 
-# Seeding classes (§7.1). ``password``/``passkey``/``reauth`` grant a full sudo
+# Seeding classes. ``password``/``passkey``/``reauth`` grant a full sudo
 # window; ``weak`` (email-link / OAuth / social) seeds a window that only the
 # restricted first-enrollment bootstrap honours — never general management.
 FULL_SUDO_METHODS = ("password", "passkey", "reauth")
@@ -39,19 +39,19 @@ GRANT_KWARG = "_passkey_grant"
 
 
 # ---------------------------------------------------------------------------
-# on_session_creation seed (§7.1) — fires after make_session inside post_login,
-# where the sid already exists (the on_login veto, §9.3, fires BEFORE make_session
+# on_session_creation seed — fires after make_session inside post_login,
+# where the sid already exists (the on_login veto fires BEFORE make_session
 # and cannot seed a sid-keyed window).
 # ---------------------------------------------------------------------------
 
 
 def seed_sudo_window(login_manager=None, **kwargs) -> None:
 	"""Seed a sudo window for the freshly-created session, classified by login
-	method (§7.1). Exception-hardened: a failure here must never take down a
+	method. Exception-hardened: a failure here must never take down a
 	login (this hook runs on every login of every user)."""
 	try:
 		if install.dormant():
-			return  # §11 dormant-shell: core owns sudo seeding — silent no-op
+			return  # dormant-shell: core owns sudo seeding — silent no-op
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return
@@ -71,7 +71,7 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 
 
 def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
-	"""§8.5 ``password_login_by_passkey_holder`` risk event: a user who holds ≥1
+	"""``password_login_by_passkey_holder`` risk event: a user who holds ≥1
 	enabled passkey signed in with their password instead. Opt-in behind
 	``passkey_notify_password_login`` (default OFF) — so the enabled-credential
 	read never touches the hot login path unless an operator wants the telemetry,
@@ -93,10 +93,10 @@ def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
 
 
 def clear_sudo_window(login_manager=None, **kwargs) -> None:
-	"""on_logout: drop this session's sudo window (§7.5). Exception-hardened."""
+	"""on_logout: drop this session's sudo window. Exception-hardened."""
 	try:
 		if install.dormant():
-			return  # §11 dormant-shell: core owns logout teardown — silent no-op
+			return  # dormant-shell: core owns logout teardown — silent no-op
 		sid = frappe.session.sid
 		if sid:
 			state.clear_sudo_window(sid)
@@ -105,7 +105,7 @@ def clear_sudo_window(login_manager=None, **kwargs) -> None:
 
 
 def _classify_login_method() -> str | None:
-	"""Best-available classification at ``on_session_creation`` time (§7.1):
+	"""Best-available classification at ``on_session_creation`` time:
 
 	* ``passkey`` — the app's own passwordless / passkey-2FA / uv-setup legs set
 	  ``frappe.local.flags.passkey_login`` before ``login_as``.
@@ -116,7 +116,7 @@ def _classify_login_method() -> str | None:
 	  user), which sets ``frappe.local.flags.passkeys_password_login`` — its
 	  endpoint path is not ``/api/method/login``, so without the flag the
 	  core-path heuristic below would mis-classify a real password login as
-	  ``weak`` and re-fire the §8.4 conditional-create nudge (S3).
+	  ``weak`` and re-fire the conditional-create nudge.
 	* ``weak`` — anything else that reached a real (non-Guest) session via
 	  ``login_as``: email-link (``login_via_key``), OAuth / social.
 
@@ -140,18 +140,18 @@ def _is_core_password_login() -> bool:
 	if request is not None and getattr(request, "path", None) == "/api/method/login":
 		return True
 	form = getattr(frappe.local, "form_dict", None)
-	# v15/v16 additionally trigger core login on cmd=login (§10 login-trigger row).
+	# v15/v16 additionally trigger core login on cmd=login (login-trigger row).
 	return bool(form is not None and form.get("cmd") == "login")
 
 
 # ---------------------------------------------------------------------------
-# check helpers (§7.1 consumers)
+# check helpers (consumers)
 # ---------------------------------------------------------------------------
 
 
 def get_window(user: str, sid: str | None = None) -> dict | None:
 	"""The live sudo window for ``user`` on ``sid`` (Redis ``ex`` is the sole
-	expiry authority — an expired window reads back as ``None``, §4.2). Returns
+	expiry authority — an expired window reads back as ``None``). Returns
 	``None`` when absent or owned by a different user."""
 	sid = sid or frappe.session.sid
 	window = state.get_sudo_window(sid)
@@ -162,15 +162,15 @@ def get_window(user: str, sid: str | None = None) -> dict | None:
 
 def has_management_sudo(user: str, sid: str | None = None) -> bool:
 	"""True iff a full-sudo window (password / passkey / reauth-seeded) is live
-	for the user (§7.1). A ``weak``-seeded window does NOT satisfy management —
+	for the user. A ``weak``-seeded window does NOT satisfy management —
 	recovery-grade logins never silently mint management power."""
 	window = get_window(user, sid)
 	return bool(window and window.get("seeded_by") in FULL_SUDO_METHODS)
 
 
 def require_management_sudo(user: str) -> None:
-	"""Gate the app's management surface (§7.4). Raises the typed
-	``PasskeyConfirmationRequired`` retry contract (§3 / §7.2) when no full-sudo
+	"""Gate the app's management surface. Raises the typed
+	``PasskeyConfirmationRequired`` retry contract when no full-sudo
 	window is live — the client then runs a passkey confirmation (or password
 	re-auth), which re-seeds the window."""
 	if has_management_sudo(user):
@@ -179,15 +179,15 @@ def require_management_sudo(user: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# passkey-grant consumer (§7.2) — the consumer half of the action-signing
+# passkey-grant consumer — the consumer half of the action-signing
 # primitive. The MINTER (confirm.begin_confirmation / verify_confirmation +
 # the general @passkey_protected decorator) is Phase 5; only the grant-consuming
-# guard needed by set_passkey_only_login (F19, §9.3) is built here.
+# guard needed by set_passkey_only_login is built here.
 # ---------------------------------------------------------------------------
 
 
 def canonical_json(payload: dict) -> str:
-	"""Pinned server-only canonicalization (§7.2). JS never computes a hash."""
+	"""Pinned server-only canonicalization. JS never computes a hash."""
 	return json.dumps(payload or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -197,10 +197,10 @@ def payload_hash(params: dict) -> str:
 
 def consume_passkey_grant(user: str, action: str, params: dict) -> bool:
 	"""Atomically consume a single-use **passkey-method** grant bound to
-	user + sid + action + exact payload (§7.2 / §9.3). Returns ``True`` on a
+	user + sid + action + exact payload. Returns ``True`` on a
 	valid consume, ``False`` otherwise (missing token, wrong owner/sid/action,
 	payload mismatch, or a password-minted grant). Never accepts a sudo window
-	or a password-minted grant — the F19 threat model ("the password is not
+	or a password-minted grant — the threat model ("the password is not
 	sufficient")."""
 	token = _grant_token()
 	if not token:
@@ -220,7 +220,7 @@ def consume_passkey_grant(user: str, action: str, params: dict) -> bool:
 def _grant_matches(record: dict, user: str, action: str, params: dict) -> bool:
 	"""Ownership/binding predicate shared by both grant consumers: a grant
 	authorizes only its exact ``user`` + current sid + declared ``action`` +
-	exact payload (§7.2). Method binding is layered by the caller."""
+	exact payload. Method binding is layered by the caller."""
 	return (
 		record.get("user") == user
 		and record.get("sid") == frappe.session.sid
@@ -238,14 +238,14 @@ def mint_action_grant(
 	sid: str | None = None,
 	ttl: int | None = None,
 ) -> str:
-	"""Mint a single-use action grant and return the raw token **once** (§7.2).
+	"""Mint a single-use action grant and return the raw token **once**.
 
 	The token is stored only as SHA-256 (a cache snapshot never yields a usable
 	grant); the record binds ``user + sid + action + payload_hash + method`` and
 	expires by Redis ``ex`` alone (default 180 s ≤ the pinned cap). ``method`` is
 	``"passkey"`` (a real UV assertion via the confirm ceremony) or ``"password"``
 	(a ``reauth_password`` action-grant, accepted only by
-	``allow_password_fallback`` actions — never by F19's set_passkey_only_login).
+	``allow_password_fallback`` actions — never by set_passkey_only_login).
 	``payload_hash_hex`` is the ceremony's stored hash (server-computed from raw
 	params at ``begin_confirmation``, or the verbatim echoed fingerprint), NOT raw
 	params."""
@@ -276,7 +276,7 @@ def consume_action_grant(
 	allow_sudo_window: bool = False,
 ) -> bool:
 	"""Generalized grant consumer for the public ``@passkey_protected`` decorator
-	(§7.2). Atomically consumes a presented grant bound to
+	Atomically consumes a presented grant bound to
 	user + sid + action + exact payload:
 
 	* a ``passkey``-method grant always satisfies the gate;
@@ -286,9 +286,9 @@ def consume_action_grant(
 	  live full-sudo window (GitHub-sudo ergonomics for the app's own management)
 	  satisfies it instead.
 
-	Returns ``True`` on a valid consume, else ``False`` (caller raises the §3 401
-	retry contract). Unlike :func:`consume_passkey_grant` (the strict F19 gate),
-	this honours the per-action fallback policy — but the F19 invariant still
+	Returns ``True`` on a valid consume, else ``False`` (caller raises the 401
+	retry contract). Unlike :func:`consume_passkey_grant` (the strict gate),
+	this honours the per-action fallback policy — but the invariant still
 	holds structurally: set_passkey_only_login is declared
 	``allow_password_fallback=False``, so a password-method grant is rejected here
 	AND :func:`consume_passkey_grant` refuses any non-passkey method outright."""
@@ -304,7 +304,7 @@ def consume_action_grant(
 				_audit_grant("consumed", action, user, method)
 				return True
 			# matched this action+payload but the method is not accepted by the
-			# action's policy (F19): the grant is burned (single-use) and refused.
+			# action's policy: the grant is burned (single-use) and refused.
 			return False
 	if allow_sudo_window and has_management_sudo(user):
 		return True
@@ -312,11 +312,11 @@ def consume_action_grant(
 
 
 def _audit_grant(event: str, action: str, user: str, method: str) -> None:
-	"""§7.2 "every issuance/consumption writes an Activity Log row". Routes through
-	``notifications._activity_log`` (the P6 audit-row writer) so the trail is a real
+	""" "every issuance/consumption writes an Activity Log row". Routes through
+	``notifications._activity_log`` (the audit-row writer) so the trail is a real
 	queryable Activity Log entry, and keeps the structured logger breadcrumb (the
 	non-blocking-telemetry idiom used across the app). Lazy import keeps this
-	every-login-hook module webauthn-free (§1.3) — ``_audit_grant`` is called only
+	every-login-hook module webauthn-free — ``_audit_grant`` is called only
 	from the grant mint/consume endpoints, never from a login hook. Non-blocking:
 	an audit failure must never break a ceremony."""
 	try:
@@ -344,7 +344,7 @@ def _grant_token() -> str | None:
 
 
 def _raise_confirmation_required(action: str, *, methods: list[str], payload_fingerprint=None) -> None:
-	"""Emit the §3 typed-error wire contract: structured keys ride
+	"""Emit the typed-error wire contract: structured keys ride
 	``frappe.local.response`` (survive into the JSON error body); clients match
 	on ``exc_type`` only."""
 	from passkeys.passkey import PasskeyConfirmationRequired

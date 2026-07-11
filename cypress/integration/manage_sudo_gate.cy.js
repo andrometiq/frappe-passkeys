@@ -1,9 +1,9 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P6 spec — the sudo-gated delete dance (DESIGN-v1 §7.4/§8.3). Deleting a
+// The sudo-gated delete dance. Deleting a
 // credential requires a live full-sudo window; when the window is cold, the
-// server answers the §7.2 PasskeyConfirmationRequired contract and the client runs
+// server answers the PasskeyConfirmationRequired contract and the client runs
 // a passkeys.manage confirmation (passkey-first, password fallback) before
 // retrying. Needs a test helper to expire the fresh-login window — see the manifest.
 
@@ -72,7 +72,7 @@ chromium_only("passkey management — sudo-gated delete", () => {
 	it("prompts a passkey confirmation when the sudo window is cold, then completes", () => {
 		cy.login(USER, PW());
 		visit_user_passkeys();
-		// expire the fresh-login window so delete must re-confirm (§7.4)
+		// expire the fresh-login window so delete must re-confirm
 		cy.call(CLEAR_SUDO, {});
 		own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
 		cy.get(".modal-dialog .btn-primary").contains("Remove passkey").click();

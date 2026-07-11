@@ -1,13 +1,13 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""``passkey_only_login`` on_login veto battery (DESIGN-v1 §9.3 / F2 / F3-3).
+"""``passkey_only_login`` on_login veto battery.
 
 The veto (``auth_hooks.on_login_veto``) is exactly what ``run_trigger("on_login")``
 calls — ``on_login_veto(login_manager=self)`` — before ``make_session``, so these
 tests drive the function directly with a controlled session/flag context (the
 faithful reproduction of the hook's runtime state) and assert both the block and
-every exemption. One test pins the hook is actually wired; one drives the F3-3
+every exemption. One test pins the hook is actually wired; one drives the
 disable-guard that prevents lockout; one demonstrates the out-of-band recovery
 escape."""
 
@@ -74,14 +74,14 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 	def test_passwordless_passkey_login_passes(self):
 		user = self._user(passkey_only=True)
 		self._guest_context()
-		# the app's passkey legs set this flag before login_as (F3-2)
+		# the app's passkey legs set this flag before login_as
 		frappe.local.flags.passkey_login = True
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
 
 	def test_impersonation_is_exempt_via_non_guest_session(self):
 		user = self._user(passkey_only=True)
 		# during impersonation the request is still authenticated as the
-		# impersonator (a real, non-Guest user) at on_login time — the F2 signal.
+		# impersonator (a real, non-Guest user) at on_login time — the signal.
 		frappe.set_user("Administrator")
 		self._clear_flags()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
@@ -93,7 +93,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		make_handle("Administrator", passkey_only_login=1)
 		# Cleanups run LIFO: register credential-delete FIRST so the handle (which
 		# carries passkey_only_login=1) is dropped BEFORE the last credential —
-		# otherwise the §8.6 lockout interlock (correctly) refuses the delete. This
+		# otherwise the lockout interlock (correctly) refuses the delete. This
 		# is the documented remediation: clear the flag before the last passkey.
 		self.addCleanup(frappe.delete_doc, "WebAuthn Credential", cred.name, force=1, ignore_permissions=True)
 		self.addCleanup(lambda: frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"}))
@@ -126,7 +126,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
 
 	def test_system_manager_session_is_still_exempt(self):
-		# the SM-gated impersonate() caller (F2/A15) — a non-Administrator SM.
+		# the SM-gated impersonate() caller — a non-Administrator SM.
 		victim = self._user(passkey_only=True)
 		manager = self._user(passkey_only=False)
 		frappe.get_doc("User", manager).add_roles("System Manager")
@@ -135,7 +135,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
 
 	def test_flagged_passkey_login_passes_over_a_resumed_foreign_session(self):
-		# the app's own passkey legs (flag set before login_as, F3-2) still pass
+		# the app's own passkey legs (flag set before login_as) still pass
 		# when a different user's session is being resumed on the same browser.
 		victim = self._user(passkey_only=True)
 		other = self._user(passkey_only=False)
@@ -148,7 +148,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 	def test_veto_is_wired_on_the_on_login_hook(self):
 		self.assertIn("passkeys.auth_hooks.on_login_veto", frappe.get_hooks("on_login"))
 
-	# ---- no lockout: the F3-3 disable-guard -------------------------------
+	# ---- no lockout: the disable-guard -------------------------------
 
 	def test_disable_guard_blocks_removing_the_last_passkey_mode(self):
 		user = self._user(passkey_only=True)
@@ -171,7 +171,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			auth_hooks.on_login_veto(login_manager=_LM(user))
 		# out-of-band recovery: a System Manager clears the per-user flag on the
-		# WebAuthn User Handle row (§9.3) — a normal login then passes the veto.
+		# WebAuthn User Handle row — a normal login then passes the veto.
 		frappe.set_user("Administrator")
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user})
 		frappe.db.set_value("WebAuthn User Handle", handle, "passkey_only_login", 0)

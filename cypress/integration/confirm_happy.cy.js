@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 1 — action-confirmation happy path (DESIGN-v1 §7.2/§7.3). The low-level
+// Action-confirmation happy path. The low-level
 // `frappe.passkeys.confirm(action, params)` runs the ceremony (begin → virtual UV
 // assertion → verify_confirmation) and resolves to a grant TOKEN; attaching it as
 // the X-Passkey-Grant header authorizes the @passkey_protected probe endpoint.

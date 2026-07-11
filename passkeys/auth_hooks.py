@@ -1,17 +1,17 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sanctioned-hook enforcement seams (DESIGN-v1 §6.1; folds into ``frappe``'s
+"""Sanctioned-hook enforcement seams (folds into ``frappe``'s
 own auth surface on the core merge).
 
-**Hook-path import discipline (§1.3):** ``guard_system_settings`` rides
+**Hook-path import discipline:** ``guard_system_settings`` rides
 ``doc_events`` on System Settings ``validate`` — a hook that fires on every
 System Settings save — so this module MUST NOT import ``webauthn`` (directly or
 transitively). It imports only ``frappe``.
 
-The ``on_login`` veto (``passkey_only_login``, §9.3) and the sudo-window seed
-(§7.1, currently in ``session.py``) are the other tenants of this module in the
-core-merge layout; only the two-way 2FA-floor guard is built here (§6.1)."""
+The ``on_login`` veto (``passkey_only_login``) and the sudo-window seed
+(currently in ``session.py``) are the other tenants of this module in the
+core-merge layout; only the two-way 2FA-floor guard is built here."""
 
 import frappe
 from frappe import _
@@ -21,7 +21,7 @@ from passkeys import install
 
 
 def on_login_veto(login_manager=None, **kwargs):
-	"""``on_login`` veto for ``passkey_only_login`` users (DESIGN-v1 §9.3 / F2).
+	"""``on_login`` veto for ``passkey_only_login`` users.
 
 	Blocks password, email-link (``login_via_key``) and social (OAuth) FIRST-FACTOR
 	login for a user who opted into passkey-only sign-in. Enforced on the
@@ -33,10 +33,10 @@ def on_login_veto(login_manager=None, **kwargs):
 	Passwordless / step-up passkey logins are exempt: the app's own passkey paths
 	set ``frappe.local.flags.passkey_login`` before ``login_as`` (first-factor
 	``verify_login``, the ``verify_second_factor`` password→passkey step-up, and the
-	``complete_uv_setup`` repair, F3-2), so a flagged user still gets in via a
+	``complete_uv_setup`` repair), so a flagged user still gets in via a
 	passkey.
 
-	**Impersonation exemption (F2)** — by session state, not a marker: core's
+	**Impersonation exemption** — by session state, not a marker: core's
 	``impersonate()`` calls ``login_as`` and only *afterwards* ``set_impersonated``,
 	so no impersonation marker exists at ``on_login`` time and ``LoginManager``
 	carries none of the impersonation args. A non-Guest ``frappe.session.user`` is
@@ -48,27 +48,27 @@ def on_login_veto(login_manager=None, **kwargs):
 	victim, and a bare non-Guest exemption would hand over any ``passkey_only``
 	account for the price of one email login key. Exempt only what is genuinely
 	distinguishable: same-user re-auth (target == session user), or a session
-	holding System Manager — the role core's SM-gated ``impersonate()`` requires
-	(A15/F2). Every other cross-user, non-flagged login is policed.
+	holding System Manager — the role core's SM-gated ``impersonate()`` requires.
+	Every other cross-user, non-flagged login is policed.
 
-	**No lockout** — two layers. (1) The Passkey Settings disable-guard (F3-3)
+	**No lockout** — two layers. (1) The Passkey Settings disable-guard
 	refuses any settings save that would leave no passkey-capable login mode while
 	any user is flagged, so an admin can't strand the whole cohort. (2) A flagged
 	user who loses every passkey (the per-user strand this veto blocks email-link
 	included) recovers out-of-band: a System Manager clears ``passkey_only_login``
-	on the ``WebAuthn User Handle`` row (subject to the §2.2 credential-count
+	on the ``WebAuthn User Handle`` row (subject to the credential-count
 	interlock), or the self-hoster clears that row / disables the app. Administrator
 	is exempt (mirroring core's 2FA Administrator exemption), so the site owner can
 	never be locked out through this veto. Exception-hardened only around the
 	session-state and role reads — a genuine veto MUST propagate to abort the
 	login."""
 	if install.dormant():
-		return  # §11 dormant-shell: core owns the veto — silent no-op, never a throw
+		return  # dormant-shell: core owns the veto — silent no-op, never a throw
 	target = getattr(login_manager, "user", None) if login_manager is not None else None
 
 	# Impersonation / already-authenticated re-login: a non-Guest session at hook
 	# time is exempt ONLY for same-user re-auth or a System-Manager holder (the
-	# SM-gated impersonate() caller, F2/A15) — resume-based paths reach here with
+	# SM-gated impersonate() caller) — resume-based paths reach here with
 	# frappe.session.user = the cookie holder (docstring above), so a bare
 	# non-Guest exemption would let any logged-in session bypass the veto.
 	try:
@@ -100,15 +100,14 @@ def on_login_veto(login_manager=None, **kwargs):
 
 
 def _is_passkey_only(user: str) -> bool:
-	"""Read the per-user flag off the ``WebAuthn User Handle`` row (§9.3). A plain
-	DB read — no ``webauthn`` import (this module rides the every-login hook path,
-	§1.3)."""
+	"""Read the per-user flag off the ``WebAuthn User Handle`` row. A plain
+	DB read — no ``webauthn`` import (this module rides the every-login hook path)."""
 	return bool(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
 
 
 def guard_system_settings(doc, method=None):
-	"""System Settings ``validate``: the reverse half of the two-way 2FA floor
-	(§6.1 / B-F7). The Passkey Settings validator refuses enabling
+	"""System Settings ``validate``: the reverse half of the two-way 2FA floor.
+	The Passkey Settings validator refuses enabling
 	``passkey_as_second_factor`` while core ``enable_two_factor_auth`` is off;
 	this guard refuses the *other* direction — flipping ``enable_two_factor_auth``
 	**1 → 0** while ``passkey_as_second_factor`` is on — which would otherwise
@@ -118,12 +117,12 @@ def guard_system_settings(doc, method=None):
 
 	Only the genuine 1→0 transition is blocked: an already-off value staying off
 	cannot make the floor any weaker, and blocking every save on an
-	already-desynced site (a raw ``db_set``/console edit — §14 console-bypass
+	already-desynced site (a raw ``db_set``/console edit — console-bypass
 	posture) would deadlock System Settings entirely. The runtime desync that a
 	console edit can still create is surfaced by the leg-1 daily observation log
-	(``passkeys.passkey`` — §6.1c)."""
+	(``passkeys.passkey``)."""
 	if install.dormant():
-		return  # §11 dormant-shell: core owns the 2FA floor — silent no-op
+		return  # dormant-shell: core owns the 2FA floor — silent no-op
 	new_value = cint(doc.enable_two_factor_auth)
 	if new_value:
 		return  # staying on / turning on — nothing to guard

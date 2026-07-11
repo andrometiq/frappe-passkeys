@@ -14,31 +14,31 @@ class WebAuthnCredential(Document):
 		self._sanitize_label()
 		self._enforce_write_once_invariants()
 		if self._is_disabling():
-			# §8.6 lockout interlock (soft-disable direction): refuse before the write.
+			# lockout interlock (soft-disable direction): refuse before the write.
 			self._guard_last_login_method("disable")
 
 	def on_update(self):
-		# §8.6: owner notice when a System Manager soft-disables a credential
+		# Owner notice when a System Manager soft-disables a credential
 		# (disable > delete for forensics). Fires after the write persisted.
 		if self._is_disabling():
 			self._notify(removed=False)
 
 	def on_trash(self):
-		# §8.6 admin/recovery interlock: a System Manager form-delete of the last
+		# admin/recovery interlock: a System Manager form-delete of the last
 		# enabled credential of a passkey-only user (or under disable_user_pass_login)
 		# would produce the documented total lockout — refuse with remediation. The
-		# User on_trash cascade uses raw ``frappe.db.delete`` (§2.2), which does NOT
+		# User on_trash cascade uses raw ``frappe.db.delete``, which does NOT
 		# fire this hook, so deleting a User is never blocked by it.
 		if cint(self.enabled):
 			self._guard_last_login_method("delete")
 
 	def after_delete(self):
-		# §8.3/§8.6: owner notification is sent even when a System Manager removes
+		# Owner notification is sent even when a System Manager removes
 		# the row (single source for both the endpoint delete and a form delete).
 		self._notify(removed=True)
 
 	def _is_disabling(self) -> bool:
-		"""True iff this save flips ``enabled`` 1→0 (§8.6 disable direction)."""
+		"""True iff this save flips ``enabled`` 1→0 (disable direction)."""
 		if self.is_new():
 			return False
 		before = self.get_doc_before_save()
@@ -48,7 +48,7 @@ class WebAuthnCredential(Document):
 		return bool(was_enabled and not cint(self.enabled))
 
 	def _sanitize_label(self):
-		# server-side length-cap + sanitize (stored-XSS class; §2.1)
+		# server-side length-cap + sanitize (stored-XSS class)
 		if self.label:
 			self.label = strip_html(self.label).strip()[:LABEL_MAX_LENGTH]
 
@@ -71,7 +71,7 @@ class WebAuthnCredential(Document):
 
 	def _guard_last_login_method(self, action: str):
 		"""Refuse removing/disabling the caller's final passkey-capable credential
-		when the owner would then have no login method (§8.3/§8.6, census mirroring
+		when the owner would then have no login method (census mirroring
 		``validate_user_pass_login``)."""
 		others = frappe.db.count(self.doctype, {"user": self.user, "enabled": 1, "name": ["!=", self.name]})
 		if others > 0:

@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Test base-class shim (§12.2): `IntegrationTestCase` on v16+/develop,
+"""Test base-class shim: `IntegrationTestCase` on v16+/develop,
 `FrappeTestCase` on v15 — without it the v15 CI leg fails at import."""
 
 try:

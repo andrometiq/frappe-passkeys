@@ -1,8 +1,8 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 1 — J1 conditional-UI (autofill) passwordless login (DESIGN-v1 §3.1,
-// §5.2). A discoverable UV credential is seeded through the committed
+// Conditional-UI (autofill) passwordless login. A discoverable UV
+// credential is seeded through the committed
 // registration ceremony (virtual authenticator generates the ES256 key); the
 // login page patches #login_email to `autocomplete="username webauthn"` and arms
 // a native `mediation:"conditional"` get(). Cypress cannot deterministically

@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 7 — accessibility contract (DESIGN-v1 §5.5). One polite live region for
+// Accessibility contract. One polite live region for
 // async outcomes; the injected button carries an accessible name; first-factor
 // passkey login delegates to the browser's native WebAuthn sheet, so this spec
 // asserts the native get() handoff and cancellation feedback rather than an app

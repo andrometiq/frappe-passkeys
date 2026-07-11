@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P5 spec 3 — password fallback (DESIGN-v1 §7.2). For an allow_password_fallback
+// Password fallback. For an allow_password_fallback
 // action with no usable passkey, the dialog offers a password tab;
 // reauth_password{pwd, action, payload_fingerprint} mints a password-method grant
 // that authorizes the retry. Wrong password retries in-dialog. A

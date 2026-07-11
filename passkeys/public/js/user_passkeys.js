@@ -1,9 +1,9 @@
-// user_passkeys.js — the "Passkeys" section on the Desk User form (DESIGN-v1
-// §8.1). Wired via `doctype_js = {"User": "public/js/user_passkeys.js"}` (see the
+// user_passkeys.js — the "Passkeys" section on the Desk User form. Wired via
+// `doctype_js = {"User": "public/js/user_passkeys.js"}` (see the
 // build manifest). Renders beside core's "Reset OTP Secret" precedent
 // (frappe/core/doctype/user/user.js). Own form ⇒ full interactive cards + add;
 // another user's form (System Manager) ⇒ read-only inventory + a link to the
-// WebAuthn Credential DocType for admin disable/delete (§8.6). Destination on core
+// WebAuthn Credential DocType for admin disable/delete. Destination on core
 // merge: the passkeys section inside frappe/core/doctype/user/user.js.
 //
 // All rendering is delegated to frappe.passkeys.manage (passkey_desk.bundle.js),
@@ -18,7 +18,7 @@ frappe.ui.form.on("User", {
 
 		var t = (frappe._ || function (s) { return s; });
 		var boot = frappe.boot && frappe.boot.passkeys;
-		// Management surfaces gate on ANY passkey mode (§3.0 matrix): a 2FA-only site
+		// Management surfaces gate on ANY passkey mode (matrix): a 2FA-only site
 		// still shows them (enabled == true); both modes off — or a dormant /
 		// uninstalled app (no bootinfo) — removes the section.
 		if (!boot || boot.enabled === false) return;

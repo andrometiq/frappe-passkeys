@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 9 — graceful degradation (DESIGN-v1 §5.2, B-F5). A non-200 begin_login
+// Graceful degradation. A non-200 begin_login
 // (429 / 5xx / network error) must leave the password form fully usable with NO
 // passkey button and NO error message — the login page is never deadened by a
 // passkey outage.

@@ -1,19 +1,19 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Out-of-band credential-change notifications (DESIGN-v1 §8.3) + risk-event
-telemetry (§8.5) + admin-change owner notices (§8.6). Folds into
+"""Out-of-band credential-change notifications + risk-event
+telemetry + admin-change owner notices. Folds into
 ``frappe/passkey.py`` on the core merge.
 
-**Hook-path import discipline (§1.3):** wired into the ``WebAuthn Credential``
+**Hook-path import discipline:** wired into the ``WebAuthn Credential``
 ``on_trash``/``validate`` DocType events and the login-ceremony flag path, so it
 MUST NOT import ``webauthn``. It imports only ``frappe``.
 
 The add/remove/flag email is the **compensating control for registration
-hijack** (§8.3): it carries actionable metadata (label, time, IP) so a user who
+hijack**: it carries actionable metadata (label, time, IP) so a user who
 did not initiate the change can react. It is gated on ``passkey_notify_on_change``
-(off only for mail-less dev sites, §9.1). The password-fallback risk email is
-gated on ``passkey_notify_password_fallback`` (default off, §8.5). Every
+(off only for mail-less dev sites). The password-fallback risk email is
+gated on ``passkey_notify_password_fallback`` (default off). Every
 add/remove/flag also writes an Activity Log row. **Every sender is
 exception-hardened**: a mail or logging failure must never break a ceremony, a
 delete, or an admin save."""
@@ -22,19 +22,19 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
-# Risk-event vocabulary (§8.5) — Activity-Log-backed telemetry for later signaling.
+# Risk-event vocabulary — Activity-Log-backed telemetry for later signaling.
 RISK_FALLBACK_USED = "fallback_used"
 RISK_WEAK_LOGIN_ENROLLMENT = "weak_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
 
 
 # ---------------------------------------------------------------------------
-# credential-change notifications (§8.3 / §8.6)
+# credential-change notifications
 # ---------------------------------------------------------------------------
 
 
 def notify_credential_added(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey added" out-of-band email + Activity Log (§8.3). Called from the
+	""" "Passkey added" out-of-band email + Activity Log. Called from the
 	registration endpoint after a row is persisted."""
 	_safe(
 		user,
@@ -48,7 +48,7 @@ def notify_credential_added(user: str, label: str, ip: str | None = None) -> Non
 
 
 def notify_credential_removed(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey removed" out-of-band email + Activity Log (§8.3 / §8.6 — owner
+	""" "Passkey removed" out-of-band email + Activity Log (owner
 	notification is sent even when a System Manager removes the row)."""
 	_safe(
 		user,
@@ -62,7 +62,7 @@ def notify_credential_removed(user: str, label: str, ip: str | None = None) -> N
 
 
 def notify_credential_disabled(user: str, label: str) -> None:
-	""" "Passkey disabled" owner notice (§8.6): a System Manager soft-disabled a
+	""" "Passkey disabled" owner notice: a System Manager soft-disabled a
 	credential (disable > delete for forensics). Same compensating-control class as
 	removal."""
 	_safe(
@@ -77,7 +77,7 @@ def notify_credential_disabled(user: str, label: str) -> None:
 
 
 def notify_credential_flagged(user: str, label: str, reason: str | None = None) -> None:
-	""" "Passkey flagged" out-of-band email + Activity Log (§8.3): a sign-count
+	""" "Passkey flagged" out-of-band email + Activity Log: a sign-count
 	regression / anomaly was recorded on an assertion. Non-blocking telemetry that
 	surfaces a possible clone."""
 	_safe(
@@ -93,14 +93,14 @@ def notify_credential_flagged(user: str, label: str, reason: str | None = None) 
 
 
 # ---------------------------------------------------------------------------
-# risk events (§8.5) — Activity-Log-backed telemetry (+ one opt-in email)
+# risk events — Activity-Log-backed telemetry (+ one opt-in email)
 # ---------------------------------------------------------------------------
 
 
 def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
-	"""Log a §8.5 risk event to the Activity Log (telemetry for later signaling).
+	"""Log a risk event to the Activity Log (telemetry for later signaling).
 	The ``fallback_used`` event additionally emails when
-	``passkey_notify_password_fallback`` is on (default off, §9.1). Non-blocking."""
+	``passkey_notify_password_fallback`` is on (default off). Non-blocking."""
 	try:
 		_activity_log(user, event, detail or event)
 		if event == RISK_FALLBACK_USED and cint(
@@ -142,7 +142,7 @@ def _send(user: str, subject: str, message: str) -> None:
 
 
 def _activity_log(user: str, operation: str, subject: str) -> None:
-	"""Best-effort Activity Log row (§8.3/§8.5). ``operation`` rides ``content`` (the
+	"""Best-effort Activity Log row. ``operation`` rides ``content`` (the
 	Activity Log ``operation`` field is a closed Select in core); ``subject`` is the
 	human line. Wrapped by the caller's try/except."""
 	frappe.get_doc(

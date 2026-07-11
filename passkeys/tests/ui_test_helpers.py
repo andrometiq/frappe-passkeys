@@ -3,7 +3,7 @@
 
 """Whitelisted helpers the Cypress login specs (`cypress/integration/*.cy.js`)
 call via ``cy.call`` to set up + tear down server state on the shared UI-test
-site (DESIGN-v1 §12.3). Mirrors ``frappe/tests/ui_test_helpers.py``: admin-only,
+site. Mirrors ``frappe/tests/ui_test_helpers.py``: admin-only,
 gated to a developer/test bench, never a production surface.
 
 These are the app's **test scaffolding only** — they fold away with the
@@ -13,7 +13,7 @@ enable-time validator refuses an ``http://`` origin unless developer mode is on,
 but the runtime login path (``resolve_origins`` + the library's
 ``expected_origin`` check) accepts whatever origin list is stored — so a
 ``*.localhost`` UI-test bench works without threading developer-mode through the
-DocType validator. ``webauthn`` is never imported here (§1.3 hook-path
+DocType validator. ``webauthn`` is never imported here (hook-path
 discipline is not at stake, but the parity is cheap)."""
 
 import frappe
@@ -61,9 +61,9 @@ def configure_second_factor(
 	login_with_passkey: int = 0,
 	allow_otp_fallback: int = 0,
 ) -> dict:
-	"""Set up the password → passkey second-factor mode for the P4 Cypress spec
-	(DESIGN-v1 §6): turn core Two Factor Authentication ON (the structural floor,
-	§6.1), point Passkey Settings at the UI-test origin, and enable
+	"""Set up the password → passkey second-factor mode for the Cypress spec:
+	turn core Two Factor Authentication ON (the structural floor), point
+	Passkey Settings at the UI-test origin, and enable
 	``passkey_as_second_factor`` + the OTP-fallback knob. Values are written
 	directly (``set_single_value``) — the same bench-origin rationale as
 	:func:`configure_login`, and ``set_single_value`` bypasses the doc_events
@@ -89,7 +89,7 @@ def configure_second_factor(
 
 @frappe.whitelist()
 def teardown_second_factor() -> dict:
-	"""Undo :func:`configure_second_factor` (P4 spec ``after``): drop the app
+	"""Undo :func:`configure_second_factor` (spec ``after``): drop the app
 	second-factor mode, then core 2FA. ``set_single_value`` bypasses the
 	doc_events guard (which would otherwise block the 1→0 flip), so order is
 	immaterial — clear the app knob first for clarity."""
@@ -107,7 +107,7 @@ def teardown_second_factor() -> dict:
 @frappe.whitelist()
 def ensure_second_factor_user(email: str, pwd: str) -> str:
 	"""Get-or-create a NON-admin test user with a known password (the passkey
-	second factor is hard-exempt for Administrator, §6.2). Returns the user name."""
+	second factor is hard-exempt for Administrator). Returns the user name."""
 	_guard()
 	from frappe.utils.password import update_password
 
@@ -150,7 +150,7 @@ def enroll_user_in_2fa(user: str) -> dict:
 
 @frappe.whitelist()
 def delete_test_user(email: str) -> dict:
-	"""Remove a user created by :func:`ensure_second_factor_user` (P4 spec cleanup)."""
+	"""Remove a user created by :func:`ensure_second_factor_user` (spec cleanup)."""
 	_guard()
 	frappe.db.delete("WebAuthn Credential", {"user": email})
 	frappe.db.delete("WebAuthn User Handle", {"user": email})
@@ -204,7 +204,7 @@ def clear_password_failures(user: str) -> dict:
 @frappe.whitelist()
 def make_uv_uninitialized(user: str) -> dict:
 	"""Force ``uv_initialized=0`` on the user's credential(s) so a UV=1 assertion
-	drives the §3.4 uv-setup step-up (the conditional-create-born state, produced
+	drives the uv-setup step-up (the conditional-create-born state, produced
 	server-side without needing a conditional-create browser ceremony)."""
 	_guard()
 	names = frappe.get_all("WebAuthn Credential", filters={"user": user}, pluck="name")
@@ -222,17 +222,17 @@ def credential_count(user: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# §7.4 / §8.4 P6 management + nudge helpers — the sudo-gate delete dance
+# management + nudge helpers — the sudo-gate delete dance
 # (manage_sudo_gate.cy.js) and the nudge-cadence spec (nudge_cadence.cy.js) drive
 # these via cy.call. The FRONTEND agent cannot add Python, so integration owns
-# them (build-p6-frontend-manifest.md §6). Test-only; fold away with the shims.
+# them. Test-only; fold away with the shims.
 # ---------------------------------------------------------------------------
 
 
 @frappe.whitelist()
 def clear_sudo_window() -> dict:
 	"""Expire the caller's fresh-login sudo window so a sudo-gated mutation must
-	re-confirm (§7.4). Drives ``manage_sudo_gate.cy.js``."""
+	re-confirm. Drives ``manage_sudo_gate.cy.js``."""
 	_guard()
 	from passkeys import state
 
@@ -247,7 +247,7 @@ def configure_nudge(
 	cooldown_days: int = 30,
 	conditional_create: int = 0,
 ) -> dict:
-	"""Set the §8.4 enrollment-nudge knobs for ``nudge_cadence.cy.js`` (written
+	"""Set the enrollment-nudge knobs for ``nudge_cadence.cy.js`` (written
 	directly — the same bench rationale as :func:`configure_login`)."""
 	_guard()
 	values = {
@@ -265,7 +265,7 @@ def configure_nudge(
 
 @frappe.whitelist()
 def seed_nudge_state(declines: int = 0, last_shown=None, opt_out: int = 0) -> dict:
-	"""Write the caller's ``{user}_passkey_nudge`` Defaults row directly (§2.3 idiom)
+	"""Write the caller's ``{user}_passkey_nudge`` Defaults row directly (idiom)
 	so a spec can drive a specific cadence state. Drives ``nudge_cadence.cy.js``."""
 	_guard()
 	from passkeys.install import DEFAULTS_PARENT
@@ -289,8 +289,8 @@ def get_nudge_state() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# §7 action-confirmation ("passkey signing") probes — the decorated endpoints the
-# P5 confirm Cypress specs drive through the frozen `frappe.passkeys.*` client.
+# action-confirmation ("passkey signing") probes — the decorated endpoints the
+# confirm Cypress specs drive through the frozen `frappe.passkeys.*` client.
 # These import `passkeys.confirm` (webauthn-free) and register their actions at
 # import time — pure test scaffolding, folds away with the shims on core merge.
 # ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ def confirm_probe(token=None) -> dict:
 	"""A @passkey_protected endpoint the confirm-happy / call-retry / password-
 	fallback / concurrency specs hit: a valid grant for ``(action, {token})`` runs
 	it; otherwise it 401s the retry contract. ``allow_password_fallback=True`` so
-	the password tab is offered (§7.2)."""
+	the password tab is offered."""
 	return {"confirmed": True, "token": token}
 
 
@@ -328,6 +328,6 @@ def confirm_probe_passkey_only(token=None) -> dict:
 @passkey_protected(action=CONFIRM_PROBE_FAILING_ACTION, bind_params=["token"])
 def confirm_probe_failing(token=None):
 	"""Consumes the grant, then fails — the grant-semantics spec asserts the
-	gesture is burned even when the wrapped action fails (A-F20): a retry needs a
+	gesture is burned even when the wrapped action fails: a retry needs a
 	fresh ceremony."""
 	frappe.throw("intentional post-consume failure (A-F20 probe)", frappe.ValidationError)

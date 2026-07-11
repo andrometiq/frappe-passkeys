@@ -1,9 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""AAGUID→provider display resolution (DESIGN-v1 §8.2, §2.1): the vendored-
+"""AAGUID→provider display resolution: the vendored-
 snapshot loader (known / unknown / zero / case-insensitive / ``_meta``-skipping)
-and the §8.2 default-label precedence at registration (provider name first,
+and the default-label precedence at registration (provider name first,
 attachment-derived neutral fallback otherwise)."""
 
 import json
@@ -29,7 +29,7 @@ class AaguidLookupTest(IntegrationTestCase):
 		self.assertEqual(aaguid.provider_name(KNOWN_AAGUID.upper()), KNOWN_NAME)
 
 	def test_unknown_zero_and_empty_aaguids_are_none(self):
-		# §8.2: zero/unknown AAGUID ⇒ generic fallback, never an error.
+		# Zero/unknown AAGUID ⇒ generic fallback, never an error.
 		self.assertIsNone(aaguid.provider_name("11111111-2222-3333-4444-555555555555"))
 		self.assertIsNone(aaguid.provider_name(aaguid.ZERO_AAGUID))
 		self.assertIsNone(aaguid.provider_name(""))
@@ -43,7 +43,7 @@ class AaguidLookupTest(IntegrationTestCase):
 		self.assertNotIn("_meta", aaguid._load_map())
 
 	def test_snapshot_is_present_and_lean(self):
-		# §2.3 ships the map as a release asset: non-empty, and stripped of the
+		# Ships the map as a release asset: non-empty, and stripped of the
 		# upstream icon blobs (every value is a plain name string).
 		table = aaguid._load_map()
 		self.assertGreater(len(table), 0)
@@ -58,7 +58,7 @@ class DefaultLabelTest(IntegrationTestCase):
 		return SimpleNamespace(aaguid=aaguid_value, authenticator_attachment=attachment)
 
 	def test_provider_name_wins_over_attachment_default(self):
-		# §8.2 precedence: a mapped AAGUID names the credential after its
+		# Precedence: a mapped AAGUID names the credential after its
 		# provider, regardless of attachment.
 		self.assertEqual(_default_label(self._result(KNOWN_AAGUID, "platform")), KNOWN_NAME)
 		self.assertEqual(_default_label(self._result(KNOWN_AAGUID, "cross-platform")), KNOWN_NAME)

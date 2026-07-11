@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// P3 spec 3 — DOM-placement / contract (DESIGN-v1 §12.4). The single highest-value
+// DOM-placement / contract. The single highest-value
 // per-branch guard: it asserts the bundle finds its mount points on the ACTUAL
 // login markup of the branch under test (this file runs on develop's redesigned
 // card; the v15/v16 CI cells assert the older layout). If core reshuffles the
@@ -21,7 +21,7 @@ chromium_only("passkey login DOM contract", () => {
 
 	it("mounts the button and patches the username field on this branch markup", () => {
 		cy.visit_login();
-		// button mount point resolved (§5.2: .btn-login-option / .social-logins / form)
+		// button mount point resolved (.btn-login-option / .social-logins / form)
 		cy.get("#passkey-login-btn").should("exist");
 		cy.get(".form-login, form.form-signin").should("exist");
 		// conditional-UI username patch applied
