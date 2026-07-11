@@ -1,5 +1,5 @@
 #!/bin/bash
-# Import-graph gate (DESIGN-v1.md §1.3 hard rule, enforced per §10.2).
+# Import-graph gate.
 #
 # The hook-path modules — passkeys.auth_hooks, passkeys.boot, passkeys.install,
 # passkeys.shims.login_page — fire on every login of every user and on every
@@ -14,7 +14,7 @@
 #   IMPORT_GATE_STRICT  "1" → a missing hook-path module FAILS the gate;
 #                       "0" (default) → missing modules only warn (scaffold phase)
 #
-# frappe itself depends on webauthn on NO branch (ci-plan.md §8), and the app is
+# frappe itself depends on webauthn on NO branch, and the app is
 # installed with --no-deps, so the venv provably lacks webauthn.
 
 set -euo pipefail
@@ -78,7 +78,7 @@ for name in modules:
         failed.append((name, repr(exc)))
 
 if "webauthn" in sys.modules:
-    print("::error::a hook-path module imported webauthn transitively - DESIGN-v1 s1.3 violation")
+    print("::error::a hook-path module imported webauthn transitively - hook-path import discipline violation")
     sys.exit(1)
 
 for name, err in failed:

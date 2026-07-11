@@ -2,7 +2,7 @@
 # CI helper: bench + frappe + test-site bootstrap for one matrix cell.
 #
 # Pattern: hrms .github/helper/install.sh + frappe core's .github/actions/setup
-# durability tweaks (see design/ci-plan.md §6). Shared by the server-tests and
+# durability tweaks. Shared by the server-tests and
 # ui-tests jobs; parameterized via environment:
 #
 #   FRAPPE_BRANCH  frappe branch/tag to clone (default: develop)
@@ -21,7 +21,7 @@ echo "::group::apt dependencies"
 sudo apt-get -qq update
 sudo apt-get -qq -y remove mysql-server mysql-client || true
 sudo apt-get -qq -y install libcups2-dev redis-server mariadb-client libmariadb-dev
-# wkhtmltopdf deliberately skipped: no PDF/print tests in this app (ci-plan.md §6)
+# wkhtmltopdf deliberately skipped: no PDF/print tests in this app
 echo "::endgroup::"
 
 # bench setup requirements / bench build need yarn
@@ -49,7 +49,7 @@ cd ~/frappe-bench || exit
 # Trim Procfile for CI: no watcher, no scheduler (hrms pattern)
 sed -i '/^watch:/d;/^schedule:/d' Procfile
 
-echo "::group::get-app + requirements (the real resolver test per cell — ci-plan.md §8)"
+echo "::group::get-app + requirements (the real resolver test per cell)"
 bench get-app passkeys "${GITHUB_WORKSPACE}"
 bench setup requirements --dev
 echo "::endgroup::"

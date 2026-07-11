@@ -1,9 +1,9 @@
-# Daily upstream-drift canary (design/ci-plan.md §1 + §5 schedule trigger,
-# split into its own workflow so ci.yml stays purely PR/push-scoped).
+# Daily upstream-drift canary (a scheduled trigger split into its own workflow
+# so ci.yml stays purely PR/push-scoped).
 #
 # Frappe's branch tips move under us while this repo is idle — develop HEAD
 # especially, but version-15/version-16 pick up dependency-pin bumps too
-# (the cryptography/pyOpenSSL landmine, ci-plan.md §8). Running the full
+# (the cryptography/pyOpenSSL landmine). Running the full
 # 3-cell matrix daily catches that drift the morning it happens instead of
 # on the next unrelated PR.
 #

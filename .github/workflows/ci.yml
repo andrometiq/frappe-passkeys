@@ -1,7 +1,6 @@
 # CI for frappe-passkeys — 3-cell frappe matrix (version-15 / version-16 / develop).
 #
-# Authoritative plan: design/ci-plan.md (§4 matrix, §5 draft, §6 helper) folded into
-# DESIGN-v1.md §10.2 — the pins are binding:
+# The version pins below are binding:
 #   v15     → Python 3.10 / Node 18 / mariadb:10.6
 #   v16     → Python 3.14 / Node 24 / mariadb:11.8
 #   develop → Python 3.14 / Node 24 / mariadb:11.8
@@ -9,13 +8,13 @@
 # The daily upstream-drift cron lives in upstream-drift.yml and calls this workflow
 # via workflow_call (same matrix — frappe branch tips are the moving part).
 # workflow_dispatch's frappe-ref input points every cell at an arbitrary frappe
-# tag/branch, e.g. the v15.107.0 co-installability floor tag (ci-plan.md §8).
+# tag/branch, e.g. the v15.107.0 co-installability floor tag.
 
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [develop, version-15, version-16]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -44,7 +43,7 @@ jobs:
     timeout-minutes: 15
     env:
       # All four hook-path modules (auth_hooks, boot, install, shims/login_page)
-      # now exist and are proven import-clean of webauthn (P6 integration verified
+      # now exist and are proven import-clean of webauthn (integration verified
       # the gate locally with webauthn blocked), so the gate is strict: a missing
       # hook-path module now FAILS instead of warning.
       IMPORT_GATE_STRICT: "1"
@@ -77,7 +76,7 @@ jobs:
             echo "::warning::no .pre-commit-config.yaml or pyproject.toml yet — lint skipped (scaffold phase)"
           fi
 
-      # DESIGN-v1.md §1.3 hard rule: auth_hooks/boot/install/shims.login_page fire on
+      # Hard rule: auth_hooks/boot/install/shims.login_page fire on
       # every login / page render and must import WITHOUT the webauthn library —
       # a broken cryptography wheel must never take down logins.
       - name: Import-graph gate (hook-path modules import without webauthn)
