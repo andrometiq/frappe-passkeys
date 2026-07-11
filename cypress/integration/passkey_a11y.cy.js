@@ -18,6 +18,10 @@ chromium_only("passkey login accessibility", () => {
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		// Register leaves the user authenticated; log out so the guest /login page
+		// (where the button mounts) renders reliably instead of redirecting to the
+		// desk. Mirrors the degrade / no-webauthn specs' before hooks.
+		cy.call("logout");
 	});
 
 	after(() => {
@@ -62,7 +66,15 @@ chromium_only("passkey login accessibility", () => {
 			expect(call.mediation, "explicit request has no conditional mediation").to.be.undefined;
 		});
 		cy.get("#passkey-live-region").should("contain", "Couldn't use a passkey");
-		cy.get(".login-error-banner:visible").should("contain", "Couldn't use a passkey");
+		// The bundle paints into core's .login-error-banner when the page provides one
+		// (v16/develop ship it; v15's login page does not). The polite live region above
+		// is the version-agnostic accessibility contract; assert the visible banner only
+		// where core supplies the element.
+		cy.get("body").then(($body) => {
+			if ($body.find(".login-error-banner").length) {
+				cy.get(".login-error-banner:visible").should("contain", "Couldn't use a passkey");
+			}
+		});
 		cy.get("#login_email").should("be.visible");
 		cy.focused().should("have.id", "passkey-login-btn");
 	});

@@ -28,7 +28,9 @@ chromium_only("passkey login degradation", () => {
 		cy.get(".login-error-banner:visible").should("not.exist");
 		// password login still works end to end
 		cy.stub_post_login_shell();
-		cy.intercept("POST", "/api/method/login").as("password_login");
+		// Core's login form posts to /login on v15 and /api/method/login on v16+;
+		// match both so the password-fallback contract is verified on every version.
+		cy.intercept("POST", "**/login").as("password_login");
 		cy.get("#login_email").type(USER);
 		cy.get("#login_password").type(PW());
 		cy.get(".form-login .btn-login, .btn-login").first().click();
