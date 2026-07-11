@@ -125,7 +125,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 			.its("frappe.csrf_token")
 			.then((csrf) => {
 				cy.request({
-					url: "/api/method/passkeys.passkey.begin_registration",
+					url: "/api/method/passkeys.api.registration.begin_registration",
 					method: "POST",
 					body: { flow: "conditional_create" },
 					headers: { "X-Frappe-CSRF-Token": csrf, Accept: "application/json" },

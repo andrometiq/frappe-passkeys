@@ -12,15 +12,20 @@ const USER = "Administrator";
 const PW = () => Cypress.env("adminPassword") || "admin";
 
 function getNativePasskeysEntry() {
-	return cy.window().should((win) => {
-		expect(win.frappe.boot.navbar_settings.settings_dropdown, "settings dropdown items").to.be.an("array");
-	}).then((win) => {
-		const item = win.frappe.boot.navbar_settings.settings_dropdown.find(
-			(candidate) => candidate.item_label === "My Passkeys"
-		);
-		expect(item, "My Passkeys standard navbar item").to.exist;
-		expect(win.frappe.utils.eval(item.condition), "My Passkeys condition").to.equal(true);
-		return item;
+	// v16/develop expose "My Passkeys" as a native Navbar Settings item; v15 has no
+	// idempotent core sync so the desk bundle injects the #passkey-navbar-item DOM
+	// fallback instead (see install.sync_standard_navbar_items). Accept either.
+	return cy.window().then((win) => {
+		const dropdown =
+			win.frappe.boot.navbar_settings && win.frappe.boot.navbar_settings.settings_dropdown;
+		const item = Array.isArray(dropdown)
+			? dropdown.find((candidate) => candidate.item_label === "My Passkeys")
+			: undefined;
+		if (item) {
+			expect(win.frappe.utils.eval(item.condition), "My Passkeys condition").to.equal(true);
+			return cy.wrap(item, { log: false });
+		}
+		return cy.get("#passkey-navbar-item", { timeout: 10000 }).should("exist").then(() => null);
 	});
 }
 

@@ -41,6 +41,15 @@ def before_uninstall():
 	_block_uninstall_lockout()
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
 	_remove_registry_property_setter()
+	# Remove the "My Passkeys" navbar entry we synced into Navbar Settings on
+	# v16/develop (v15 never syncs it). Keyed on our own action string so nothing
+	# else is touched — leaves a clean Navbar Settings for a true fresh reinstall
+	# and for the core-merge story (§14).
+	frappe.db.delete(
+		"Navbar Item",
+		{"parent": "Navbar Settings", "action": "frappe.passkeys.manage.openManagerDialog()"},
+	)
+	frappe.clear_document_cache("Navbar Settings", "Navbar Settings")
 
 
 _CORE_NATIVE: bool | None = None
@@ -183,19 +192,20 @@ def sync_registry_fixture():
 def sync_standard_navbar_items():
 	"""Sync the app's ``standard_navbar_items`` hook into Navbar Settings.
 
-	v16/develop expose the migrate-time sync helper on Navbar Settings. v15 only
-	has the older site-install helper; when that helper no-ops on an already
-	populated Navbar Settings, the Desk bundle's old-navbar DOM fallback still
-	covers v15.
+	v16/develop expose an idempotent migrate-time sync helper that upserts each
+	app's standard items (and garbage-collects removed ones). v15 has no such
+	helper — its only core routine, ``add_standard_navbar_items``, rebuilds BOTH
+	dropdowns from scratch whenever either is empty, so calling it from our
+	``after_migrate`` hook would silently wipe an admin's custom navbar items on
+	any migrate where a dropdown happens to be empty. So on v15 we do NOT touch
+	Navbar Settings at all; the Desk bundle's old-navbar DOM fallback
+	(``#passkey-navbar-item``) delivers "My Passkeys" there instead.
 	"""
 	try:
 		from frappe.core.doctype.navbar_settings.navbar_settings import sync_standard_items
 	except ImportError:
-		from frappe.utils.install import add_standard_navbar_items
-
-		add_standard_navbar_items()
-	else:
-		sync_standard_items()
+		return  # v15: no idempotent core sync — rely on the desk-bundle DOM fallback
+	sync_standard_items()
 
 
 def two_factor_registry_available() -> bool:

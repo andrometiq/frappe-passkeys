@@ -11,10 +11,10 @@ leg lives with the other §11 hook no-ops in ``test_dormancy.py``."""
 
 import frappe
 
+from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_user
-from passkeys.install import DEFAULTS_PARENT
 from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
 
 RP_ID = "example.com"

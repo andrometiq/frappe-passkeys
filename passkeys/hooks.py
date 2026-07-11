@@ -2,7 +2,7 @@ app_name = "passkeys"
 app_title = "Passkeys"
 app_publisher = "Frappe Passkeys Contributors"
 app_description = "Passkey (WebAuthn) authentication for Frappe"
-app_email = "passkeys@example.com"
+app_email = "hi@andrometiq.com"
 app_license = "MIT"
 
 # Desk / portal assets — action-confirmation ("passkey signing") client (§7.3)
