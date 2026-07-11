@@ -84,6 +84,25 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		self.assertIn("eligible", pk["nudge_state"])
 		self.assertTrue(pk["nudge_state"]["eligible"])  # fresh user, 0 creds, knob on
 
+	# (d) SECURITY: the per-user boot payload (credential_count / nudge_state) must never
+	#     enter Frappe's shared, path-keyed website page cache and be served to another
+	#     user. The render is marked no-cache, and the session CSRF token is NOT baked into
+	#     context.boot — core delivers it post-cache via frappe.csrf_token, so it never
+	#     lands in cached HTML (regression guard for the cross-user cache-poisoning class).
+	def test_authed_portal_render_is_no_cache_and_omits_csrf(self):
+		self.addCleanup(setattr, frappe.local, "no_cache", False)
+		frappe.local.no_cache = False
+		user = self._user()
+		frappe.set_user(user)
+		ctx = self._ctx()
+		portal_nudge.website_context(ctx)
+		# the per-user payload was injected ...
+		self.assertIsNotNone(ctx.boot.get("passkeys"))
+		# ... so the response must be uncacheable (no cross-user cache poisoning) ...
+		self.assertTrue(getattr(frappe.local, "no_cache", False))
+		# ... and the live session CSRF token must NOT be in the (potentially cached) boot.
+		self.assertNotIn("csrf_token", ctx.boot)
+
 	# (b) Guest render ⇒ zero passkey bytes (the nudge is authenticated-only, §8.4).
 	def test_guest_render_ships_no_bundle(self):
 		frappe.set_user("Guest")
