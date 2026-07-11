@@ -9,7 +9,7 @@
 
 Core's login page has no provider extension slot: the buttons are hardcoded conditional Jinja
 blocks and the page JS is Jinja-inlined, so asset hooks can only *replace* the template, not
-extend it (seam S4/S5). The app copes with `update_website_context`
+extend it. The app copes with `update_website_context`
 (`passkeys/shims/login_page.py::website_context`), which conditionally appends the passkey bundle
 to `context.web_include_js` on `/login` and lets the bundle DOM-inject its own button — a shim
 that drifts with core markup. This patch makes core render the button and load the bundle

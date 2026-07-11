@@ -48,7 +48,7 @@ reports sampled its comments differently).
 
 ## The two-stage PR plan
 
-**Why staged:** the passkey *second factor* (J4, #4252) is the one seam that today needs
+**Why staged:** the passkey *second factor* (#4252) is the one seam that today needs
 monkeypatching two import-binding sites (`frappe/auth.py:18-23` imports the 2FA functions by
 name; `ldap_settings.py:22` re-imports them) because 2FA method dispatch is a closed
 `OTP App | SMS | Email` set hardwired in `frappe/twofactor.py`. That capability is independently
@@ -77,7 +77,7 @@ patch 03), and one `post_model_sync` adoption patch.
 
 ### How the app *feature-detects* Stage 1 to prefer the native path
 
-The Stage-1 registry package is **deferred, not shipped in v1** (DESIGN §16 A56): the app carries
+The Stage-1 registry package is **deferred, not shipped in v1**: the app carries
 **no** `two_factor_methods` hook entry in `hooks.py` today, because the hook only becomes useful
 once the upstream pluggable-2FA PR (patch 01) lands and core actually reads it. When that Stage-1
 PR is authored, the app *will* declare `two_factor_methods` statically and unconditionally — and
@@ -146,9 +146,9 @@ onto a native core is **refused** in `before_install` (two authorities over the 
 | # | File | Target (develop) | Size | Purpose |
 |---|---|---|---|---|
 | 01 | [`patch-01-two-factor-methods-registry.md`](./patch-01-two-factor-methods-registry.md) | `frappe/twofactor.py` | +~45 / −~4 | pluggable 2FA registry (Stage 1) |
-| 02 | [`patch-02-disable-user-pass-login-validator.md`](./patch-02-disable-user-pass-login-validator.md) | `frappe/core/doctype/system_settings/system_settings.py:182-194` | +1 / −1 (+1 msg) | passkeys as a surviving login method (D9) |
+| 02 | [`patch-02-disable-user-pass-login-validator.md`](./patch-02-disable-user-pass-login-validator.md) | `frappe/core/doctype/system_settings/system_settings.py:182-194` | +1 / −1 (+1 msg) | passkeys as a surviving login method |
 | 03 | [`patch-03-login-page-context-template.md`](./patch-03-login-page-context-template.md) | `frappe/www/login.py`, `login.html`, `login.js` | +~40 | native login-page slot + bundle (retires the shim) |
-| 04 | [`patch-04-autocomplete-webauthn-token.md`](./patch-04-autocomplete-webauthn-token.md) | `frappe/www/login.html:23` | 1 token | conditional-UI autofill (S6) |
+| 04 | [`patch-04-autocomplete-webauthn-token.md`](./patch-04-autocomplete-webauthn-token.md) | `frappe/www/login.html:23` | 1 token | conditional-UI autofill |
 
 Validation for each is in [`VALIDATE.md`](./VALIDATE.md). The full app-file → core-destination
 surface (verbatim move / rename / shim-only / discarded, and what stays in the app forever) is in

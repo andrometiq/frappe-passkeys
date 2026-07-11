@@ -4,7 +4,7 @@
 **Base:** `develop` @ `9b48af62aff88522638e38b1f4738e79ce0902fd`
 **PR:** rides Stage 1 or Stage 2 (whichever lands first); the message only makes sense once the
 `login_with_passkey` field exists, so functionally it belongs to **Stage 2**.
-**Size:** +1 / −1 code line (+1 message string). This is design decision **D9**.
+**Size:** +1 / −1 code line (+1 message string).
 
 ## What it does
 

@@ -1,4 +1,4 @@
-# Patch 04 — `autocomplete="username webauthn"` on the login input (S6)
+# Patch 04 — `autocomplete="username webauthn"` on the login input
 
 **Target:** `frappe/www/login.html`
 **Base:** `develop` @ `9b48af62aff88522638e38b1f4738e79ce0902fd`
