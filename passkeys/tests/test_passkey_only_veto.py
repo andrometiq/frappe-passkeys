@@ -91,11 +91,12 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		# genuinely flagged Administrator logs in with a password.
 		cred = make_credential("Administrator")  # satisfies the handle ≥1 floor
 		make_handle("Administrator", passkey_only_login=1)
-		# Cleanups run LIFO: register credential-delete FIRST so the handle (which
-		# carries passkey_only_login=1) is dropped BEFORE the last credential —
-		# otherwise the lockout interlock (correctly) refuses the delete. This
-		# is the documented remediation: clear the flag before the last passkey.
-		self.addCleanup(frappe.delete_doc, "WebAuthn Credential", cred.name, force=1, ignore_permissions=True)
+		# Teardown must not be subject to the last-login-method guard: deleting the
+		# last enabled credential of a passkey-only (or disable_user_pass_login)
+		# account is correctly refused by on_trash, and that account state can leak
+		# in from another test on some Frappe versions. Tear down with raw db.delete,
+		# which bypasses the on_trash hook exactly as the User-delete cascade does.
+		self.addCleanup(lambda: frappe.db.delete("WebAuthn Credential", {"name": cred.name}))
 		self.addCleanup(lambda: frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"}))
 		self._guest_context()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Administrator")))

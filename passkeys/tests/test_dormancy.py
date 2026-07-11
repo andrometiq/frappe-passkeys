@@ -11,9 +11,10 @@ advisory fires exactly once. Nativeness is faked exactly as the install battery
 does (``test_install.py``): patch ``passkeys.install.is_core_native`` — the single
 switch every guard reads through ``install.dormant``."""
 
+from unittest.mock import patch
+
 import frappe
 from frappe.utils import cint
-from unittest.mock import patch
 
 import passkeys.confirm as confirm
 from passkeys import auth_hooks, boot, install, passkey, session, state

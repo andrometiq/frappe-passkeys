@@ -588,7 +588,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
 
 	# ======================================================================
-	# passkey_only user × uv-setup repair, no self-veto
+	# passkey_only user x uv-setup repair, no self-veto
 	# ======================================================================
 
 	def test_passkey_only_user_completes_uv_setup_without_self_veto(self):
