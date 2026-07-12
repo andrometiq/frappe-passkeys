@@ -263,17 +263,63 @@ test("ensureLiveRegion is idempotent and polite; announce writes text", () => {
 	assert.strictEqual(r1.textContent, "expired — retrying");
 });
 
-// ------------------------------------------------------------- inline icons (A2)
-// App-shipped lucide SVGs replace the version-dependent #icon-* sprite refs that
-// rendered as blank squares on Frappe v15.
-test("iconSvg: returns a self-contained inline SVG with pinned stroke, keeps the class", () => {
+// ------------------------------------------------------------- version-native icons (A2)
+// Native-first: prefer each Frappe version's OWN sprite symbol (develop/v16 lucide
+// #icon-pencil/#icon-trash/#icon-key; v15 timeless #icon-edit/#icon-delete), and ship the
+// inline lucide SVG only as the fallback — v15 has no key glyph, and a login/portal page may
+// carry no sprite (or inject it after our render), in which case we degrade to inline.
+function fakeDoc(presentIds) {
+	const set = new Set(presentIds);
+	return { getElementById(id) { return set.has(id) ? { id } : null; } };
+}
+function assertInline(svg, msg) {
+	assert.match(svg, /^<svg /, msg + ": must be an <svg>");
+	assert.ok(svg.indexOf("<use") === -1, msg + ": inline form has no <use>");
+	assert.ok(svg.indexOf("stroke:currentColor") !== -1, msg + ": stroke pinned inline so v15's .icon vars can't blank it");
+	assert.ok(svg.indexOf('viewBox="0 0 24 24"') !== -1, msg + ": 24x24 lucide viewBox");
+}
+function assertNative(svg, id, msg) {
+	assert.match(svg, /^<svg /, msg + ": must be an <svg>");
+	assert.ok(svg.indexOf('<use href="#' + id + '">') !== -1, msg + ": references the native #" + id + " symbol");
+	assert.ok(svg.indexOf("style=") === -1, msg + ": native form pins no inline fill/stroke");
+}
+
+test("iconSvg: prefers the host version's native sprite symbol when present (develop/v16)", () => {
+	// develop/v16 lucide ships all three.
+	const doc = fakeDoc(["icon-pencil", "icon-trash", "icon-key"]);
+	assertNative(C.iconSvg("pencil", "icon icon-sm", doc), "icon-pencil", "pencil→native");
+	assertNative(C.iconSvg("trash", "icon icon-sm", doc), "icon-trash", "trash→native");
+	assertNative(C.iconSvg("key", "icon icon-sm", doc), "icon-key", "key→native");
+	assert.ok(C.iconSvg("pencil", "icon icon-sm", doc).indexOf('class="icon icon-sm"') !== -1, "keeps the caller's classes");
+});
+
+test("iconSvg: candidate order — pencil prefers #icon-pencil over #icon-edit", () => {
+	// Both present ⇒ first candidate (#icon-pencil) wins.
+	assertNative(C.iconSvg("pencil", "icon", fakeDoc(["icon-pencil", "icon-edit"])), "icon-pencil", "both present");
+	assertNative(C.iconSvg("trash", "icon", fakeDoc(["icon-trash", "icon-delete"])), "icon-trash", "both present");
+});
+
+test("iconSvg: falls back to each version's second candidate (v15 timeless #icon-edit/#icon-delete)", () => {
+	// v15 desk/portal DOM carries timeless #icon-edit/#icon-delete but NOT lucide names.
+	const v15 = fakeDoc(["icon-edit", "icon-delete", "icon-keyboard"]);
+	assertNative(C.iconSvg("pencil", "icon icon-sm", v15), "icon-edit", "v15 pencil→#icon-edit");
+	assertNative(C.iconSvg("trash", "icon icon-sm", v15), "icon-delete", "v15 trash→#icon-delete");
+	// v15 has NO key glyph — must NOT substitute a semantically different symbol; degrade to inline.
+	assertInline(C.iconSvg("key", "icon icon-sm", v15), "v15 key→inline (no key glyph on v15)");
+});
+
+test("iconSvg: no sprite (login/portal, or sprite injected after render) ⇒ pinned inline SVG", () => {
 	for (const name of ["pencil", "trash", "key"]) {
+		// Empty document (no symbols present at render time).
+		assertInline(C.iconSvg(name, "icon icon-sm", fakeDoc([])), name + " empty doc");
+		// No document at all (e.g. node / pre-DOM) — global document is undefined here.
 		const svg = C.iconSvg(name, "icon icon-sm");
-		assert.match(svg, /^<svg /, "must be an inline <svg>");
+		assertInline(svg, name + " no doc");
 		assert.ok(svg.indexOf('class="icon icon-sm"') !== -1, "keeps the caller's classes for sizing/theming");
-		assert.ok(svg.indexOf("#icon-") === -1, "must not reference the host icon sprite");
-		assert.ok(svg.indexOf("stroke:currentColor") !== -1, "stroke pinned inline so v15's fill/stroke vars can't blank it");
-		assert.ok(svg.indexOf('viewBox="0 0 24 24"') !== -1, "24x24 lucide viewBox");
 	}
-	assert.strictEqual(C.iconSvg("nope", "icon"), "", "unknown icon name ⇒ empty string");
+});
+
+test("iconSvg: unknown icon name ⇒ empty string (both branches)", () => {
+	assert.strictEqual(C.iconSvg("nope", "icon"), "", "unknown, no doc ⇒ empty");
+	assert.strictEqual(C.iconSvg("nope", "icon", fakeDoc(["icon-nope"])), "", "unknown name is not a candidate ⇒ empty");
 });

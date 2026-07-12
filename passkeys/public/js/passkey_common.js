@@ -348,13 +348,31 @@
 		};
 	}
 
-	// ------------------------------------------------------------ inline icons
-	// App-shipped inline SVGs (lucide artwork — pencil, trash-2, key; lucide is
-	// ISC-licensed) so the management glyphs render IDENTICALLY on every Frappe
-	// version instead of depending on the host icon sprite. v15's timeless/espresso
-	// sprites carry NO #icon-pencil / #icon-trash / #icon-key, so the <use> refs
-	// resolved to nothing and the buttons rendered as blank squares (A2). Centralised
-	// here (loaded first on desk / login / portal) so every bundle shares one copy.
+	// ------------------------------------------------------- version-native icons
+	// Native-first icon resolution. Each management glyph maps to an ORDERED list of
+	// sprite <symbol> ids; at render time we take the FIRST id whose <symbol> is actually
+	// present in the document (sprite symbols carry their id — document.getElementById) and
+	// emit the host's own <use href="#id"> form, so each Frappe version renders its OWN
+	// native icon with native sprite styling. Grounded in the shipped sprites:
+	//   pencil : develop/v16 lucide → #icon-pencil ; v15 timeless → #icon-edit
+	//   trash  : develop/v16 lucide → #icon-trash  ; v15 timeless → #icon-delete
+	//   key    : develop/v16 lucide → #icon-key    ; v15 has NO key glyph → inline fallback
+	// If NONE of an icon's candidates is present (v15's key; or a login/portal page whose
+	// desk sprite is absent, or is injected only AFTER our render), we degrade to the
+	// app-shipped inline SVG below. That degradation is intentional — the inline glyph
+	// always renders correctly, so a missing/late sprite can never blank the button (A2).
+	var ICON_SYMBOLS = {
+		pencil: ["icon-pencil", "icon-edit"],
+		trash: ["icon-trash", "icon-delete"],
+		key: ["icon-key"],
+	};
+
+	// App-shipped inline SVGs (lucide artwork — pencil, trash-2, key; lucide is ISC-licensed)
+	// used ONLY as the fallback when the host sprite carries no matching symbol. fill/stroke
+	// are PINNED inline here because Frappe's `.icon` drives them from CSS variables that flip
+	// per version (v15 fills, develop strokes), which would otherwise turn this outline art
+	// into solid blobs on v15. The native <use> branch deliberately does NOT pin them — the
+	// version whose sprite we reference already styles its own icon correctly.
 	var ICON_PATHS = {
 		pencil:
 			'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>' +
@@ -371,15 +389,27 @@
 			'<circle cx="7.5" cy="15.5" r="5.5"/>',
 	};
 
-	// Build an inline SVG icon string. `name` is a key in ICON_PATHS; unknown ⇒ "".
-	// Keeps the caller's classes (icon / icon-sm) so sizing + theming still apply, but
-	// PINS fill/stroke inline: Frappe's `.icon` drives them from CSS variables that
-	// flip per version (v15 fills, develop strokes), which would otherwise turn this
-	// outline art into solid blobs on v15. stroke:currentColor keeps dark-mode parity.
-	function iconSvg(name, className) {
+	// Build an icon markup string, native-first (see ICON_SYMBOLS). `name` is a key in
+	// ICON_SYMBOLS/ICON_PATHS; unknown ⇒ "". Keeps the caller's classes (icon / icon-sm) so
+	// sizing + theming apply in either branch. `doc` defaults to the global document (browser);
+	// tests inject a stub. When a candidate <symbol> is present we emit the native <use> form
+	// with NO inline fill/stroke (native styling is correct for that version). Otherwise — no
+	// document, or no candidate present — we return the PINNED inline SVG so v15's `.icon` CSS
+	// vars can't render the outline art as a solid blob.
+	function iconSvg(name, className, doc) {
+		var cls = className ? ' class="' + className + '"' : "";
+		var d = doc || (typeof document !== "undefined" ? document : null);
+		var candidates = ICON_SYMBOLS[name];
+		if (d && candidates) {
+			for (var i = 0; i < candidates.length; i++) {
+				var id = candidates[i];
+				if (d.getElementById(id)) {
+					return "<svg" + cls + ' focusable="false" aria-hidden="true"><use href="#' + id + '"></use></svg>';
+				}
+			}
+		}
 		var path = ICON_PATHS[name];
 		if (!path) return "";
-		var cls = className ? ' class="' + className + '"' : "";
 		return (
 			"<svg" + cls + ' viewBox="0 0 24 24" focusable="false" aria-hidden="true" ' +
 			'style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">' +
