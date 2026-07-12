@@ -53,7 +53,7 @@ def begin_registration(flow: str = "explicit"):
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
 		frappe.throw(_("Passkeys are not configured for this site."), frappe.ValidationError)
-	origins = policy.resolve_origins(settings, rp_id)
+	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
 	credentials = _user_credentials(user)

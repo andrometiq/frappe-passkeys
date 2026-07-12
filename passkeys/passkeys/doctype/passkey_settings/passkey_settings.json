@@ -12,6 +12,8 @@
   "passkey_rp_id",
   "passkey_origins",
   "resolved_rp_html",
+  "mobile_apps_section",
+  "passkey_app_origins",
   "policy_section",
   "passkey_sign_count_hard_fail",
   "passkey_max_per_user",
@@ -87,6 +89,17 @@
    "fieldtype": "HTML",
    "label": "Resolved Configuration",
    "options": "<p class=\"text-muted\">Changing the RP ID after enrollment invalidates every passkey registered under it. The resolved RP ID and origins are validated when a login mode is enabled.</p>"
+  },
+  {
+   "fieldname": "mobile_apps_section",
+   "fieldtype": "Section Break",
+   "label": "Mobile Apps"
+  },
+  {
+   "description": "Native app origins that may assert the site's passkeys, one per line. A native Android app presents android:apk-key-hash:<hash>, where <hash> is the unpadded base64url SHA-256 of its signing certificate; use Google's Play app-signing certificate (Play Console → App integrity → App signing), NOT the upload key. iOS needs no entry — it presents https://<RP ID>, already covered by Passkey Origins. Serve the association files (assetlinks.json / apple-app-site-association) so a native app can share these passkeys; see docs/mobile-apps.md.",
+   "fieldname": "passkey_app_origins",
+   "fieldtype": "Small Text",
+   "label": "Trusted App Origins"
   },
   {
    "fieldname": "policy_section",
