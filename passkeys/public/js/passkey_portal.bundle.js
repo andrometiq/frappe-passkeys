@@ -311,45 +311,26 @@
 		modal.open();
 	}
 
+	// The add-passkey ceremony (begin + sudo dance + create + verify) is the shared
+	// headless engine (frappe.passkeys.headless.register) — this card engine is a
+	// CALLER of the same node-tested code path a custom UI uses; the wrapper is only
+	// the portal's DOM (announce / render / onResult). The sudo dance rides
+	// frappe.passkeys.confirm, which this bundle set to `engine.confirm` above.
 	function addPasskey(opts) {
 		opts = opts || {};
 		function done(ok) { if (typeof opts.onResult === "function") opts.onResult(ok); }
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
 			announce(t("This browser can't create passkeys.")); done(false); return;
 		}
+		var H = window.frappe && window.frappe.passkeys && window.frappe.passkeys.headless;
+		if (!H) { announce(t(M.COPY.addFailed)); done(false); return; }
 		announce(t("Follow your device's prompt to add a passkey…"));
-		beginRegistration(false).then(function (begin) {
-			var options = parseCreate(begin.options);
-			options.extensions = Object.assign({}, options.extensions || {}, { credProps: true });
-			return navigator.credentials.create({ publicKey: options }).then(function (cred) {
-				var payload = cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
-				return post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (res) {
-					if (!res || !res.ok) { announce(t(M.COPY.addFailed)); done(false); return; }
-					announce(t("Passkey added.")); render(); done(true);
-				});
-			}, function (err) {
-				var name = err && (err.name || err.code);
-				announce(name === "InvalidStateError" ? t(M.COPY.alreadyRegistered) : t(M.COPY.addFailed));
-				done(false);
-			});
-		}).catch(function () { announce(t(M.COPY.addFailed)); done(false); });
-	}
-	function beginRegistration(retried) {
-		return post(METHODS.beginRegistration, { flow: "explicit" }).then(function (res) {
-			if (res && res.ok) return unwrap(res.body);
-			var req = res && res.status === 401 && C.parseConfirmationRequired(res.body);
-			if (req && !retried) return engine.confirm(M.MANAGE_ACTION).then(function () { return beginRegistration(true); });
-			throw new Error("begin_failed");
+		H.register({ flow: "explicit" }).then(function () {
+			announce(t("Passkey added.")); render(); done(true);
+		}, function (err) {
+			announce(t(err && err.code === "already_registered" ? M.COPY.alreadyRegistered : M.COPY.addFailed));
+			done(false);
 		});
-	}
-	function parseCreate(json) {
-		var PKC = window.PublicKeyCredential;
-		if (PKC && typeof PKC.parseCreationOptionsFromJSON === "function") return PKC.parseCreationOptionsFromJSON(json);
-		var out = Object.assign({}, json);
-		out.challenge = C.b64urlToBytes(json.challenge);
-		if (json.user && json.user.id) out.user = Object.assign({}, json.user, { id: C.b64urlToBytes(json.user.id) });
-		if (Array.isArray(json.excludeCredentials)) out.excludeCredentials = json.excludeCredentials.map(function (c) { return { type: c.type || "public-key", id: C.b64urlToBytes(c.id), transports: c.transports }; });
-		return out;
 	}
 
 	// ------------------------------------------------ enforcement + nudge boot
