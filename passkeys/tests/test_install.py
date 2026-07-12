@@ -300,3 +300,69 @@ class TestRegistryPropertySetter(IntegrationTestCase):
 		):
 			install.sync_registry_fixture()
 		self.assertFalse(self._setter_exists())
+
+
+class TestUserFormSection(IntegrationTestCase):
+	"""The User-form "Passkeys" section is placed DETERMINISTICALLY via programmatic
+	Custom Fields (Section Break + HTML wrapper) right after the password / security
+	area — not a dashboard section appended at the end. Lifecycle mirrors the registry
+	Property Setter: install adds, after_migrate syncs (dropped when core-native),
+	before_uninstall removes."""
+
+	def tearDown(self):
+		install._remove_user_form_section()
+		super().tearDown()
+
+	def _field(self, fieldname):
+		return frappe.db.get_value(
+			"Custom Field",
+			{"dt": "User", "fieldname": fieldname},
+			["fieldtype", "label", "insert_after"],
+			as_dict=True,
+		)
+
+	def test_sync_creates_section_and_html_after_the_password_area(self):
+		install.sync_user_form_section()
+
+		section = self._field(install.USER_FORM_SECTION_FIELD)
+		html = self._field(install.USER_FORM_HTML_FIELD)
+		self.assertEqual(section.fieldtype, "Section Break")
+		self.assertEqual(section.label, "Passkeys")
+		self.assertEqual(html.fieldtype, "HTML")
+		# the HTML wrapper sits inside the Passkeys section
+		self.assertEqual(html.insert_after, install.USER_FORM_SECTION_FIELD)
+		# the section anchors on a REAL field of the User security/password area
+		self.assertIn(section.insert_after, install._USER_FORM_ANCHOR_CANDIDATES)
+		self.assertTrue(frappe.get_meta("User").has_field(section.insert_after))
+
+	def test_anchor_is_the_change_password_area_tail(self):
+		# on v15/v16/develop the primary anchor (redirect_url — the last field of the
+		# "Change Password" section) is present, so the section lands right after it.
+		self.assertEqual(install._user_form_anchor(), "redirect_url")
+
+	def test_sync_is_idempotent(self):
+		install.sync_user_form_section()
+		install.sync_user_form_section()  # must not raise / duplicate
+		self.assertTrue(self._field(install.USER_FORM_SECTION_FIELD))
+		self.assertTrue(self._field(install.USER_FORM_HTML_FIELD))
+		self.assertEqual(
+			frappe.db.count("Custom Field", {"dt": "User", "fieldname": install.USER_FORM_HTML_FIELD}), 1
+		)
+
+	def test_sync_removes_the_section_when_core_native(self):
+		install.sync_user_form_section()
+		self.assertTrue(self._field(install.USER_FORM_SECTION_FIELD))
+
+		with patch("passkeys.install.is_core_native", return_value=True):
+			install.sync_user_form_section()
+		self.assertFalse(self._field(install.USER_FORM_SECTION_FIELD))
+		self.assertFalse(self._field(install.USER_FORM_HTML_FIELD))
+
+	def test_removal_is_explicit_and_idempotent(self):
+		install.sync_user_form_section()
+		self.assertTrue(self._field(install.USER_FORM_HTML_FIELD))
+
+		install._remove_user_form_section()  # the before_uninstall step
+		self.assertFalse(self._field(install.USER_FORM_SECTION_FIELD))
+		self.assertFalse(self._field(install.USER_FORM_HTML_FIELD))
+		install._remove_user_form_section()  # idempotent, must not raise

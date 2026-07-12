@@ -2,10 +2,12 @@
 // License: MIT. See LICENSE
 //
 // Credential-management cards on the Desk User form.
-// The user's own User form grows a "Passkeys" section with one card per credential
-// (label + Synced/Device-bound badge + rename/delete), plus add + empty state. The
-// card component is frappe.passkeys.manage.renderCards; rename is display-only (no
-// sudo), delete is confirm + sudo-gated.
+// The user's own User form grows a "Passkeys" section — placed deterministically in
+// the Settings tab, right after the "Change Password" / security area (a Custom Field
+// Section Break + HTML wrapper installed by install.sync_user_form_section) — with one
+// card per credential (label + Synced/Device-bound badge + rename/delete), plus add +
+// empty state. The card component is frappe.passkeys.manage.renderCards; rename is
+// display-only (no sudo), delete is confirm + sudo-gated.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";
@@ -15,19 +17,21 @@ const visit_user_passkeys = () => {
 	cy.visit_desk(USER);
 	cy.window().its("cur_frm.doc.name", { timeout: 20000 }).should("eq", USER);
 	cy.document().then((doc) => {
+		// The Passkeys section lives in the Settings tab now (right after the password
+		// area), not the Connections tab.
 		const tabs = Array.from(doc.querySelectorAll("a, button, [role='tab']"));
 		const tab = tabs.find(
 			(el) =>
-				(el.textContent || "").trim() === "Connections" ||
-				el.getAttribute("href") === "#user-connections_tab" ||
-				el.getAttribute("data-target") === "#user-connections_tab" ||
-				el.getAttribute("data-bs-target") === "#user-connections_tab" ||
-				el.getAttribute("aria-controls") === "user-connections_tab"
+				(el.textContent || "").trim() === "Settings" ||
+				el.getAttribute("href") === "#user-settings_tab" ||
+				el.getAttribute("data-target") === "#user-settings_tab" ||
+				el.getAttribute("data-bs-target") === "#user-settings_tab" ||
+				el.getAttribute("aria-controls") === "user-settings_tab"
 		);
-		expect(tab, "Connections tab").to.exist;
+		expect(tab, "Settings tab").to.exist;
 		tab.click();
 	});
-	cy.get("#user-connections_tab", { timeout: 20000 }).should("be.visible");
+	cy.get("#user-settings_tab", { timeout: 20000 }).should("be.visible");
 };
 
 const own_passkey_root = () => cy.get(".passkey-cards-root:visible", { timeout: 20000 }).last();
