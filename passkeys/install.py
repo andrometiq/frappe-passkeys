@@ -458,7 +458,22 @@ def import_credentials(path: str) -> dict:
 	Idempotent and safe to re-run: a credential whose ``credential_id_sha256`` (or a
 	user handle whose ``user``) already exists is skipped. Credentials are restored
 	before handles so a ``passkey_only_login`` handle clears its enabled-credential
-	floor. Returns a created/skipped summary."""
+	floor. Returns a created / skipped / rejected summary.
+
+	Console-only by design (never whitelisted) — but a *crafted* export file must not be
+	able to bind a public key to an account of the attacker's choosing, so every row is
+	validated before restore:
+
+	* the row's ``user`` must exist as an **enabled** User (a row for a missing or
+	  disabled user is rejected);
+	* the user's WebAuthn User Handle must be **consistent** — an export handle that
+	  disagrees with the one already on the site, or that collides with another user's
+	  handle, is a key-substitution attempt and rejects every row for that user; and a
+	  credential whose user would have no handle at all (none on the site, none in the
+	  export) is rejected too.
+
+	Rejected rows are counted, listed for the operator, and returned under ``rejected``;
+	the valid remainder is still imported."""
 	with open(path, encoding="utf-8") as fh:
 		data = json.load(fh)
 	if data.get("schema") != CREDENTIAL_EXPORT_SCHEMA:
@@ -467,25 +482,78 @@ def import_credentials(path: str) -> dict:
 	summary = {
 		"credentials_created": 0,
 		"credentials_skipped": 0,
+		"credentials_rejected": 0,
 		"handles_created": 0,
 		"handles_skipped": 0,
+		"handles_rejected": 0,
+		"rejected": [],
 	}
 
-	for row in data.get("credentials", []):
+	credential_rows = data.get("credentials", [])
+	handle_rows = data.get("user_handles", [])
+
+	def _reject(kind: str, user, reason: str) -> None:
+		summary[f"{kind}_rejected"] += 1
+		summary["rejected"].append(f"{kind}: user={user!r}: {reason}")
+
+	def _user_enabled(user) -> bool:
+		return bool(user) and bool(frappe.db.get_value("User", user, "enabled"))
+
+	# A user whose export handle disagrees with the site's live handle for that user — or
+	# whose export handle value already belongs to a DIFFERENT user — is a substitution
+	# attempt: reject every row (credential + handle) for that user.
+	export_handle = {row.get("user"): row.get("handle") for row in handle_rows}
+	handle_users = set(export_handle)
+	mismatched_users = set()
+	for user, handle in export_handle.items():
+		existing = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
+		if existing and existing != handle:
+			mismatched_users.add(user)
+			continue
+		other = frappe.db.get_value("WebAuthn User Handle", {"handle": handle}, "user") if handle else None
+		if other and other != user:
+			mismatched_users.add(user)
+
+	for row in credential_rows:
+		user = row.get("user")
+		if not _user_enabled(user):
+			_reject("credentials", user, "no such enabled User")
+			continue
+		if user in mismatched_users:
+			_reject("credentials", user, "user handle mismatch")
+			continue
+		# every credential must land on a user with a consistent handle — one already on
+		# the site, or one this same import will create.
+		if user not in handle_users and not frappe.db.exists("WebAuthn User Handle", {"user": user}):
+			_reject("credentials", user, "no matching WebAuthn User Handle")
+			continue
 		if frappe.db.exists("WebAuthn Credential", {"credential_id_sha256": row.get("credential_id_sha256")}):
 			summary["credentials_skipped"] += 1
 			continue
 		_restore_row("WebAuthn Credential", row)
 		summary["credentials_created"] += 1
 
-	for row in data.get("user_handles", []):
-		if frappe.db.exists("WebAuthn User Handle", {"user": row.get("user")}):
+	for row in handle_rows:
+		user = row.get("user")
+		if not _user_enabled(user):
+			_reject("handles", user, "no such enabled User")
+			continue
+		if user in mismatched_users:
+			_reject("handles", user, "user handle mismatch")
+			continue
+		if frappe.db.exists("WebAuthn User Handle", {"user": user}):
 			summary["handles_skipped"] += 1
 			continue
 		_restore_row("WebAuthn User Handle", row)
 		summary["handles_created"] += 1
 
 	frappe.db.commit()
+
+	if summary["rejected"]:
+		print(f"passkeys: import_credentials rejected {len(summary['rejected'])} row(s):")
+		for line in summary["rejected"]:
+			print(f"passkeys:   {line}")
+
 	return summary
 
 
