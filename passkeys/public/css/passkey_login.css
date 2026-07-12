@@ -36,6 +36,80 @@
 	outline-offset: 2px;
 }
 
+/* Visible staged-status surface for the passkey login ceremony
+ * (idle → waiting → verifying → success / failure). App-owned + always present on
+ * v15/v16/develop — NEVER core's develop-only .login-error-banner. Painted with Frappe's
+ * own CSS tokens so it inherits the site theme and dark mode with no scheme override. */
+.passkey-status {
+	display: flex;
+	align-items: center;
+	gap: var(--padding-sm, 8px);
+	margin: 0 0 var(--margin-sm, 10px);
+	padding: var(--padding-xs, 6px) var(--padding-sm, 10px);
+	border-radius: var(--border-radius, 6px);
+	font-size: var(--text-sm, 0.85rem);
+	line-height: 1.4;
+	background: var(--control-bg, var(--gray-100, #f4f5f6));
+	color: var(--text-color, #1d1d1d);
+}
+.passkey-status[hidden] {
+	display: none;
+}
+.passkey-status__text {
+	flex: 1 1 auto;
+}
+.passkey-status__icon {
+	flex: 0 0 auto;
+	position: relative;
+	width: 0.95em;
+	height: 0.95em;
+	box-sizing: border-box;
+}
+/* Progress: a spinning ring (waiting / verifying / slow-connection). */
+.passkey-status--progress .passkey-status__icon {
+	border: 2px solid var(--gray-400, #b0b7c3);
+	border-top-color: var(--primary, #2490ef);
+	border-radius: 50%;
+	animation: passkey-status-spin 0.7s linear infinite;
+}
+/* Success: resolved beat — green tone + a check mark. */
+.passkey-status--success {
+	background: var(--green-50, var(--green-100, #e6f4ea));
+	color: var(--green-700, var(--green-600, #1f7a3d));
+}
+.passkey-status--success .passkey-status__icon::before {
+	content: "";
+	position: absolute;
+	left: 0.28em;
+	top: 0.02em;
+	width: 0.3em;
+	height: 0.6em;
+	border: solid currentColor;
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+/* Failure: red tone + a solid dot (no spinner). */
+.passkey-status--error {
+	background: var(--red-50, var(--red-100, #fce8e8));
+	color: var(--red-600, var(--red-500, #c0392b));
+}
+.passkey-status--error .passkey-status__icon {
+	border-radius: 50%;
+	background: currentColor;
+}
+@keyframes passkey-status-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+/* Respect reduced-motion: freeze the spinner (the coloured ring is still a clear
+ * "in progress" indicator) rather than animate. */
+@media (prefers-reduced-motion: reduce) {
+	.passkey-status--progress .passkey-status__icon {
+		animation: none;
+	}
+}
+
 /* Lightweight modal dialog (uv-setup, second-factor). role=dialog + focus trap in JS. */
 .passkey-dialog-overlay {
 	position: fixed;

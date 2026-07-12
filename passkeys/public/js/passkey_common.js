@@ -318,6 +318,98 @@
 		this.rearmCount = 0;
 	};
 
+	// -------------------------------------------------- login status machine
+	// The VISIBLE staged-status surface for the first-factor login ceremony (the
+	// explicit "Sign in with a passkey" button AND the conditional/autofill flow).
+	// ONE pure source of truth: each state maps to ONE piece of copy that feeds BOTH
+	// the on-page status element AND the aria-live region, so the sighted and
+	// screen-reader experiences can never drift (A6). The bundle
+	// (passkey_login.bundle.js) owns the DOM element + the slow-connection timer; this
+	// holds the states, their copy/tone, and the legal transitions so the whole flow is
+	// unit-testable under node:test with no browser.
+	//
+	// Copy is the English base (the bundle wraps each string in t() at render time) and
+	// follows the Wave-3 error-copy playbook: geeky-but-accurate on the happy path
+	// (WebAuthn really does wait for the device, then verify a signature), plain + routed
+	// on failure — every error names a way out, and there is no humor in an error state.
+	// Tone drives styling: "progress" (spinner), "success" (resolved beat), "error".
+	var LOGIN_STATES = {
+		idle: { text: "", tone: "idle", visible: false, terminal: false },
+		waiting: { text: "Waiting for your device…", tone: "progress", visible: true, terminal: false },
+		verifying: { text: "Verifying your signature…", tone: "progress", visible: true, terminal: false },
+		verifying_slow: {
+			text: "Still verifying — this can take a moment on a slow connection.",
+			tone: "progress", visible: true, terminal: false,
+		},
+		success: { text: "You're in — taking you through…", tone: "success", visible: true, terminal: true },
+		cancelled: {
+			text: "No passkey was used — you can try again or sign in another way.",
+			tone: "error", visible: true, terminal: true,
+		},
+		unsupported: {
+			text: "This device can't use passkeys yet — sign in with your password instead.",
+			tone: "error", visible: true, terminal: true,
+		},
+		failed: { text: "Couldn't use a passkey — sign in another way.", tone: "error", visible: true, terminal: true },
+	};
+
+	// Legal transitions. The bundle renders whatever view `to()` returns, so an
+	// out-of-order call is a safe no-op (stay in the current state) rather than a crash
+	// or a nonsense paint — e.g. a late error can never overwrite the "You're in" success
+	// beat while the page is redirecting. verifying→waiting is allowed for the transparent
+	// ceremony_expired re-arm (abandon the verify, start a fresh gesture).
+	var LOGIN_TRANSITIONS = {
+		idle: ["waiting", "verifying"],
+		waiting: ["verifying", "cancelled", "unsupported", "failed", "idle"],
+		verifying: ["verifying_slow", "waiting", "success", "cancelled", "unsupported", "failed", "idle"],
+		verifying_slow: ["waiting", "success", "cancelled", "unsupported", "failed", "idle"],
+		success: [], // terminal — the page is redirecting
+		cancelled: ["idle", "waiting", "verifying"],
+		unsupported: ["idle", "waiting", "verifying"],
+		failed: ["idle", "waiting", "verifying"],
+	};
+
+	function loginStatusView(stateName) {
+		return LOGIN_STATES[stateName] || LOGIN_STATES.idle;
+	}
+
+	function LoginStatus(opts) {
+		opts = opts || {};
+		this.state = LOGIN_STATES[opts.state] ? opts.state : "idle";
+		this.strict = opts.strict !== false; // guard transitions by default
+	}
+	LoginStatus.prototype.can = function (next) {
+		if (next === this.state) return true; // re-entry is always a safe no-op
+		var allowed = LOGIN_TRANSITIONS[this.state] || [];
+		return allowed.indexOf(next) !== -1;
+	};
+	// Transition and return the view to render. Illegal or unknown target ⇒ stay put and
+	// return the CURRENT view, so the caller always has something coherent to paint.
+	LoginStatus.prototype.to = function (next) {
+		if (LOGIN_STATES[next] && (!this.strict || this.can(next))) {
+			this.state = next;
+		}
+		return loginStatusView(this.state);
+	};
+	LoginStatus.prototype.view = function () { return loginStatusView(this.state); };
+
+	// Map a mapDomException() code (the browser-gesture rejection taxonomy) to a login
+	// state. cancel and timeout are BOTH NotAllowedError → both land on "cancelled": the
+	// browser collapses them by design (privacy), so we never invent a distinct "timed
+	// out" cause. not_supported is a genuine capability fact and stays distinct.
+	function loginStatusForDomCode(code) {
+		switch (code) {
+			case "not_supported":
+				return "unsupported";
+			case "user_cancelled":
+				return "cancelled";
+			case "no_credentials":
+				return "cancelled"; // "no usable passkey" — same route out, honestly indistinct
+			default:
+				return "failed"; // network / confirmation_failed / unknown
+		}
+	}
+
 	// ---------------------------------------------------------- a11y helpers
 	var LIVE_REGION_ID = "passkey-live-region";
 	function ensureLiveRegion(doc) {
@@ -780,6 +872,10 @@
 		resolveButtonMount: resolveButtonMount,
 		pickVisibleSection: pickVisibleSection,
 		CeremonyState: CeremonyState,
+		LOGIN_STATES: LOGIN_STATES,
+		loginStatusView: loginStatusView,
+		LoginStatus: LoginStatus,
+		loginStatusForDomCode: loginStatusForDomCode,
 		ensureLiveRegion: ensureLiveRegion,
 		announce: announce,
 		captureFocus: captureFocus,

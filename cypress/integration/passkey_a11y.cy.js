@@ -65,16 +65,17 @@ chromium_only("passkey login accessibility", () => {
 			expect(call.publicKey, "publicKey options").to.exist;
 			expect(call.mediation, "explicit request has no conditional mediation").to.be.undefined;
 		});
-		cy.get("#passkey-live-region").should("contain", "Couldn't use a passkey");
-		// The bundle paints into core's .login-error-banner when the page provides one
-		// (v16/develop ship it; v15's login page does not). The polite live region above
-		// is the version-agnostic accessibility contract; assert the visible banner only
-		// where core supplies the element.
-		cy.get("body").then(($body) => {
-			if ($body.find(".login-error-banner").length) {
-				cy.get(".login-error-banner:visible").should("contain", "Couldn't use a passkey");
-			}
-		});
+		// Cancel and timeout are both NotAllowedError (indistinguishable by design), so the
+		// ceremony collapses to the honest "cancelled" state. The aria-live region carries
+		// its copy — one source of truth feeding both the SR and visible surfaces.
+		cy.get("#passkey-live-region").should("contain", "No passkey was used");
+		// The app ships its OWN visible status element on EVERY Frappe version
+		// (v15/v16/develop), so — unlike core's develop-only .login-error-banner — the
+		// visible failure state is version-agnostic and always assertable.
+		cy.get("#passkey-login-status")
+			.should("be.visible")
+			.and("have.class", "passkey-status--error")
+			.and("contain", "No passkey was used");
 		cy.get("#login_email").should("be.visible");
 		cy.focused().should("have.id", "passkey-login-btn");
 	});

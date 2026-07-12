@@ -30,12 +30,16 @@
 		app_translations: "passkeys.passkey.get_app_translations",
 	};
 	var HINT_KEY = "passkey_used_here"; // localStorage promote-only hint
+	var STATUS_ID = "passkey-login-status"; // the app-owned visible staged-status element
+	var SLOW_MS = 4000; // slow-connection "still working" escalation while verifying
 	var BOOTED = false;
 
 	// bundle-scoped runtime state
 	var state = {
 		modes: { first_factor: false, second_factor: false },
 		login: new C.CeremonyState({ ttlMs: 300000 }),
+		status: new C.LoginStatus(), // the visible staged-status machine (A5/A6/C1)
+		slowTimer: null, // setTimeout handle for the slow-connection escalation
 		conditionalAbort: null, // AbortController for the pending conditional get()
 		sfInterceptor: null, // the document capture-phase submit listener
 		busyModal: false, // a modal get()/create() is in flight
@@ -110,6 +114,7 @@
 					if (cfg.state_id && cfg.options) {
 						state.login.adopt(cfg.state_id, cfg.options, Date.now());
 					}
+					ensureStatusEl(); // app-owned visible status (never core's develop-only banner)
 					// Conditional UI FIRST (only if not explicitly unavailable).
 					if (caps.conditionalMediation !== false) {
 						startConditional();
@@ -262,6 +267,8 @@
 			}
 			state.busyModal = true;
 			var restore = C.captureFocus(document);
+			// Stage 1 — the authenticator/browser sheet is up (before/around get()).
+			applyLoginStatus("waiting");
 			navigator.credentials
 				.get({ publicKey: publicKey })
 				.then(function (cred) {
@@ -302,17 +309,23 @@
 		try {
 			assertion = C.authAssertionToJSON(cred);
 		} catch (e) {
-			announce(t("Couldn't read the passkey response."));
+			applyLoginStatus("failed");
 			return;
 		}
 		var payload = { state_id: state.login.stateId, credential: JSON.stringify(assertion) };
 
+		// Stage 2 — server round-trip. Arm the slow-connection escalation on a timer.
+		applyLoginStatus("verifying");
+		armSlowTimer();
+
 		frappeCall(API.verify_login, payload, composedHandlers({
-			on401: function (data) { handleFirstFactor401(data, ctx, attachment); },
+			on401: function (data) { clearSlowTimer(); handleFirstFactor401(data, ctx, attachment); },
+			// Stage 3 — the resolved "You're in" beat, painted BEFORE core's redirect runs
+			// (onSuccessEarly is invoked ahead of base's 200 handler; see composedHandlers).
+			onSuccessEarly: function () { clearSlowTimer(); applyLoginStatus("success"); },
 			onSuccess: function (data) {
 				rememberHint();
 				postLoginUpsell(attachment, data);
-				// core's 200 handler (base) runs first for the redirect/splash; nothing to do
 			},
 		}));
 	}
@@ -338,12 +351,12 @@
 		}
 		if (kind === "unknown_credential") {
 			signalUnknownCredential();
-			announce(t("That passkey isn't registered here."));
-			neutralInline(t("That passkey isn't registered here — sign in another way."));
+			applyLoginStatus("failed");
 			rearmAfterVisibleFailure(ctx);
 			return;
 		}
 		if (kind === "uv_setup_required") {
+			applyLoginStatus("idle"); // hand the surface to the password step-up dialog
 			openUvSetup(data && data.setup_id);
 			return;
 		}
@@ -573,6 +586,9 @@
 				if (app.onSuccess) app.onSuccess(data);
 				return; // do NOT let base paint an unknown verification.method
 			}
+			// onSuccessEarly runs BEFORE core's 200 handler so the "You're in" resolved beat
+			// is painted before base200 kicks off the redirect (FIDO P4: show the result).
+			if (app.onSuccessEarly) { try { app.onSuccessEarly(data); } catch (e) { /* never block core */ } }
 			if (base200) { try { base200(data); } catch (e) { /* core handler */ } }
 			if (app.onSuccess) app.onSuccess(data);
 		};
@@ -716,26 +732,79 @@
 	// ----------------------------------------------------------- error paths / UX
 	function onCeremonyError(err, ctx) {
 		var m = C.mapDomException(err);
-		neutralInline(t(m.messageKey));
-		announce(t(m.messageKey));
-		// user cancel/timeout: untouched form + one neutral message, then re-arm once so the
-		// user is never dead-ended.
+		// user cancel/timeout (indistinguishable) / not-supported / etc. — a distinct visible
+		// state + the untouched form, then re-arm once so the user is never dead-ended.
+		applyLoginStatus(C.loginStatusForDomCode(m.code));
 		rearmAfterVisibleFailure(ctx);
 	}
 
 	function neutralFail() {
-		neutralInline(t("Couldn't use a passkey — sign in another way."));
-		announce(t("Couldn't use a passkey — sign in another way."));
+		applyLoginStatus("failed");
 	}
 
-	function neutralInline(msg) {
-		// paint into core's own error banner slot when present; never blocks the form
-		var banner = document.querySelector("section .login-error-banner span, .login-error-banner span");
-		if (banner) {
-			var wrap = banner.closest ? banner.closest(".login-error-banner") : null;
-			banner.textContent = msg;
-			if (wrap && wrap.style) wrap.style.display = "flex";
+	// ------------------------------------------ visible staged status surface (A5/A6/C1)
+	// The app ships its OWN status element on the login page — NEVER core's
+	// .login-error-banner, which exists only on develop (that develop-only coupling is
+	// exactly why a removed passkey showed nothing on v15). Renders identically on
+	// v15/v16/develop website login pages.
+	function ensureStatusEl() {
+		if (document.getElementById(STATUS_ID)) return;
+		var el = document.createElement("div");
+		el.id = STATUS_ID;
+		el.className = "passkey-status";
+		el.hidden = true;
+		el.innerHTML =
+			'<span class="passkey-status__icon" aria-hidden="true"></span>' +
+			'<span class="passkey-status__text"></span>';
+		// Place it just above the login card's action group (or the form) so it reads
+		// prominently; a miss still leaves the aria-live region covering AT users.
+		var target = C.resolveButtonMount(document);
+		if (target && target.mount && target.mount.parentNode) {
+			target.mount.parentNode.insertBefore(el, target.mount);
+		} else if (target && target.mount) {
+			target.mount.insertBefore(el, target.mount.firstChild);
+		} else {
+			var form = document.querySelector(".form-login");
+			if (form && form.parentNode) form.parentNode.insertBefore(el, form);
+			else (document.body || document.documentElement).appendChild(el);
 		}
+	}
+
+	function statusEl() { return document.getElementById(STATUS_ID); }
+
+	// The SINGLE chokepoint: advance the pure machine, paint the visible element, and
+	// announce the SAME text to the aria-live region — one source of truth feeding both,
+	// so the sighted + screen-reader states stay in lockstep (A6).
+	function applyLoginStatus(stateName) {
+		if (stateName !== "verifying") clearSlowTimer(); // any resolution stops the escalation
+		var view = state.status.to(stateName);
+		var text = view.text ? t(view.text) : "";
+		var el = statusEl();
+		if (el) {
+			var textEl = el.querySelector(".passkey-status__text");
+			if (!view.visible || !text) {
+				el.hidden = true;
+				el.className = "passkey-status";
+				if (textEl) textEl.textContent = "";
+			} else {
+				el.hidden = false;
+				el.className = "passkey-status passkey-status--" + view.tone;
+				if (textEl) textEl.textContent = text;
+			}
+		}
+		if (view.visible && text) announce(text); // lockstep aria-live announcement
+	}
+
+	function armSlowTimer() {
+		clearSlowTimer();
+		state.slowTimer = setTimeout(function () {
+			state.slowTimer = null;
+			if (state.status.state === "verifying") applyLoginStatus("verifying_slow");
+		}, SLOW_MS);
+	}
+
+	function clearSlowTimer() {
+		if (state.slowTimer) { clearTimeout(state.slowTimer); state.slowTimer = null; }
 	}
 
 	function rebeginAndRearm() {
@@ -746,7 +815,7 @@
 	function setStatus(msg) { announce(msg); }
 	function announce(msg) { C.announce(document, msg); }
 	function rememberHint() { try { if (window.localStorage) localStorage.setItem(HINT_KEY, "1"); } catch (e) { /* ignore */ } }
-	function removeSelf() { removeSecondFactorInterception(); abortConditional(); var b = document.getElementById("passkey-login-btn"); if (b && b.parentNode) b.parentNode.removeChild(b); }
+	function removeSelf() { removeSecondFactorInterception(); abortConditional(); clearSlowTimer(); var s = document.getElementById(STATUS_ID); if (s && s.parentNode) s.parentNode.removeChild(s); var b = document.getElementById("passkey-login-btn"); if (b && b.parentNode) b.parentNode.removeChild(b); }
 	function valueOf(sel) { var el = document.querySelector(sel); return el ? (el.value || "").trim() : ""; }
 	function methodUrl(method) { return "/api/method/" + method; }
 	function jsonHeaders() {
@@ -765,5 +834,5 @@
 
 	// expose a tiny surface for the DOM-contract Cypress job to assert against
 	window.frappe = window.frappe || {};
-	window.frappe._passkey_login = { boot: boot, _state: state, API: API };
+	window.frappe._passkey_login = { boot: boot, _state: state, API: API, applyLoginStatus: applyLoginStatus };
 })();
