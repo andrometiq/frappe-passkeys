@@ -180,6 +180,11 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 		"signal": {
 			"user_handle": handle.handle,
 			"credential_ids": [c.credential_id for c in _user_credentials(record["user"])],
+			# name/display_name let the client fire signalCurrentUserDetails alongside
+			# signalAllAcceptedCredentials (F2), so a freshly-enrolled passkey's provider label
+			# matches the RP from the start.
+			"name": record["user"],
+			"display_name": frappe.db.get_value("User", record["user"], "full_name") or record["user"],
 		},
 	}
 

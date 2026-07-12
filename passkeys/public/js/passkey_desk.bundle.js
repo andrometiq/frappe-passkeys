@@ -204,18 +204,39 @@
 	}
 
 	// ------------------------------------------------------------------ signals
+	// Every signal below is strictly best-effort, fire-and-forget: guarded by a typeof check
+	// (Firefox ships none of the Signal API), never awaited on any critical path, and its
+	// promise is .catch()'d (Safari 26's never-settling bug can neither resolve nor reject).
 	function fireSignal(data) {
+		var rpId = (window.frappe && frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.rp_id) || location.hostname;
 		var payload = M.signalPayload(data);
-		if (!payload || !window.PublicKeyCredential || typeof PublicKeyCredential.signalAllAcceptedCredentials !== "function") return;
-		try {
-			var rpId = (window.frappe && frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.rp_id) || location.hostname;
-			var p = PublicKeyCredential.signalAllAcceptedCredentials({
-				rpId: rpId,
-				userId: payload.userHandle,
-				allAcceptedCredentialIds: payload.allAcceptedCredentialIds,
-			});
-			if (p && p.catch) p.catch(function () {}); // Safari 26 never-settles / Firefox absent
-		} catch (e) { /* fire-and-forget */ }
+		if (payload && window.PublicKeyCredential && typeof PublicKeyCredential.signalAllAcceptedCredentials === "function") {
+			try {
+				var p = PublicKeyCredential.signalAllAcceptedCredentials({
+					rpId: rpId,
+					userId: payload.userHandle,
+					// F3: an EMPTY allAcceptedCredentialIds is intentional after a genuine
+					// last-passkey delete — the provider then hides ALL of this user's passkeys.
+					// It only reaches here behind res.ok, never on a failed list read.
+					allAcceptedCredentialIds: payload.allAcceptedCredentialIds,
+				});
+				if (p && p.catch) p.catch(function () {}); // Safari 26 never-settles / Firefox absent
+			} catch (e) { /* fire-and-forget */ }
+		}
+		// F2: keep the provider's stored username/display name in sync with the RP so the
+		// account chooser doesn't drift after a full_name/email edit.
+		var details = M.currentUserDetailsPayload(data);
+		if (details && window.PublicKeyCredential && typeof PublicKeyCredential.signalCurrentUserDetails === "function") {
+			try {
+				var q = PublicKeyCredential.signalCurrentUserDetails({
+					rpId: rpId,
+					userId: details.userHandle,
+					name: details.name,
+					displayName: details.displayName,
+				});
+				if (q && q.catch) q.catch(function () {}); // Safari 26 never-settles / Firefox absent
+			} catch (e) { /* fire-and-forget */ }
+		}
 	}
 	function refreshSignalsInSession() {
 		post(METHODS.getSignalData, {}).then(function (res) {
