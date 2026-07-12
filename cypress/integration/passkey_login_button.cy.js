@@ -72,6 +72,29 @@ chromium_only("passkey explicit-button login", () => {
 		cy.assert_logged_user(USER);
 	});
 
+	it("a removed/stale passkey shows a distinct visible reason instead of nothing (A5)", () => {
+		// The credential is still on the device, but the server no longer recognises it
+		// → UnknownCredential 401. Before this fix, v15/v16 showed no visible reaction.
+		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify_unknown", (req) => {
+			req.reply({
+				statusCode: 401,
+				headers: { "Content-Type": "application/json" },
+				body: { exc_type: "UnknownCredential", exception: "UnknownCredential" },
+			});
+		});
+		cy.visit_login_without_conditional();
+		cy.get("#passkey-login-btn").click();
+		cy.wait("@verify_unknown", { timeout: 20000 });
+		// Distinct "removed" state on the app-owned element (version-agnostic), NOT the
+		// generic failure copy and NOT silence.
+		cy.get("#passkey-login-status")
+			.should("be.visible")
+			.and("have.class", "passkey-status--error")
+			.and("contain", "may have been removed");
+		// …and the normal login form is still usable — never a dead end.
+		cy.get("#login_email").should("be.visible");
+	});
+
 	it("removes itself when every login mode is off", () => {
 		cy.login(USER, PW());
 		cy.disable_passkey_login();

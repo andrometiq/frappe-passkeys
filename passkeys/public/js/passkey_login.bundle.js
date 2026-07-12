@@ -350,8 +350,10 @@
 			return;
 		}
 		if (kind === "unknown_credential") {
+			// A5 — the passkey is on the device but the server no longer has it (removed/
+			// stale). Give it a DISTINCT visible state instead of doing nothing.
 			signalUnknownCredential();
-			applyLoginStatus("failed");
+			applyLoginStatus(C.loginStatusForServerKind(kind)); // -> "removed"
 			rearmAfterVisibleFailure(ctx);
 			return;
 		}

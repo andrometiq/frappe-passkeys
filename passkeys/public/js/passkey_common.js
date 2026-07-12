@@ -346,6 +346,13 @@
 			text: "No passkey was used — you can try again or sign in another way.",
 			tone: "error", visible: true, terminal: true,
 		},
+		// A removed/stale passkey the server no longer recognises (server UnknownCredential).
+		// Midway copy per the playbook: help the user WITHOUT asserting the account fact
+		// ("didn't work here", not "isn't registered") — it may have been removed.
+		removed: {
+			text: "That passkey didn't work here — it may have been removed. Sign in another way.",
+			tone: "error", visible: true, terminal: true,
+		},
 		unsupported: {
 			text: "This device can't use passkeys yet — sign in with your password instead.",
 			tone: "error", visible: true, terminal: true,
@@ -360,11 +367,12 @@
 	// ceremony_expired re-arm (abandon the verify, start a fresh gesture).
 	var LOGIN_TRANSITIONS = {
 		idle: ["waiting", "verifying"],
-		waiting: ["verifying", "cancelled", "unsupported", "failed", "idle"],
-		verifying: ["verifying_slow", "waiting", "success", "cancelled", "unsupported", "failed", "idle"],
-		verifying_slow: ["waiting", "success", "cancelled", "unsupported", "failed", "idle"],
+		waiting: ["verifying", "cancelled", "removed", "unsupported", "failed", "idle"],
+		verifying: ["verifying_slow", "waiting", "success", "cancelled", "removed", "unsupported", "failed", "idle"],
+		verifying_slow: ["waiting", "success", "cancelled", "removed", "unsupported", "failed", "idle"],
 		success: [], // terminal — the page is redirecting
 		cancelled: ["idle", "waiting", "verifying"],
+		removed: ["idle", "waiting", "verifying"],
 		unsupported: ["idle", "waiting", "verifying"],
 		failed: ["idle", "waiting", "verifying"],
 	};
@@ -407,6 +415,19 @@
 				return "cancelled"; // "no usable passkey" — same route out, honestly indistinct
 			default:
 				return "failed"; // network / confirmation_failed / unknown
+		}
+	}
+
+	// Map a mapServerExcType() kind (the server's typed 401 taxonomy) to a login state.
+	// unknown_credential (a removed/stale credential the server no longer recognises) gets
+	// its OWN distinct visible state (A5); every other typed refusal collapses to the
+	// generic "failed" route-out (enumeration-safe — the copy never branches by cause).
+	function loginStatusForServerKind(kind) {
+		switch (kind) {
+			case "unknown_credential":
+				return "removed";
+			default:
+				return "failed";
 		}
 	}
 
@@ -876,6 +897,7 @@
 		loginStatusView: loginStatusView,
 		LoginStatus: LoginStatus,
 		loginStatusForDomCode: loginStatusForDomCode,
+		loginStatusForServerKind: loginStatusForServerKind,
 		ensureLiveRegion: ensureLiveRegion,
 		announce: announce,
 		captureFocus: captureFocus,
