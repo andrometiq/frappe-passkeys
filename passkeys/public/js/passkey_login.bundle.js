@@ -318,16 +318,50 @@
 		applyLoginStatus("verifying");
 		armSlowTimer();
 
-		frappeCall(API.verify_login, payload, composedHandlers({
-			on401: function (data) { clearSlowTimer(); handleFirstFactor401(data, ctx, attachment, cred); },
+		// Terminal cleanup for the verify round-trip. The named handlers below only resolve
+		// the surface on 200 (onSuccessEarly) and the TYPED passkey 401s (on401). A plain 401
+		// (core "Invalid credentials" painter), a 417/429/5xx, or a transport/network failure
+		// would otherwise leave the slow timer armed and the surface stuck on "Verifying…" —
+		// escalating to the slow-connection copy and never resolving — while core paints its
+		// own banner, so the two surfaces disagree. `claimed` marks the outcomes an app handler
+		// already owns: success, and the typed-401 paths that manage their own lifecycle
+		// (including the transparent ceremony_expired re-arm, which legitimately sits in
+		// "verifying" across an async rebegin — a blanket finalizer would flash "failed" over
+		// it). For EVERY other outcome the finalizer runs exactly once: it clears the timer and,
+		// only if still stuck mid-progress, downgrades to the generic "failed" route-out. The
+		// LoginStatus machine rejects any transition out of a terminal state, so this can never
+		// clobber a success/removed/cancelled/… paint (belt-and-braces with the state guard).
+		var claimed = false;
+		var settled = false;
+		function finishVerify() {
+			if (settled) return; // idempotent — a promise settles once, but guard regardless
+			settled = true;
+			if (claimed) return; // an app handler already owns (and painted) this outcome
+			clearSlowTimer();
+			var s = state.status.state;
+			if (s === "verifying" || s === "verifying_slow" || s === "waiting") {
+				applyLoginStatus("failed");
+			}
+		}
+
+		var call = frappeCall(API.verify_login, payload, composedHandlers({
+			on401: function (data) { claimed = true; clearSlowTimer(); handleFirstFactor401(data, ctx, attachment, cred); },
 			// Stage 3 — the resolved "You're in" beat, painted BEFORE core's redirect runs
 			// (onSuccessEarly is invoked ahead of base's 200 handler; see composedHandlers).
-			onSuccessEarly: function () { clearSlowTimer(); applyLoginStatus("success"); },
+			onSuccessEarly: function () { claimed = true; clearSlowTimer(); applyLoginStatus("success"); },
 			onSuccess: function (data) {
 				rememberHint();
 				postLoginUpsell(attachment, data);
 			},
 		}));
+
+		// The single always-style seam: frappe.call (and the rawCall fallback) both return a
+		// thenable that settles AFTER the statusCode handler on every outcome — resolve OR
+		// reject/transport error. login.js itself relies on this contract (login.call(...).then).
+		// Pass finishVerify to both slots so it fires once regardless of settle direction.
+		if (call && typeof call.then === "function") {
+			call.then(finishVerify, finishVerify);
+		}
 	}
 
 	function handleFirstFactor401(data, ctx, attachment, cred) {
@@ -852,4 +886,14 @@
 	// expose a tiny surface for the DOM-contract Cypress job to assert against
 	window.frappe = window.frappe || {};
 	window.frappe._passkey_login = { boot: boot, _state: state, API: API, applyLoginStatus: applyLoginStatus };
+
+	// Node-only test seam (UMD-lite, mirrors passkey_common.js / passkey_confirm.js): expose
+	// the verify round-trip + status machine so `node --test` can pin the terminal-cleanup
+	// behaviour without a bench/jsdom. No-op in the browser — `module` is undefined there.
+	if (typeof module === "object" && module.exports) {
+		module.exports = {
+			state: state, runVerify: runVerify, applyLoginStatus: applyLoginStatus,
+			armSlowTimer: armSlowTimer, clearSlowTimer: clearSlowTimer, API: API,
+		};
+	}
 })();
