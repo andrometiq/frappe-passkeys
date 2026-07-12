@@ -75,7 +75,9 @@
 			if (cfg.onClose) cfg.onClose();
 		}
 		function onKey(e) {
-			if (e.key === "Escape") { e.preventDefault(); close(); return; }
+			// A static modal (a blocking enforcement gate) suppresses Esc dismissal —
+			// the overlay never wires a backdrop-click either, so it cannot be dismissed.
+			if (e.key === "Escape" && !cfg.static) { e.preventDefault(); close(); return; }
 			if (e.key === "Tab") {
 				var f = root.querySelectorAll("button, input, a[href], [tabindex]:not([tabindex='-1'])");
 				if (!f.length) return;
@@ -309,9 +311,11 @@
 		modal.open();
 	}
 
-	function addPasskey() {
+	function addPasskey(opts) {
+		opts = opts || {};
+		function done(ok) { if (typeof opts.onResult === "function") opts.onResult(ok); }
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
-			announce(t("This browser can't create passkeys.")); return;
+			announce(t("This browser can't create passkeys.")); done(false); return;
 		}
 		announce(t("Follow your device's prompt to add a passkey…"));
 		beginRegistration(false).then(function (begin) {
@@ -320,14 +324,15 @@
 			return navigator.credentials.create({ publicKey: options }).then(function (cred) {
 				var payload = cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
 				return post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (res) {
-					if (!res || !res.ok) { announce(t(M.COPY.addFailed)); return; }
-					announce(t("Passkey added.")); render();
+					if (!res || !res.ok) { announce(t(M.COPY.addFailed)); done(false); return; }
+					announce(t("Passkey added.")); render(); done(true);
 				});
 			}, function (err) {
 				var name = err && (err.name || err.code);
 				announce(name === "InvalidStateError" ? t(M.COPY.alreadyRegistered) : t(M.COPY.addFailed));
+				done(false);
 			});
-		}).catch(function () { announce(t(M.COPY.addFailed)); });
+		}).catch(function () { announce(t(M.COPY.addFailed)); done(false); });
 	}
 	function beginRegistration(retried) {
 		return post(METHODS.beginRegistration, { flow: "explicit" }).then(function (res) {
@@ -347,16 +352,93 @@
 		return out;
 	}
 
-	// ------------------------------------------------------- portal nudge banner
-	// A dismissible inline banner ("portal nudge banner") — never a modal.
-	function maybeNudgeBanner() {
+	// ------------------------------------------------ enforcement + nudge boot
+	// One capability probe drives both surfaces: the server enforcement verdict outranks
+	// the nudge (a user MUST register), then the dismissible nudge banner for everyone
+	// else. Enforcement on the portal must ride EVERY authenticated page (portal_nudge
+	// shim delivers this bundle everywhere) so a portal-only user can't escape by never
+	// opening /passkeys.
+	function maybeEnforceOrNudge() {
 		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
 		if (!b) return;
 		C.detectCapabilities({ window: window }).then(function (caps) {
-			var d = M.nudgeDecision(b, { supported: caps.supported, uvpaa: caps.uvpaa }, Date.now());
-			if (!d.showNudge) return;
-			renderNudgeBanner();
+			var clientCaps = { supported: caps.supported, uvpaa: caps.uvpaa, hybrid: caps.hybrid };
+			var enf = M.enforcementDecision(b, clientCaps);
+			if (enf.show) {
+				if (enf.notifyAdmin) reportIncapableOnce();
+				if (enf.variant === "enforce") { showEnforceModal(b, enf); return; }
+				// incapable + Degrade ⇒ the standard, non-blocking nudge banner
+				maybeNudgeBanner(b, clientCaps);
+				return;
+			}
+			maybeNudgeBanner(b, clientCaps);
 		}).catch(function () {});
+	}
+
+	function recordEnforcement(event) {
+		post(METHODS.recordEnforcement, { event: event }).catch(function () {}); // server owns grace
+	}
+	var _incapableReported = false;
+	function reportIncapableOnce() {
+		if (_incapableReported) return;
+		_incapableReported = true;
+		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE);
+	}
+
+	// The post-login ENFORCEMENT interstitial (portal). Blocking ⇒ a static modal
+	// (no Esc / no backdrop dismiss); the only ways out are enrolling or the incapable
+	// escape. Honest, guilt-free copy matching the desk gate.
+	function showEnforceModal(b, enf) {
+		var modal = buildModal({ title: t(M.COPY.enforceTitle), static: enf.blocking === true });
+		modal.body.appendChild(el("p", "", t(M.COPY.enforceBody)));
+		modal.actions.appendChild(primary(t(M.COPY.nudgeCta), function () { enforceCreate(modal); }));
+		if (!enf.blocking) {
+			var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
+			modal.actions.appendChild(link(later, function () {
+				recordEnforcement(M.ENFORCE_EVENTS.DEFER); modal._settled = true; modal.close();
+			}));
+		} else {
+			modal.actions.appendChild(link(t(M.COPY.enforceCantSetUp), function () { onEnforceCantSetUp(b, modal); }));
+		}
+		modal.open();
+	}
+
+	function enforceCreate(modal) {
+		// Keep a blocking modal open until enrollment actually succeeds (a cancelled
+		// OS sheet must not dismiss a required gate).
+		addPasskey({ onResult: function (ok) { if (ok) { modal._settled = true; modal.close(); } } });
+	}
+
+	// "I can't set one up here": alert the admin, then honor the incapable-device policy
+	// — Degrade lets them proceed (re-prompted next page), Block keeps the gate up with
+	// an escalation notice.
+	function onEnforceCantSetUp(b, modal) {
+		reportIncapableOnce();
+		var enf = (b && b.enforcement) || {};
+		if (enf.incapable_policy === "block_notify") {
+			modal.body.innerHTML = "";
+			var notice = el("p", "", t(M.COPY.enforceBlockedNotice));
+			notice.setAttribute("role", "alert");
+			modal.body.appendChild(notice);
+			modal.actions.innerHTML = "";
+		} else {
+			modal._settled = true;
+			modal.close();
+		}
+	}
+
+	// ------------------------------------------------------- portal nudge banner
+	// A dismissible inline banner ("portal nudge banner") — never a modal. Caps may be
+	// supplied by maybeEnforceOrNudge (one shared probe) or detected here.
+	function maybeNudgeBanner(b, caps) {
+		b = b || (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
+		if (!b) return;
+		function decide(c) {
+			var d = M.nudgeDecision(b, { supported: c.supported, uvpaa: c.uvpaa }, Date.now());
+			if (d.showNudge) renderNudgeBanner();
+		}
+		if (caps) { decide(caps); return; }
+		C.detectCapabilities({ window: window }).then(decide).catch(function () {});
 	}
 	function renderNudgeBanner() {
 		if (document.getElementById("passkey-portal-nudge")) return;
@@ -389,5 +471,5 @@
 
 	// --------------------------------------------------------------- boot
 	if (isPasskeyPage) render();
-	maybeNudgeBanner();
+	maybeEnforceOrNudge();
 })();
