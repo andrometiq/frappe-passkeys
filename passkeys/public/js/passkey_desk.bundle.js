@@ -509,7 +509,11 @@
 		if (_managerDialog) {
 			wireManagerDialogEsc(_managerDialog);
 			_managerDialog.show();
-			refresh({ dialog: _managerDialog });
+			// Re-render UNCONDITIONALLY with the known root so every reopen fetches fresh
+			// via list_credentials. The old refresh({dialog}) path passed no `.root` and
+			// then gated on $wrapper.is(":visible") — which is false mid fade-in — so the
+			// re-render was skipped and the stale DOM from the first open showed (A3).
+			if (_managerDialog._passkeyRoot) refresh({ root: _managerDialog._passkeyRoot });
 			return _managerDialog;
 		}
 		var d = new frappe.ui.Dialog({ title: t("My Passkeys"), size: "large" });
@@ -520,10 +524,20 @@
 			var root = el("div", "passkey-manager");
 			body.appendChild(root);
 			d._passkeyRoot = root;
+			addReloadAction(d, root);
 			renderCards(root, { dialog: d, root: root });
 		}
 		d.show();
 		return d;
+	}
+
+	// Native dialog affordance to re-fetch the card list on demand (e.g. a passkey was
+	// added or removed on another device while this dialog stayed open). Uses
+	// frappe.ui.Dialog.add_custom_action (present on v15/v16/develop); a no-op if it's
+	// somehow unavailable, so the dialog still opens.
+	function addReloadAction(d, root) {
+		if (!d || typeof d.add_custom_action !== "function") return;
+		d.add_custom_action(t("Reload"), function () { refresh({ root: root }); });
 	}
 
 	function refresh(opts) {

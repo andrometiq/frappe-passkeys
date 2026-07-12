@@ -241,7 +241,15 @@
 		var b = primary(t(M.COPY.addButton), addPasskey); b.classList.add("passkey-empty-cta");
 		w.appendChild(b); return w;
 	}
-	function addRow() { var row = el("div", "passkey-card-add-row"); row.appendChild(primary(t(M.COPY.addButton), addPasskey)); return row; }
+	function addRow() {
+		var row = el("div", "passkey-card-add-row");
+		row.appendChild(primary(t(M.COPY.addButton), addPasskey));
+		// Reload affordance (parity with the desk manager dialog): re-fetch the list for
+		// the "changed on another device while the page stayed open" case. render()
+		// re-runs list_credentials.
+		row.appendChild(link(t("Reload"), function () { render(); }));
+		return row;
+	}
 	function cardEl(vm) {
 		var li = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled")); li.setAttribute("data-name", vm.name);
 		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg("key", "icon"); li.appendChild(g);
