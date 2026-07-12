@@ -323,3 +323,53 @@ test("iconSvg: unknown icon name ⇒ empty string (both branches)", () => {
 	assert.strictEqual(C.iconSvg("nope", "icon"), "", "unknown, no doc ⇒ empty");
 	assert.strictEqual(C.iconSvg("nope", "icon", fakeDoc(["icon-nope"])), "", "unknown name is not a candidate ⇒ empty");
 });
+
+// ------------------------------------------------ signal builders (F1)
+// signalUnknownCredential needs a valid {rpId, credentialId(base64url)} — the old empty
+// {} rejected with TypeError and pruned nothing. buildUnknownCredentialSignal threads the
+// asserted rawId + rpId, guarding the honest row-not-found case only.
+
+test("credentialIdB64url: prefers cred.id (already base64url), else encodes rawId", () => {
+	assert.strictEqual(C.credentialIdB64url({ id: "AAECAw" }), "AAECAw");
+	// rawId bytes 0,1,2,3 -> base64url "AAECAw"
+	assert.strictEqual(C.credentialIdB64url({ rawId: new Uint8Array([0, 1, 2, 3]) }), "AAECAw");
+	assert.strictEqual(C.credentialIdB64url({}), null);
+	assert.strictEqual(C.credentialIdB64url(null), null);
+});
+
+test("buildUnknownCredentialSignal: threads {rpId, credentialId} when the assertion has a userHandle", () => {
+	const cred = { id: "Cred123", response: { userHandle: "dXNlcg" } };
+	assert.deepStrictEqual(
+		C.buildUnknownCredentialSignal(cred, "example.com"),
+		{ rpId: "example.com", credentialId: "Cred123" }
+	);
+	// live-credential shape: ArrayBuffer-ish userHandle + rawId
+	const live = { rawId: new Uint8Array([9, 9]), response: { userHandle: new Uint8Array([1]) } };
+	const built = C.buildUnknownCredentialSignal(live, "example.com");
+	assert.strictEqual(built.rpId, "example.com");
+	assert.ok(built.credentialId && built.credentialId.length > 0);
+});
+
+test("buildUnknownCredentialSignal: skips honestly — no rpId, no cred, or NO userHandle (don't hide a live passkey)", () => {
+	const cred = { id: "Cred123", response: { userHandle: "dXNlcg" } };
+	assert.strictEqual(C.buildUnknownCredentialSignal(cred, ""), null, "no rpId ⇒ skip");
+	assert.strictEqual(C.buildUnknownCredentialSignal(null, "example.com"), null, "no cred ⇒ skip");
+	// missing userHandle ⇒ the server's UnknownCredential may be the not-a-handle branch,
+	// where the credential could still be live — never signal it unknown.
+	assert.strictEqual(
+		C.buildUnknownCredentialSignal({ id: "Cred123", response: { userHandle: null } }, "example.com"),
+		null,
+		"missing userHandle ⇒ skip"
+	);
+	assert.strictEqual(
+		C.buildUnknownCredentialSignal({ id: "Cred123", response: { userHandle: "" } }, "example.com"),
+		null,
+		"empty-string userHandle ⇒ skip"
+	);
+	// no credentialId at all (neither id nor rawId) ⇒ nothing to signal
+	assert.strictEqual(
+		C.buildUnknownCredentialSignal({ response: { userHandle: "dXNlcg" } }, "example.com"),
+		null,
+		"no credentialId ⇒ skip"
+	);
+});

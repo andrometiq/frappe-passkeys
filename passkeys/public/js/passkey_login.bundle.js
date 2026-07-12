@@ -319,7 +319,7 @@
 		armSlowTimer();
 
 		frappeCall(API.verify_login, payload, composedHandlers({
-			on401: function (data) { clearSlowTimer(); handleFirstFactor401(data, ctx, attachment); },
+			on401: function (data) { clearSlowTimer(); handleFirstFactor401(data, ctx, attachment, cred); },
 			// Stage 3 — the resolved "You're in" beat, painted BEFORE core's redirect runs
 			// (onSuccessEarly is invoked ahead of base's 200 handler; see composedHandlers).
 			onSuccessEarly: function () { clearSlowTimer(); applyLoginStatus("success"); },
@@ -330,7 +330,7 @@
 		}));
 	}
 
-	function handleFirstFactor401(data, ctx, attachment) {
+	function handleFirstFactor401(data, ctx, attachment, cred) {
 		var kind = C.mapServerExcType(data && data.exc_type);
 		if (kind === "ceremony_expired") {
 			// re-begin + ONE fresh ceremony, at most once. NEVER re-POST.
@@ -351,8 +351,9 @@
 		}
 		if (kind === "unknown_credential") {
 			// A5 — the passkey is on the device but the server no longer has it (removed/
-			// stale). Give it a DISTINCT visible state instead of doing nothing.
-			signalUnknownCredential();
+			// stale). Give it a DISTINCT visible state instead of doing nothing, and (F1)
+			// tell the provider so it prunes the dead passkey from the device.
+			signalUnknownCredential(cred);
 			applyLoginStatus(C.loginStatusForServerKind(kind)); // -> "removed"
 			rearmAfterVisibleFailure(ctx);
 			return;
@@ -548,16 +549,30 @@
 	}
 
 	// ------------------------------------------------------- signals (fire-and-forget)
-	function signalUnknownCredential() {
+	// F1: pass the REAL {rpId, credentialId} for the credential the server just rejected, so
+	// the provider (Chrome/GPM) actually prunes the dead passkey from the device. The old
+	// call passed {} — per spec that rejects with TypeError and prunes nothing. The client
+	// already holds the asserted rawId (via cred) and the rpId. buildUnknownCredentialSignal
+	// guards the honest cases (skips when no userHandle, so a live credential is never hidden).
+	function signalUnknownCredential(cred) {
 		if (!window.PublicKeyCredential ||
 			typeof window.PublicKeyCredential.signalUnknownCredential !== "function") return;
-		// We have no rpId/credentialId to pass safely here without leaking; the server-side
-		// UnknownCredential is the authoritative feed. Post-login signalAllAcceptedCredentials
-		// is driven from get_signal_data (below). Guard the whole thing fire-and-forget.
+		var payload = C.buildUnknownCredentialSignal(cred, resolveRpId());
+		if (!payload) return;
 		try {
-			var p = window.PublicKeyCredential.signalUnknownCredential({});
+			var p = window.PublicKeyCredential.signalUnknownCredential(payload);
 			if (p && typeof p.catch === "function") p.catch(noop); // Safari 26 never-settles
 		} catch (e) { /* Firefox absent, etc. */ }
+	}
+
+	// The Relying Party ID for signal calls: the begin_login options carry it; else the
+	// boot payload; else the current host (all resolve to the same registrable domain).
+	function resolveRpId() {
+		var opts = state.login && state.login.options;
+		if (opts && opts.rpId) return opts.rpId;
+		var b = window.frappe && window.frappe.boot && window.frappe.boot.passkeys;
+		if (b && b.rp_id) return b.rp_id;
+		return (window.location && window.location.hostname) || null;
 	}
 
 	function postLoginUpsell(attachment, data) {

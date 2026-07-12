@@ -431,6 +431,48 @@
 		}
 	}
 
+	// ------------------------------------------------------- signal builders
+	// Base64url of a live PublicKeyCredential's id. cred.id is ALREADY the base64url of
+	// rawId per the WebAuthn spec; fall back to encoding rawId when a stub/older browser
+	// omits it. Returns null when neither is present.
+	function credentialIdB64url(cred) {
+		if (!cred) return null;
+		if (typeof cred.id === "string" && cred.id) return cred.id;
+		if (cred.rawId) {
+			try { return bytesToB64url(cred.rawId); } catch (e) { return null; }
+		}
+		return null;
+	}
+
+	// True when an assertion carried a non-empty userHandle (present as a base64url string
+	// in JSON, or an ArrayBuffer/typed array on a live credential).
+	function assertionHasUserHandle(cred) {
+		var r = cred && cred.response;
+		if (!r) return false;
+		var uh = r.userHandle;
+		if (uh == null) return false;
+		if (typeof uh === "string") return uh.length > 0;
+		if (typeof uh.byteLength === "number") return uh.byteLength > 0;
+		return true;
+	}
+
+	// Build the signalUnknownCredential payload {rpId, credentialId} (F1) from the asserted
+	// credential the server just rejected. The spec REQUIRES a valid base64url credentialId —
+	// the old empty {} rejected with TypeError and pruned nothing.
+	//
+	// Guard: only signal when the assertion carried a userHandle. The server raises
+	// UnknownCredential for BOTH "credential row not found" (safe to prune) AND "assertion
+	// had no userHandle" (the credential may still be live). The two are indistinguishable
+	// from exc_type alone, but a returned userHandle means we're in the row-not-found case,
+	// so we never risk telling a provider to hide a valid passkey. Returns null to skip.
+	function buildUnknownCredentialSignal(cred, rpId) {
+		if (!rpId || !cred) return null;
+		if (!assertionHasUserHandle(cred)) return null;
+		var credentialId = credentialIdB64url(cred);
+		if (!credentialId) return null;
+		return { rpId: rpId, credentialId: credentialId };
+	}
+
 	// ---------------------------------------------------------- a11y helpers
 	var LIVE_REGION_ID = "passkey-live-region";
 	function ensureLiveRegion(doc) {
@@ -898,6 +940,8 @@
 		LoginStatus: LoginStatus,
 		loginStatusForDomCode: loginStatusForDomCode,
 		loginStatusForServerKind: loginStatusForServerKind,
+		credentialIdB64url: credentialIdB64url,
+		buildUnknownCredentialSignal: buildUnknownCredentialSignal,
 		ensureLiveRegion: ensureLiveRegion,
 		announce: announce,
 		captureFocus: captureFocus,

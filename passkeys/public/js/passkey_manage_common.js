@@ -483,7 +483,25 @@
 		var userHandle = s.user_handle || s.userHandle || null;
 		var ids = s.credential_ids || s.credentialIds || null;
 		if (!userHandle || !Array.isArray(ids)) return null;
+		// F3: an EMPTY ids array is valid and INTENTIONAL — after a genuine last-passkey
+		// delete the provider is meant to hide ALL of the user's passkeys. We reject only a
+		// NON-array (nothing to signal); [] passes through on purpose. The desk/portal caller
+		// fires this only behind a successful server read, so a failed list never sends [].
 		return { userHandle: userHandle, allAcceptedCredentialIds: ids.slice() };
+	}
+
+	// Shape a signalCurrentUserDetails payload (F2) from a get_signal_data response or a
+	// verify_registration signal block. Returns null when there's nothing to sync.
+	// signalCurrentUserDetails needs BOTH name + displayName; if the server sent only one,
+	// mirror it into the other so the provider's account-chooser label is never blanked.
+	function currentUserDetailsPayload(data) {
+		var s = data && (data.signal || data);
+		if (!s) return null;
+		var userHandle = s.user_handle || s.userHandle || null;
+		var name = s.name || null;
+		var displayName = s.display_name || s.displayName || null;
+		if (!userHandle || (!name && !displayName)) return null;
+		return { userHandle: userHandle, name: name || displayName, displayName: displayName || name };
 	}
 
 	return {
@@ -514,5 +532,6 @@
 		originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
 		signalPayload: signalPayload,
+		currentUserDetailsPayload: currentUserDetailsPayload,
 	};
 });
