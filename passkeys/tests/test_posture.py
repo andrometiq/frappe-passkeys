@@ -152,3 +152,58 @@ class BuildPostureSmokeTest(IntegrationTestCase):
 				get_security_posture()
 		finally:
 			frappe.set_user("Administrator")
+
+
+class AdoptionCountsTest(IntegrationTestCase):
+	"""The adoption numerator (passkey_only handles) is counted over the SAME enabled,
+	non-Administrator/Guest population as the denominator, so it can never exceed it
+	(n <= m). It used to count handles over ALL users, so an Administrator or disabled
+	user with a passkey-only handle could push n above m."""
+
+	def _make_user(self, enabled=1) -> str:
+		user = frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": f"posture-{frappe.generate_hash(length=8)}@example.com",
+				"first_name": "Posture",
+				"enabled": enabled,
+				"send_welcome_email": 0,
+			}
+		)
+		user.flags.no_welcome_mail = True
+		user.insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "User", user.name, force=1, ignore_permissions=True)
+		return user.name
+
+	def _passkey_only_handle(self, user: str) -> None:
+		handle = frappe.get_doc(
+			{"doctype": "WebAuthn User Handle", "user": user, "handle": frappe.generate_hash(length=64)}
+		).insert(ignore_permissions=True)
+		# flip the flag directly — the enabled-credential floor is irrelevant to counting
+		frappe.db.set_value("WebAuthn User Handle", handle.name, "passkey_only_login", 1)
+		self.addCleanup(
+			frappe.delete_doc, "WebAuthn User Handle", handle.name, force=1, ignore_permissions=True
+		)
+
+	def test_numerator_never_exceeds_the_denominator(self):
+		n0, m0 = posture._adoption_counts()
+		self.assertLessEqual(n0, m0)
+
+		# an enabled, eligible user with a passkey-only handle lifts BOTH counts by one
+		self._passkey_only_handle(self._make_user(enabled=1))
+		n1, m1 = posture._adoption_counts()
+		self.assertEqual((n1, m1), (n0 + 1, m0 + 1))
+
+		# a DISABLED user with a passkey-only handle lifts NEITHER (excluded from n and m)
+		self._passkey_only_handle(self._make_user(enabled=0))
+		n2, m2 = posture._adoption_counts()
+		self.assertEqual((n2, m2), (n1, m1))
+		self.assertLessEqual(n2, m2)
+
+	def test_administrator_passkey_only_handle_is_excluded_from_numerator(self):
+		if frappe.db.exists("WebAuthn User Handle", {"user": "Administrator"}):
+			self.skipTest("Administrator already has a WebAuthn User Handle on this site")
+		n0, m0 = posture._adoption_counts()
+		self._passkey_only_handle("Administrator")
+		# Administrator is out of both populations, so neither count moves
+		self.assertEqual(posture._adoption_counts(), (n0, m0))

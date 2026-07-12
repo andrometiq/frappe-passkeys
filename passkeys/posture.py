@@ -302,6 +302,7 @@ def build_posture() -> dict:
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	core_2fa = bool(cint(_system_setting("enable_two_factor_auth")))
+	passkey_only_count, login_user_count = _adoption_counts()
 	return classify_posture(
 		{
 			"first_factor": bool(cint(settings.login_with_passkey)),
@@ -312,15 +313,40 @@ def build_posture() -> dict:
 			"ldap_enabled": _ldap_enabled(),
 			"core_2fa_enabled": core_2fa,
 			"core_2fa_method": (_system_setting("two_factor_method") or None) if core_2fa else None,
-			"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
-			"login_user_count": frappe.db.count(
-				"User", {"enabled": 1, "name": ["not in", ("Administrator", "Guest")]}
-			),
+			"passkey_only_user_count": passkey_only_count,
+			"login_user_count": login_user_count,
 			"enforcement_effective": boot._policy_effective(settings),
 			"sign_count_hard_fail": bool(cint(settings.passkey_sign_count_hard_fail)),
 			"reauth_window": cint(settings.passkey_reauth_window),
 		}
 	)
+
+
+def _adoption_counts() -> tuple[int, int]:
+	"""``(passkey_only_count, login_user_count)`` for the adoption row, counted over the
+	SAME eligible population — enabled Users excluding Administrator and Guest.
+
+	The denominator ``m`` always excluded Administrator/Guest and disabled users, but the
+	numerator ``n`` used to count ``passkey_only_login`` handles over ALL users, so an
+	Administrator or a disabled user with a passkey-only handle could push ``n`` above
+	``m`` (n > m). Joining the handle count to the same eligible User set keeps n <= m."""
+	from frappe.query_builder.functions import Count
+
+	User = frappe.qb.DocType("User")
+	Handle = frappe.qb.DocType("WebAuthn User Handle")
+	eligible = (User.enabled == 1) & (User.name.notin(["Administrator", "Guest"]))
+
+	login_user_count = frappe.qb.from_(User).select(Count("*")).where(eligible).run()[0][0]
+	passkey_only_count = (
+		frappe.qb.from_(Handle)
+		.inner_join(User)
+		.on(Handle.user == User.name)
+		.select(Count("*"))
+		.where(Handle.passkey_only_login == 1)
+		.where(eligible)
+		.run()[0][0]
+	)
+	return cint(passkey_only_count), cint(login_user_count)
 
 
 def _system_setting(field: str):
