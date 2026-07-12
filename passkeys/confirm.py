@@ -307,7 +307,7 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
-		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
+		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
@@ -476,7 +476,7 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
 		state.record_password_failure(user)
-		raise frappe.AuthenticationError(_("Incorrect password."))
+		raise frappe.AuthenticationError(_("That password didn't match — try again."))
 	state.clear_password_failures(user)
 
 	if action:
