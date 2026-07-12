@@ -16,19 +16,21 @@ const visit_user_passkeys = () => {
 	cy.visit_desk(USER);
 	cy.window().its("cur_frm.doc.name", { timeout: 20000 }).should("eq", USER);
 	cy.document().then((doc) => {
+		// The Passkeys section lives in the Settings tab now (right after the password
+		// area), not the Connections tab.
 		const tabs = Array.from(doc.querySelectorAll("a, button, [role='tab']"));
 		const tab = tabs.find(
 			(el) =>
-				(el.textContent || "").trim() === "Connections" ||
-				el.getAttribute("href") === "#user-connections_tab" ||
-				el.getAttribute("data-target") === "#user-connections_tab" ||
-				el.getAttribute("data-bs-target") === "#user-connections_tab" ||
-				el.getAttribute("aria-controls") === "user-connections_tab"
+				(el.textContent || "").trim() === "Settings" ||
+				el.getAttribute("href") === "#user-settings_tab" ||
+				el.getAttribute("data-target") === "#user-settings_tab" ||
+				el.getAttribute("data-bs-target") === "#user-settings_tab" ||
+				el.getAttribute("aria-controls") === "user-settings_tab"
 		);
-		expect(tab, "Connections tab").to.exist;
+		expect(tab, "Settings tab").to.exist;
 		tab.click();
 	});
-	cy.get("#user-connections_tab", { timeout: 20000 }).should("be.visible");
+	cy.get("#user-settings_tab", { timeout: 20000 }).should("be.visible");
 };
 
 const own_passkey_root = () => cy.get(".passkey-cards-root:visible", { timeout: 20000 }).last();
