@@ -122,10 +122,12 @@ all passkey UI disappears, the login and second-factor ceremonies refuse, but
 every credential row is preserved and the action-confirmation primitive keeps
 working. Re-enabling restores everything. Prefer this for temporary changes.
 
-**Uninstall** is destructive — it drops the app's DocTypes and their tables, so
-every stored credential is destroyed. Passkeys held on users' authenticators
-then orphan (the server-side public key they matched is gone). Only uninstall
-when you mean it.
+**Uninstall** drops the app's DocTypes and their tables. On its own that would
+destroy every stored credential and orphan the passkeys held on users'
+authenticators (the server-side public key they matched would be gone). To make
+removal recoverable, `before_uninstall` **exports every credential first** (see
+"Credential export on uninstall" below), so an uninstall is a reversible move
+rather than a one-way delete. Still, only uninstall when you mean it.
 
 ## Uninstall
 
@@ -149,3 +151,50 @@ lockout cases, so you cannot strand your users by accident:
 Once the guards pass, uninstall also deletes the app's per-user nudge state and
 its property setter, so a later reinstall is a clean slate. Cached challenge /
 grant / sudo state in Redis expires on its own.
+
+### Credential export on uninstall
+
+Because dropping the tables would otherwise destroy every enrolled passkey,
+`before_uninstall` first writes **all** `WebAuthn Credential` and `WebAuthn User
+Handle` rows to a single JSON file, then prints its path in the uninstall output:
+
+```
+passkeys: credentials exported before uninstall -> .../private/files/passkeys-credentials-YYYYMMDD-HHMMSS.json
+passkeys: to restore them after reinstalling, run in `bench --site <site> console`:
+passkeys:   from passkeys.install import import_credentials; import_credentials("<path>")
+```
+
+- **Where it lands.** The site's private files —
+  `sites/<site>/private/files/passkeys-credentials-<timestamp>.json`. It is not a
+  web-served public file. The export is skipped (no file, nothing printed) when
+  there are no credentials to save.
+- **What it contains.** Public-key material and metadata only — the credential
+  public keys, signature counters, backup flags, labels, transports, AAGUID, and
+  the opaque user handles with each user's *Passkey Only Login* flag. **No server
+  secret exists in either table**, so the file is safe to keep alongside a site
+  backup; a public key is useless to an attacker who obtains it.
+
+**Restore (reinstall on the same site).** Reinstall the app, then replay the file:
+
+```bash
+bench --site <site> install-app passkeys
+bench --site <site> console
+>>> from passkeys.install import import_credentials
+>>> import_credentials("sites/<site>/private/files/passkeys-credentials-<timestamp>.json")
+{'credentials_created': 4, 'credentials_skipped': 0, 'handles_created': 3, 'handles_skipped': 0}
+```
+
+`import_credentials` is **idempotent**, keyed on `credential_id_sha256` for
+credentials and on `user` for handles: a row that already exists is skipped, so
+re-running is safe and never duplicates. Signature counters are restored verbatim
+(never reset to zero), and credentials are restored before handles so a
+`Passkey Only Login` handle clears its "needs an enabled passkey" floor. The
+authenticators users still hold keep working against the restored public keys —
+no re-enrollment.
+
+**Core-handoff note (honest).** When a future Frappe serves passkeys natively,
+this same export is the **migration seed** — the durable, secret-free record of
+every credential a site had. The exact field-to-field mapping into core's schema
+is deliberately *not* written yet: it will be authored once that schema actually
+exists, so the mapping matches reality instead of a guess. Until then, keep the
+export file if you plan to adopt the native feature later.
