@@ -32,6 +32,23 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.addCleanup(self._clear_flags)
 
+	def tearDown(self):
+		# The framework has NO per-test rollback (isolation is per-class, and only for
+		# UNCOMMITTED rows). A leg here can leave a COMMITTED passkey_only handle — a
+		# mid-test role/permission write commits, making the row durable past the class
+		# rollback. Force-sweep the passkey_only rows this battery creates (incl. the
+		# Administrator handle) and commit, so a stray passkey_only row can never leak into
+		# a later module's last-login-method guard (which lists it and refuses the save).
+		super().tearDown()
+		frappe.set_user("Administrator")
+		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
+		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
+		frappe.db.delete("WebAuthn Credential", {"user": "Administrator"})
+		frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"})
+		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
+			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+		frappe.db.commit()  # must survive past the (per-class) rollback
+
 	def _clear_flags(self):
 		if getattr(frappe.local, "flags", None) is not None:
 			frappe.local.flags.pop("passkey_login", None)
