@@ -170,3 +170,22 @@ def get_resolved_rp_id() -> dict:
 		"rp_id": policy.resolve_rp_id(settings),
 		"host_name_configured": bool((frappe.conf.get("host_name") or "").strip()),
 	}
+
+
+@frappe.whitelist(methods=["POST"])
+def get_security_posture() -> dict:
+	"""Return the admin security-posture verdict for the Passkey Settings page: given
+	the site's ACTUAL auth surface (password / email-link / social / LDAP sign-in + the
+	core second factor) and this app's own state, can a passkey still be bypassed, and
+	how to close each gap.
+
+	Read-only and System-Manager-gated (the settings form is admin-only), so — unlike
+	guest login copy — the rows are deliberately concrete about the exact setting to
+	change. Follows the app endpoint idioms: ``refuse_if_core_native`` first (dormant
+	417) and a per-user rate limit."""
+	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	frappe.only_for("System Manager")
+	state.rate_limit_user("get_security_posture", 30, 60)  # 30/min/user
+	from passkeys import posture
+
+	return posture.build_posture()

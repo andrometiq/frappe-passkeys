@@ -313,3 +313,45 @@
 	background: var(--blue-900, #16273c);
 	border-color: var(--blue-700, #2b6cb0);
 }
+
+/* --------------------------------------------------------------------------
+ * Security-posture panel (Passkey Settings form). Admin-only verdict: one
+ * headline first, then severity-ordered rows (one problem line + one
+ * recommendation line each), disclaimer last. Uses Frappe's semantic tokens so
+ * light/dark both adapt without a prefers-color-scheme dependency.
+ * ------------------------------------------------------------------------ */
+.passkey-posture {
+	margin: 0 0 12px;
+}
+.passkey-posture-title {
+	font-weight: 600;
+	font-size: var(--text-md, 14px);
+	margin: 4px 0 6px;
+}
+.passkey-posture-verdict {
+	font-weight: 600;
+	margin-bottom: 10px;
+}
+.passkey-posture-row {
+	border-left: 3px solid var(--gray-400, #b8bcc5);
+	padding: 4px 0 4px 10px;
+	margin: 6px 0;
+}
+.passkey-posture-row[data-indicator="red"] { border-left-color: var(--red-500, #e24c4c); }
+.passkey-posture-row[data-indicator="orange"] { border-left-color: var(--orange-500, #f5a623); }
+.passkey-posture-row[data-indicator="blue"] { border-left-color: var(--blue-500, #2490ef); }
+.passkey-posture-row[data-indicator="gray"] { border-left-color: var(--gray-400, #b8bcc5); }
+.passkey-posture-problem {
+	line-height: 1.4;
+}
+.passkey-posture-fix {
+	font-size: var(--text-sm, 12px);
+	color: var(--text-muted, #6c7680);
+	margin-top: 2px;
+}
+.passkey-posture-fix::before {
+	content: "\2192\00a0"; /* → */
+}
+.passkey-posture-note {
+	opacity: 0.85;
+}

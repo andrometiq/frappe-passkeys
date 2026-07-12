@@ -609,6 +609,51 @@
 		return s || null;
 	}
 
+	// ---------------------------------------------------- security posture panel
+	// Pure renderer for the admin "Security posture" panel. The SERVER
+	// (posture.build_posture) ships the verdict + already-translated rows; this only
+	// ORDERS them for the attention hierarchy and shapes a view-model — NO copy lives
+	// here (the reveal-vs-vague split is decided server-side, on the SM-only surface).
+	// Order: severity high→medium→low→info, and the detectability disclaimer
+	// (detectable === false) always sorts LAST regardless of its severity.
+	var POSTURE_SEVERITY_RANK = { high: 0, medium: 1, low: 2, info: 3 };
+
+	function posturePanel(response) {
+		response = response || {};
+		var verdict = response.verdict || {};
+		var rows = Array.isArray(response.rows) ? response.rows.slice() : [];
+		// Stable sort (V8): the disclaimer sinks last, then by severity; server order
+		// is preserved within a bucket.
+		rows.sort(function (a, b) {
+			var da = a && a.detectable === false ? 1 : 0;
+			var db = b && b.detectable === false ? 1 : 0;
+			if (da !== db) return da - db;
+			var ra = POSTURE_SEVERITY_RANK[a && a.severity];
+			var rb = POSTURE_SEVERITY_RANK[b && b.severity];
+			if (ra === undefined) ra = 9;
+			if (rb === undefined) rb = 9;
+			return ra - rb;
+		});
+		return {
+			headline: {
+				text: verdict.headline || "",
+				tone: verdict.tone || "info", // "high" | "good" | "info"
+				canBypass: verdict.can_bypass === true,
+			},
+			rows: rows.map(function (r) {
+				r = r || {};
+				return {
+					code: r.code || "",
+					severity: r.severity || "info",
+					what: r.what || "",
+					why: r.why || "",
+					recommendation: r.recommendation || "",
+					detectable: r.detectable !== false,
+				};
+			}),
+		};
+	}
+
 	// ---------------------------------------------------------- signal payloads
 	// Shape a signalAllAcceptedCredentials payload from a verify_registration
 	// signal block or a get_signal_data response. Returns null when
@@ -670,6 +715,7 @@
 		deriveOrigins: deriveOrigins,
 		originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
+		posturePanel: posturePanel,
 		signalPayload: signalPayload,
 		currentUserDetailsPayload: currentUserDetailsPayload,
 	};
