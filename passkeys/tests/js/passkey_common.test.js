@@ -262,3 +262,18 @@ test("ensureLiveRegion is idempotent and polite; announce writes text", () => {
 	C.announce(doc, "expired — retrying");
 	assert.strictEqual(r1.textContent, "expired — retrying");
 });
+
+// ------------------------------------------------------------- inline icons (A2)
+// App-shipped lucide SVGs replace the version-dependent #icon-* sprite refs that
+// rendered as blank squares on Frappe v15.
+test("iconSvg: returns a self-contained inline SVG with pinned stroke, keeps the class", () => {
+	for (const name of ["pencil", "trash", "key"]) {
+		const svg = C.iconSvg(name, "icon icon-sm");
+		assert.match(svg, /^<svg /, "must be an inline <svg>");
+		assert.ok(svg.indexOf('class="icon icon-sm"') !== -1, "keeps the caller's classes for sizing/theming");
+		assert.ok(svg.indexOf("#icon-") === -1, "must not reference the host icon sprite");
+		assert.ok(svg.indexOf("stroke:currentColor") !== -1, "stroke pinned inline so v15's fill/stroke vars can't blank it");
+		assert.ok(svg.indexOf('viewBox="0 0 24 24"') !== -1, "24x24 lucide viewBox");
+	}
+	assert.strictEqual(C.iconSvg("nope", "icon"), "", "unknown icon name ⇒ empty string");
+});
