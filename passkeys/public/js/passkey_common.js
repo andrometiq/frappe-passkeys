@@ -429,6 +429,35 @@
 		return body;
 	}
 
+	// Extract the human-readable text Frappe puts in a thrown error's
+	// `_server_messages` (a JSON string of JSON-encoded {message,...} dicts) so a
+	// server refusal (e.g. the last-passkey delete guard) is surfaced VERBATIM instead
+	// of collapsed into a generic string (A4). Returns null when there is none.
+	function serverMessages(body) {
+		if (!body || typeof body !== "object" || !body._server_messages) return null;
+		var arr;
+		try {
+			arr = typeof body._server_messages === "string"
+				? JSON.parse(body._server_messages)
+				: body._server_messages;
+		} catch (e) {
+			return null;
+		}
+		if (!Array.isArray(arr) || !arr.length) return null;
+		var msgs = [];
+		for (var i = 0; i < arr.length; i++) {
+			var text = "";
+			try {
+				var o = typeof arr[i] === "string" ? JSON.parse(arr[i]) : arr[i];
+				text = o && typeof o === "object" ? (o.message || "") : String(arr[i]);
+			} catch (e) {
+				text = String(arr[i]);
+			}
+			if (text) msgs.push(String(text));
+		}
+		return msgs.length ? msgs.join(" ") : null;
+	}
+
 	// Parse a 401 body into the retry contract, or null if it isn't one. Clients
 	// match on exc_type ONLY. Echoes payload_fingerprint VERBATIM —
 	// JS never computes a hash.
@@ -555,8 +584,11 @@
 					Array.isArray(begin.methods) ? begin.methods : input.methods
 				);
 				if (!caps.passkey && !caps.password) {
+					// Genuinely can't re-auth (weak login, no password, no usable passkey):
+					// tell the user what to do instead of a dead-end generic error (A4).
 					return reject(CONFIRM_CODES.FALLBACK_UNAVAILABLE,
-						"This action needs a passkey, and none is available.");
+						"This needs you to confirm it's you, but this sign-in can't be confirmed " +
+						"with a passkey or password. Sign in again with your password or a passkey, then try again.");
 				}
 				var controller = ui();
 				return Promise.resolve()
@@ -598,10 +630,12 @@
 				})
 				.then(function (res) {
 					if (!res || !res.ok) {
-						// An assertion is NEVER re-POSTed; failure = fresh ceremony.
+						// An assertion is NEVER re-POSTed; failure = fresh ceremony. Surface
+						// any server message; otherwise honest copy that points at the password.
 						controller.announce(tr("That didn't work — please try again."));
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
-							tr("Couldn't confirm with your passkey."));
+							serverMessages(res && res.body) ||
+								tr("That passkey didn't confirm it's you. Try again, or use your password."));
 					}
 					var grant = extractGrant(res.body);
 					if (!grant) throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Confirmation didn't complete."));
@@ -666,8 +700,12 @@
 				}).then(function (grant) {
 					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
 						if (res2 && res2.ok) return unwrapMessage(res2.body);
+						// Confirmed, but the retry still failed. A specific server refusal
+						// (e.g. the last-passkey delete guard, which fires only AFTER the sudo
+						// gate passes) is surfaced verbatim instead of collapsed (A4).
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
-							tr("The action couldn't be confirmed."));
+							serverMessages(res2 && res2.body) ||
+								tr("We confirmed it's you, but the action still didn't go through — please try again."));
 					});
 				});
 			}, function () {
@@ -683,9 +721,11 @@
 			// call site below; distinguishing the two lets callers tell "offline" from
 			// "the server said no". Stays inside the fixed taxonomy: a
 			// reached-but-failed request is `confirmation_failed`, never `network`.
-			void res;
+			// Surface the server's own message when it carried one (e.g. the
+			// last-passkey delete guard's ValidationError) instead of a generic string (A4).
 			return new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
-				tr("The action couldn't be confirmed — please try again."));
+				serverMessages(res && res.body) ||
+					tr("The action couldn't be confirmed — please try again."));
 		}
 
 		return { confirm: confirm, call: call, run: run, _inflight: inflight };
@@ -722,6 +762,7 @@
 		CONFIRM_EXC_TYPE: CONFIRM_EXC_TYPE,
 		CONFIRM_CODES: CONFIRM_CODES,
 		unwrapMessage: unwrapMessage,
+		serverMessages: serverMessages,
 		parseConfirmationRequired: parseConfirmationRequired,
 		buildGrantHeaders: buildGrantHeaders,
 		confirmSignature: confirmSignature,
