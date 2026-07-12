@@ -94,6 +94,33 @@ test("strict:false is an escape hatch that lets any transition through", () => {
 
 // ------------------------------------------------ browser-error → state mapping
 
+test("A5: the removed/stale-passkey state is distinct, error-toned, and doesn't assert the account fact", () => {
+	const v = C.loginStatusView("removed");
+	assert.strictEqual(v.tone, "error");
+	assert.strictEqual(v.visible, true);
+	assert.match(v.text, /didn't work here/);
+	assert.match(v.text, /may have been removed/);
+	// midway rule: must NOT assert enrolment ("isn't registered"/"unknown")
+	assert.doesNotMatch(v.text, /registered|unknown|not enrolled/i);
+	// it is NOT the same copy as the generic failure
+	assert.notStrictEqual(v.text, C.loginStatusView("failed").text);
+});
+
+test("removed is reachable mid-ceremony and re-arms back to the form", () => {
+	const m = new C.LoginStatus({ state: "verifying" });
+	assert.strictEqual(m.can("removed"), true);
+	assert.strictEqual(m.to("removed").text, C.loginStatusView("removed").text);
+	assert.strictEqual(m.can("waiting"), true); // returns the user to the login form
+	assert.strictEqual(m.can("verifying"), true);
+});
+
+test("loginStatusForServerKind: unknown_credential ⇒ removed; every other typed refusal ⇒ failed", () => {
+	assert.strictEqual(C.loginStatusForServerKind("unknown_credential"), "removed");
+	assert.strictEqual(C.loginStatusForServerKind("ceremony_expired"), "failed");
+	assert.strictEqual(C.loginStatusForServerKind("confirmation_required"), "failed");
+	assert.strictEqual(C.loginStatusForServerKind("unknown"), "failed");
+});
+
 test("loginStatusForDomCode: cancel + timeout collapse to cancelled; unsupported stays distinct", () => {
 	// cancel and timeout are BOTH NotAllowedError → user_cancelled → cancelled (honest collapse)
 	assert.strictEqual(C.loginStatusForDomCode("user_cancelled"), "cancelled");
