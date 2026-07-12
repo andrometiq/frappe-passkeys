@@ -1,0 +1,1237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Passkeys Are Safer — and When They Aren't</title>
+<style>
+  /* ============================================================
+     THEME TOKENS — subject world: keys, locks, brass, ink-blue.
+     Light is the default; dark is defined three ways so the
+     viewer's toggle wins in both directions:
+       :root                              -> light
+       @media (prefers-color-scheme:dark) -> follow system
+       :root[data-theme="dark"]           -> forced dark
+       :root[data-theme="light"]          -> forced light
+     ============================================================ */
+  :root {
+    --bg:            #F7F6F2;   /* warm paper ground        */
+    --surface:       #FCFBF7;   /* raised card              */
+    --surface-2:     #EFEDE6;   /* sunken / muted fill      */
+    --ink:           #1C2733;   /* body text                */
+    --steel:         #5E6B7A;   /* muted text / hairline ink*/
+    --hairline:      #DBD7CD;   /* borders                  */
+    --brass:         #A97E2F;   /* key-gold accent (identity)*/
+    --brass-tint:    #F1E7D0;
+    --green:         #2E7D57;   /* semantic: safe (text/stroke)*/
+    --green-tint:    #DCEDE4;
+    --red:           #B4443C;   /* semantic: phishable (text/stroke)*/
+    --red-tint:      #F5E0DD;
+    --verdict-safe-bg:  #2E7D57;
+    --verdict-phish-bg: #B4443C;
+    --on-verdict:    #FFFFFF;
+    --shadow:        rgba(28, 39, 51, .10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:          #131A22;   /* deep blue-ink            */
+      --surface:     #1B2530;
+      --surface-2:   #233040;
+      --ink:         #E9E5DB;   /* paper-warm text          */
+      --steel:       #97A4B2;
+      --hairline:    #2C3A47;
+      --brass:       #C9A050;   /* brass lifted for contrast*/
+      --brass-tint:  #332C1A;
+      --green:       #5FC098;
+      --green-tint:  #16352A;
+      --red:         #E88C82;
+      --red-tint:    #3A211E;
+      --verdict-safe-bg:  #2E7D57;
+      --verdict-phish-bg: #B4443C;
+      --on-verdict:  #FFFFFF;
+      --shadow:      rgba(0, 0, 0, .45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:          #131A22;
+    --surface:     #1B2530;
+    --surface-2:   #233040;
+    --ink:         #E9E5DB;
+    --steel:       #97A4B2;
+    --hairline:    #2C3A47;
+    --brass:       #C9A050;
+    --brass-tint:  #332C1A;
+    --green:       #5FC098;
+    --green-tint:  #16352A;
+    --red:         #E88C82;
+    --red-tint:    #3A211E;
+    --verdict-safe-bg:  #2E7D57;
+    --verdict-phish-bg: #B4443C;
+    --on-verdict:  #FFFFFF;
+    --shadow:      rgba(0, 0, 0, .45);
+  }
+  :root[data-theme="light"] {
+    --bg:          #F7F6F2;
+    --surface:     #FCFBF7;
+    --surface-2:   #EFEDE6;
+    --ink:         #1C2733;
+    --steel:       #5E6B7A;
+    --hairline:    #DBD7CD;
+    --brass:       #A97E2F;
+    --brass-tint:  #F1E7D0;
+    --green:       #2E7D57;
+    --green-tint:  #DCEDE4;
+    --red:         #B4443C;
+    --red-tint:    #F5E0DD;
+    --verdict-safe-bg:  #2E7D57;
+    --verdict-phish-bg: #B4443C;
+    --on-verdict:  #FFFFFF;
+    --shadow:      rgba(28, 39, 51, .10);
+  }
+
+  /* ---------- type stacks (system only, no webfonts) ---------- */
+  :root {
+    --serif: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --pad:   clamp(1rem, 4.5vw, 2.25rem);
+    --measure: 65ch;
+  }
+
+  /* ---------- base ---------- */
+  .pk-root {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: clamp(1rem, 0.96rem + 0.2vw, 1.075rem);
+    line-height: 1.65;
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;            /* body must never scroll sideways */
+  }
+  .pk-root *, .pk-root *::before, .pk-root *::after { box-sizing: border-box; }
+  .pk-root img, .pk-root svg { max-width: 100%; }
+
+  /* ---------- progress bar (quiet, top of page) ---------- */
+  .progress-track {
+    position: fixed; inset: 0 0 auto 0; height: 3px;
+    background: transparent; z-index: 40;
+  }
+  .progress-bar {
+    height: 100%; width: 0%;
+    background: var(--brass);
+    transition: width .12s linear;
+  }
+
+  /* ---------- theme toggle ---------- */
+  .theme-toggle {
+    position: fixed; top: 12px; right: 12px; z-index: 41;
+    display: inline-flex; align-items: center; gap: .4em;
+    font: 600 .82rem/1 var(--sans);
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 999px;
+    padding: .5em .8em; cursor: pointer;
+    box-shadow: 0 2px 10px var(--shadow);
+  }
+  .theme-toggle svg { width: 1em; height: 1em; display: block; }
+  .theme-toggle .ico-sun  { display: none; }
+  .theme-toggle .ico-moon { display: inline; }
+  @media (prefers-color-scheme: dark) {
+    .theme-toggle .ico-sun  { display: inline; }
+    .theme-toggle .ico-moon { display: none; }
+  }
+  :root[data-theme="dark"]  .theme-toggle .ico-sun  { display: inline; }
+  :root[data-theme="dark"]  .theme-toggle .ico-moon { display: none; }
+  :root[data-theme="light"] .theme-toggle .ico-sun  { display: none; }
+  :root[data-theme="light"] .theme-toggle .ico-moon { display: inline; }
+
+  /* ---------- layout ---------- */
+  .wrap { padding: 0 var(--pad) 4rem; }
+  .prose { max-width: var(--measure); margin-inline: auto; }
+  .figure { max-width: 62rem; margin: 1.6rem auto; }
+  .figure figcaption {
+    max-width: var(--measure); margin: .7rem auto 0;
+    font-size: .82rem; color: var(--steel); line-height: 1.5;
+  }
+  .scroll-x { overflow-x: auto; overflow-y: hidden; padding-bottom: .35rem; }
+  .scroll-x::-webkit-scrollbar { height: 8px; }
+  .scroll-x::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 999px; }
+
+  .sec { padding: clamp(2.25rem, 6vw, 3.75rem) 0; border-top: 1px solid var(--hairline); }
+  .sec:first-of-type { border-top: 0; }
+
+  /* ---------- headings & prose ---------- */
+  .masthead { max-width: 62rem; margin: 0 auto; padding-top: clamp(2.5rem, 8vw, 5rem); }
+  .display, h1.display {
+    font-family: var(--serif);
+    font-weight: 600;
+    text-wrap: balance;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: .35rem 0 0;
+  }
+  h1.display { font-size: clamp(2.1rem, 5.4vw, 3.4rem); }
+  h2 {
+    font-family: var(--serif); font-weight: 600; text-wrap: balance;
+    line-height: 1.14; letter-spacing: -0.01em;
+    font-size: clamp(1.55rem, 3.4vw, 2.15rem);
+    margin: .1rem 0 .6rem;
+  }
+  h3 {
+    font-family: var(--sans); font-weight: 700;
+    font-size: 1.05rem; margin: 1.6rem 0 .35rem;
+  }
+  .eyebrow {
+    font: 600 .74rem/1.3 var(--sans);
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--steel); margin: 0 0 .1rem;
+  }
+  .eyebrow .num { color: var(--brass); }
+  .dek {
+    font-size: clamp(1.05rem, 1rem + 0.5vw, 1.28rem);
+    color: var(--steel); line-height: 1.55; text-wrap: pretty;
+    margin: 1.1rem 0 0; max-width: 54ch;
+  }
+  p { margin: 0 0 1rem; text-wrap: pretty; }
+  .prose ul, .prose ol { margin: 0 0 1rem; padding-left: 1.2em; }
+  .prose li { margin: .3rem 0; }
+  strong { font-weight: 700; }
+  a { color: var(--brass); text-underline-offset: 2px; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+
+  code, .mono { font-family: var(--mono); font-size: .92em; }
+  .prose code {
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    border-radius: 4px; padding: .05em .35em; word-break: break-word;
+  }
+
+  /* protocol / "what gets signed" callout */
+  .protocol {
+    max-width: var(--measure); margin: 1.2rem auto;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    border-left: 3px solid var(--brass); border-radius: 8px;
+    padding: .85rem 1rem; font-family: var(--mono);
+    font-size: .84rem; line-height: 1.7; color: var(--ink);
+    overflow-x: auto;
+  }
+  .protocol .cmt { color: var(--steel); }
+  .protocol b { color: var(--brass); font-weight: 700; }
+
+  /* takeaway */
+  .takeaway {
+    max-width: var(--measure); margin: 1.4rem auto 0;
+    background: var(--brass-tint);
+    border: 1px solid var(--hairline);
+    border-left: 4px solid var(--brass);
+    border-radius: 8px; padding: .8rem 1rem;
+    font-size: .98rem;
+  }
+  .takeaway .tk {
+    display: inline-block; font: 700 .68rem/1 var(--sans);
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--brass); margin-right: .55em; vertical-align: .05em;
+  }
+
+  /* generic note / honest callout */
+  .note {
+    max-width: var(--measure); margin: 1.1rem auto;
+    border: 1px solid var(--hairline); border-radius: 8px;
+    padding: .85rem 1rem; background: var(--surface);
+    font-size: .95rem;
+  }
+  .note.warn { border-left: 4px solid var(--red); }
+  .note.safe { border-left: 4px solid var(--green); }
+  .note .lbl {
+    display: inline-block; font: 700 .68rem/1 var(--sans);
+    letter-spacing: .1em; text-transform: uppercase; margin-right: .5em;
+  }
+  .note.warn .lbl { color: var(--red); }
+  .note.safe .lbl { color: var(--green); }
+
+  /* ---------- contents nav ---------- */
+  .toc { max-width: 62rem; margin: 1.6rem auto 0; }
+  .toc ol {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-wrap: wrap; gap: .4rem;
+  }
+  .toc a {
+    display: inline-block; font-size: .8rem; color: var(--steel);
+    text-decoration: none; border: 1px solid var(--hairline);
+    border-radius: 999px; padding: .3em .7em; background: var(--surface);
+  }
+  .toc a:hover { color: var(--ink); border-color: var(--brass); }
+  .toc a .n { color: var(--brass); font-weight: 700; }
+
+  /* ---------- money table ---------- */
+  .tbl-wrap { max-width: 62rem; margin: 1.4rem auto; }
+  table.money { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .9rem; }
+  table.money th, table.money td {
+    text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(--hairline);
+    vertical-align: top;
+  }
+  table.money thead th {
+    font: 700 .72rem/1.3 var(--sans); letter-spacing: .06em; text-transform: uppercase;
+    color: var(--steel); border-bottom: 2px solid var(--hairline);
+  }
+  table.money tbody tr:hover { background: var(--surface); }
+  table.money .m { font-weight: 700; }
+  table.money .why { color: var(--steel); }
+
+  /* verdict pills (semantic only) */
+  .pill {
+    display: inline-block; font: 700 .74rem/1 var(--sans);
+    letter-spacing: .01em; border-radius: 999px; padding: .32em .7em;
+    white-space: nowrap; color: var(--on-verdict);
+  }
+  .pill.safe  { background: var(--verdict-safe-bg); }
+  .pill.phish { background: var(--verdict-phish-bg); }
+
+  /* ---------- split-screen hook (styled HTML) ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 62rem; margin: 1.4rem auto; }
+  @media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--hairline); border-radius: 12px; padding: 1.1rem; background: var(--surface); }
+  .panel h4 { margin: .2rem 0 .8rem; font: 700 .78rem/1.2 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--steel); }
+  .panel.stress { border-top: 3px solid var(--red); }
+  .panel.calm   { border-top: 3px solid var(--green); }
+  .chips { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .chip {
+    display: inline-flex; align-items: center; gap: .4em;
+    font-size: .82rem; border: 1px solid var(--hairline);
+    border-radius: 8px; padding: .4em .6em; background: var(--surface-2);
+  }
+  .chip svg { width: 1.05em; height: 1.05em; }
+  .glance {
+    display: flex; align-items: center; gap: .7rem;
+    font-size: .92rem; color: var(--ink);
+  }
+  .glance svg { width: 2.4rem; height: 2.4rem; flex: none; }
+
+  /* lookalike URL bars (S2) */
+  .urlbar {
+    display: flex; align-items: center; gap: .55rem; max-width: var(--measure);
+    margin: .55rem auto; font-family: var(--mono); font-size: .9rem;
+    border: 1px solid var(--hairline); border-radius: 999px;
+    padding: .5em .9em; background: var(--surface);
+  }
+  .urlbar svg { width: 1.05em; height: 1.05em; flex: none; }
+  .urlbar.ok   { border-color: var(--green); }
+  .urlbar.bad  { border-color: var(--red); }
+  .urlbar .tag { margin-left: auto; font-family: var(--sans); font-size: .74rem; font-weight: 700; }
+  .urlbar.ok  .tag { color: var(--green); }
+  .urlbar.bad .tag { color: var(--red); }
+
+  /* warning cards (S8) */
+  .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; max-width: 62rem; margin: 1.4rem auto; }
+  @media (max-width: 720px) { .cards3 { grid-template-columns: 1fr; } }
+  .wcard { border: 1px solid var(--hairline); border-top: 3px solid var(--red); border-radius: 12px; padding: 1.05rem; background: var(--surface); }
+  .wcard svg { width: 1.9rem; height: 1.9rem; display: block; margin-bottom: .55rem; }
+  .wcard h4 { margin: 0 0 .35rem; font-size: 1rem; font-weight: 700; font-family: var(--sans); }
+  .wcard p { margin: 0; font-size: .9rem; color: var(--steel); }
+
+  /* mock login (S10) */
+  .login {
+    max-width: 24rem; margin: 1.4rem auto; border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 1.4rem; background: var(--surface);
+    box-shadow: 0 6px 24px var(--shadow);
+  }
+  .login .brandmark { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+  .login .brandmark svg { width: 1.5rem; height: 1.5rem; }
+  .login .brandmark span { font-family: var(--serif); font-weight: 600; font-size: 1.1rem; }
+  .login label { display: block; font-size: .78rem; font-weight: 700; color: var(--steel); margin: .2rem 0 .3rem; }
+  .login .field { border: 1px solid var(--hairline); border-radius: 8px; padding: .6em .75em; font-family: var(--mono); font-size: .88rem; color: var(--ink); background: var(--surface-2); }
+  .login .field.dim { color: var(--steel); text-decoration: line-through; }
+  .login .pk-btn {
+    display: flex; align-items: center; justify-content: center; gap: .5em;
+    width: 100%; margin-top: 1rem; padding: .75em 1em;
+    border: 1px solid var(--brass); border-radius: 8px; cursor: default;
+    background: var(--brass-tint); color: var(--ink); font: 700 .95rem/1 var(--sans);
+  }
+  .login .pk-btn svg { width: 1.1em; height: 1.1em; }
+  .login .or { text-align: center; font-size: .74rem; color: var(--steel); margin: .8rem 0 .2rem; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* ---------- "phish this" interactive (CSS only) ---------- */
+  .phish { max-width: 62rem; margin: 1.5rem auto; }
+  .vh { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .phish-tabs { display: inline-flex; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px; background: var(--surface-2); gap: 2px; }
+  .phish-tabs label {
+    display: inline-block; cursor: pointer; user-select: none;
+    font: 700 .86rem/1 var(--sans); color: var(--steel);
+    padding: .55em .95em; border-radius: 999px;
+  }
+  .phish-tabs label:hover { color: var(--ink); }
+  #phish-pw:checked  ~ .phish-tabs label[for="phish-pw"],
+  #phish-pk:checked  ~ .phish-tabs label[for="phish-pk"] {
+    background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px var(--shadow);
+  }
+  #phish-pw:focus-visible ~ .phish-tabs label[for="phish-pw"],
+  #phish-pk:focus-visible ~ .phish-tabs label[for="phish-pk"] {
+    outline: 2px solid var(--brass); outline-offset: 2px;
+  }
+  .phish-panel { display: none; margin-top: 1rem; }
+  #phish-pw:checked ~ .phish-stage .panel-pw { display: block; }
+  #phish-pk:checked ~ .phish-stage .panel-pk { display: block; }
+  .phish-hint { font-size: .82rem; color: var(--steel); margin: .5rem 0 0; }
+
+  /* ---------- SVG diagram theming ----------
+     Element rules below are a net-safe default; because a rule like
+     ".dgm rect" has element+class specificity, every colour utility is
+     ALSO scoped under .dgm (raising it to two-class specificity) so it
+     wins. Text-role classes are declared before the colour utilities so
+     a colour class wins on ties (e.g. class="lbl-e f-brass"). */
+  .dgm { display: block; width: 100%; height: auto; }
+  .dgm text   { fill: var(--ink); font-family: var(--sans); }
+  .dgm line   { stroke: var(--steel); stroke-width: 2; }
+  .dgm path   { fill: none; stroke: var(--steel); stroke-width: 2; }
+  .dgm rect   { fill: var(--surface); }
+  .dgm circle, .dgm ellipse { fill: var(--surface); }
+  .dgm polygon { fill: var(--steel); }
+  /* text roles (before colour utilities) */
+  .dgm .lbl-e { font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; fill: var(--steel); }
+  .dgm .lbl-t { font-family: var(--serif); }
+  .dgm .mono  { font-family: var(--mono); }
+  .dgm .dash  { stroke-dasharray: 6 5; }
+  /* fill utilities */
+  .dgm .f-ink{fill:var(--ink);} .dgm .f-steel{fill:var(--steel);} .dgm .f-brass{fill:var(--brass);}
+  .dgm .f-green{fill:var(--green);} .dgm .f-red{fill:var(--red);}
+  .dgm .f-surface{fill:var(--surface);} .dgm .f-surface2{fill:var(--surface-2);} .dgm .f-bg{fill:var(--bg);}
+  .dgm .f-greentint{fill:var(--green-tint);} .dgm .f-redtint{fill:var(--red-tint);} .dgm .f-brasstint{fill:var(--brass-tint);}
+  .dgm .f-safebg{fill:var(--verdict-safe-bg);} .dgm .f-phishbg{fill:var(--verdict-phish-bg);} .dgm .t-onv{fill:var(--on-verdict);}
+  /* stroke utilities */
+  .dgm .k-ink{stroke:var(--ink);} .dgm .k-steel{stroke:var(--steel);} .dgm .k-brass{stroke:var(--brass);}
+  .dgm .k-green{stroke:var(--green);} .dgm .k-red{stroke:var(--red);} .dgm .k-hair{stroke:var(--hairline);}
+  .dgm .nofill{fill:none;}
+
+  /* ---------- footer / sources ---------- */
+  .sources { max-width: 62rem; margin: 0 auto; }
+  .sources h2 { margin-bottom: .3rem; }
+  .srcgroup { margin-top: 1.1rem; }
+  .srcgroup h3 { margin: 0 0 .4rem; }
+  .sources ul { list-style: none; margin: 0; padding: 0; }
+  .sources li { margin: .38rem 0; font-size: .9rem; line-height: 1.4; }
+  .sources li .who { color: var(--steel); }
+  .sources a { word-break: break-word; }
+  .colophon { max-width: 62rem; margin: 2rem auto 0; font-size: .8rem; color: var(--steel); }
+
+  /* ---------- focus visibility (global) ---------- */
+  .pk-root a:focus-visible,
+  .pk-root button:focus-visible,
+  .pk-root input:focus-visible,
+  .pk-root [tabindex]:focus-visible {
+    outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 4px;
+  }
+
+  /* ---------- reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    .pk-root * { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="progress-track" aria-hidden="true"><div class="progress-bar" id="pk-progress"></div></div>
+
+<button type="button" class="theme-toggle" id="pk-theme" aria-label="Toggle light or dark theme">
+  <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.3 6.3 0 0 0 10.5 10.5z"></path></svg>
+  <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none"></circle><line x1="12" y1="2.5" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="21.5"></line><line x1="2.5" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="21.5" y2="12"></line><line x1="5.2" y1="5.2" x2="7" y2="7"></line><line x1="17" y1="17" x2="18.8" y2="18.8"></line><line x1="5.2" y1="18.8" x2="7" y2="17"></line><line x1="17" y1="7" x2="18.8" y2="5.2"></line></svg>
+  <span>Theme</span>
+</button>
+
+<div class="pk-root">
+
+  <!-- ============ MASTHEAD ============ -->
+  <header class="masthead wrap">
+    <p class="eyebrow">Authentication, from first principles</p>
+    <h1 class="display">Why passkeys are safer&nbsp;— and&nbsp;when they aren't</h1>
+    <p class="dek">A ground-up account of what actually makes a login strong: the three factors, why anything you can type can be stolen, the two cryptographic locks behind phishing resistance, and the honest limits. Written for a developer who knows HTTP and crypto primitives but never sat down with auth theory.</p>
+    <nav class="toc" aria-label="Contents">
+      <ol>
+        <li><a href="#s0"><span class="n">00</span> The puzzle</a></li>
+        <li><a href="#s1"><span class="n">01</span> Three factors</a></li>
+        <li><a href="#landscape">The landscape</a></li>
+        <li><a href="#s2"><span class="n">02</span> Why passwords lose</a></li>
+        <li><a href="#s3"><span class="n">03</span> The OTP trap</a></li>
+        <li><a href="#s4"><span class="n">04</span> What a passkey is</a></li>
+        <li><a href="#s5"><span class="n">05</span> The two locks</a></li>
+        <li><a href="#s6"><span class="n">06</span> Breaches &amp; replay</a></li>
+        <li><a href="#s7"><span class="n">07</span> The QR flow</a></li>
+        <li><a href="#s8"><span class="n">08</span> Honest limits</a></li>
+        <li><a href="#s9"><span class="n">09</span> Bank vs Google</a></li>
+        <li><a href="#s10"><span class="n">10</span> For Frappe</a></li>
+      </ol>
+    </nav>
+  </header>
+
+  <main class="wrap">
+
+  <!-- ============ S0 — HOOK ============ -->
+  <section class="sec" id="s0" aria-labelledby="s0-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">00</span> · The puzzle</p>
+      <h2 id="s0-h">Your bank feels like a checkpoint. Google feels like nothing. One of them is wrong about what security is.</h2>
+      <p>Signing into your bank can mean an OTP, then a card PIN, sometimes a security question — and it still feels fragile. Signing into Google is a single glance, and it feels bulletproof. Intuition says more hoops mean more safety. Intuition is backwards.</p>
+      <p>This page is about what actually makes authentication strong. The punchline, up front: the strong thing usually makes your life <em>easier</em>, not harder. Friction and security are not the same lever, and the industry spent twenty years confusing them.</p>
+    </div>
+
+    <div class="split" role="img" aria-label="Left: a bank login juggling a one-time code, a PIN, and a captcha. Right: a single face-unlock glance.">
+      <div class="panel stress">
+        <h4>The bank — visible friction</h4>
+        <div class="chips">
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none"></rect><line x1="7" y1="12" x2="7" y2="12"></line><line x1="12" y1="12" x2="12" y2="12"></line></svg> SMS OTP</span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" fill="none"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg> card PIN</span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .8-1 1.7"></path><line x1="12" y1="17" x2="12" y2="17"></line></svg> security Q</span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2" fill="none"></rect><line x1="7" y1="10" x2="10" y2="14"></line><line x1="10" y1="10" x2="7" y2="14"></line></svg> captcha</span>
+        </div>
+        <p style="margin:.9rem 0 0;font-size:.88rem;color:var(--steel)">Three prompts, and the strongest of them (SMS) is the one an attacker can catch.</p>
+      </div>
+      <div class="panel calm">
+        <h4>Google — invisible strength</h4>
+        <div class="glance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="none"></rect><path d="M8 8v1.6M16 8v1.6M9 15c1 1.2 5 1.2 6 0"></path></svg>
+          <span>One glance. Face or fingerprint, done — and it is arguably the safer of the two.</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Friction is not security. The rest of this page is about what <em>is</em>.</p>
+  </section>
+
+  <!-- ============ S1 — THREE FACTORS ============ -->
+  <section class="sec" id="s1" aria-labelledby="s1-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">01</span> · The primitives</p>
+      <h2 id="s1-h">Every login is built from three factors</h2>
+      <p>Authentication proves you are who you claim by testing one or more of exactly three things:</p>
+      <ul>
+        <li><strong>Knowledge — something you know.</strong> A password, PIN, passphrase, or security-question answer. Its weakness is intrinsic: it can be told, phished, guessed, reused across sites, or leaked in a breach.</li>
+        <li><strong>Possession — something you have.</strong> A phone, a hardware key, a SIM, an authenticator-app instance, or the private key of a passkey. Its strength varies wildly with <em>how</em> possession is proven — a code you retype is weak possession; a key that signs and never leaves the device is strong possession.</li>
+        <li><strong>Inherence — something you are.</strong> A fingerprint, face, iris, or voice. Its weakness: it is not secret (your face is public), not revocable (you can't reset a fingerprint), and only as good as the sensor's liveness detection.</li>
+      </ul>
+      <p>Marketing counts factors — "two-factor!", "multi-factor!". Security cares about their <em>quality</em>. Two weak factors can be worse than one strong one.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 250" role="img" aria-label="Three factors: a password field for knowledge, a brass key for possession, a fingerprint for inherence." style="min-width:560px">
+          <!-- KNOW -->
+          <rect x="12" y="34" width="216" height="196" rx="12" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="120" y="66" text-anchor="middle" class="lbl-e f-brass">Know</text>
+          <rect x="52" y="98" width="136" height="46" rx="8" class="f-surface2 k-steel nofill" stroke-width="1.5"></rect>
+          <circle cx="76" cy="121" r="5" class="f-ink"></circle>
+          <circle cx="96" cy="121" r="5" class="f-ink"></circle>
+          <circle cx="116" cy="121" r="5" class="f-ink"></circle>
+          <circle cx="136" cy="121" r="5" class="f-ink"></circle>
+          <circle cx="156" cy="121" r="5" class="f-ink"></circle>
+          <text x="120" y="184" text-anchor="middle" class="f-steel" font-size="13">something you know</text>
+          <text x="120" y="206" text-anchor="middle" class="f-ink" font-size="14" font-weight="700">password · PIN</text>
+          <!-- HAVE -->
+          <rect x="252" y="34" width="216" height="196" rx="12" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="360" y="66" text-anchor="middle" class="lbl-e f-brass">Have</text>
+          <circle cx="322" cy="121" r="17" class="nofill k-brass" stroke-width="6"></circle>
+          <circle cx="322" cy="121" r="5" class="f-bg k-brass" stroke-width="2"></circle>
+          <line x1="338" y1="121" x2="410" y2="121" class="k-brass" stroke-width="7"></line>
+          <line x1="392" y1="121" x2="392" y2="134" class="k-brass" stroke-width="5"></line>
+          <line x1="406" y1="121" x2="406" y2="130" class="k-brass" stroke-width="5"></line>
+          <text x="360" y="184" text-anchor="middle" class="f-steel" font-size="13">something you have</text>
+          <text x="360" y="206" text-anchor="middle" class="f-ink" font-size="14" font-weight="700">key · phone · passkey</text>
+          <!-- ARE -->
+          <rect x="492" y="34" width="216" height="196" rx="12" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="600" y="66" text-anchor="middle" class="lbl-e f-brass">Are</text>
+          <path d="M576 132 a24 22 0 0 1 48 0" class="k-ink" stroke-width="2.4"></path>
+          <path d="M583 132 a17 16 0 0 1 34 0" class="k-ink" stroke-width="2.4"></path>
+          <path d="M590 132 a10 10 0 0 1 20 0" class="k-ink" stroke-width="2.4"></path>
+          <path d="M569 132 a31 28 0 0 1 62 0" class="k-ink" stroke-width="2.4"></path>
+          <text x="600" y="184" text-anchor="middle" class="f-steel" font-size="13">something you are</text>
+          <text x="600" y="206" text-anchor="middle" class="f-ink" font-size="14" font-weight="700">fingerprint · face</text>
+        </svg>
+      </div>
+    </figure>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Every login is some mix of these three. The <em>quality</em> of each factor matters more than the <em>count</em>.</p>
+  </section>
+
+  <!-- ============ LANDSCAPE — the money table + ladder ============ -->
+  <section class="sec" id="landscape" aria-labelledby="land-h">
+    <div class="prose">
+      <p class="eyebrow">Orientation · The landscape</p>
+      <h2 id="land-h">Where every common method actually sits</h2>
+      <p>Here is the whole field on one ladder, weakest at the bottom. There is a hard line across the middle — the <strong>phishing-resistant line</strong>. Below it, you hand the site something an attacker can catch and reuse. Above it, your device signs a one-time challenge and hands over nothing reusable at all. Everything else on this page is really an explanation of that line.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 486" role="img" aria-label="A ladder of authentication methods from strongest at top to weakest at bottom, split by a phishing-resistant line. Above the line: passkey and hardware key, both not phishable. Below: push approval, TOTP, SMS or email OTP, and password or PIN, all phishable." style="min-width:600px">
+          <text x="24" y="26" class="lbl-e f-steel">Strongest at top</text>
+          <!-- resistant zone -->
+          <rect x="12" y="40" width="696" height="150" rx="10" class="f-greentint k-green" stroke-width="1.5"></rect>
+          <!-- passkey row -->
+          <rect x="26" y="54" width="668" height="58" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="82" class="lbl-t f-ink" font-size="19" font-weight="700">Passkey</text>
+          <text x="46" y="100" class="mono f-steel" font-size="12">possession + local unlock</text>
+          <rect x="540" y="68" width="140" height="30" rx="15" class="f-safebg"></rect>
+          <text x="610" y="88" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Not phishable</text>
+          <!-- hardware key row -->
+          <rect x="26" y="118" width="668" height="58" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="146" class="lbl-t f-ink" font-size="19" font-weight="700">Hardware security key</text>
+          <text x="46" y="164" class="mono f-steel" font-size="12">possession (strong)</text>
+          <rect x="540" y="132" width="140" height="30" rx="15" class="f-safebg"></rect>
+          <text x="610" y="152" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Not phishable</text>
+          <!-- the line -->
+          <line x1="12" y1="203" x2="708" y2="203" class="k-brass dash" stroke-width="2.5"></line>
+          <text x="360" y="199" text-anchor="middle" class="lbl-e f-brass">The phishing-resistant line</text>
+          <!-- phishable zone -->
+          <rect x="12" y="214" width="696" height="258" rx="10" class="f-redtint k-red" stroke-width="1.5"></rect>
+          <!-- push -->
+          <rect x="26" y="226" width="668" height="52" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="250" class="lbl-t f-ink" font-size="18" font-weight="700">Push approval</text>
+          <text x="46" y="268" class="mono f-steel" font-size="12">possession, no origin check</text>
+          <rect x="556" y="238" width="124" height="28" rx="14" class="f-phishbg"></rect>
+          <text x="618" y="257" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Phishable</text>
+          <!-- totp -->
+          <rect x="26" y="284" width="668" height="52" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="308" class="lbl-t f-ink" font-size="18" font-weight="700">TOTP app</text>
+          <text x="46" y="326" class="mono f-steel" font-size="12">possession (weak)</text>
+          <rect x="556" y="296" width="124" height="28" rx="14" class="f-phishbg"></rect>
+          <text x="618" y="315" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Phishable</text>
+          <!-- sms -->
+          <rect x="26" y="342" width="668" height="52" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="366" class="lbl-t f-ink" font-size="18" font-weight="700">SMS / email OTP</text>
+          <text x="46" y="384" class="mono f-steel" font-size="12">possession (weak)</text>
+          <rect x="556" y="354" width="124" height="28" rx="14" class="f-phishbg"></rect>
+          <text x="618" y="373" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Phishable</text>
+          <!-- password -->
+          <rect x="26" y="400" width="668" height="52" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="46" y="424" class="lbl-t f-ink" font-size="18" font-weight="700">Password / PIN</text>
+          <text x="46" y="442" class="mono f-steel" font-size="12">knowledge</text>
+          <rect x="556" y="412" width="124" height="28" rx="14" class="f-phishbg"></rect>
+          <text x="618" y="431" text-anchor="middle" class="t-onv" font-size="13" font-weight="700">Phishable</text>
+        </svg>
+      </div>
+      <figcaption>The verdict column is the whole game. Below the brass line, every method hands over something typeable or tappable that a fake site can catch. The full detail is in the table below.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <div class="scroll-x">
+        <table class="money">
+          <thead>
+            <tr><th scope="col">Method</th><th scope="col">Factor(s)</th><th scope="col">Phishable?</th><th scope="col">Why</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="m">Password / PIN</td><td>Knowledge</td>
+              <td><span class="pill phish">Yes</span></td>
+              <td class="why">You can type it into any site; it is reusable; the server stores a hash that can be cracked offline.</td>
+            </tr>
+            <tr>
+              <td class="m">SMS / email OTP</td><td>Possession (weak)</td>
+              <td><span class="pill phish">Yes</span></td>
+              <td class="why">A code you <em>retype</em>. Real-time proxy phishing kits and SIM-swaps capture it. Regulators (RBI) are moving off SMS-OTP for exactly this reason.</td>
+            </tr>
+            <tr>
+              <td class="m">TOTP (authenticator app)</td><td>Possession (weak)</td>
+              <td><span class="pill phish">Yes</span></td>
+              <td class="why">Still a code you retype into a page; a proxy site relays it within the ~30-second window.</td>
+            </tr>
+            <tr>
+              <td class="m">Push approval</td><td>Possession (&plusmn; inherence)</td>
+              <td><span class="pill phish">Yes-ish</span></td>
+              <td class="why">The "Approve?" tap has no origin binding, so it approves whatever site triggered it &mdash; MFA-fatigue / push-bombing.</td>
+            </tr>
+            <tr>
+              <td class="m">Hardware security key</td><td>Possession (<strong>strong</strong>)</td>
+              <td><span class="pill safe">No</span></td>
+              <td class="why">A device-bound key that <em>signs</em> an origin-bound challenge. Nothing to retype.</td>
+            </tr>
+            <tr>
+              <td class="m">Passkey</td><td>Possession (strong) + local user-verification</td>
+              <td><span class="pill safe">No</span></td>
+              <td class="why">Private key never leaves the device; unlocked locally by biometric or PIN; signs an origin-bound challenge.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Below the line you hand over something an attacker can catch; above it, your device signs a challenge and hands over nothing reusable.</p>
+  </section>
+
+  <!-- ============ S2 — WHY PASSWORDS LOSE ============ -->
+  <section class="sec" id="s2" aria-labelledby="s2-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">02</span> · The bottom rung</p>
+      <h2 id="s2-h">Why passwords lose</h2>
+      <p>A password fails on three independent counts, any one of which is fatal:</p>
+      <ul>
+        <li><strong>It is typeable, therefore stealable.</strong> The whole security of a password rests on it going only to the right site. But you can type it into <em>any</em> page, and a lookalike page will happily take it. Your eyes decide where it goes, and your eyes lose to a convincing copy.</li>
+        <li><strong>It is reusable.</strong> The same secret works every time, so a copy captured once works forever — until you rotate it, which most people never do.</li>
+        <li><strong>The server keeps a copy worth stealing.</strong> Even hashed, a leaked password database can be cracked offline at leisure (more in <a href="#s6">section 06</a>).</li>
+      </ul>
+      <p>The classic phish is dumbed-down on purpose &mdash; a domain that reads almost right:</p>
+    </div>
+
+    <div class="urlbar ok" role="img" aria-label="A genuine address bar reading https://example.com, marked safe.">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--green)"><rect x="5" y="10" width="14" height="10" rx="2" fill="none"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      <span>https://<strong>example.com</strong></span>
+      <span class="tag">the real site</span>
+    </div>
+    <div class="urlbar bad" role="img" aria-label="A lookalike address bar reading https://examp1e.com with a numeral one, marked dangerous.">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--red)"><path d="M12 3l9 16H3z" fill="none"></path><line x1="12" y1="9" x2="12" y2="14"></line><line x1="12" y1="17" x2="12" y2="17"></line></svg>
+      <span>https://<strong>examp1e.com</strong> <span style="color:var(--steel);font-family:var(--sans);font-size:.72rem">(that's a numeral "1")</span></span>
+      <span class="tag">looks identical, isn't</span>
+    </div>
+    <p class="prose" style="font-size:.9rem;color:var(--steel);margin-top:.6rem">Whatever you type into the second bar goes to whoever served that page. A password can't tell the difference; a passkey (<a href="#s5">section 05</a>) can, and won't even appear.</p>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Anything you can type into a page, an attacker can capture from a fake one.</p>
+  </section>
+
+  <!-- ============ S3 — OTP / TOTP / PUSH TRAP ============ -->
+  <section class="sec" id="s3" aria-labelledby="s3-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">03</span> · The trap that looks like 2FA</p>
+      <h2 id="s3-h">The 2FA that isn't: OTP, TOTP, and push</h2>
+      <p>Adding a second factor feels like a fix, and for offline password lists it helps. But the popular second factors share the password's fatal flaw &mdash; they still route a secret <em>through the user, who can be fooled about the destination</em>.</p>
+      <ul>
+        <li><strong>SMS / email OTP.</strong> A code you retype. A real-time proxy phishing kit puts a page between you and the real site, forwards your login, and relays the OTP the instant you enter it. SIM-swap grabs the code outright.</li>
+        <li><strong>TOTP authenticator apps.</strong> Better than SMS (no SIM-swap, no carrier), but it is still a code you retype into a page. The proxy relays it inside the 30-second window. The math is stronger; the human bottleneck is identical.</li>
+        <li><strong>Push approval.</strong> No code to type, so it feels safest — but the "Approve?" tap carries <em>no information about which site asked</em>. Trigger enough prompts and a tired user taps yes on the attacker's login. That's MFA-fatigue / push-bombing.</li>
+      </ul>
+      <p>The common defect: none of these knows <em>which origin</em> it is talking to. The user is the origin check, and the user can be phished.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 250" role="img" aria-label="A real-time proxy sits between the user and the real site, forwarding the login and relaying the one-time code the moment it is typed." style="min-width:600px">
+          <!-- user -->
+          <circle cx="70" cy="90" r="20" class="f-surface k-steel nofill" stroke-width="2"></circle>
+          <circle cx="70" cy="82" r="7" class="nofill k-steel" stroke-width="2"></circle>
+          <path d="M58 100 a13 11 0 0 1 24 0" class="k-steel" stroke-width="2"></path>
+          <text x="70" y="132" text-anchor="middle" class="f-ink" font-size="13" font-weight="700">You</text>
+          <!-- proxy -->
+          <rect x="270" y="52" width="180" height="76" rx="10" class="f-redtint k-red" stroke-width="1.5"></rect>
+          <text x="360" y="86" text-anchor="middle" class="f-red" font-size="14" font-weight="700">Proxy phishing site</text>
+          <text x="360" y="108" text-anchor="middle" class="mono f-steel" font-size="12">examp1e.com</text>
+          <text x="360" y="150" text-anchor="middle" class="f-steel" font-size="12">forwards everything in real time</text>
+          <!-- server -->
+          <rect x="612" y="60" width="80" height="60" rx="8" class="f-surface k-steel nofill" stroke-width="2"></rect>
+          <line x1="622" y1="78" x2="682" y2="78" class="k-steel"></line>
+          <line x1="622" y1="92" x2="682" y2="92" class="k-steel"></line>
+          <text x="652" y="140" text-anchor="middle" class="f-ink" font-size="13" font-weight="700">Real site</text>
+          <!-- arrows user->proxy (code) -->
+          <line x1="92" y1="84" x2="266" y2="84" class="k-red" stroke-width="2"></line>
+          <polygon points="266,84 256,79 256,89" class="f-red"></polygon>
+          <text x="178" y="76" text-anchor="middle" class="mono f-red" font-size="12">OTP: 481902</text>
+          <!-- arrow proxy->server -->
+          <line x1="454" y1="84" x2="608" y2="84" class="k-red" stroke-width="2"></line>
+          <polygon points="608,84 598,79 598,89" class="f-red"></polygon>
+          <text x="531" y="76" text-anchor="middle" class="mono f-red" font-size="12">481902</text>
+          <!-- return -->
+          <line x1="608" y1="104" x2="454" y2="104" class="k-steel dash"></line>
+          <polygon points="454,104 464,99 464,109" class="f-steel"></polygon>
+          <text x="531" y="122" text-anchor="middle" class="f-steel" font-size="11">session</text>
+          <!-- verdict -->
+          <text x="360" y="210" text-anchor="middle" class="f-red" font-size="15" font-weight="700">The code is valid for ~30s &mdash; and the proxy uses it in seconds.</text>
+          <text x="360" y="232" text-anchor="middle" class="f-steel" font-size="12">A push "Approve?" tap has the same blind spot: it never learns which site asked.</text>
+        </svg>
+      </div>
+    </figure>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> A code you retype &mdash; or a blind "Approve?" tap &mdash; has no idea which site it's talking to.</p>
+  </section>
+
+  <!-- ============ S4 — WHAT A PASSKEY IS ============ -->
+  <section class="sec" id="s4" aria-labelledby="s4-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">04</span> · The mechanism</p>
+      <h2 id="s4-h">What a passkey actually is</h2>
+      <p>A passkey is a public/private key pair created per site. The two halves live in very different places, and that split is the whole point:</p>
+      <ul>
+        <li><strong>Possession — the private key.</strong> It sits in the device's secure hardware (Secure Enclave, TPM, StrongBox) or a provider's end-to-end-encrypted keychain. Proving you can <em>sign</em> with it proves possession. It never transmits.</li>
+        <li><strong>User verification — the local unlock.</strong> Before signing, the authenticator makes you unlock locally with a biometric (inherence) or the device PIN (knowledge). Crucially, <strong>the biometric or PIN never leaves the device and is never sent to the site.</strong> It only releases the local key; the site just sees a "user-verified" flag inside the signed data.</li>
+      </ul>
+      <p>So one Face-ID glance delivers a phishing-resistant possession proof <em>plus</em> evidence a human was present — two factors, one gesture. And the server only ever holds the <strong>public</strong> key, which is safe to leak.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 280" role="img" aria-label="On the left, a device holds the private key in secure hardware, released by a local fingerprint or PIN that never leaves. Only a signature crosses to the server on the right, which stores only the public key, labelled safe to leak." style="min-width:600px">
+          <!-- device -->
+          <rect x="24" y="40" width="230" height="200" rx="14" class="f-surface k-steel nofill" stroke-width="2"></rect>
+          <text x="139" y="66" text-anchor="middle" class="lbl-e f-steel">Your device</text>
+          <rect x="52" y="82" width="174" height="70" rx="8" class="f-surface2 k-brass" stroke-width="1.5"></rect>
+          <text x="139" y="104" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Secure Enclave / TPM</text>
+          <!-- key -->
+          <circle cx="96" cy="128" r="10" class="nofill k-brass" stroke-width="4"></circle>
+          <circle cx="96" cy="128" r="3" class="f-surface2 k-brass" stroke-width="1.5"></circle>
+          <line x1="106" y1="128" x2="150" y2="128" class="k-brass" stroke-width="5"></line>
+          <line x1="140" y1="128" x2="140" y2="137" class="k-brass" stroke-width="4"></line>
+          <text x="188" y="132" text-anchor="middle" class="mono f-brass" font-size="11">private</text>
+          <!-- local unlock -->
+          <path d="M110 200 a22 20 0 0 1 44 0" class="k-green" stroke-width="2.4"></path>
+          <path d="M119 200 a13 12 0 0 1 26 0" class="k-green" stroke-width="2.4"></path>
+          <text x="139" y="228" text-anchor="middle" class="f-green" font-size="11.5" font-weight="700">local unlock stays here</text>
+          <!-- boundary -->
+          <line x1="360" y1="30" x2="360" y2="250" class="k-brass dash" stroke-width="2"></line>
+          <text x="360" y="24" text-anchor="middle" class="lbl-e f-brass">nothing secret crosses</text>
+          <!-- signature crossing -->
+          <line x1="256" y1="128" x2="462" y2="128" class="k-green" stroke-width="2.5"></line>
+          <polygon points="462,128 452,123 452,133" class="f-green"></polygon>
+          <text x="360" y="118" text-anchor="middle" class="f-green mono" font-size="12">signature only</text>
+          <!-- server -->
+          <rect x="466" y="60" width="230" height="150" rx="12" class="f-surface k-steel nofill" stroke-width="2"></rect>
+          <text x="581" y="88" text-anchor="middle" class="lbl-e f-steel">The site's server</text>
+          <rect x="500" y="104" width="162" height="64" rx="8" class="f-greentint k-green" stroke-width="1.5"></rect>
+          <text x="581" y="130" text-anchor="middle" class="mono f-ink" font-size="12">04:a1:b2:c3&hellip;</text>
+          <text x="581" y="150" text-anchor="middle" class="f-green" font-size="12" font-weight="700">public key &mdash; safe to leak</text>
+        </svg>
+      </div>
+    </figure>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> The secret never leaves your device; the server only ever holds a public key that's useless to steal.</p>
+  </section>
+
+  <!-- ============ S5 — THE TWO LOCKS (centerpiece + interactive) ============ -->
+  <section class="sec" id="s5" aria-labelledby="s5-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">05</span> · The centerpiece</p>
+      <h2 id="s5-h">Phishing resistance, mechanically: two independent locks</h2>
+      <p>"Phishing-resistant" is not a marketing adjective here; it is two separate cryptographic mechanisms, each of which would defeat the phish on its own.</p>
+      <h3>Lock 1 — Origin binding: the fake site can't even ask</h3>
+      <p>Every passkey is scoped to a <strong>Relying Party ID</strong> &mdash; the real domain, say <code>example.com</code>. The browser and OS enforce that a passkey registered for <code>example.com</code> is only ever offered when the page's origin genuinely matches. On <code>evil-example.com</code>, the browser <strong>will not surface the <code>example.com</code> passkey at all</strong>. The ceremony can't even start for the attacker's domain. There is nothing for the user to fat-finger.</p>
+      <h3>Lock 2 — Challenge signing: a captured response is worthless</h3>
+      <p>The server sends a fresh <strong>random challenge</strong>. The browser assembles <code>clientDataJSON = { type, challenge, origin }</code>, and the authenticator signs <code>authenticatorData ‖ SHA-256(clientDataJSON)</code> &mdash; so <strong>both the origin and the challenge are sealed inside the signature</strong>. If an attacker somehow relayed an assertion, it would carry the <em>attacker's</em> origin, and the real server rejects unknown origins. The challenge is single-use, so nothing can be replayed later. And there is no reusable secret to capture in the first place: the user types nothing, and the private key never transmits.</p>
+    </div>
+
+    <div class="protocol" role="img" aria-label="What the authenticator signs: authenticator data concatenated with the SHA-256 of the client data JSON, which contains the type, the challenge, and the origin.">
+<span class="cmt"># what the authenticator actually signs</span><br />
+signature = sign(<b>authenticatorData</b> ‖ SHA-256(<b>clientDataJSON</b>))<br />
+clientDataJSON = { type, <b>challenge</b>: &lt;fresh random&gt;, <b>origin</b>: "https://example.com" }<br />
+<span class="cmt"># wrong origin  -&gt; server rejects.  reused challenge -&gt; server rejects.</span>
+    </div>
+
+    <div class="prose">
+      <p style="margin-top:1.2rem"><strong>See it for yourself.</strong> Same fake site, two different credentials. Flip between them:</p>
+    </div>
+
+    <div class="phish">
+      <input type="radio" name="phish" id="phish-pw" class="vh" checked />
+      <input type="radio" name="phish" id="phish-pk" class="vh" />
+      <div class="phish-tabs" role="group" aria-label="Choose a credential to phish">
+        <label for="phish-pw">Type a password</label>
+        <label for="phish-pk">Use a passkey</label>
+      </div>
+      <div class="phish-stage">
+        <!-- PASSWORD panel -->
+        <div class="phish-panel panel-pw">
+          <div class="scroll-x">
+            <svg class="dgm" viewBox="0 0 720 300" role="img" aria-label="Password scenario. On the real site the password logs you in. On the fake site you type the same password, the attacker captures it and replays it to the real site, and the attacker is logged in." style="min-width:620px">
+              <!-- REAL lane -->
+              <text x="20" y="26" class="lbl-e f-green">On the real site</text>
+              <rect x="20" y="36" width="130" height="56" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+              <text x="85" y="60" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">You</text>
+              <text x="85" y="78" text-anchor="middle" class="mono f-steel" font-size="11">hunter2</text>
+              <line x1="150" y1="64" x2="198" y2="64" class="k-steel"></line><polygon points="198,64 188,59 188,69" class="f-steel"></polygon>
+              <rect x="200" y="36" width="150" height="56" rx="9" class="f-surface k-green" stroke-width="1.5"></rect>
+              <text x="275" y="60" text-anchor="middle" class="mono f-ink" font-size="12">example.com</text>
+              <text x="275" y="78" text-anchor="middle" class="f-steel" font-size="11">the real page</text>
+              <line x1="350" y1="64" x2="398" y2="64" class="k-steel"></line><polygon points="398,64 388,59 388,69" class="f-steel"></polygon>
+              <rect x="400" y="36" width="130" height="56" rx="9" class="f-surface k-steel nofill" stroke-width="1.5"></rect>
+              <text x="465" y="68" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Server</text>
+              <line x1="530" y1="64" x2="578" y2="64" class="k-green"></line><polygon points="578,64 568,59 568,69" class="f-green"></polygon>
+              <text x="648" y="62" text-anchor="middle" class="f-green" font-size="13" font-weight="700">logged in</text>
+              <text x="648" y="80" text-anchor="middle" class="f-green" font-size="18" font-weight="700">&#10003;</text>
+              <!-- FAKE lane -->
+              <text x="20" y="150" class="lbl-e f-red">On the fake site</text>
+              <rect x="20" y="160" width="130" height="56" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+              <text x="85" y="184" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">You</text>
+              <text x="85" y="202" text-anchor="middle" class="mono f-steel" font-size="11">hunter2</text>
+              <line x1="150" y1="188" x2="198" y2="188" class="k-red"></line><polygon points="198,188 188,183 188,193" class="f-red"></polygon>
+              <rect x="200" y="160" width="150" height="56" rx="9" class="f-surface k-red" stroke-width="1.5"></rect>
+              <text x="275" y="184" text-anchor="middle" class="mono f-red" font-size="12">examp1e.com</text>
+              <text x="275" y="202" text-anchor="middle" class="f-steel" font-size="11">the fake page</text>
+              <line x1="350" y1="188" x2="398" y2="188" class="k-red"></line><polygon points="398,188 388,183 388,193" class="f-red"></polygon>
+              <rect x="400" y="160" width="130" height="56" rx="9" class="f-redtint k-red" stroke-width="1.5"></rect>
+              <text x="465" y="184" text-anchor="middle" class="f-red" font-size="12" font-weight="700">Attacker</text>
+              <text x="465" y="202" text-anchor="middle" class="f-steel" font-size="11">captures it</text>
+              <line x1="530" y1="188" x2="578" y2="188" class="k-red"></line><polygon points="578,188 568,183 568,193" class="f-red"></polygon>
+              <text x="648" y="182" text-anchor="middle" class="f-red" font-size="12" font-weight="700">replays to</text>
+              <text x="648" y="200" text-anchor="middle" class="mono f-red" font-size="11">example.com</text>
+              <text x="360" y="262" text-anchor="middle" class="f-red" font-size="15" font-weight="700">A password is typeable, so it's stealable &mdash; and reusable.</text>
+              <text x="360" y="284" text-anchor="middle" class="f-steel" font-size="12">The secret works for whoever holds it, from anywhere.</text>
+            </svg>
+          </div>
+        </div>
+        <!-- PASSKEY panel -->
+        <div class="phish-panel panel-pk">
+          <div class="scroll-x">
+            <svg class="dgm" viewBox="0 0 720 300" role="img" aria-label="Passkey scenario. On the real site the browser offers the example.com passkey and signs the origin-bound challenge, and the server accepts. On the fake site the browser finds no passkey for that origin, so nothing is offered and the ceremony cannot start." style="min-width:620px">
+              <!-- REAL lane -->
+              <text x="16" y="26" class="lbl-e f-green">On the real site</text>
+              <rect x="16" y="36" width="150" height="56" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+              <text x="91" y="60" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">You</text>
+              <text x="91" y="79" text-anchor="middle" class="mono f-steel" font-size="10.5">on example.com</text>
+              <line x1="166" y1="64" x2="192" y2="64" class="k-steel"></line><polygon points="192,64 182,59 182,69" class="f-steel"></polygon>
+              <rect x="196" y="36" width="248" height="56" rx="9" class="f-surface k-green" stroke-width="1.5"></rect>
+              <text x="320" y="60" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Browser signs</text>
+              <text x="320" y="79" text-anchor="middle" class="mono f-green" font-size="11">{origin, challenge}</text>
+              <line x1="444" y1="64" x2="470" y2="64" class="k-green"></line><polygon points="470,64 460,59 460,69" class="f-green"></polygon>
+              <rect x="474" y="36" width="176" height="56" rx="9" class="f-greentint k-green" stroke-width="1.5"></rect>
+              <text x="562" y="60" text-anchor="middle" class="f-green" font-size="12" font-weight="700">Server accepts</text>
+              <text x="562" y="82" text-anchor="middle" class="f-green" font-size="16" font-weight="700">&#10003;</text>
+              <!-- FAKE lane -->
+              <text x="16" y="152" class="lbl-e f-red">On the fake site</text>
+              <rect x="16" y="162" width="150" height="56" rx="9" class="f-surface k-hair" stroke-width="1.5"></rect>
+              <text x="91" y="186" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">You</text>
+              <text x="91" y="205" text-anchor="middle" class="f-steel" font-size="11">try to sign in</text>
+              <line x1="166" y1="190" x2="192" y2="190" class="k-steel"></line><polygon points="192,190 182,185 182,195" class="f-steel"></polygon>
+              <rect x="196" y="162" width="290" height="56" rx="9" class="f-redtint k-red" stroke-width="1.5"></rect>
+              <text x="341" y="186" text-anchor="middle" class="f-red" font-size="12" font-weight="700">No passkey for this origin</text>
+              <text x="341" y="205" text-anchor="middle" class="mono f-steel" font-size="11">evil-example.com</text>
+              <!-- barrier -->
+              <line x1="512" y1="150" x2="512" y2="228" class="k-red" stroke-width="3"></line>
+              <text x="606" y="185" text-anchor="middle" class="f-red" font-size="13" font-weight="700">ceremony can't start</text>
+              <text x="606" y="205" text-anchor="middle" class="f-steel" font-size="11">nothing leaks</text>
+              <text x="360" y="262" text-anchor="middle" class="f-green" font-size="14" font-weight="700">Lock 1 stops the ask. Lock 2 rejects any relayed signature.</text>
+              <text x="360" y="284" text-anchor="middle" class="f-steel" font-size="12">Even a stolen assertion is stamped origin = example.com, so the real server refuses it.</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <p class="phish-hint">Tab or click between the two credentials. Same fake page; only the password gives anything away.</p>
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> The fake site can't even <em>ask</em> your passkey, and any stolen response is stamped with the wrong address &mdash; worthless.</p>
+  </section>
+
+  <!-- ============ S6 — BREACHES, STUFFING, REPLAY ============ -->
+  <section class="sec" id="s6" aria-labelledby="s6-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">06</span> · What a server leak yields</p>
+      <h2 id="s6-h">Breaches, stuffing, and replay</h2>
+      <p>The phishing story is about the live login. This one is about the day the server's database leaks &mdash; and here too the passkey model changes what an attacker walks away with.</p>
+      <ul>
+        <li><strong>Breach.</strong> A passkey server stores <em>only the public key</em>. You cannot forge signatures from a public key, so the dump is inert. Compare a password database: even hashed, it can be cracked offline at the attacker's leisure.</li>
+        <li><strong>Credential stuffing.</strong> There is no shared secret to reuse, and each passkey is unique per site, so a breach at site A hands over nothing to try at site B. Password reuse is the entire reason stuffing works; passkeys remove the reuse.</li>
+        <li><strong>Replay.</strong> The per-attempt random challenge means a captured assertion can't be replayed later, and WebAuthn carries an optional signature counter to flag cloned authenticators.</li>
+      </ul>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 300" role="img" aria-label="A leaked password database of crackable hashes versus a leaked passkey database of public keys that are safe to leak, with three crossed-out attacks: can't crack, can't reuse, can't replay." style="min-width:600px">
+          <!-- left cylinder: hashes -->
+          <ellipse cx="160" cy="60" rx="110" ry="22" class="f-redtint k-red" stroke-width="1.5"></ellipse>
+          <path d="M50 60 L50 168 a110 22 0 0 0 220 0 L270 60" class="f-redtint k-red" stroke-width="1.5"></path>
+          <ellipse cx="160" cy="60" rx="110" ry="22" class="f-redtint k-red" stroke-width="1.5"></ellipse>
+          <text x="160" y="66" text-anchor="middle" class="f-red" font-size="13" font-weight="700">Password DB</text>
+          <text x="160" y="98" text-anchor="middle" class="mono f-steel" font-size="12">5f4dcc3b5aa7&hellip;</text>
+          <text x="160" y="118" text-anchor="middle" class="mono f-steel" font-size="12">e99a18c428cb&hellip;</text>
+          <text x="160" y="138" text-anchor="middle" class="mono f-steel" font-size="12">0d107d09f5bb&hellip;</text>
+          <text x="160" y="204" text-anchor="middle" class="f-red" font-size="13" font-weight="700">hashes &mdash; crackable offline</text>
+          <!-- right cylinder: public keys -->
+          <ellipse cx="560" cy="60" rx="110" ry="22" class="f-greentint k-green" stroke-width="1.5"></ellipse>
+          <path d="M450 60 L450 168 a110 22 0 0 0 220 0 L670 60" class="f-greentint k-green" stroke-width="1.5"></path>
+          <ellipse cx="560" cy="60" rx="110" ry="22" class="f-greentint k-green" stroke-width="1.5"></ellipse>
+          <text x="560" y="66" text-anchor="middle" class="f-green" font-size="13" font-weight="700">Passkey DB</text>
+          <text x="560" y="98" text-anchor="middle" class="mono f-steel" font-size="12">04:a1:b2:c3:d4&hellip;</text>
+          <text x="560" y="118" text-anchor="middle" class="mono f-steel" font-size="12">04:9f:2e:11:aa&hellip;</text>
+          <text x="560" y="138" text-anchor="middle" class="mono f-steel" font-size="12">04:7c:83:5b:20&hellip;</text>
+          <text x="560" y="204" text-anchor="middle" class="f-green" font-size="13" font-weight="700">public keys &mdash; safe to leak</text>
+          <!-- three X chips -->
+          <g>
+            <rect x="60" y="232" width="180" height="42" rx="8" class="f-surface k-hair" stroke-width="1.5"></rect>
+            <text x="82" y="258" class="f-red" font-size="16" font-weight="700">&#10007;</text>
+            <text x="150" y="258" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">can't crack</text>
+          </g>
+          <g>
+            <rect x="270" y="232" width="180" height="42" rx="8" class="f-surface k-hair" stroke-width="1.5"></rect>
+            <text x="292" y="258" class="f-red" font-size="16" font-weight="700">&#10007;</text>
+            <text x="366" y="258" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">can't reuse elsewhere</text>
+          </g>
+          <g>
+            <rect x="480" y="232" width="180" height="42" rx="8" class="f-surface k-hair" stroke-width="1.5"></rect>
+            <text x="502" y="258" class="f-red" font-size="16" font-weight="700">&#10007;</text>
+            <text x="574" y="258" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">can't replay later</text>
+          </g>
+        </svg>
+      </div>
+    </figure>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Nothing worth stealing is stored, nothing is reused across sites, nothing can be replayed.</p>
+  </section>
+
+  <!-- ============ S7 — QR / CROSS-DEVICE ============ -->
+  <section class="sec" id="s7" aria-labelledby="s7-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">07</span> · Cross-device</p>
+      <h2 id="s7-h">Using your phone's passkey on a borrowed screen (the QR flow)</h2>
+      <p>One name, three words, so you're not confused later: the mechanism was <strong>caBLE</strong> ("cloud-assisted BLE"); folded into the CTAP&nbsp;2.2 spec it was renamed <strong>hybrid</strong> (the WebAuthn transport string is literally <code>hybrid</code>); marketing calls it <strong>cross-device authentication</strong>. Same thing.</p>
+      <p>The job: sign in on a machine that doesn't hold your passkey &mdash; a borrowed laptop, a public desktop, a different ecosystem than your phone. The desktop shows a QR code; your phone (which holds the key) completes the ceremony; the desktop gets logged in and <strong>the private key never leaves the phone</strong>. Condensed, the steps are:</p>
+      <ol>
+        <li>The desktop has no local passkey, so it renders a <strong>QR code</strong> encoding a short-lived, single-use handshake (a <code>FIDO:/</code> URI: an ephemeral P-256 public key plus a 16-byte shared secret).</li>
+        <li>Your <strong>phone scans it</strong> &mdash; the native camera recognizes the <code>FIDO:</code> URI.</li>
+        <li>The phone broadcasts <strong>one BLE advertisement</strong>, phone&nbsp;&rarr;&nbsp;desktop &mdash; the only Bluetooth step &mdash; encrypted with the shared secret, carrying a nonce and which tunnel server to meet at.</li>
+        <li>The desktop <strong>hears and decrypts that advert</strong> (this proves proximity), then dials the named <strong>tunnel server</strong> over the internet.</li>
+        <li>An <strong>end-to-end-encrypted tunnel</strong> forms through the relay; the CTAP2 ceremony runs over it; your phone prompts for Face&nbsp;ID / fingerprint / PIN, <strong>signs</strong>, and returns the assertion. The desktop hands it to the site. You're in.</li>
+      </ol>
+      <h3>Why the Bluetooth step is the anti-phishing part</h3>
+      <p>Bluetooth here is a <strong>proximity proof, not a data channel</strong> &mdash; no challenge, key, or credential rides over BLE; it all goes through the encrypted internet tunnel. As Adam Langley put it: <em>"if we can send one Bluetooth message from the phone and make the computer prove that it has received it, then all other communication can be routed over the Internet."</em> That single short-range advert is the trick. A phishing site can relay a QR code to a victim anywhere on earth and get them to scan it &mdash; but the passkey only completes if the screen showing the QR is <em>physically next to the phone</em>, because the desktop must prove it heard the advert. A phisher's server on another continent can't hear a Bluetooth advert, so the ceremony dies.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 760 430" role="img" aria-label="The hybrid flow. A desktop shows a QR code, the phone scans it, the phone sends one short-range Bluetooth advert proving proximity, then an end-to-end encrypted internet tunnel forms through a relay that sees only ciphertext, while the private key stays on the phone." style="min-width:640px">
+          <!-- desktop -->
+          <rect x="40" y="40" width="150" height="104" rx="8" class="f-surface k-steel nofill" stroke-width="2"></rect>
+          <rect x="98" y="144" width="34" height="16" class="f-surface2 k-steel nofill" stroke-width="2"></rect>
+          <line x1="82" y1="162" x2="148" y2="162" class="k-steel" stroke-width="3"></line>
+          <!-- qr -->
+          <rect x="66" y="60" width="60" height="60" rx="4" class="f-surface2 k-hair" stroke-width="1"></rect>
+          <rect x="72" y="66" width="16" height="16" class="f-ink"></rect>
+          <rect x="104" y="66" width="16" height="16" class="f-ink"></rect>
+          <rect x="72" y="98" width="16" height="16" class="f-ink"></rect>
+          <rect x="98" y="92" width="8" height="8" class="f-ink"></rect>
+          <rect x="110" y="104" width="8" height="8" class="f-ink"></rect>
+          <text x="152" y="76" class="mono f-steel" font-size="11">FIDO:/</text>
+          <text x="152" y="94" class="mono f-steel" font-size="11">0782413&hellip;</text>
+          <text x="115" y="184" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Desktop (borrowed)</text>
+          <!-- phone -->
+          <rect x="600" y="34" width="90" height="150" rx="14" class="f-surface k-steel nofill" stroke-width="2"></rect>
+          <circle cx="645" cy="60" r="4" class="nofill k-steel" stroke-width="2"></circle>
+          <!-- key on phone -->
+          <circle cx="632" cy="118" r="10" class="nofill k-brass" stroke-width="4"></circle>
+          <line x1="642" y1="118" x2="672" y2="118" class="k-brass" stroke-width="5"></line>
+          <line x1="664" y1="118" x2="664" y2="126" class="k-brass" stroke-width="4"></line>
+          <text x="645" y="204" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Your phone</text>
+          <text x="645" y="222" text-anchor="middle" class="f-brass" font-size="11" font-weight="700">private key lives here</text>
+          <!-- scan arrow -->
+          <line x1="196" y1="118" x2="596" y2="118" class="k-steel dash"></line>
+          <polygon points="196,118 206,113 206,123" class="f-steel"></polygon>
+          <text x="400" y="108" text-anchor="middle" class="f-steel" font-size="12" font-weight="700">phone scans the QR</text>
+          <!-- BLE band -->
+          <rect x="40" y="238" width="680" height="66" rx="10" class="f-brasstint k-brass" stroke-width="1.5"></rect>
+          <path d="M250 271 q14 -16 28 0 q14 16 28 0" class="k-brass" stroke-width="2.4"></path>
+          <path d="M430 271 q14 -16 28 0 q14 16 28 0" class="k-brass" stroke-width="2.4"></path>
+          <line x1="306" y1="271" x2="430" y2="271" class="k-brass" stroke-width="2.4"></line>
+          <polygon points="252,271 264,265 264,277" class="f-brass"></polygon>
+          <text x="380" y="258" text-anchor="middle" class="f-brass" font-size="13" font-weight="700">one BLE advert: phone &rarr; desktop</text>
+          <text x="380" y="294" text-anchor="middle" class="f-steel" font-size="12">"we're in the same room" &mdash; proximity proof, no data</text>
+          <!-- tunnel band -->
+          <text x="60" y="336" class="lbl-e f-steel">Then, over the internet</text>
+          <rect x="40" y="346" width="140" height="52" rx="8" class="f-surface k-steel nofill" stroke-width="1.5"></rect>
+          <text x="110" y="378" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Desktop</text>
+          <rect x="300" y="346" width="160" height="52" rx="8" class="f-surface2 k-hair" stroke-width="1.5"></rect>
+          <text x="380" y="368" text-anchor="middle" class="f-steel" font-size="12" font-weight="700">Relay server</text>
+          <text x="380" y="386" text-anchor="middle" class="f-steel" font-size="10.5">sees only ciphertext</text>
+          <rect x="580" y="346" width="140" height="52" rx="8" class="f-surface k-steel nofill" stroke-width="1.5"></rect>
+          <text x="650" y="378" text-anchor="middle" class="f-ink" font-size="12" font-weight="700">Phone signs</text>
+          <line x1="180" y1="372" x2="298" y2="372" class="k-green"></line><polygon points="180,372 190,367 190,377" class="f-green"></polygon><polygon points="298,372 288,367 288,377" class="f-green"></polygon>
+          <line x1="460" y1="372" x2="578" y2="372" class="k-green"></line><polygon points="460,372 470,367 470,377" class="f-green"></polygon><polygon points="578,372 568,367 568,377" class="f-green"></polygon>
+          <text x="380" y="420" text-anchor="middle" class="f-green" font-size="12" font-weight="700">end-to-end encrypted &mdash; the key never moves, only the signature does</text>
+        </svg>
+      </div>
+      <figcaption>The relay is a dumb pipe: it forwards bytes both ways and never sees plaintext (end-to-end encryption via an ECDH handshake using the QR's ephemeral key and 16-byte secret). Both devices need Bluetooth <em>and</em> internet, and cross-device completion rates run materially lower than same-device &mdash; expect some drop-off.</figcaption>
+    </figure>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Bluetooth just proves the two devices are in the same room &mdash; which kills remote phishing; the real work rides an encrypted internet tunnel and your key never moves.</p>
+  </section>
+
+  <!-- ============ S8 — HONEST LIMITS ============ -->
+  <section class="sec" id="s8" aria-labelledby="s8-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">08</span> · The honest part</p>
+      <h2 id="s8-h">What passkeys do not fix</h2>
+      <p>A page that only sells you the wins is a brochure. Passkeys are excellent at one specific thing &mdash; making the login itself phishing-proof &mdash; and they leave real gaps elsewhere. Know them, or you'll build a false sense of safety.</p>
+    </div>
+
+    <div class="cards3">
+      <div class="wcard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--red)"><rect x="5" y="10" width="14" height="10" rx="2" fill="none"></rect><path d="M8 10V7a4 4 0 0 1 8 0"></path><circle cx="12" cy="15" r="1.4"></circle></svg>
+        <h4>Someone already unlocked your device</h4>
+        <p>Anyone who can unlock your phone &mdash; knows the PIN, or defeats Face&nbsp;ID &mdash; can use every passkey on it. The passkey trusts the local unlock; it does not re-check the human beyond that.</p>
+      </div>
+      <div class="wcard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--red)"><path d="M4 20v-6a8 8 0 0 1 16 0v6" fill="none"></path><line x1="4" y1="20" x2="20" y2="20"></line><path d="M9 20v-6a3 3 0 0 1 6 0v6"></path></svg>
+        <h4>A weak recovery back door</h4>
+        <p>Most sites keep flimsy fallbacks alive &mdash; email link, SMS OTP, an old password. An attacker skips the passkey and walks the easiest path. Passkeys stop phishing; your fallbacks quietly undo it.</p>
+      </div>
+      <div class="wcard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--red)"><path d="M6 16a4 4 0 0 1 .5-8 6 6 0 0 1 11.5 1.5A3.5 3.5 0 0 1 18 16z" fill="none"></path><line x1="10" y1="19" x2="10.01" y2="19"></line><line x1="14" y1="19" x2="14.01" y2="19"></line></svg>
+        <h4>Your cloud account got taken over</h4>
+        <p>Synced passkeys live in your Apple / Google / Microsoft account. Providers end-to-end-encrypt the sync (they can't read your keys), but if that <em>account</em> is compromised, the keys can be misused. Security now rests on that account's own MFA.</p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p style="margin-top:1.2rem">Two more, quieter: losing your recovery key (iCloud Keychain recovery can then take days) and plain sync failures that leave a passkey <em>unavailable</em> on a device &mdash; an availability headache, not a breach, but real UX pain.</p>
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Passkeys make the front door pick-proof. They do nothing about someone already inside your device, and nothing about a flimsy back door (recovery) you left unlocked.</p>
+  </section>
+
+  <!-- ============ S9 — BANK VS GOOGLE ============ -->
+  <section class="sec" id="s9" aria-labelledby="s9-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">09</span> · The payoff</p>
+      <h2 id="s9-h">So why does my bank pile on hoops and Google doesn't?</h2>
+      <p>Now the opening puzzle has an answer. The bank's visible friction and Google's invisible ease come from opposite philosophies, and the quieter one is arguably the safer.</p>
+      <h3>Why banks pile on <em>visible</em> friction</h3>
+      <ul>
+        <li><strong>Regulation mandates it.</strong> The EU's PSD2 Strong Customer Authentication requires at least two of the three factors for online payments; India's RBI mandates 2FA for all domestic digital payment transactions from 1 April 2026. That's a legal floor, not a UX choice.</li>
+        <li><strong>Dynamic linking.</strong> PSD2 further requires the authentication be bound to the specific amount and payee, so each payment tends to trigger its own visible challenge by design.</li>
+        <li><strong>Liability shifting.</strong> Passing SCA / 3-D Secure shifts fraud liability toward the issuer or customer. Some of that friction is a legal artifact &mdash; "we made you prove it" &mdash; not pure security.</li>
+        <li><strong>Legacy cores and auditability.</strong> Banks run decades-old systems and answer to auditors. A visible, logged OTP is easy to point at in an audit; an invisible risk engine is hard to certify to a regulator.</li>
+      </ul>
+      <p>The irony: the factor they mandate is often <strong>SMS-OTP &mdash; phishable and SIM-swappable.</strong> RBI itself is now steering away from SMS-OTP toward "deterministic, dynamic, and phishing-resistant" methods. The regulators agree the visible friction they created isn't the strong part.</p>
+      <h3>Why Google feels frictionless yet is arguably safer</h3>
+      <p>Google doesn't skip authentication; it moves most of it into the background. A <strong>risk engine</strong> scores every sign-in from many signals &mdash; device fingerprint, IP and geolocation, historical behavior, session reputation, bot signals &mdash; and only interrupts you when the score looks off. Low-risk logins are silent. And your already-authenticated, remembered device is itself quietly acting as a possession factor, so a re-challenge is rarely needed. The strong factor is <em>there</em>; it just isn't making you type anything.</p>
+    </div>
+
+    <figure class="figure">
+      <div class="scroll-x">
+        <svg class="dgm" viewBox="0 0 720 320" role="img" aria-label="The bank stacks three visible hoops (SMS OTP, card PIN, security question) on a phishable factor. Google uses one glance backed by an invisible risk engine scoring device, location, behavior and bot signals, challenging only when risk is high." style="min-width:600px">
+          <!-- bank column -->
+          <rect x="16" y="30" width="330" height="274" rx="12" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="181" y="58" text-anchor="middle" class="lbl-t f-ink" font-size="17" font-weight="700">Your bank</text>
+          <ellipse cx="181" cy="96" rx="86" ry="18" class="f-redtint k-red nofill" stroke-width="2"></ellipse>
+          <text x="181" y="101" text-anchor="middle" class="f-red" font-size="12" font-weight="700">SMS OTP</text>
+          <ellipse cx="181" cy="134" rx="86" ry="18" class="f-redtint k-red nofill" stroke-width="2"></ellipse>
+          <text x="181" y="139" text-anchor="middle" class="f-red" font-size="12" font-weight="700">card PIN</text>
+          <ellipse cx="181" cy="172" rx="86" ry="18" class="f-redtint k-red nofill" stroke-width="2"></ellipse>
+          <text x="181" y="177" text-anchor="middle" class="f-red" font-size="12" font-weight="700">security question</text>
+          <text x="181" y="222" text-anchor="middle" class="f-steel" font-size="12">regulation + liability + legacy</text>
+          <text x="181" y="240" text-anchor="middle" class="f-steel" font-size="12">&rarr; visible hoops</text>
+          <text x="181" y="278" text-anchor="middle" class="f-red" font-size="12" font-weight="700">on a phishable factor (SMS)</text>
+          <!-- google column -->
+          <rect x="374" y="30" width="330" height="274" rx="12" class="f-surface k-hair" stroke-width="1.5"></rect>
+          <text x="539" y="58" text-anchor="middle" class="lbl-t f-ink" font-size="17" font-weight="700">Google</text>
+          <!-- risk engine box -->
+          <rect x="398" y="76" width="282" height="92" rx="9" class="f-surface2 k-hair" stroke-width="1.5"></rect>
+          <text x="539" y="96" text-anchor="middle" class="lbl-e f-steel">Invisible risk engine</text>
+          <rect x="412" y="106" width="80" height="24" rx="12" class="f-surface k-hair" stroke-width="1"></rect><text x="452" y="122" text-anchor="middle" class="f-ink" font-size="10.5">device</text>
+          <rect x="500" y="106" width="80" height="24" rx="12" class="f-surface k-hair" stroke-width="1"></rect><text x="540" y="122" text-anchor="middle" class="f-ink" font-size="10.5">IP / geo</text>
+          <rect x="588" y="106" width="80" height="24" rx="12" class="f-surface k-hair" stroke-width="1"></rect><text x="628" y="122" text-anchor="middle" class="f-ink" font-size="10.5">behavior</text>
+          <rect x="456" y="136" width="80" height="24" rx="12" class="f-surface k-hair" stroke-width="1"></rect><text x="496" y="152" text-anchor="middle" class="f-ink" font-size="10.5">bot signals</text>
+          <rect x="544" y="136" width="80" height="24" rx="12" class="f-surface k-hair" stroke-width="1"></rect><text x="584" y="152" text-anchor="middle" class="f-ink" font-size="10.5">reputation</text>
+          <!-- glance -->
+          <rect x="486" y="182" width="106" height="46" rx="10" class="f-greentint k-green" stroke-width="1.5"></rect>
+          <text x="539" y="204" text-anchor="middle" class="f-green" font-size="12" font-weight="700">one glance</text>
+          <text x="539" y="220" text-anchor="middle" class="f-steel" font-size="10.5">device-bound key</text>
+          <text x="539" y="252" text-anchor="middle" class="f-steel" font-size="12">challenge only when risk is high</text>
+          <text x="539" y="284" text-anchor="middle" class="f-green" font-size="11.5" font-weight="700">0 phishings / 85k staff since 2018 &middot; ~50% faster than SMS</text>
+        </svg>
+      </div>
+    </figure>
+
+    <div class="prose">
+      <h3>The honest answer to "isn't it the same trade-off?"</h3>
+      <p>No &mdash; security and usability are not the same lever, and friction is a terrible proxy for security. The strong part of a login is the <em>nature of the factor</em>, not how much the user suffers. A phishing-resistant possession factor plus a smart risk engine beats a pile of visible-but-phishable hoops. The evidence is blunt: Google put physical security keys in front of 85,000+ employees in 2018 and has had <strong>zero</strong> successful phishing since &mdash; and it was also <strong>faster and cheaper</strong> (~50% quicker than SMS-OTP, ~4&times; faster than TOTP). The same posture is why Cloudflare shrugged off the 2022 campaign that breached Twilio (FIDO2 keys, all other MFA disabled), and why Snap reported zero account takeovers for over two years.</p>
+      <p><strong>Better auth removes friction and adds security at once &mdash; you were never supposed to trade them.</strong> Fair caveat: banks carry regulatory and liability constraints Google's consumer login doesn't, and invisible risk-scoring has its own costs (false positives, opacity, harder audits). But the direction of travel &mdash; RBI and PSD2 both moving toward phishing-resistant and risk-based auth &mdash; vindicates the passkey thesis, not the pile of hoops.</p>
+    </div>
+
+    <div class="note safe">
+      <span class="lbl">When a second factor still matters</span> Passkeys don't retire the second factor everywhere. Keep one where a regulator requires it (payments under PSD2 / RBI), for high-value or sensitive step-up actions (changing recovery settings, moving money, admin operations), and for as long as weaker recovery fallbacks remain enabled &mdash; the fallback is only as strong as the day you finally disable it.
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Better auth gives you <em>both</em> less friction and more security &mdash; you were never meant to trade them.</p>
+  </section>
+
+  <!-- ============ S10 — FRAPPE CLOSE ============ -->
+  <section class="sec" id="s10" aria-labelledby="s10-h">
+    <div class="prose">
+      <p class="eyebrow"><span class="num">10</span> · The close</p>
+      <h2 id="s10-h">What this means for a Frappe app</h2>
+      <p>Putting passkeys into a Frappe site is choosing the Google model over the bank model: authentication that is phishing-resistant <em>by construction</em> and easier for users than the password it replaces. The <strong>frappe-passkeys</strong> app brings origin-bound, challenge-signed WebAuthn login to Frappe &mdash; the two locks from <a href="#s5">section 05</a>, applied to your own login screen. The server stops storing a crackable secret and starts storing a public key that's safe to leak.</p>
+      <p>Keep the honest caveats from <a href="#s8">section 08</a> in view: harden or disable the weak recovery fallbacks so a passkey login isn't quietly undone by an email-link back door, and keep a second factor where regulation or a sensitive action demands it. Do that, and the login is both stronger and lighter &mdash; the rare change that costs the user nothing.</p>
+    </div>
+
+    <div class="login" role="img" aria-label="A mock login screen where a 'Sign in with a passkey' button replaces the password field.">
+      <div class="brandmark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--brass)"><circle cx="8" cy="12" r="4.5" fill="none"></circle><circle cx="8" cy="12" r="1.4"></circle><line x1="12.5" y1="12" x2="21" y2="12"></line><line x1="18" y1="12" x2="18" y2="16"></line><line x1="21" y1="12" x2="21" y2="15"></line></svg>
+        <span>Sign in</span>
+      </div>
+      <label for="mock-user">Email</label>
+      <div class="field" id="mock-user">you@example.com</div>
+      <div class="or">password no longer needed</div>
+      <div class="field dim" aria-hidden="true">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
+      <div class="pk-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="12" r="4.5" fill="none"></circle><circle cx="8" cy="12" r="1.4"></circle><line x1="12.5" y1="12" x2="21" y2="12"></line><line x1="18" y1="12" x2="18" y2="16"></line><line x1="21" y1="12" x2="21" y2="15"></line></svg>
+        Sign in with a passkey
+      </div>
+    </div>
+
+    <p class="takeaway"><span class="tk">Takeaway</span> Adding passkeys is choosing phishing-resistance by construction &mdash; and handing users something faster than the password it replaces.</p>
+  </section>
+
+  <!-- ============ SOURCES ============ -->
+  <section class="sec" id="sources" aria-labelledby="src-h">
+    <div class="sources">
+      <p class="eyebrow">Sources &amp; further reading</p>
+      <h2 id="src-h">Where this comes from</h2>
+      <p class="prose" style="margin-left:0">Primary specs and first-hand write-ups first; vendor syntheses after, flagged as such. All fetched 2026-07-12.</p>
+
+      <div class="srcgroup">
+        <h3>Primary / spec-grade</h3>
+        <ul>
+          <li><a href="https://www.imperialviolet.org/2023/07/23/u2f-to-passkeys.html">From U2F to passkeys</a> <span class="who">&mdash; Adam Langley (design of the BLE advert, tunnel, origin binding, challenge signing)</span></li>
+          <li><a href="https://developers.yubico.com/CTAP/CTAP2.2.html">CTAP 2.2 developer docs</a> <span class="who">&mdash; Yubico (WebSocket tunnel, hybrid, state-assisted)</span>; <a href="https://developers.yubico.com/CTAP/CTAP2.3.html">CTAP 2.3</a></li>
+          <li><a href="https://www.anvilsecure.com/blog/demystifying-passkeys-under-the-hood-the-architecture.html">Demystifying passkeys: the architecture</a> <span class="who">&mdash; Anvil Secure (33-byte pubkey, 16-byte QR secret, tunnel derivation, mutual auth)</span></li>
+          <li><a href="https://fidoalliance.org/google-case-study/">Google security-keys case study</a> <span class="who">&mdash; FIDO Alliance</span>; <a href="https://krebsonsecurity.com/2018/07/google-security-keys-neutralized-employee-phishing/">Krebs on Security</a></li>
+          <li><a href="https://en.wikipedia.org/wiki/Strong_customer_authentication">PSD2 Strong Customer Authentication</a>; <a href="https://cloud.google.com/security/products/recaptcha">Google reCAPTCHA (risk-based signals)</a></li>
+          <li><a href="https://support.apple.com/guide/security/passkey-security-sec8a76d61e7/web">Apple Platform Security: passkey security</a></li>
+        </ul>
+      </div>
+
+      <div class="srcgroup">
+        <h3>Synthesis &amp; secondary</h3>
+        <ul>
+          <li><a href="https://www.corbado.com/blog/webauthn-passkey-qr-code">WebAuthn passkey QR codes</a> and <a href="https://www.corbado.com/blog/passkeys-phishing-resistant">why passkeys are phishing-resistant</a> <span class="who">&mdash; Corbado</span></li>
+          <li><a href="https://workos.com/blog/passkeys-stop-ai-phishing-mfa-fallbacks">Passkeys stop phishing; your MFA fallbacks undo it</a> <span class="who">&mdash; WorkOS (Cloudflare / Snap)</span></li>
+          <li><a href="https://entro.security/glossary/authentication-factors/">Authentication factors</a> <span class="who">&mdash; Entro</span>; <a href="https://fedresources.com/from-totp-to-phishing-resistant-passkeys-a-guide-to-multi-factor-authentication/">From TOTP to phishing-resistant passkeys</a></li>
+          <li><a href="https://www.sentinelone.com/cybersecurity-101/identity-security/password-vs-passkey/">Password vs passkey</a> <span class="who">&mdash; SentinelOne (breach / stuffing)</span></li>
+          <li><a href="https://www.kaspersky.com/blog/full-guide-to-passkeys-in-2025-part-1/53688/">Full guide to passkeys</a> <span class="who">&mdash; Kaspersky</span>; <a href="https://mojoauth.com/ciam-qna/how-do-passkeys-handle-backup-and-account-recovery-scenarios">passkey recovery Q&amp;A</a> <span class="who">&mdash; MojoAuth</span></li>
+          <li><a href="https://idtechwire.com/rbi-mandates-flexible-two-factor-authentication-for-digital-payments-by-april-2026/">RBI 2FA mandate (April 2026)</a>; <a href="https://risk.lexisnexis.com/insights-resources/article/rbi-auth-mandate">RBI moving off SMS-OTP</a></li>
+          <li><a href="https://www.yubico.com/resources/reference-customers/google/">Google reference customer</a> <span class="who">&mdash; Yubico (speed / cost figures)</span></li>
+        </ul>
+      </div>
+
+      <p class="colophon">A ground-up explainer on passkey security theory and the cross-device (hybrid) flow. Diagrams are inline SVG; the page carries no external requests.</p>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById("pk-theme");
+    var bar = document.getElementById("pk-progress");
+
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+        var cur = root.getAttribute("data-theme");
+        var dark = cur ? (cur === "dark") : (mq && mq.matches);
+        root.setAttribute("data-theme", dark ? "light" : "dark");
+      });
+    }
+
+    if (bar) {
+      var ticking = false;
+      function update() {
+        var doc = document.documentElement;
+        var body = document.body;
+        var scrollTop = doc.scrollTop || body.scrollTop || 0;
+        var height = (doc.scrollHeight || body.scrollHeight) - doc.clientHeight;
+        var pct = height > 0 ? (scrollTop / height) * 100 : 0;
+        bar.style.width = pct + "%";
+        ticking = false;
+      }
+      function onScroll() {
+        if (!ticking) { window.requestAnimationFrame(update); ticking = true; }
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", update);
+      update();
+    }
+  })();
+</script>
+</body>
+</html>
