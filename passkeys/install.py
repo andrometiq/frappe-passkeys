@@ -40,6 +40,7 @@ def after_install():
 	ensure_enforcement_defaults()
 	sync_registry_fixture()
 	sync_standard_navbar_items()
+	sync_user_form_section()
 
 
 def before_uninstall():
@@ -52,6 +53,7 @@ def before_uninstall():
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
 	_remove_registry_property_setter()
 	_remove_navbar_item()
+	_remove_user_form_section()
 
 
 _CORE_NATIVE: bool | None = None
@@ -278,6 +280,100 @@ def _remove_registry_property_setter():
 		frappe.delete_doc("Property Setter", name, ignore_permissions=True, force=True)
 	if names:
 		frappe.clear_cache(doctype="System Settings")
+
+
+# ---------------------------------------------------------------------------
+# User-form "Passkeys" section (programmatic Custom Fields — NOT a fixtures/ fixture)
+# ---------------------------------------------------------------------------
+# The section is placed DETERMINISTICALLY, right after the User form's password
+# ("Change Password") / security area, via a Custom Field Section Break + an HTML
+# wrapper — replacing the old dashboard section that appended at the END of the form
+# in a non-deterministic spot. Programmatic (not a fixtures/ fixture) for the same two
+# reasons as the registry Property Setter: it is gated on is_core_native() (a dormant /
+# native site drops it, where a fixture would resync unconditionally), and the lifecycle
+# mirrors that setter — install adds, after_migrate syncs, before_uninstall removes.
+# The client glue (user_passkeys.js) renders into the HTML wrapper and collapses the
+# (empty) section when no passkey mode is active, so it never shows an empty header.
+
+USER_FORM_SECTION_FIELD = "passkeys_section"
+USER_FORM_HTML_FIELD = "passkeys_html"
+
+# Anchor priority: the LAST field of the User "Change Password" section on
+# v15/v16/develop (verified against all three benches), so the Passkeys section lands
+# cleanly right AFTER that section — the natural neighbour of where a user manages their
+# password. Each fallback is a field of the same security/password area, present on all
+# three, used only if a future Frappe drops the primary anchor.
+_USER_FORM_ANCHOR_CANDIDATES = (
+	"redirect_url",
+	"last_password_reset_date",
+	"logout_all_sessions",
+	"change_password",
+)
+
+
+def sync_user_form_section():
+	"""after_install + after_migrate: create the User-form "Passkeys" section Custom
+	Fields iff core is not passkey-native; remove them otherwise (a dormant / native site
+	stays schema-clean). Mirrors :func:`sync_registry_fixture`."""
+	if is_core_native():
+		_remove_user_form_section()
+	else:
+		_create_user_form_section()
+
+
+def _user_form_anchor() -> str:
+	"""The first candidate anchor present on the running Frappe's User form. Falls back to
+	the primary name if none is found (Frappe then appends the field — a defined, if less
+	tidy, placement) so a schema drift never raises during install/migrate."""
+	meta = frappe.get_meta("User")
+	for fieldname in _USER_FORM_ANCHOR_CANDIDATES:
+		if meta.has_field(fieldname):
+			return fieldname
+	return _USER_FORM_ANCHOR_CANDIDATES[0]
+
+
+def _create_user_form_section():
+	# Lazy import keeps the hook-path import discipline (no webauthn transitively); this is
+	# pure core frappe. Section Break + HTML are non-stored fieldtypes, so no column /
+	# ALTER TABLE is created — the write stays transactional.
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	create_custom_fields(
+		{
+			"User": [
+				{
+					"fieldname": USER_FORM_SECTION_FIELD,
+					"label": "Passkeys",
+					"fieldtype": "Section Break",
+					"insert_after": _user_form_anchor(),
+					# module set so core's uninstaller also cleans it (mirrors the
+					# registry Property Setter); before_uninstall removes it explicitly too.
+					"module": "Passkeys",
+				},
+				{
+					"fieldname": USER_FORM_HTML_FIELD,
+					"fieldtype": "HTML",
+					"insert_after": USER_FORM_SECTION_FIELD,
+					"module": "Passkeys",
+				},
+			]
+		},
+		update=True,
+	)
+	frappe.clear_cache(doctype="User")
+
+
+def _remove_user_form_section():
+	"""Delete the section Custom Fields (HTML first, then its Section Break). Idempotent;
+	safe on sites that never had them."""
+	removed = False
+	for fieldname in (USER_FORM_HTML_FIELD, USER_FORM_SECTION_FIELD):
+		name = frappe.db.get_value("Custom Field", {"dt": "User", "fieldname": fieldname})
+		if name:
+			frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+			removed = True
+	if removed:
+		frappe.clear_cache(doctype="User")
 
 
 # ---------------------------------------------------------------------------
