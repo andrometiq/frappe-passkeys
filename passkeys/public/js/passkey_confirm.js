@@ -162,12 +162,21 @@
 				return new Promise(function (resolve, reject) {
 					ensureDialog(opts);
 					var actName = esc(actionLabel(opts.action));
+					// The built-in passkey-management action (delete / add a passkey) gets
+					// plain, honest framing: the user landed here because this sign-in wasn't
+					// strongly verified recently (A4). Other (third-party) actions keep the
+					// action-named lead.
+					var leadHtml = opts.action === "passkeys.manage"
+						? '<p class="passkey-confirm-lead">' +
+							esc(t("This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below.")) +
+							'</p>'
+						: '<p class="passkey-confirm-lead">' +
+							esc(t("Confirm")) + ' <strong>' + actName + '</strong> ' +
+							esc(t("with your passkey.")) + '</p>';
 					var lines = [
 						'<div class="passkey-confirm" role="group" aria-label="' +
 							esc(t("Confirm this action with a passkey")) + '">',
-						'<p class="passkey-confirm-lead">' +
-							esc(t("Confirm")) + ' <strong>' + actName + '</strong> ' +
-							esc(t("with your passkey.")) + '</p>',
+						leadHtml,
 						'<div class="passkey-confirm-actions">',
 						'<button type="button" class="btn btn-primary passkey-confirm-passkey" ' +
 							'autofocus>' + esc(t("Confirm with passkey")) + '</button>',

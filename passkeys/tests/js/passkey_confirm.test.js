@@ -300,3 +300,44 @@ test("call(): set_passkey_only_login(true) echoes the {enabled:true} fingerprint
 	assert.deepStrictEqual(retry.body, { enabled: true });
 	assert.deepStrictEqual(retry.headers, { "X-Passkey-Grant": "PK-GRANT" });
 });
+
+// --------------------------------------------------- server-message surfacing (A4)
+// A server refusal must not collapse into a generic string: the engine surfaces the
+// message Frappe puts in `_server_messages` (e.g. the last-passkey delete guard).
+
+function serverMsgBody(msg) {
+	return { exc_type: "ValidationError", _server_messages: JSON.stringify([JSON.stringify({ message: msg })]) };
+}
+
+test("serverMessages: parses Frappe's double-encoded _server_messages, else null", () => {
+	assert.strictEqual(C.serverMessages(serverMsgBody("This is your only passkey.")), "This is your only passkey.");
+	assert.strictEqual(C.serverMessages({ some: "error" }), null);
+	assert.strictEqual(C.serverMessages(null), null);
+});
+
+test("call(): a reached refusal with a server message surfaces it verbatim (last-passkey guard)", async () => {
+	const GUARD = "This is your only passkey and passwordless login is on for your account — add another passkey (or turn off passkey-only login) before removing it.";
+	const post = makePost({ "passkeys.api.credentials.delete_credential": [{ ok: false, status: 417, body: serverMsgBody(GUARD) }] });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI() });
+	await assert.rejects(
+		engine.call("passkeys.api.credentials.delete_credential", { name: "x" }),
+		(e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED && e.message === GUARD
+	);
+});
+
+test("call(): retry after a confirmed grant surfaces the server message when the retry is refused", async () => {
+	const GUARD = "This is your only passkey and passwordless login is on for your account.";
+	const post = makePost({
+		"passkeys.api.credentials.delete_credential": [
+			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "passkeys.manage", payload_fingerprint: "fp", methods: ["passkey"] } },
+			{ ok: false, status: 417, body: serverMsgBody(GUARD) },
+		],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["passkey"] } } }],
+		"passkeys.confirm.verify_confirmation": [{ ok: true, status: 200, body: { message: { grant: "G" } } }],
+	});
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI({ method: "passkey" }) });
+	await assert.rejects(
+		engine.call("passkeys.api.credentials.delete_credential", { name: "x" }),
+		(e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED && e.message === GUARD
+	);
+});
