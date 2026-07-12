@@ -36,6 +36,7 @@ def before_install():
 
 def after_install():
 	_ensure_settings_defaults()
+	ensure_enforcement_defaults()
 	sync_registry_fixture()
 	sync_standard_navbar_items()
 
@@ -164,6 +165,20 @@ def _ensure_settings_defaults():
 			continue
 		if df.default is not None and doc.get(df.fieldname) is None:
 			doc.set(df.fieldname, df.default)
+	doc.flags.ignore_permissions = True
+	doc.flags.ignore_mandatory = True
+	doc.save()
+
+
+def ensure_enforcement_defaults():
+	"""Seed the break-glass exempt role (``System Manager``) into Passkey Settings
+	when the exempt-roles table is empty, so an administrator can never lock
+	themselves out the moment enforcement is turned on. Idempotent — safe to call on
+	install and from the fold-nudge migration patch."""
+	doc = frappe.get_doc("Passkey Settings")
+	if doc.get("passkey_enforce_exempt_roles"):
+		return
+	doc.append("passkey_enforce_exempt_roles", {"role": "System Manager"})
 	doc.flags.ignore_permissions = True
 	doc.flags.ignore_mandatory = True
 	doc.save()

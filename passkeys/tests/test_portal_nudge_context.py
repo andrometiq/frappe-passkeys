@@ -24,7 +24,7 @@ _SETTINGS_FIELDS = (
 	"passkey_origins",
 	"login_with_passkey",
 	"passkey_as_second_factor",
-	"passkey_enrollment_nudge",
+	"passkey_enrollment_policy",
 	"passkey_nudge_max_prompts",
 	"passkey_nudge_cooldown_days",
 )
@@ -39,7 +39,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		settings.passkey_origins = ""
 		settings.login_with_passkey = 1  # a first-factor mode on ⇒ any-mode gate true
 		settings.passkey_as_second_factor = 0
-		settings.passkey_enrollment_nudge = 1
+		settings.passkey_enrollment_policy = "Nudge"
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)

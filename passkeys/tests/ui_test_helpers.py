@@ -248,10 +248,12 @@ def configure_nudge(
 	conditional_create: int = 0,
 ) -> dict:
 	"""Set the enrollment-nudge knobs for ``nudge_cadence.cy.js`` (written
-	directly — the same bench rationale as :func:`configure_login`)."""
+	directly — the same bench rationale as :func:`configure_login`). The legacy
+	``enrollment_nudge`` flag maps onto the ``passkey_enrollment_policy`` ladder
+	(1 ⇒ ``Nudge``, 0 ⇒ ``Off``)."""
 	_guard()
 	values = {
-		"passkey_enrollment_nudge": cint(enrollment_nudge),
+		"passkey_enrollment_policy": "Nudge" if cint(enrollment_nudge) else "Off",
 		"passkey_nudge_max_prompts": cint(max_prompts),
 		"passkey_nudge_cooldown_days": cint(cooldown_days),
 		"passkey_conditional_create": cint(conditional_create),
