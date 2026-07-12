@@ -20,6 +20,10 @@ frappe.ui.form.on("Passkey Settings", {
 		// every load and save, so this always tracks the persisted RP ID.
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
 		paintBanners(frm, M);
+		// Pull the RP ID the SERVER will actually resolve right now (fresh — boot can
+		// be stale on a settings page left open, e.g. after host_name was just set in
+		// site_config.json). Repaints once it lands so the banner matches Save exactly.
+		fetchResolvedRpId(frm);
 	},
 	// Repaint on any knob change so the matrix stays live before save.
 	login_with_passkey: repaint,
@@ -63,6 +67,21 @@ frappe.ui.form.on("Passkey Settings", {
 function repaint(frm) {
 	var M = frappe.passkeys_manage_common;
 	if (M) paintBanners(frm, M);
+}
+
+// Fetch the RP ID the server resolves right now (System-Manager-gated, read-only
+// endpoint). Cached on the form and read by buildContext; on failure we fall back to
+// frappe.boot.passkeys.rp_id, so the display is never worse than boot.
+function fetchResolvedRpId(frm) {
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_resolved_rp_id",
+		callback: function (r) {
+			if (!r || !r.message) return;
+			frm._passkey_server_rpid = r.message.rp_id || null;
+			frm._passkey_host_name_configured = !!r.message.host_name_configured;
+			repaint(frm);
+		},
+	});
 }
 
 function paintBanners(frm, M) {
@@ -119,12 +138,22 @@ function buildContext(frm) {
 	var boot = (frappe.boot && frappe.boot.passkeys) || {};
 	var sc = boot.settings_context || {};
 	var host = window.location && window.location.hostname;
-	var rpId = (frm.doc.passkey_rp_id || "").trim() || host;
+	// Server-truth resolution, mirroring policy.resolve_rp_id: an explicit RP ID wins
+	// (the server validates + lowercases it); otherwise the value the SERVER resolves
+	// from host_name — fetched live (frm._passkey_server_rpid), falling back to the
+	// boot value before that lands. NEVER window.location.hostname: the browser host is
+	// not what the server uses, so showing it makes the form disagree with Save (A1).
+	var explicit = (frm.doc.passkey_rp_id || "").trim().toLowerCase();
+	var serverResolved = frm._passkey_server_rpid !== undefined
+		? frm._passkey_server_rpid
+		: (boot.rp_id || null);
+	var rpId = explicit || serverResolved || null;
 	var origins = parseOrigins(frm.doc.passkey_origins, rpId);
 	return {
 		currentHost: host,
 		resolvedRpId: rpId,
 		resolvedOrigins: origins,
+		hostNameConfigured: frm._passkey_host_name_configured,
 		// server-supplied cross-flag context (optional)
 		coreTwoFactor: sc.core_two_factor_auth,
 		disablePassLogin: sc.disable_user_pass_login,

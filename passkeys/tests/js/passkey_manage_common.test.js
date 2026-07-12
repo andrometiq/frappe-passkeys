@@ -275,6 +275,31 @@ test("settingsBanners: RP-ID one-way-door warning is always present", () => {
 	assert.ok(b.some((x) => x.key === M.COPY.rpIdOneWayDoor && x.level === "warning"));
 });
 
+test("settingsBanners: no-RP-ID error when a mode is enabled but nothing resolves (A1)", () => {
+	// resolvedRpId is now server-truth; blank ⇒ Save WILL fail, so warn inline.
+	const b = M.settingsBanners({ login_with_passkey: 1 }, { currentHost: "staging.example.com" });
+	const unresolved = b.find((x) => x.key === M.COPY.rpIdUnresolved);
+	assert.ok(unresolved && unresolved.level === "error", "expected an rpIdUnresolved error banner");
+	assert.deepStrictEqual(unresolved.args, ["staging.example.com"]);
+	// Resolves ⇒ no unresolved banner; and no mode enabled ⇒ no unresolved banner either.
+	const resolved = M.settingsBanners({ login_with_passkey: 1 }, { resolvedRpId: "example.com", currentHost: "example.com" });
+	assert.ok(!resolved.some((x) => x.key === M.COPY.rpIdUnresolved));
+	const off = M.settingsBanners({ login_with_passkey: 0, passkey_as_second_factor: 0 }, {});
+	assert.ok(!off.some((x) => x.key === M.COPY.rpIdUnresolved));
+});
+
+test("settingsBanners: host mismatch is suppressed when no RP ID resolves", () => {
+	// Only diagnose a host mismatch once an RP ID actually resolves — otherwise the
+	// unresolved banner is the real story (a null rpId + custom origins must not
+	// masquerade as a mismatch).
+	const b = M.settingsBanners(
+		{ login_with_passkey: 1 },
+		{ currentHost: "staging.example.com", resolvedRpId: null, resolvedOrigins: ["https://other.example.com"] }
+	);
+	assert.ok(!b.some((x) => x.key === M.COPY.hostMismatch));
+	assert.ok(b.some((x) => x.key === M.COPY.rpIdUnresolved));
+});
+
 test("settingsBanners: host mismatch when current host not in resolved origins", () => {
 	const b = M.settingsBanners(
 		{ login_with_passkey: 1 },

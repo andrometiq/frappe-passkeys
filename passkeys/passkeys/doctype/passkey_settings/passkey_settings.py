@@ -6,7 +6,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from passkeys import policy
+from passkeys import policy, state
+from passkeys.passkey import refuse_if_core_native
 
 
 class PasskeySettings(Document):
@@ -33,7 +34,7 @@ class PasskeySettings(Document):
 		if not rp_id:
 			frappe.throw(
 				_(
-					"Cannot enable passkeys: no Relying Party ID resolves. Set Passkey RP ID, or configure host_name in site config."
+					"Cannot enable passkeys: no Relying Party ID resolves. Fix it one of two ways: set host_name in the site config (site_config.json) to this site's domain, or enter an explicit Passkey RP ID (a bare host name) in the Passkey RP ID field."
 				)
 			)
 		policy.validate_origins(self, rp_id)
@@ -89,3 +90,23 @@ class PasskeySettings(Document):
 				),
 				indicator="orange",
 			)
+
+
+@frappe.whitelist(methods=["POST"])
+def get_resolved_rp_id() -> dict:
+	"""Return the RP ID the SERVER will actually resolve right now, so the Passkey
+	Settings form can display server-truth instead of guessing from the browser host
+	(``window.location.hostname`` never matches an RP ID that comes from ``host_name``,
+	which is exactly the A1 confusion: the form showed a value Save then rejected).
+
+	Read-only and System-Manager-gated (the settings form is admin-only). Follows the
+	app endpoint idioms: ``refuse_if_core_native`` first (dormant-shell 417) and a
+	per-user rate limit."""
+	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	frappe.only_for("System Manager")
+	state.rate_limit_user("get_resolved_rp_id", 30, 60)  # 30/min/user
+	settings = frappe.get_cached_doc("Passkey Settings")
+	return {
+		"rp_id": policy.resolve_rp_id(settings),
+		"host_name_configured": bool((frappe.conf.get("host_name") or "").strip()),
+	}

@@ -121,6 +121,11 @@
 		// settings banners — keyed; args filled by the matrix
 		rpIdOneWayDoor:
 			"Changing the RP ID invalidates every existing passkey. This cannot be undone.",
+		rpIdUnresolved:
+			"No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in " +
+			"will fail. Fix it one of two ways: set host_name in the site config " +
+			"(site_config.json) to this site's domain, or enter an explicit Passkey RP ID " +
+			"(a bare host name like {0}) in the field below.",
 		hostMismatch:
 			"The resolved RP ID / origins do not match this site's current host — passkey " +
 			"sign-in will fail here until this is corrected.",
@@ -382,9 +387,20 @@
 		// Always warn about the RP-ID one-way door (loud warning).
 		banners.push({ level: "warning", key: COPY.rpIdOneWayDoor });
 
+		// No RP ID resolves while a mode is being enabled — this is exactly the
+		// save-blocking condition the server throws on (_validate_enablement), surfaced
+		// INLINE before save with the two concrete fixes. `resolvedRpId` is now
+		// server-truth (explicit field, else the server host_name resolution — never
+		// the browser host), so a blank value here means Save WILL fail.
+		if (anyMode && !ctx.resolvedRpId) {
+			banners.push({ level: "error", key: COPY.rpIdUnresolved, args: [ctx.currentHost || ""] });
+		}
+
 		// Host mismatch — fail-closed must be diagnosable. Client-computable
-		// from the resolved origins vs the current host.
+		// from the resolved origins vs the current host. Only meaningful once an RP ID
+		// actually resolves (otherwise rpIdUnresolved above is the real story).
 		if (
+			ctx.resolvedRpId &&
 			ctx.currentHost &&
 			Array.isArray(ctx.resolvedOrigins) &&
 			ctx.resolvedOrigins.length &&
