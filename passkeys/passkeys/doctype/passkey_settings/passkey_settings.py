@@ -58,6 +58,7 @@ class PasskeySettings(Document):
 				)
 			)
 		policy.validate_origins(self, rp_id)
+		policy.validate_app_origins(self)
 
 	def _validate_second_factor_floor(self):
 		"""The enforcement floor is structural — passkey second factor

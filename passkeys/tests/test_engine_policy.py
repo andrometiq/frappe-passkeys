@@ -8,6 +8,8 @@ and per-flow residentKey."""
 
 import secrets
 
+import frappe
+
 from passkeys import engine, policy
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
@@ -143,3 +145,75 @@ class TestUvPolicy(IntegrationTestCase):
 	def test_resident_key_per_flow(self):
 		self.assertEqual(policy.resident_key_for_flow("explicit"), "required")
 		self.assertEqual(policy.resident_key_for_flow("conditional_create"), "preferred")
+
+
+# A native Android app presents android:apk-key-hash:<43-char base64url SHA-256>.
+VALID_APK_HASH = "i785YGGJMKRF89cJHnsbBQ-K_a8k6_HrLj0TiAn8eVk"
+VALID_APP_ORIGIN = f"android:apk-key-hash:{VALID_APK_HASH}"
+
+
+class TestAppOrigins(IntegrationTestCase):
+	"""Trusted App Origins (native mobile): the app-origin carve-out is additive to
+	the web ``expected_origin`` list and never weakens web-origin validation."""
+
+	def test_valid_apk_hash_is_43_base64url_chars(self):
+		import base64
+
+		self.assertEqual(len(VALID_APK_HASH), 43)
+		# decodes cleanly as unpadded base64url of a 32-byte SHA-256 digest
+		self.assertEqual(len(base64.urlsafe_b64decode(VALID_APK_HASH + "=")), 32)
+
+	def test_app_origins_trims_dedupes_and_skips_blanks(self):
+		settings = frappe._dict({"passkey_app_origins": f"  {VALID_APP_ORIGIN}  \n\n{VALID_APP_ORIGIN}\n"})
+		self.assertEqual(policy.app_origins(settings), [VALID_APP_ORIGIN])
+
+	def test_app_origins_empty_when_unset(self):
+		self.assertEqual(policy.app_origins(frappe._dict({})), [])
+
+	def test_resolve_expected_origins_appends_app_after_web(self):
+		settings = frappe._dict(
+			{"passkey_origins": "https://app.example.com", "passkey_app_origins": VALID_APP_ORIGIN}
+		)
+		self.assertEqual(
+			policy.resolve_expected_origins(settings, "example.com"),
+			["https://example.com", "https://app.example.com", VALID_APP_ORIGIN],
+		)
+
+	def test_resolve_expected_origins_web_only_without_app_origins(self):
+		self.assertEqual(
+			policy.resolve_expected_origins(frappe._dict({}), "example.com"),
+			["https://example.com"],
+		)
+
+	def test_resolve_origins_never_sees_app_origins(self):
+		# The web resolver feeds validate_origins + the request-host pre-check + the
+		# settings mirror; an app origin must never leak into it.
+		settings = frappe._dict({"passkey_origins": "", "passkey_app_origins": VALID_APP_ORIGIN})
+		self.assertEqual(policy.resolve_origins(settings, "example.com"), ["https://example.com"])
+
+	def test_validate_app_origins_accepts_valid_and_empty(self):
+		policy.validate_app_origins(frappe._dict({"passkey_app_origins": VALID_APP_ORIGIN}))
+		policy.validate_app_origins(frappe._dict({"passkey_app_origins": ""}))
+		policy.validate_app_origins(frappe._dict({}))  # no raise
+
+	def test_validate_app_origins_rejects_web_url(self):
+		with self.assertRaises(frappe.ValidationError):
+			policy.validate_app_origins(frappe._dict({"passkey_app_origins": "https://example.com"}))
+
+	def test_validate_app_origins_rejects_ios_style_entry(self):
+		# iOS presents https://<rp_id> and must NOT be entered here.
+		with self.assertRaises(frappe.ValidationError):
+			policy.validate_app_origins(
+				frappe._dict({"passkey_app_origins": "ios:bundle-id:com.example.app"})
+			)
+
+	def test_validate_app_origins_rejects_malformed_hash(self):
+		for bad in (
+			"android:apk-key-hash:tooshort",
+			f"android:apk-key-hash:{VALID_APK_HASH}=",  # padding not allowed
+			"android:apk-key-hash:" + "A" * 44,  # wrong length
+			"android:apk-key-hash:" + "A" * 42,  # wrong length
+			"android:apk-key-hash:" + "!" * 43,  # outside the base64url alphabet
+		):
+			with self.assertRaises(frappe.ValidationError):
+				policy.validate_app_origins(frappe._dict({"passkey_app_origins": bad}))

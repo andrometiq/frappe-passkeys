@@ -117,7 +117,7 @@ def begin_login():
 	if not rp_id:
 		# Mode on but unconfigured — fail closed uniformly (fail-closed arm).
 		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
-	origins = policy.resolve_origins(settings, rp_id)
+	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
 	options, challenge_b64 = engine.build_authentication_options(
@@ -448,7 +448,7 @@ def _dispatch_passkey_second_factor(user, pwd, credentials, settings, run_2fa):
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
 		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
-	origins = policy.resolve_origins(settings, rp_id)
+	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
 	allow_otp_fallback = bool(cint(settings.passkey_2fa_allow_otp_fallback))

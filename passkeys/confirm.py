@@ -308,7 +308,7 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
 		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
-	origins = policy.resolve_origins(settings, rp_id)
+	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
 	creds = _enabled_credentials(user)
