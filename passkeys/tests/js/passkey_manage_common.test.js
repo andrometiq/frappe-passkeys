@@ -211,6 +211,97 @@ test("nudgeDecision: conditional create gated on server eligible ∧ knob ∧ ca
 	assert.strictEqual(M.nudgeDecision(bootBase({ nudge_state: { eligible: false } }), caps, NOW).allowConditionalCreate, false);
 });
 
+// ----------------------------------------------------- enforcement decision
+
+// A boot with an enforce verdict in scope, 0 creds, grace remaining.
+function enfBoot(over) {
+	const enf = Object.assign(
+		{
+			policy: "Enforce",
+			effective: "enforce",
+			in_scope: true,
+			blocking: false,
+			grace_remaining: 3,
+			grace_total: 3,
+			allow_hybrid: true,
+			incapable_policy: "degrade",
+			reason: "grace",
+		},
+		(over && over.enforcement) || {}
+	);
+	return Object.assign({ credential_count: 0 }, over || {}, { enforcement: enf });
+}
+
+test("enforcementDecision: not enforcing when off/nudge/out-of-scope/satisfied", () => {
+	assert.strictEqual(M.enforcementDecision({}, {}).reason, "not_enforcing");
+	assert.strictEqual(
+		M.enforcementDecision(enfBoot({ enforcement: { effective: "nudge" } }), { supported: true }).reason,
+		"not_enforcing"
+	);
+	assert.strictEqual(
+		M.enforcementDecision(enfBoot({ enforcement: { in_scope: false } }), { supported: true }).reason,
+		"not_enforcing"
+	);
+	// already holds a passkey ⇒ satisfied
+	assert.strictEqual(
+		M.enforcementDecision(enfBoot({ credential_count: 1 }), { supported: true }).reason,
+		"satisfied"
+	);
+});
+
+test("enforcementDecision: capable device shows the enforce variant; grace vs blocking", () => {
+	const grace = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: true });
+	assert.strictEqual(grace.show, true);
+	assert.strictEqual(grace.variant, "enforce");
+	assert.strictEqual(grace.blocking, false);
+	assert.strictEqual(grace.graceRemaining, 3);
+	assert.strictEqual(grace.reason, "enforce_grace");
+
+	const block = M.enforcementDecision(
+		enfBoot({ enforcement: { blocking: true, grace_remaining: 0 } }),
+		{ supported: true, uvpaa: true }
+	);
+	assert.strictEqual(block.blocking, true);
+	assert.strictEqual(block.reason, "enforce_blocking");
+});
+
+test("enforcementDecision: unknown capability counts as capable (tri-state)", () => {
+	// uvpaa unknown (null) + hybrid unknown ⇒ still show the enroll gate, never dead-end.
+	const d = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: null, hybrid: null });
+	assert.strictEqual(d.variant, "enforce");
+	assert.strictEqual(d.show, true);
+});
+
+test("enforcementDecision: no platform authenticator but hybrid allowed ⇒ enroll via phone", () => {
+	const d = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: false, hybrid: true });
+	assert.strictEqual(d.variant, "enforce");
+	assert.strictEqual(d.allowHybrid, true);
+});
+
+test("enforcementDecision: genuinely incapable device degrades to nudge (default)", () => {
+	const d = M.enforcementDecision(enfBoot(), { supported: false, uvpaa: false, hybrid: false });
+	assert.strictEqual(d.variant, "nudge");
+	assert.strictEqual(d.blocking, false);
+	assert.strictEqual(d.reason, "incapable_degrade");
+	// uvpaa false + hybrid false + allow_hybrid false ⇒ still incapable
+	const d2 = M.enforcementDecision(
+		enfBoot({ enforcement: { allow_hybrid: false } }),
+		{ supported: true, uvpaa: false, hybrid: true }
+	);
+	assert.strictEqual(d2.variant, "nudge");
+});
+
+test("enforcementDecision: incapable + Block+Notify blocks and flags the admin", () => {
+	const d = M.enforcementDecision(
+		enfBoot({ enforcement: { incapable_policy: "block_notify" } }),
+		{ supported: false }
+	);
+	assert.strictEqual(d.variant, "enforce");
+	assert.strictEqual(d.blocking, true);
+	assert.strictEqual(d.notifyAdmin, true);
+	assert.strictEqual(d.reason, "incapable_block_notify");
+});
+
 // ---------------------------------------------------------- upsell decision
 
 test("upsellDecision: flag + cadence => show; no flag => no show", () => {

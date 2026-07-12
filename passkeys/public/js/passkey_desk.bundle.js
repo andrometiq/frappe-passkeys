@@ -584,8 +584,19 @@
 			var clientCaps = {
 				supported: caps.supported,
 				uvpaa: caps.uvpaa,
+				hybrid: caps.hybrid,
 				conditionalCreate: r[1] === true, // certain-true only
 			};
+			// Enforcement outranks the nudge/upsell entirely: the server verdict says the
+			// user MUST register. The client's only job is device capability.
+			var enf = M.enforcementDecision(b, clientCaps);
+			if (enf.show) {
+				if (enf.notifyAdmin) reportIncapableOnce(); // Block + Notify: alert the admin
+				if (enf.variant === "enforce") { showEnforceDialog(b, enf); return; }
+				// incapable + Degrade ⇒ the standard, non-blocking nudge instead of a dead-end
+				showNudgeDialog(b, false);
+				return;
+			}
 			// post-hybrid upsell takes precedence (the login just happened over hybrid)
 			var upsell = M.upsellDecision(b, clientCaps, storageGet, Date.now());
 			if (upsell.showUpsell) { clearUpsellFlag(); return showNudgeDialog(b, true); }
@@ -663,6 +674,98 @@
 
 	function recordNudge(event) {
 		post(METHODS.recordNudge, { event: event }).catch(function () {}); // server counters authoritative
+	}
+
+	// ------------------------------------------------------ enforcement gate
+	function recordEnforcement(event) {
+		post(METHODS.recordEnforcement, { event: event }).catch(function () {}); // server owns grace
+	}
+	// Report an incapable device at most once per session (avoids a second admin email
+	// when the auto-detected Block+Notify path and the "I can't set one up here" escape
+	// both fire).
+	var _incapableReported = false;
+	function reportIncapableOnce() {
+		if (_incapableReported) return;
+		_incapableReported = true;
+		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE);
+	}
+
+	// The post-login ENFORCEMENT interstitial (desk). Blocking dialogs are made static
+	// (no Esc / backdrop / close-X dismiss) — the ONLY ways out are enrolling or the
+	// incapable escape, so a capable user is never dead-ended and an incapable one is
+	// never hard-locked. Honest, guilt-free copy; "Remind me later" is equal-weight to
+	// the primary while grace remains, and shows the real remaining count.
+	function showEnforceDialog(b, enf) {
+		var d = new frappe.ui.Dialog({ title: t(M.COPY.enforceTitle), size: "small" });
+		var body = d.$body ? d.$body.get(0) : null;
+		if (body) {
+			body.appendChild(el("p", "passkey-nudge-body", t(M.COPY.enforceBody)));
+			var actions = el("div", "passkey-nudge-actions");
+			// Primary CTA — runs under the fresh-login sudo window; keeps a blocking
+			// dialog open until enrollment actually succeeds (a cancelled OS sheet must
+			// not dismiss a required gate).
+			actions.appendChild(primaryButton(t(M.COPY.nudgeCta), function () { enforceCreate(d); }));
+			if (!enf.blocking) {
+				// Skippable while grace remains — equal-weight, honest remaining count.
+				var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
+				actions.appendChild(linkButton(later, function () {
+					d._acted = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); d.hide();
+				}));
+			} else {
+				// Grace exhausted (or admin Block) — the incapable escape, never a dead-end.
+				actions.appendChild(linkButton(t(M.COPY.enforceCantSetUp), function () {
+					onEnforceCantSetUp(b, d, body);
+				}));
+			}
+			body.appendChild(actions);
+		}
+		makeStaticIfBlocking(d, enf.blocking);
+		d.show();
+	}
+
+	function enforceCreate(d) {
+		announce(t("Follow your device's prompt to add a passkey…"));
+		addPasskey({}).then(function () {
+			announce(t("Passkey added."));
+			d._acted = true; d.hide(); refresh({});
+		}).catch(function (err) {
+			// Cancel / OS-sheet dismiss ⇒ keep the (possibly blocking) gate open, no scolding.
+			if (err && (err.silent || err.code === "user_cancelled")) return;
+			var msg = (err && (err.userMessage || err.message)) || t(M.COPY.addFailed);
+			frappe.msgprint({ title: t("Couldn't add passkey"), message: escapeHtml(msg), indicator: "orange" });
+		});
+	}
+
+	// "I can't set one up here": trust the claim, alert the admin, then honor the site's
+	// incapable-device policy — Degrade lets them proceed (prompted again next session),
+	// Block keeps the gate up with an escalation notice (the admin's explicit choice).
+	function onEnforceCantSetUp(b, d, body) {
+		reportIncapableOnce();
+		var enf = (b && b.enforcement) || {};
+		if (enf.incapable_policy === "block_notify") {
+			body.innerHTML = "";
+			var notice = el("p", "passkey-nudge-body", t(M.COPY.enforceBlockedNotice));
+			notice.setAttribute("role", "alert");
+			body.appendChild(notice);
+		} else {
+			d._acted = true;
+			d.hide();
+		}
+	}
+
+	// Make a blocking dialog non-dismissible: static Bootstrap backdrop + no keyboard
+	// dismiss + hide the header close-X. Best-effort (wrapped) so the dialog still opens
+	// if any selector shifts across Frappe versions.
+	function makeStaticIfBlocking(d, blocking) {
+		if (!blocking) return;
+		try {
+			if (d.$wrapper && d.$wrapper.modal) {
+				d.$wrapper.attr("data-backdrop", "static").attr("data-keyboard", "false");
+			}
+		} catch (e) { /* noop */ }
+		try {
+			if (d.header && d.header.find) d.header.find(".btn-modal-close, .modal-actions .close").hide();
+		} catch (e) { /* noop */ }
 	}
 
 	// ------------------------------------------------------------ small utils
