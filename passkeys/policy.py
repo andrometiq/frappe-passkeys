@@ -7,6 +7,7 @@ engine. Resolution happens at enable time from pinned configuration — never on
 a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
 
 import importlib.util
+import re
 from urllib.parse import urlsplit
 
 import frappe
@@ -85,6 +86,74 @@ def validate_origins(settings, rp_id: str) -> None:
 
 def _is_dev_localhost(host: str) -> bool:
 	return bool(frappe.conf.get("developer_mode")) and host in LOCALHOST_HOSTS
+
+
+# ---------------------------------------------------------------------------
+# Trusted app origins (native mobile)
+# ---------------------------------------------------------------------------
+# A native Android app presents its WebAuthn origin as
+# ``android:apk-key-hash:<base64url-SHA256-of-the-signing-cert>`` — NOT
+# ``https://<rp_id>``. These lines are appended to the ``expected_origin`` list the
+# ceremony engine matches ``clientDataJSON.origin`` against, but they are EXEMPT from
+# the web-origin validator (:func:`validate_origins`): they are not URLs, and web
+# origin validation must never weaken. iOS needs NO entry — it presents
+# ``https://<rp_id>`` (already the leading web origin), so it rides the existing list.
+
+_APK_KEY_HASH_PREFIX = "android:apk-key-hash:"
+# SHA-256 is 32 bytes → 43 unpadded base64url characters.
+_APK_KEY_HASH_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+
+
+def app_origins(settings) -> list[str]:
+	"""The configured Trusted App Origins (``passkey_app_origins``), one per line,
+	trimmed and de-duplicated. Pure read — shape validation is
+	:func:`validate_app_origins` (enable time), never here."""
+	origins: list[str] = []
+	for line in (settings.get("passkey_app_origins") or "").splitlines():
+		line = line.strip()
+		if line and line not in origins:
+			origins.append(line)
+	return origins
+
+
+def resolve_expected_origins(settings, rp_id: str) -> list[str]:
+	"""The full ``expected_origin`` allowlist fed to the ceremony engine: the web
+	origins (:func:`resolve_origins`) plus the Trusted App Origins
+	(:func:`app_origins`). ``resolve_origins`` stays web-only, so the enable-time
+	web-origin validator, the request-host pre-check and the settings display mirror
+	never see an app origin — the native carve-out is strictly additive."""
+	origins = resolve_origins(settings, rp_id)
+	for origin in app_origins(settings):
+		if origin not in origins:
+			origins.append(origin)
+	return origins
+
+
+def validate_app_origins(settings) -> None:
+	"""Enable-time, fail-closed shape check for the Trusted App Origins. Each line
+	must be ``android:apk-key-hash:<hash>`` where ``<hash>`` is the unpadded
+	base64url SHA-256 (43 chars) of the app's signing certificate. iOS needs no entry.
+
+	Play App Signing note: the hash MUST come from Google's app-signing certificate
+	(Play Console → App integrity → App signing), NOT the local upload key — the single
+	most common native-passkey misconfiguration."""
+	for line in (settings.get("passkey_app_origins") or "").splitlines():
+		origin = line.strip()
+		if not origin:
+			continue
+		if not origin.startswith(_APK_KEY_HASH_PREFIX):
+			frappe.throw(
+				_(
+					"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs none — it presents https://<RP ID>, already covered by the origins above."
+				).format(origin)
+			)
+		digest = origin[len(_APK_KEY_HASH_PREFIX) :]
+		if not _APK_KEY_HASH_RE.match(digest):
+			frappe.throw(
+				_(
+					"Invalid Trusted App Origin {0}: the hash must be an unpadded base64url SHA-256 of the app-signing certificate (43 characters from A-Z a-z 0-9 - _). Use Google's Play app-signing certificate, not the upload key."
+				).format(origin)
+			)
 
 
 # ---------------------------------------------------------------------------
