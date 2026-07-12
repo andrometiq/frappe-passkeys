@@ -262,6 +262,111 @@ class TestCredentialExportImport(IntegrationTestCase):
 			fh.write('{"schema": "not-a-passkeys-export"}')
 		self.assertRaises(frappe.ValidationError, install.import_credentials, path)
 
+	def _dump(self, data: dict, path: str) -> None:
+		with open(path, "w") as fh:
+			fh.write(frappe.as_json(data))
+
+	def test_import_rejects_rows_for_a_nonexistent_user(self):
+		# A crafted export cannot bind a public key to an account that does not exist.
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+
+		with open(path) as fh:
+			data = json.load(fh)
+		ghost = f"ghost-{frappe.generate_hash(length=8)}@example.com"
+		self.assertFalse(frappe.db.exists("User", ghost))
+		for row in data["credentials"] + data["user_handles"]:
+			row["user"] = ghost
+		self._dump(data, path)
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+
+		summary = install.import_credentials(path)
+		self.assertEqual(summary["credentials_created"], 0)
+		self.assertEqual(summary["handles_created"], 0)
+		self.assertGreaterEqual(summary["credentials_rejected"], 1)
+		self.assertGreaterEqual(summary["handles_rejected"], 1)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": ghost}))
+		self.assertFalse(frappe.db.exists("WebAuthn User Handle", {"user": ghost}))
+
+	def test_import_rejects_a_disabled_user(self):
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+
+		frappe.db.set_value("User", user, "enabled", 0)
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+
+		summary = install.import_credentials(path)
+		self.assertEqual(summary["credentials_created"], 0)
+		self.assertGreaterEqual(summary["credentials_rejected"], 1)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
+
+	def test_import_rejects_user_handle_substitution(self):
+		# The victim already enrolled a passkey (live handle H1). A crafted export claims a
+		# DIFFERENT handle for the victim plus a credential (the attacker's key) — the
+		# mismatch must reject both so the key is never bound.
+		victim = self._make_user()
+		make_credential(victim)
+		live_handle = make_handle(victim).handle
+		path = install.export_credentials(self._export_path())
+
+		with open(path) as fh:
+			data = json.load(fh)
+		for row in data["user_handles"]:
+			row["handle"] = frappe.generate_hash(length=64)  # forged, != H1
+		self._dump(data, path)
+		# drop the exported credential so a rejection means nothing new is bound to victim
+		frappe.db.delete("WebAuthn Credential", {"user": victim})
+
+		summary = install.import_credentials(path)
+		self.assertEqual(summary["credentials_created"], 0)
+		self.assertGreaterEqual(summary["credentials_rejected"], 1)
+		self.assertGreaterEqual(summary["handles_rejected"], 1)
+		# the victim's live handle is untouched, and no crafted key was bound
+		self.assertEqual(
+			frappe.db.get_value("WebAuthn User Handle", {"user": victim}, "handle"), live_handle
+		)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": victim}))
+
+	def test_import_keeps_valid_rows_and_rejects_only_the_bad_ones(self):
+		# "import the rest": a mixed file restores the legitimate user's rows while the
+		# crafted rows for a nonexistent user are rejected.
+		good = self._make_user()
+		make_credential(good)
+		make_handle(good)
+		path = install.export_credentials(self._export_path())
+
+		with open(path) as fh:
+			data = json.load(fh)
+		ghost = f"ghost-{frappe.generate_hash(length=8)}@example.com"
+		data["credentials"].append(
+			{
+				**data["credentials"][0],
+				"user": ghost,
+				"credential_id": frappe.generate_hash(length=43),
+				"credential_id_sha256": frappe.generate_hash(length=64),
+			}
+		)
+		data["user_handles"].append(
+			{**data["user_handles"][0], "user": ghost, "handle": frappe.generate_hash(length=64)}
+		)
+		self._dump(data, path)
+		frappe.db.delete("WebAuthn Credential", {"user": good})
+		frappe.db.delete("WebAuthn User Handle", {"user": good})
+
+		summary = install.import_credentials(path)
+		self.assertGreaterEqual(summary["credentials_created"], 1)
+		self.assertGreaterEqual(summary["handles_created"], 1)
+		self.assertGreaterEqual(summary["credentials_rejected"], 1)
+		self.assertGreaterEqual(summary["handles_rejected"], 1)
+		self.assertTrue(frappe.db.exists("WebAuthn Credential", {"user": good}))
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": ghost}))
+
 
 class TestRegistryPropertySetter(IntegrationTestCase):
 	"""Programmatic, module-tagged, guard-keyed — never a fixtures/ fixture."""
