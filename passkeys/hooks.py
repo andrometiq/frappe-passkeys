@@ -70,6 +70,7 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 after_migrate = [
 	"passkeys.install.sync_registry_fixture",
 	"passkeys.install.sync_standard_navbar_items",
+	"passkeys.install.sync_user_form_section",
 ]
 
 # Website integration
