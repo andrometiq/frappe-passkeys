@@ -109,9 +109,13 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 
 	def _restore(self):
 		frappe.set_user("Administrator")
+		# Faithful restore (never `or 0` — that writes a literal "0" into the text rp/origin fields).
 		for field in ("login_with_passkey", "passkey_rp_id", "passkey_origins", "passkey_max_per_user"):
-			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		# begin_registration commits mid-test, defeating the runner's per-test rollback; commit the
+		# restore (and the addCleanup user delete that ran just before it) so nothing leaks onward.
+		frappe.db.commit()
 
 	def _set_cap(self, cap):
 		frappe.db.set_single_value("Passkey Settings", "passkey_max_per_user", cap)
@@ -162,6 +166,9 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 		frappe.db.set_single_value("Passkey Settings", "passkey_reauth_window", self._snapshot or 600)
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 		frappe.local.flags.pop("passkey_login", None)
+		# seed_sudo_window's login flow commits mid-test; commit the restore so a custom/0 window
+		# (test_zero_window sets 0) never leaks onto the shared single for a later module/run.
+		frappe.db.commit()
 
 	def _set_window(self, seconds):
 		frappe.db.set_single_value("Passkey Settings", "passkey_reauth_window", seconds)
@@ -227,24 +234,33 @@ class NudgeBoundaryTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
-		settings = frappe.get_doc("Passkey Settings")
-		settings.passkey_enrollment_policy = "Nudge"
-		settings.passkey_nudge_max_prompts = 3
-		settings.passkey_nudge_cooldown_days = 30
-		settings.save(ignore_permissions=True)
+		# set_single_value (not `.save()`) is the established settings-test idiom, and it
+		# deliberately bypasses `Passkey Settings.validate`: this test exercises the nudge
+		# cadence, not the origin validator, so a leaked/foreign `passkey_origins` value
+		# left on the shared single by an earlier committing test must not break its setup.
+		for field, value in {
+			"passkey_enrollment_policy": "Nudge",
+			"passkey_nudge_max_prompts": 3,
+			"passkey_nudge_cooldown_days": 30,
+		}.items():
+			frappe.db.set_single_value("Passkey Settings", field, value)
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
 		frappe.set_user("Administrator")
+		# Faithful restore (never `or 0` — that coerces a blank Select/int into a literal "0").
 		for field in (
 			"passkey_enrollment_policy",
 			"passkey_nudge_max_prompts",
 			"passkey_nudge_cooldown_days",
 		):
-			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		# set_default (nudge blob) commits mid-test; commit the restore + the addCleanup user/
+		# DefaultValue deletes so nothing leaks into a later module or a later run.
+		frappe.db.commit()
 
 	def _set(self, **scalars):
 		for field, value in scalars.items():
@@ -342,8 +358,14 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		doc.set("passkey_enforce_roles", [])
 		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		doc.flags.ignore_permissions = True
+		# Skip re-validation: this is a pure state restore, and a settings row left invalid by
+		# an earlier committing test in the run must not make cleanup raise (cascade guard).
+		doc.flags.ignore_validate = True
 		doc.save()
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		# record_enforcement_event (set_default) commits mid-test; commit the restore + the
+		# addCleanup user/DefaultValue deletes so no enforce state leaks onward.
+		frappe.db.commit()
 
 	def _set(self, **scalars):
 		for field, value in scalars.items():

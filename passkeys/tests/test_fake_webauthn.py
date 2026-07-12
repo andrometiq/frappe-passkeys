@@ -41,8 +41,10 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		# bench or trips the global unique index on a later test.
 		super().tearDown()
 		frappe.set_user("Administrator")
+		# Faithful restore (never `or 0` — that writes a literal "0" into the text rp/origin
+		# fields, which this committing tearDown would then leak into the shared single).
 		for field in _SETTINGS_FIELDS:
-			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
