@@ -7,13 +7,15 @@
 // Publishes `frappe.passkeys.manage`:
 //   renderCards(container, opts)        — the shared card component (own creds)
 //   renderReadOnlyInventory(el, user)   — System-Manager view of another user
-//   openManagerDialog()                 — the navbar "My Passkeys" dialog
+//   openManagerDialog()                 — the "My Passkeys" manager dialog (kept for
+//                                         CTAs/nudges; the primary home is the User
+//                                         form "Passkeys" section, user_passkeys.js)
 //   addPasskey(opts)                    — the registration ceremony (sudo-gated)
 //   refresh()                           — re-fetch + repaint any live surface
 //
-// It also, at Desk boot: injects the navbar "My Passkeys" item, runs the
-// post-login enrollment nudge / conditional-create / post-hybrid upsell off
-// frappe.boot.passkeys, and fires signalAllAcceptedCredentials fire-and-forget.
+// It also, at Desk boot: runs the post-login enrollment nudge / conditional-create /
+// post-hybrid upsell off frappe.boot.passkeys, and fires
+// signalAllAcceptedCredentials fire-and-forget.
 //
 // The DOM/frappe wiring lives here; all pure decisions (view-models, nudge
 // cadence, upsell gate, delete guard) come from passkey_manage_common.js so they
@@ -550,55 +552,6 @@
 		document.dispatchEvent(new CustomEvent("passkey:changed"));
 	}
 
-	// Native Frappe integration syncs "My Passkeys" into Navbar Settings. Keep the
-	// old DOM injection only as an unmigrated/old-layout fallback; if boot already
-	// carries the standard item, Frappe's navbar/sidebar owns rendering it.
-	function hasNativeNavbarItem() {
-		var settings = window.frappe && frappe.boot && frappe.boot.navbar_settings;
-		var items = settings && settings.settings_dropdown;
-		if (!Array.isArray(items)) return false;
-		return items.some(function (item) {
-			return item
-				&& item.item_label === "My Passkeys"
-				&& item.item_type === "Action"
-				&& String(item.action || "").indexOf("frappe.passkeys.manage.openManagerDialog") !== -1;
-		});
-	}
-
-	// Inject the "My Passkeys" item into older Desk navbar user dropdowns (fallback).
-	// Selectors drift across frappe versions, so try a few and no-op
-	// silently if none match.
-	function injectNavbarItem() {
-		if (document.getElementById("passkey-navbar-item")) return true;
-		var menus = [
-			document.querySelector(".dropdown-navbar-user .dropdown-menu"),
-			document.getElementById("toolbar-user"),
-			document.querySelector("#navbar-breadcrumbs ~ .navbar-nav .dropdown-menu"),
-		];
-		var menu = null;
-		for (var i = 0; i < menus.length; i++) { if (menus[i]) { menu = menus[i]; break; } }
-		if (!menu) return false;
-		var li = document.createElement("li");
-		var a = document.createElement("a");
-		a.id = "passkey-navbar-item";
-		a.className = "dropdown-item";
-		a.href = "#";
-		a.textContent = t("My Passkeys");
-		a.addEventListener("click", function (e) { e.preventDefault(); openManagerDialog(); });
-		li.appendChild(a);
-		// place it near the top of the user menu (prominence, FIDO principle 8)
-		if (menu.firstChild) menu.insertBefore(li, menu.firstChild.nextSibling || menu.firstChild);
-		else menu.appendChild(li);
-		return true;
-	}
-	function injectNavbarItemWithRetry() {
-		var tries = 0;
-		(function attempt() {
-			if (injectNavbarItem() || tries++ > 20) return;
-			setTimeout(attempt, 500);
-		})();
-	}
-
 	// ============================================================ nudges
 	function boot() { return (window.frappe && frappe.boot && frappe.boot.passkeys) || null; }
 
@@ -741,7 +694,6 @@
 		// Management surfaces gate on ANY passkey mode: both modes off
 		// (or a dormant/uninstalled app ⇒ no bootinfo) ⇒ the UI removes itself.
 		if (!b || b.enabled === false) return;
-		if (!hasNativeNavbarItem()) injectNavbarItemWithRetry();
 		maybeNudge();
 		refreshSignalsInSession();
 	}
