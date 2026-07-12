@@ -7,10 +7,11 @@ Hook-path import discipline: this module MUST NOT import the
 ``webauthn`` library, directly or transitively."""
 
 import importlib.util
+import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, now, now_datetime
 
 FRAPPE_VERSION_FLOOR = (15, 107, 0)
 DEFAULTS_PARENT = "__passkeys"
@@ -42,10 +43,12 @@ def after_install():
 
 
 def before_uninstall():
-	"""Blocking lockout guard; then delete the app's DefaultValue rows (not
-	module-linked — nothing else ever cleans them) and the registry Property
-	Setter, so a reinstall is a true fresh start."""
+	"""Blocking lockout guard; then export the credential tables (the uninstall is
+	about to drop them, so this makes removal non-destructive) before deleting the
+	app's DefaultValue rows (not module-linked — nothing else ever cleans them) and
+	the registry Property Setter, so a reinstall is a true fresh start."""
 	_block_uninstall_lockout()
+	_export_credentials_on_uninstall()
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
 	_remove_registry_property_setter()
 	_remove_navbar_item()
@@ -275,3 +278,126 @@ def _remove_registry_property_setter():
 		frappe.delete_doc("Property Setter", name, ignore_permissions=True, force=True)
 	if names:
 		frappe.clear_cache(doctype="System Settings")
+
+
+# ---------------------------------------------------------------------------
+# Credential export / import — uninstall is never destructive
+# ---------------------------------------------------------------------------
+# A standard `uninstall-app` drops the WebAuthn Credential + WebAuthn User Handle
+# tables, so every enrolled passkey would otherwise be lost. before_uninstall first
+# serialises both tables — public-key material and metadata only; neither table
+# stores a server-side secret — to one JSON file in the site's private files and
+# prints its path. `import_credentials` restores the rows on a reinstall, idempotently
+# keyed on credential_id_sha256. When Frappe core ships native passkeys this same
+# export is the migration seed; the exact field mapping is written once core's schema
+# exists (see docs/install.md).
+
+CREDENTIAL_EXPORT_SCHEMA = "frappe-passkeys/credential-export"
+CREDENTIAL_EXPORT_VERSION = 1
+
+
+def _exportable_fieldnames(doctype: str) -> list[str]:
+	"""The real stored fields of a doctype (layout breaks dropped), derived from meta
+	so a later field addition is carried by export/import without editing this module."""
+	return [
+		df.fieldname
+		for df in frappe.get_meta(doctype).fields
+		if df.fieldtype not in ("Section Break", "Column Break", "HTML")
+	]
+
+
+def export_credentials(path: str | None = None) -> str | None:
+	"""Serialise every WebAuthn Credential + WebAuthn User Handle row to one JSON file
+	and return its path (``None`` when there is nothing to export).
+
+	Only public-key material and metadata are written; neither table stores a
+	server-side secret, so the file is safe to keep alongside a site backup. ``path``
+	defaults to a timestamped file in the site's private files."""
+	credentials = frappe.get_all(
+		"WebAuthn Credential",
+		fields=_exportable_fieldnames("WebAuthn Credential"),
+		order_by="creation asc",
+	)
+	handles = frappe.get_all(
+		"WebAuthn User Handle",
+		fields=_exportable_fieldnames("WebAuthn User Handle"),
+		order_by="creation asc",
+	)
+	if not credentials and not handles:
+		return None
+
+	if path is None:
+		filename = "passkeys-credentials-{0}.json".format(now_datetime().strftime("%Y%m%d-%H%M%S"))
+		path = frappe.get_site_path("private", "files", filename)
+
+	payload = {
+		"schema": CREDENTIAL_EXPORT_SCHEMA,
+		"version": CREDENTIAL_EXPORT_VERSION,
+		"exported_at": now(),
+		"site": frappe.local.site,
+		"counts": {"credentials": len(credentials), "user_handles": len(handles)},
+		"credentials": credentials,
+		"user_handles": handles,
+	}
+	with open(path, "w", encoding="utf-8") as fh:
+		fh.write(frappe.as_json(payload, indent=2))
+	return path
+
+
+def _export_credentials_on_uninstall() -> None:
+	"""before_uninstall step: export the credential tables (which the uninstall is
+	about to drop) and print the path + the one-line restore recipe, so an operator
+	can put the passkeys back after a reinstall."""
+	path = export_credentials()
+	if path is None:
+		return
+	print(f"passkeys: credentials exported before uninstall -> {path}")
+	print("passkeys: to restore them after reinstalling, run in `bench --site <site> console`:")
+	print(f'passkeys:   from passkeys.install import import_credentials; import_credentials("{path}")')
+
+
+def import_credentials(path: str) -> dict:
+	"""Restore rows written by :func:`export_credentials` after a reinstall.
+
+	Idempotent and safe to re-run: a credential whose ``credential_id_sha256`` (or a
+	user handle whose ``user``) already exists is skipped. Credentials are restored
+	before handles so a ``passkey_only_login`` handle clears its enabled-credential
+	floor. Returns a created/skipped summary."""
+	with open(path, encoding="utf-8") as fh:
+		data = json.load(fh)
+	if data.get("schema") != CREDENTIAL_EXPORT_SCHEMA:
+		frappe.throw(_("{0} is not a passkeys credential export.").format(path))
+
+	summary = {
+		"credentials_created": 0,
+		"credentials_skipped": 0,
+		"handles_created": 0,
+		"handles_skipped": 0,
+	}
+
+	for row in data.get("credentials", []):
+		if frappe.db.exists("WebAuthn Credential", {"credential_id_sha256": row.get("credential_id_sha256")}):
+			summary["credentials_skipped"] += 1
+			continue
+		_restore_row("WebAuthn Credential", row)
+		summary["credentials_created"] += 1
+
+	for row in data.get("user_handles", []):
+		if frappe.db.exists("WebAuthn User Handle", {"user": row.get("user")}):
+			summary["handles_skipped"] += 1
+			continue
+		_restore_row("WebAuthn User Handle", row)
+		summary["handles_created"] += 1
+
+	frappe.db.commit()
+	return summary
+
+
+def _restore_row(doctype: str, row: dict) -> None:
+	doc = frappe.new_doc(doctype)
+	allowed = set(_exportable_fieldnames(doctype))
+	for field, value in row.items():
+		if field in allowed:
+			doc.set(field, value)
+	doc.flags.ignore_permissions = True
+	doc.insert()
