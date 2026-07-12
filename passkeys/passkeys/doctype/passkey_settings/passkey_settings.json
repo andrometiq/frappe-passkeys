@@ -177,7 +177,7 @@
   },
   {
    "default": "Nudge",
-   "description": "The adoption ladder rung. Off: no prompt. Nudge: cadence-capped, dismissible enrollment prompt. Enforce: in-scope users must register a passkey to keep using the app (recovery stays available). Enforce After Date: behaves as Nudge until the date, then Enforce.",
+   "description": "The adoption ladder rung. Off: no prompt. Nudge: cadence-capped, dismissible enrollment prompt. Enforce: in-scope users must register a passkey to keep using the app (recovery stays available). Enforce After Date: behaves as Nudge until the date, then Enforce. Enforce is a post-login interstitial: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block.",
    "fieldname": "passkey_enrollment_policy",
    "fieldtype": "Select",
    "label": "Enrollment Policy",
