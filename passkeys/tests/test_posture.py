@@ -147,10 +147,15 @@ class BuildPostureSmokeTest(IntegrationTestCase):
 		self.assertIn("verdict", result)
 
 		frappe.set_user("Guest")
+		# v15's frappe.only_for is a no-op while flags.in_test is set (v16+ dropped
+		# that short-circuit); clear it so the real System Manager gate is exercised.
+		saved_in_test = getattr(frappe.flags, "in_test", False)
+		frappe.flags.in_test = False
 		try:
 			with self.assertRaises(frappe.PermissionError):
 				get_security_posture()
 		finally:
+			frappe.flags.in_test = saved_in_test
 			frappe.set_user("Administrator")
 
 

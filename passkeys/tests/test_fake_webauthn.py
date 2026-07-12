@@ -159,8 +159,17 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		frappe.set_user(user)
 		self.addCleanup(frappe.set_user, "Administrator")
-		with self.assertRaises(frappe.PermissionError):
-			fake_webauthn.enable()
+		# v15's frappe.only_for is a no-op while flags.in_test is set (v16+ dropped
+		# that short-circuit); clear it so the real System Manager gate is exercised.
+		# only_for runs before the dev-bench check, so PermissionError still fires
+		# first on a site without developer_mode.
+		saved_in_test = getattr(frappe.flags, "in_test", False)
+		frappe.flags.in_test = False
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				fake_webauthn.enable()
+		finally:
+			frappe.flags.in_test = saved_in_test
 
 	def test_guard_refuses_off_a_developer_or_test_bench(self):
 		# System Manager, but neither developer_mode nor in_test → hard refuse.
