@@ -847,6 +847,31 @@ def record_nudge(event: str):
 	return {"nudge_state": boot.record_nudge_event(user, event)}
 
 
+@frappe.whitelist(methods=["POST"])
+def record_enforcement(event: str):
+	"""Fold an enrollment-enforcement event into the caller's server-side grace state.
+	``event`` ∈ {``defer``, ``incapable``}. ``defer`` ("Remind me later") spends one
+	grace login; ``incapable`` records that the device cannot create a passkey and, when
+	the site's Incapable Device Policy is ``Block + Notify Admin``, raises the admin
+	advisory. The grace counter is **server-side per-user** so a multi-browser user has
+	one shared grace budget; capability detection stays client-side."""
+	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	user = _require_authed_user()
+	state.rate_limit_user("record_enforcement", 30, 3600)  # 30/hr/user
+	from passkeys import boot, notifications
+
+	new_state = boot.record_enforcement_event(user, event)
+	if event == "incapable" and _incapable_policy_is_block_notify():
+		notifications.record_enforcement_incapable(user)
+	return {"enforcement_state": new_state}
+
+
+def _incapable_policy_is_block_notify() -> bool:
+	return (
+		frappe.db.get_single_value("Passkey Settings", "passkey_enforce_incapable") == "Block + Notify Admin"
+	)
+
+
 def _require_authed_user() -> str:
 	user = frappe.session.user
 	if not user or user in ("Guest", ""):
