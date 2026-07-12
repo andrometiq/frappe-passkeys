@@ -5,6 +5,8 @@
 the fresh-install-onto-native-core refusal, the uninstall lockout guards and
 cleanup, and the registry Property Setter lifecycle."""
 
+import json
+import os
 import unittest
 from unittest.mock import patch
 
@@ -153,6 +155,112 @@ class TestNavbarCleanup(IntegrationTestCase):
 		self.assertFalse(self._item_exists())
 		install.sync_standard_navbar_items()  # must not raise
 		self.assertFalse(self._item_exists())
+
+
+class TestCredentialExportImport(IntegrationTestCase):
+	"""L1: an uninstall exports the credential tables (which it is about to drop) so
+	removal is non-destructive, and a documented console helper restores them
+	idempotently on reinstall — keyed on ``credential_id_sha256``."""
+
+	def _make_user(self) -> str:
+		user = make_user()
+		# Restored rows (import_credentials inserts) are not tracked by the User
+		# force-delete cascade, so purge the WebAuthn rows explicitly — a leaked
+		# passkey_only_login=1 handle would poison the uninstall-lockout guards.
+		self.addCleanup(self._purge_user, user)
+		return user
+
+	def _purge_user(self, user: str) -> None:
+		# import_credentials commits, so the restored rows escape the harness rollback;
+		# commit the row deletion too, then best-effort delete the User (which can raise
+		# on its links) — the passkey_only_login=1 handle is what must never survive.
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+		frappe.db.commit()
+		try:
+			frappe.delete_doc("User", user, force=1, ignore_permissions=True)
+			frappe.db.commit()
+		except Exception:
+			frappe.db.rollback()
+
+	def _export_path(self) -> str:
+		path = frappe.get_site_path(
+			"private", "files", f"passkeys-export-test-{frappe.generate_hash(length=8)}.json"
+		)
+		self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+		return path
+
+	def test_export_import_round_trip(self):
+		user = self._make_user()
+		cred = make_credential(user, sign_count=7, label="Yubikey 5")
+		make_handle(user)
+
+		path = install.export_credentials(self._export_path())
+		self.assertTrue(os.path.exists(path))
+		with open(path) as fh:
+			data = json.load(fh)
+		self.assertEqual(data["schema"], install.CREDENTIAL_EXPORT_SCHEMA)
+		self.assertIn(cred.credential_id_sha256, [c["credential_id_sha256"] for c in data["credentials"]])
+
+		# drop the rows (simulate the uninstall-then-reinstall gap), then restore
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+
+		summary = install.import_credentials(path)
+		self.assertGreaterEqual(summary["credentials_created"], 1)
+		self.assertGreaterEqual(summary["handles_created"], 1)
+		restored = frappe.db.get_value(
+			"WebAuthn Credential",
+			{"credential_id_sha256": cred.credential_id_sha256},
+			["sign_count", "label"],
+			as_dict=True,
+		)
+		self.assertEqual(cint(restored.sign_count), 7)  # the counter is restored, never reset
+		self.assertEqual(restored.label, "Yubikey 5")
+
+	def test_import_is_idempotent(self):
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+
+		path = install.export_credentials(self._export_path())
+		# the rows are still present → a re-import creates nothing and skips them
+		summary = install.import_credentials(path)
+		self.assertEqual(summary["credentials_created"], 0)
+		self.assertEqual(summary["handles_created"], 0)
+		self.assertGreaterEqual(summary["credentials_skipped"], 1)
+		self.assertGreaterEqual(summary["handles_skipped"], 1)
+
+	def test_restores_passkey_only_handle(self):
+		# credentials are restored before handles, so a passkey_only_login handle
+		# clears its enabled-credential floor on insert.
+		user = self._make_user()
+		make_credential(user, enabled=1)
+		make_handle(user, passkey_only_login=1)
+
+		path = install.export_credentials(self._export_path())
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+
+		install.import_credentials(path)
+		self.assertEqual(
+			cint(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")), 1
+		)
+
+	def test_default_path_lands_in_private_files(self):
+		user = self._make_user()
+		make_credential(user)
+
+		path = install.export_credentials()
+		self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+		self.assertIn(os.path.join("private", "files"), path)
+		self.assertTrue(path.endswith(".json"))
+
+	def test_import_rejects_a_foreign_file(self):
+		path = self._export_path()
+		with open(path, "w") as fh:
+			fh.write('{"schema": "not-a-passkeys-export"}')
+		self.assertRaises(frappe.ValidationError, install.import_credentials, path)
 
 
 class TestRegistryPropertySetter(IntegrationTestCase):
