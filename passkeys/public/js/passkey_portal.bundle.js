@@ -370,7 +370,18 @@
 	// (no Esc / no backdrop dismiss); the only ways out are enrolling or the incapable
 	// escape. Honest, guilt-free copy matching the desk gate.
 	function showEnforceModal(b, enf) {
-		var modal = buildModal({ title: t(M.COPY.enforceTitle), static: enf.blocking === true });
+		var modal = buildModal({
+			title: t(M.COPY.enforceTitle),
+			static: enf.blocking === true,
+			// Esc dismiss of a NON-BLOCKING gate = "Remind me later": spend one grace login
+			// exactly once (mirrors the confirm modal's onClose + _settled guard). The explicit
+			// link sets `_settled` before closing, so this fires only on an UNACTED Esc dismissal —
+			// the route no click handler covers. A blocking gate is static (Esc suppressed) with
+			// no grace left to spend, so it records nothing.
+			onClose: function () {
+				if (!enf.blocking && !modal._settled) { modal._settled = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); }
+			},
+		});
 		modal.body.appendChild(el("p", "", t(M.COPY.enforceBody)));
 		modal.actions.appendChild(primary(t(M.COPY.nudgeCta), function () { enforceCreate(modal); }));
 		if (!enf.blocking) {
@@ -453,4 +464,11 @@
 	// --------------------------------------------------------------- boot
 	if (isPasskeyPage) render();
 	maybeEnforceOrNudge();
+
+	// Node-only test seam (UMD-lite, mirrors passkey_login.bundle.js): expose the
+	// enforcement interstitial + modal builder so `node --test` can pin the defer-on-Esc
+	// contract without a bench. No-op in the browser — `module` is undefined there.
+	if (typeof module === "object" && module.exports) {
+		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal };
+	}
 })();
