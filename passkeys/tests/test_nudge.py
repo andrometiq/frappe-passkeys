@@ -13,7 +13,7 @@ from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_user
 
-_NUDGE_KNOBS = ("passkey_enrollment_nudge", "passkey_nudge_max_prompts", "passkey_nudge_cooldown_days")
+_NUDGE_KNOBS = ("passkey_enrollment_policy", "passkey_nudge_max_prompts", "passkey_nudge_cooldown_days")
 
 
 class NudgeCadenceTest(IntegrationTestCase):
@@ -21,7 +21,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
-		settings.passkey_enrollment_nudge = 1
+		settings.passkey_enrollment_policy = "Nudge"
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)
@@ -56,9 +56,17 @@ class NudgeCadenceTest(IntegrationTestCase):
 		user = self._user()
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 1))
 
-	def test_knob_off_disables_the_nudge(self):
+	def test_policy_off_disables_the_nudge(self):
 		user = self._user()
-		frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_nudge", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Off")
+		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
+
+	def test_enforce_policy_suppresses_the_nudge_cadence(self):
+		"""Under an enforcement rung the nudge cadence stands down — the enforcement
+		interstitial owns the surface, not the dismissible nudge."""
+		user = self._user()
+		frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Enforce")
 		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
 

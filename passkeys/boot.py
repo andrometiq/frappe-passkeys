@@ -19,7 +19,7 @@ deletes every ``parent="__passkeys"`` row (``install.before_uninstall``)."""
 import json
 
 import frappe
-from frappe.utils import cint, get_datetime, now_datetime
+from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
 from passkeys.install import DEFAULTS_PARENT, dormant
 
@@ -74,14 +74,36 @@ def record_nudge_event(user: str, event: str) -> dict:
 	return state
 
 
+def _policy_effective(settings) -> str:
+	"""Resolve the ``passkey_enrollment_policy`` Select to an effective rung —
+	``off`` | ``nudge`` | ``enforce`` — evaluating ``Enforce After Date`` against the
+	server clock on every call (an at/past date ⇒ ``enforce``, before ⇒ ``nudge``; a
+	missing date fails safe to ``nudge``, never ``enforce``). A blank/unknown value ⇒
+	``nudge`` (behaviour-preserving for a settings row that predates the field, e.g.
+	before the migration patch has run)."""
+	policy = settings.passkey_enrollment_policy or "Nudge"
+	if policy == "Off":
+		return "off"
+	if policy == "Enforce":
+		return "enforce"
+	if policy == "Enforce After Date":
+		after = settings.passkey_enforce_after
+		if after and getdate(after) <= getdate(nowdate()):
+			return "enforce"
+		return "nudge"
+	return "nudge"  # "Nudge" and any unrecognised value
+
+
 def _cadence_ok(settings, state: dict) -> bool:
-	"""Shared nudge/upsell cadence. All thresholds come from Passkey Settings
-	knobs (``passkey_enrollment_nudge`` / ``passkey_nudge_max_prompts`` /
-	``passkey_nudge_cooldown_days`` — never hardcoded): knob on ∧
-	not opted out ∧ declines < cap ∧ cooldown elapsed. The **credential-count** gate
-	is applied by the caller — the enrollment nudge requires 0 credentials, the
-	post-hybrid upsell does not (the user just signed in, so they hold ≥1)."""
-	if not cint(settings.passkey_enrollment_nudge):
+	"""Shared nudge/upsell cadence. Gated first on the policy rung: the nudge cadence
+	only runs while the effective policy is ``nudge`` (``Off`` ⇒ silent; ``Enforce`` /
+	post-date ⇒ the enforcement interstitial owns the surface, not the nudge). The
+	remaining thresholds come from Passkey Settings knobs (``passkey_nudge_max_prompts``
+	/ ``passkey_nudge_cooldown_days`` — never hardcoded): not opted out ∧ declines < cap
+	∧ cooldown elapsed. The **credential-count** gate is applied by the caller — the
+	enrollment nudge requires 0 credentials, the post-hybrid upsell does not (the user
+	just signed in, so they hold ≥1)."""
+	if _policy_effective(settings) != "nudge":
 		return False
 	if cint(state.get("opt_out")):
 		return False

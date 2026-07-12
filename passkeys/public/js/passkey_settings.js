@@ -30,6 +30,13 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_as_second_factor: repaint,
 	passkey_notify_on_change: repaint,
 	passkey_origins: repaint,
+	// enrollment ladder + enforcement scope/escape-hatch knobs
+	passkey_enrollment_policy: repaint,
+	passkey_enforce_after: repaint,
+	passkey_enforce_scope: repaint,
+	passkey_enforce_roles: repaint,
+	passkey_enforce_exempt_roles: repaint,
+	passkey_enforce_incapable: repaint,
 	passkey_rp_id: function (frm) {
 		repaint(frm);
 		var M = frappe.passkeys_manage_common;
@@ -158,6 +165,9 @@ function buildContext(frm) {
 		coreTwoFactor: sc.core_two_factor_auth,
 		disablePassLogin: sc.disable_user_pass_login,
 		passkeyOnlyUserCount: sc.passkey_only_user_count,
+		// report-only enforcement preview: in-scope users with no passkey yet
+		// (server-supplied — the matrix omits the preview banner when absent).
+		wouldBeBlockedCount: sc.would_be_blocked_count,
 	};
 }
 

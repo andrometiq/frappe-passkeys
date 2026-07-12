@@ -19,11 +19,20 @@
   "passkey_reauth_window",
   "passkey_allow_first_enrollment_on_weak_login",
   "enrollment_section",
-  "passkey_enrollment_nudge",
+  "passkey_enrollment_policy",
+  "passkey_enforce_after",
   "passkey_nudge_max_prompts",
   "column_break_enrollment",
   "passkey_nudge_cooldown_days",
   "passkey_conditional_create",
+  "enforcement_section",
+  "passkey_enforce_scope",
+  "passkey_enforce_roles",
+  "passkey_enforce_exempt_roles",
+  "column_break_enforcement",
+  "passkey_enforce_grace_logins",
+  "passkey_enforce_incapable",
+  "passkey_enforce_allow_hybrid",
   "notifications_section",
   "passkey_notify_on_change",
   "passkey_notify_password_fallback",
@@ -121,10 +130,20 @@
    "label": "Enrollment"
   },
   {
-   "default": "1",
-   "fieldname": "passkey_enrollment_nudge",
-   "fieldtype": "Check",
-   "label": "Enrollment Nudge"
+   "default": "Nudge",
+   "description": "The adoption ladder rung. Off: no prompt. Nudge: cadence-capped, dismissible enrollment prompt. Enforce: in-scope users must register a passkey to keep using the app (recovery stays available). Enforce After Date: behaves as Nudge until the date, then Enforce.",
+   "fieldname": "passkey_enrollment_policy",
+   "fieldtype": "Select",
+   "label": "Enrollment Policy",
+   "options": "Off\nNudge\nEnforce\nEnforce After Date"
+  },
+  {
+   "depends_on": "eval:doc.passkey_enrollment_policy==\"Enforce After Date\"",
+   "description": "Enforcement begins on this date (evaluated against the server clock on every request). Before it, the policy behaves as Nudge; a past date behaves as immediate Enforce.",
+   "fieldname": "passkey_enforce_after",
+   "fieldtype": "Date",
+   "label": "Enforce After",
+   "mandatory_depends_on": "eval:doc.passkey_enrollment_policy==\"Enforce After Date\""
   },
   {
    "default": "3",
@@ -148,6 +167,61 @@
    "fieldname": "passkey_conditional_create",
    "fieldtype": "Check",
    "label": "Conditional Create"
+  },
+  {
+   "depends_on": "eval:[\"Enforce\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy)",
+   "fieldname": "enforcement_section",
+   "fieldtype": "Section Break",
+   "label": "Enforcement Scope & Escape Hatches"
+  },
+  {
+   "default": "All Users",
+   "description": "Whether enforcement applies to everyone or only to users holding one of the selected roles.",
+   "fieldname": "passkey_enforce_scope",
+   "fieldtype": "Select",
+   "label": "Enforcement Scope",
+   "options": "All Users\nSelected Roles"
+  },
+  {
+   "depends_on": "eval:doc.passkey_enforce_scope==\"Selected Roles\"",
+   "description": "A user is in scope for enforcement if they hold any of these roles.",
+   "fieldname": "passkey_enforce_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Enforce for Roles",
+   "options": "Passkey Enforcement Role"
+  },
+  {
+   "description": "Users holding any of these roles are always exempt (break-glass). System Manager is seeded here by default so an administrator can never lock themselves out.",
+   "fieldname": "passkey_enforce_exempt_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Exempt Roles",
+   "options": "Passkey Enforcement Role"
+  },
+  {
+   "fieldname": "column_break_enforcement",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "description": "How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers brand-new users' first session; 0 blocks immediately.",
+   "fieldname": "passkey_enforce_grace_logins",
+   "fieldtype": "Int",
+   "label": "Grace Logins"
+  },
+  {
+   "default": "Degrade to Nudge",
+   "description": "What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). Degrade to Nudge never locks the device out; Block + Notify Admin keeps prompting and records a risk event instead.",
+   "fieldname": "passkey_enforce_incapable",
+   "fieldtype": "Select",
+   "label": "Incapable Device Policy",
+   "options": "Degrade to Nudge\nBlock + Notify Admin"
+  },
+  {
+   "default": "1",
+   "description": "On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so capable-via-phone users are not dead-ended.",
+   "fieldname": "passkey_enforce_allow_hybrid",
+   "fieldtype": "Check",
+   "label": "Allow Hybrid (Phone / QR) Enrollment"
   },
   {
    "fieldname": "notifications_section",

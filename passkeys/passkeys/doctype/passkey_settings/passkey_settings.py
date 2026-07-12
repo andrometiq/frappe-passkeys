@@ -16,10 +16,30 @@ class PasskeySettings(Document):
 			self._validate_enablement()
 		self._validate_second_factor_floor()
 		self._enforce_passkey_only_login_guard()
+		self._validate_enrollment_policy()
 		self._warn_risky_combinations()
+		self._warn_enforcement_risks()
 
 	def _any_mode_enabled(self) -> bool:
 		return bool(cint(self.login_with_passkey) or cint(self.passkey_as_second_factor))
+
+	def _enforcing(self) -> bool:
+		"""True iff the policy is an enforcement rung (``Enforce`` /
+		``Enforce After Date``) — regardless of whether the date has arrived yet."""
+		return self.passkey_enrollment_policy in ("Enforce", "Enforce After Date")
+
+	def _validate_enrollment_policy(self):
+		"""Hard guards on the adoption ladder. ``Enforce After Date`` requires the date;
+		grace logins cannot be negative. (The self-lockout / inert-policy heads-ups are
+		non-blocking — see ``_warn_enforcement_risks``.)"""
+		if self.passkey_enrollment_policy == "Enforce After Date" and not self.passkey_enforce_after:
+			frappe.throw(
+				_(
+					"Enrollment Policy 'Enforce After Date' requires an Enforce After date. Set the date, or choose 'Enforce' to enforce immediately."
+				)
+			)
+		if cint(self.passkey_enforce_grace_logins) < 0:
+			frappe.throw(_("Grace Logins cannot be negative. Use 0 to block immediately."))
 
 	def _validate_enablement(self):
 		"""Enabling any mode requires an importable webauthn, a resolved
@@ -87,6 +107,45 @@ class PasskeySettings(Document):
 			frappe.msgprint(
 				_(
 					"Passkey change notifications are off. They are the compensating control for credential registration hijack — leave them on outside mail-less development sites."
+				),
+				indicator="orange",
+			)
+
+	def _warn_enforcement_risks(self):
+		"""Non-blocking heads-ups for the enforcement rungs (the save proceeds). Mirror
+		the enrollment-policy banner matrix in ``passkey_manage_common.js``."""
+		if not self._enforcing():
+			return
+		# Enforcement is inert without a passkey login mode — nothing to require.
+		if not self._any_mode_enabled():
+			frappe.msgprint(
+				_(
+					"Enrollment enforcement has no effect while both passkey login modes are off — enable 'Login with Passkey' or 'Passkey as Second Factor' for the policy to apply."
+				),
+				indicator="orange",
+			)
+		# Self-lockout risk: enforcing everyone without System Manager exempt.
+		exempt_roles = {row.role for row in (self.passkey_enforce_exempt_roles or [])}
+		if self.passkey_enforce_scope != "Selected Roles" and "System Manager" not in exempt_roles:
+			frappe.msgprint(
+				_(
+					"System Manager is not in the exempt roles while enforcing for all users — an administrator on a device that cannot create a passkey could be locked out. Keep System Manager exempt as a break-glass unless you are certain."
+				),
+				indicator="orange",
+			)
+		# Selected-roles scope with no roles listed enforces against nobody.
+		if self.passkey_enforce_scope == "Selected Roles" and not (self.passkey_enforce_roles or []):
+			frappe.msgprint(
+				_(
+					"Enforcement scope is 'Selected Roles' but no roles are listed, so the policy applies to nobody. Add the roles you want to enforce, or switch the scope to 'All Users'."
+				),
+				indicator="orange",
+			)
+		# Block + Notify can hard-lock genuinely incapable devices.
+		if self.passkey_enforce_incapable == "Block + Notify Admin":
+			frappe.msgprint(
+				_(
+					"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged. Prefer 'Degrade to Nudge' if any users may be on older devices."
 				),
 				indicator="orange",
 			)

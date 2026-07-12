@@ -335,6 +335,82 @@ test("settingsBanners: rows 5/15 strand-guard + all-modes-off when no mode enabl
 	assert.ok(b.some((x) => x.key === M.COPY.allModesOff && x.level === "info"));
 });
 
+// ------------------------------------------------ enrollment ladder banners
+
+test("roleNames normalises child rows / strings / missing tables", () => {
+	assert.deepStrictEqual(M.roleNames([{ role: "System Manager" }, { role: "" }, "Sales User"]), [
+		"System Manager",
+		"Sales User",
+	]);
+	assert.deepStrictEqual(M.roleNames(undefined), []);
+});
+
+test("settingsBanners: Enforce After Date without a date is a Save-blocking error", () => {
+	const b = M.settingsBanners(
+		{ login_with_passkey: 1, passkey_enrollment_policy: "Enforce After Date" },
+		{}
+	);
+	assert.ok(b.some((x) => x.key === M.COPY.enforceNoDate && x.level === "error"));
+	// with a date ⇒ gone
+	const ok = M.settingsBanners(
+		{ login_with_passkey: 1, passkey_enrollment_policy: "Enforce After Date", passkey_enforce_after: "2026-08-01" },
+		{ passkey_enforce_exempt_roles: [{ role: "System Manager" }] }
+	);
+	assert.ok(!ok.some((x) => x.key === M.COPY.enforceNoDate));
+});
+
+test("settingsBanners: enforcing while no mode enabled warns it is inert", () => {
+	const b = M.settingsBanners(
+		{ login_with_passkey: 0, passkey_as_second_factor: 0, passkey_enrollment_policy: "Enforce" },
+		{ passkey_enforce_exempt_roles: [{ role: "System Manager" }] }
+	);
+	assert.ok(b.some((x) => x.key === M.COPY.enforceNoMode && x.level === "warning"));
+});
+
+test("settingsBanners: self-lockout warning when enforcing all users without System Manager exempt", () => {
+	const doc = { login_with_passkey: 1, passkey_enrollment_policy: "Enforce", passkey_enforce_scope: "All Users" };
+	const b = M.settingsBanners(doc, {});
+	assert.ok(b.some((x) => x.key === M.COPY.enforceSelfLockout && x.level === "warning"));
+	// System Manager exempt ⇒ suppressed
+	doc.passkey_enforce_exempt_roles = [{ role: "System Manager" }];
+	assert.ok(!M.settingsBanners(doc, {}).some((x) => x.key === M.COPY.enforceSelfLockout));
+});
+
+test("settingsBanners: Selected Roles with no roles enforces nobody (warning)", () => {
+	const b = M.settingsBanners(
+		{
+			login_with_passkey: 1,
+			passkey_enrollment_policy: "Enforce",
+			passkey_enforce_scope: "Selected Roles",
+			passkey_enforce_roles: [],
+			passkey_enforce_exempt_roles: [{ role: "System Manager" }],
+		},
+		{}
+	);
+	assert.ok(b.some((x) => x.key === M.COPY.enforceEmptyRoles && x.level === "warning"));
+});
+
+test("settingsBanners: Block+Notify incapable policy warns; report-only preview count", () => {
+	const b = M.settingsBanners(
+		{
+			login_with_passkey: 1,
+			passkey_enrollment_policy: "Enforce",
+			passkey_enforce_incapable: "Block + Notify Admin",
+			passkey_enforce_exempt_roles: [{ role: "System Manager" }],
+		},
+		{ wouldBeBlockedCount: 7 }
+	);
+	assert.ok(b.some((x) => x.key === M.COPY.enforceBlockIncapable && x.level === "warning"));
+	const preview = b.find((x) => x.key === M.COPY.enforcePreview);
+	assert.ok(preview && preview.level === "info");
+	assert.deepStrictEqual(preview.args, [7]);
+});
+
+test("settingsBanners: no enforcement banners under Nudge / Off", () => {
+	const nudge = M.settingsBanners({ login_with_passkey: 1, passkey_enrollment_policy: "Nudge" }, { wouldBeBlockedCount: 3 });
+	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforceSelfLockout, M.COPY.enforcePreview].indexOf(x.key) !== -1));
+});
+
 // ---------------------------------------------------------- origins + signal
 
 test("originsIncludeHost / originHost normalise scheme + path", () => {
