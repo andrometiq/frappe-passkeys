@@ -28,6 +28,13 @@ NUDGE_EVENTS = ("shown", "declined", "opt_out")
 
 _EMPTY_NUDGE = {"declines": 0, "last_shown": None, "opt_out": 0}
 
+# record_enforcement event vocabulary. ``defer`` spends one grace login ("Remind me
+# later"); ``incapable`` is telemetry only (the user's device cannot create a passkey)
+# and folds no counter — the endpoint routes it to the admin advisory.
+ENFORCE_EVENTS = ("defer", "incapable")
+
+_EMPTY_ENFORCE = {"grace_used": 0}
+
 
 def _nudge_key(user: str) -> str:
 	return f"{user}_passkey_nudge"
@@ -94,6 +101,44 @@ def _policy_effective(settings) -> str:
 	return "nudge"  # "Nudge" and any unrecognised value
 
 
+def _enforce_key(user: str) -> str:
+	return f"{user}_passkey_enforce"
+
+
+def get_enforcement_state(user: str) -> dict:
+	"""The user's ``{grace_used}`` enforcement blob — how many enrollment prompts they
+	have deferred since coming in scope. Stored the twofactor way (site-wide
+	``DefaultValue`` under ``__passkeys``), exactly like the nudge state, so a decline
+	is recordable before any credential exists. Absent/malformed ⇒ a fresh zero-state."""
+	raw = frappe.db.get_default(_enforce_key(user), parent=DEFAULTS_PARENT)
+	if not raw:
+		return dict(_EMPTY_ENFORCE)
+	try:
+		data = json.loads(raw)
+	except (TypeError, ValueError):
+		return dict(_EMPTY_ENFORCE)
+	return {"grace_used": cint(data.get("grace_used"))}
+
+
+def _save_enforcement_state(user: str, state: dict) -> None:
+	frappe.db.set_default(_enforce_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
+
+
+def record_enforcement_event(user: str, event: str) -> dict:
+	"""Fold a ``record_enforcement`` event into the user's grace state. ``defer``
+	("Remind me later") spends one grace login — a network-retried ``defer``
+	double-counts (accepted bounded drift; it only ever makes enforcement arrive
+	*sooner*, never lets a user linger past the cap). ``incapable`` records no counter
+	(the endpoint handles the admin advisory). Returns the new state."""
+	if event not in ENFORCE_EVENTS:
+		frappe.throw(frappe._("Unknown enforcement event."), frappe.ValidationError)
+	state = get_enforcement_state(user)
+	if event == "defer":
+		state["grace_used"] = cint(state.get("grace_used")) + 1
+	_save_enforcement_state(user, state)
+	return state
+
+
 def _cadence_ok(settings, state: dict) -> bool:
 	"""Shared nudge/upsell cadence. Gated first on the policy rung: the nudge cadence
 	only runs while the effective policy is ``nudge`` (``Off`` ⇒ silent; ``Enforce`` /
@@ -140,6 +185,79 @@ def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
 	return _cadence_ok(settings, state)
 
 
+def _user_in_enforce_scope(user: str, settings) -> bool:
+	"""Whether ``user`` falls within the enforcement scope AND is not exempt. An exempt
+	role (``System Manager`` by default) ALWAYS wins — the break-glass guarantee — so it
+	is checked before the scope match."""
+	roles = set(frappe.get_roles(user))
+	exempt = {row.role for row in (settings.passkey_enforce_exempt_roles or [])}
+	if roles & exempt:
+		return False
+	if settings.passkey_enforce_scope == "Selected Roles":
+		target = {row.role for row in (settings.passkey_enforce_roles or [])}
+		return bool(roles & target)
+	return True  # "All Users"
+
+
+def build_enforcement(user: str, settings, credential_count: int) -> dict:
+	"""The server-owned enrollment-enforcement verdict — same trust model as
+	``nudge_state`` (scope, date and grace counters live server-side; the client only
+	ANDs its device-capability probe). Shape::
+
+	  {
+	      policy,
+	      effective,
+	      in_scope,
+	      blocking,
+	      grace_remaining,
+	      grace_total,
+	      allow_hybrid,
+	      incapable_policy,
+	      reason,
+	  }
+
+	``effective`` is the resolved rung (``off``/``nudge``/``enforce``); ``in_scope`` is
+	True only when the rung is ``enforce`` AND a passkey login mode is on AND the user
+	matches scope and is not exempt; ``blocking`` bites only an in-scope user who still
+	has zero passkeys and has exhausted their grace logins. ``incapable_policy``
+	(``degrade``/``block_notify``) + ``allow_hybrid`` are the §capability hinge the
+	client honors on a device that genuinely cannot create a passkey."""
+	effective = _policy_effective(settings)
+	mode_on = bool(cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
+	incapable_policy = (
+		"block_notify" if settings.passkey_enforce_incapable == "Block + Notify Admin" else "degrade"
+	)
+	allow_hybrid = bool(cint(settings.passkey_enforce_allow_hybrid))
+	grace_total = cint(settings.passkey_enforce_grace_logins)
+
+	in_scope = effective == "enforce" and mode_on and _user_in_enforce_scope(user, settings)
+	# Read the grace counter only for in-scope users (Off/Nudge sites pay nothing).
+	grace_used = cint(get_enforcement_state(user)["grace_used"]) if in_scope else 0
+	grace_remaining = max(0, grace_total - grace_used) if in_scope else grace_total
+	blocking = in_scope and credential_count == 0 and grace_remaining == 0
+
+	if not in_scope:
+		reason = "not_in_scope" if effective == "enforce" else effective
+	elif credential_count > 0:
+		reason = "satisfied"
+	elif blocking:
+		reason = "blocking"
+	else:
+		reason = "grace"
+
+	return {
+		"policy": settings.passkey_enrollment_policy or "Nudge",
+		"effective": effective,
+		"in_scope": in_scope,
+		"blocking": blocking,
+		"grace_remaining": grace_remaining,
+		"grace_total": grace_total,
+		"allow_hybrid": allow_hybrid,
+		"incapable_policy": incapable_policy,
+		"reason": reason,
+	}
+
+
 def build_passkeys_boot(user: str) -> dict:
 	"""The desk/portal boot payload the management + nudge + settings surfaces read.
 	Server state only — no client-supplied value is echoed. This is the single
@@ -159,8 +277,14 @@ def build_passkeys_boot(user: str) -> dict:
 	  * ``conditional_create`` — the ``passkey_conditional_create`` knob (silent
 	    upgrade); the client fails safe OFF when absent.
 	  * ``upsell_eligible``    — post-hybrid upsell cadence WITHOUT the 0-credential gate.
+	  * ``enforcement``        — the server-owned enforcement verdict
+	    ``{policy, effective, in_scope, blocking, grace_remaining, grace_total,
+	    allow_hybrid, incapable_policy, reason}`` (see :func:`build_enforcement`); the
+	    post-login interstitial reads ``blocking`` the way the banner reads
+	    ``nudge_state.eligible``.
 	  * ``settings_context``   — ``{core_two_factor_auth, disable_user_pass_login,
-	    passkey_only_user_count}`` for the cross-flag banners; System-Manager-only
+	    passkey_only_user_count, would_be_blocked_count}`` for the cross-flag banners +
+	    the report-only enforcement preview; System-Manager-only
 	    (empty for everyone else — the settings form is admin-only, and the passkey-only
 	    user count is not shipped to every Desk boot).
 	  * ``rp_id``              — the resolved RP ID for ``signalAllAcceptedCredentials``.
@@ -189,25 +313,59 @@ def build_passkeys_boot(user: str) -> dict:
 		"post_login_method": _post_login_method(user),
 		"conditional_create": bool(cint(settings.passkey_conditional_create)),
 		"upsell_eligible": upsell_eligible(user, settings, state),
-		"settings_context": _settings_context(user),
+		"enforcement": build_enforcement(user, settings, credential_count),
+		"settings_context": _settings_context(user, settings),
 		"rp_id": policy.resolve_rp_id(settings),
 	}
 
 
-def _settings_context(user: str) -> dict:
+def _settings_context(user: str, settings=None) -> dict:
 	"""Cross-flag banner context (``core_two_factor_auth`` /
-	``disable_user_pass_login`` / ``passkey_only_user_count``). Only the Passkey
-	Settings form reads it, and that form is System-Manager-only — so this ships an
-	empty dict for everyone else (avoids the per-boot count query + not exposing the
-	passkey-only user count on every Desk load). ``settings.js`` falls back gracefully
-	when the fields are absent."""
+	``disable_user_pass_login`` / ``passkey_only_user_count``) plus the report-only
+	enforcement preview (``would_be_blocked_count``). Only the Passkey Settings form
+	reads it, and that form is System-Manager-only — so this ships an empty dict for
+	everyone else (avoids the per-boot count queries + does not expose these counts on
+	every Desk load). ``settings.js`` falls back gracefully when the fields are absent."""
 	if "System Manager" not in frappe.get_roles(user):
 		return {}
+	if settings is None:
+		settings = frappe.get_cached_doc("Passkey Settings")
 	return {
 		"core_two_factor_auth": bool(cint(frappe.get_system_settings("enable_two_factor_auth"))),
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),
 		"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
+		"would_be_blocked_count": _would_be_blocked_count(settings),
 	}
+
+
+def _would_be_blocked_count(settings) -> int:
+	"""Report-only preview (System-Manager surface only): how many in-scope users have
+	no enabled passkey yet — the blast radius of flipping to ``Enforce``. Three bulk
+	reads + in-memory role math (never a per-user query); best-effort — any error ⇒ 0
+	so the preview can never break the settings form or a boot."""
+	try:
+		exempt_roles = {row.role for row in (settings.passkey_enforce_exempt_roles or [])}
+		target_roles = {row.role for row in (settings.passkey_enforce_roles or [])}
+		selected = settings.passkey_enforce_scope == "Selected Roles"
+		roles_by_user: dict[str, set] = {}
+		for row in frappe.get_all("Has Role", filters={"parenttype": "User"}, fields=["parent", "role"]):
+			roles_by_user.setdefault(row.parent, set()).add(row.role)
+		enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
+		count = 0
+		for u in frappe.get_all("User", filters={"enabled": 1}, pluck="name"):
+			if u in ("Administrator", "Guest"):
+				continue
+			roles = roles_by_user.get(u, set())
+			if roles & exempt_roles:
+				continue
+			if selected and not (roles & target_roles):
+				continue
+			if u in enrolled:
+				continue
+			count += 1
+		return count
+	except Exception:
+		return 0
 
 
 def _post_login_method(user: str) -> str | None:

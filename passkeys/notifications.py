@@ -26,6 +26,7 @@ from frappe.utils import cint, now_datetime
 RISK_FALLBACK_USED = "fallback_used"
 RISK_WEAK_LOGIN_ENROLLMENT = "weak_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
+RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +117,43 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 			)
 	except Exception:
 		frappe.log_error(title="passkeys: risk-event record failed")
+
+
+def record_enforcement_incapable(user: str) -> None:
+	"""The ``Block + Notify Admin`` half of the incapable-device escape hatch: a user in
+	scope for passkey enrollment enforcement reported their device cannot create a
+	passkey. Record an Activity Log risk event (always) and best-effort email the System
+	Managers so they can grant an exemption or issue a security key. Non-blocking — a
+	mail/log failure must never break the interstitial."""
+	try:
+		_activity_log(
+			user, RISK_ENFORCE_INCAPABLE, f"Passkey enforcement: {user}'s device cannot create a passkey"
+		)
+		managers = [m for m in _system_manager_emails() if m and m != user]
+		if managers:
+			frappe.sendmail(
+				recipients=managers,
+				subject=_("A user cannot satisfy passkey enrollment enforcement"),
+				message=_(
+					"{0} is required to register a passkey to keep signing in, but reports that"
+					" their device cannot create one. Consider granting an exemption (add one of"
+					" their roles to the exempt list) or issuing a hardware security key."
+				).format(user),
+				now=False,
+			)
+	except Exception:
+		frappe.log_error(title="passkeys: enforcement-incapable advisory failed")
+
+
+def _system_manager_emails() -> list[str]:
+	"""Deliverable System-Manager addresses (excludes Administrator, which has no real
+	inbox on most sites). Best-effort — returns [] on any error."""
+	try:
+		from frappe.utils.user import get_system_managers
+
+		return [m for m in get_system_managers() if m and "@" in m and m != "Administrator"]
+	except Exception:
+		return []
 
 
 # ---------------------------------------------------------------------------
