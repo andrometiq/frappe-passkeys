@@ -17,7 +17,7 @@ import frappe
 from frappe.utils import cint
 
 import passkeys.confirm as confirm
-from passkeys import auth_hooks, boot, install, passkey, session, state
+from passkeys import auth_hooks, boot, install, passkey, session, state, well_known
 from passkeys.api import credentials, registration
 from passkeys.passkey import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
@@ -120,6 +120,13 @@ class DormantEndpointsTest(IntegrationTestCase):
 
 	def test_confirm_reauth_password_refused(self):
 		self._assert_417(confirm.reauth_password, "pw")
+
+	# well_known.py — the mobile-app association files
+	def test_assetlinks_refused(self):
+		self._assert_417(well_known.assetlinks)
+
+	def test_apple_app_site_association_refused(self):
+		self._assert_417(well_known.apple_app_site_association)
 
 
 # ===========================================================================
