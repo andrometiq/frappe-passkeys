@@ -90,6 +90,8 @@ reverse-proxy / RP-ID / origin requirements.
   / RP-ID / origin requirements.
 - [**Configuration**](docs/configuration.md) — every Passkey Settings field, its default, and the
   security consequence of changing it.
+- [**Mobile apps**](docs/mobile-apps.md) — let a native iOS/Android app (Flutter-first) share the
+  site's passkeys: Trusted App Origins, the two well-known association files, and the endpoints.
 - [**Operations**](docs/operations.md) — day-two playbooks: RP-ID / domain changes, backup / restore,
   incident response, revocation, and monitoring.
 - [**Recovery**](docs/recovery.md) — locked-out user and locked-out admin recovery, with exact
