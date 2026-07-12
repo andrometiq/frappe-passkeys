@@ -328,9 +328,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.assertGreaterEqual(summary["credentials_rejected"], 1)
 		self.assertGreaterEqual(summary["handles_rejected"], 1)
 		# the victim's live handle is untouched, and no crafted key was bound
-		self.assertEqual(
-			frappe.db.get_value("WebAuthn User Handle", {"user": victim}, "handle"), live_handle
-		)
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", {"user": victim}, "handle"), live_handle)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": victim}))
 
 	def test_import_keeps_valid_rows_and_rejects_only_the_bad_ones(self):
