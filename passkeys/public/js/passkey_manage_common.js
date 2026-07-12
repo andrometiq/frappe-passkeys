@@ -143,6 +143,25 @@
 		allModesOff:
 			"Both passkey login modes are off — the login-page passkey UI is hidden and no new " +
 			"passkeys can be used to sign in. Existing passkeys are preserved.",
+		// enrollment ladder (policy Select + enforcement scope/escape hatches)
+		enforceNoDate:
+			"Enrollment Policy 'Enforce After Date' needs an Enforce After date — Save will fail " +
+			"until you set it (or choose 'Enforce' to enforce immediately).",
+		enforceNoMode:
+			"Enrollment enforcement has no effect while both passkey login modes are off. Enable a " +
+			"passkey login mode for the policy to apply.",
+		enforceSelfLockout:
+			"System Manager is not in the exempt roles while enforcing for all users — an " +
+			"administrator on a device that cannot create a passkey could be locked out. Keep " +
+			"System Manager exempt as a break-glass unless you are certain.",
+		enforceEmptyRoles:
+			"Enforcement scope is 'Selected Roles' but no roles are listed, so the policy applies " +
+			"to nobody. Add the roles to enforce, or switch the scope to 'All Users'.",
+		enforceBlockIncapable:
+			"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create " +
+			"a passkey (and cannot use a phone) will be blocked rather than nudged.",
+		enforcePreview:
+			"This policy would require a passkey from {0} in-scope user(s) who do not have one yet.",
 	};
 
 	// ------------------------------------------------------------ tiny formatter
@@ -434,12 +453,52 @@
 			});
 		}
 
+		// ---- enrollment ladder (policy Select + enforcement scope) ----
+		var policy = doc.passkey_enrollment_policy || "Nudge";
+		var enforcing = policy === "Enforce" || policy === "Enforce After Date";
+
+		// Enforce After Date with no date — Save WILL fail (validator throws).
+		if (policy === "Enforce After Date" && !doc.passkey_enforce_after) {
+			banners.push({ level: "error", key: COPY.enforceNoDate });
+		}
+		if (enforcing) {
+			// Inert policy: enforcing while no passkey login mode is on.
+			if (!anyMode) banners.push({ level: "warning", key: COPY.enforceNoMode });
+			// Self-lockout: enforcing everyone without System Manager exempt.
+			var exempt = roleNames(doc.passkey_enforce_exempt_roles);
+			if (doc.passkey_enforce_scope !== "Selected Roles" && exempt.indexOf("System Manager") === -1) {
+				banners.push({ level: "warning", key: COPY.enforceSelfLockout });
+			}
+			// Selected-roles scope with an empty role list enforces against nobody.
+			if (doc.passkey_enforce_scope === "Selected Roles" && !roleNames(doc.passkey_enforce_roles).length) {
+				banners.push({ level: "warning", key: COPY.enforceEmptyRoles });
+			}
+			// Block + Notify can hard-lock genuinely incapable devices.
+			if (doc.passkey_enforce_incapable === "Block + Notify Admin") {
+				banners.push({ level: "warning", key: COPY.enforceBlockIncapable });
+			}
+			// Report-only preview: how many in-scope users would be required to enroll
+			// (server-supplied — only shown when the count context is present).
+			if (typeof ctx.wouldBeBlockedCount === "number") {
+				banners.push({ level: "info", key: COPY.enforcePreview, args: [ctx.wouldBeBlockedCount] });
+			}
+		}
+
 		// "pause": both modes off is legal but the UI removes itself.
 		if (!anyMode) {
 			banners.push({ level: "info", key: COPY.allModesOff });
 		}
 
 		return banners;
+	}
+
+	// Normalize a Table-MultiSelect value to an array of role-name strings. Accepts
+	// child rows ({role}), plain strings, or a missing table (⇒ []).
+	function roleNames(rows) {
+		if (!Array.isArray(rows)) return [];
+		return rows
+			.map(function (r) { return typeof r === "string" ? r : r && r.role; })
+			.filter(function (r) { return !!r; });
 	}
 
 	// Client mirror of server policy.resolve_origins: the implicit
@@ -528,6 +587,7 @@
 		upsellDecision: upsellDecision,
 		deleteGuard: deleteGuard,
 		settingsBanners: settingsBanners,
+		roleNames: roleNames,
 		deriveOrigins: deriveOrigins,
 		originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
