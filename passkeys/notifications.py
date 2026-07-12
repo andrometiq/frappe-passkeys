@@ -7,7 +7,8 @@ telemetry + admin-change owner notices. Folds into
 
 **Hook-path import discipline:** wired into the ``WebAuthn Credential``
 ``on_trash``/``validate`` DocType events and the login-ceremony flag path, so it
-MUST NOT import ``webauthn``. It imports only ``frappe``.
+MUST NOT import ``webauthn``. It imports only ``frappe`` and the webauthn-free
+``passkeys.install`` (for the shared ``__passkeys`` Defaults parent).
 
 The add/remove/flag email is the **compensating control for registration
 hijack**: it carries actionable metadata (label, time, IP) so a user who
@@ -20,13 +21,24 @@ delete, or an admin save."""
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, get_datetime, now_datetime
+
+from passkeys.install import DEFAULTS_PARENT
 
 # Risk-event vocabulary — Activity-Log-backed telemetry for later signaling.
 RISK_FALLBACK_USED = "fallback_used"
 RISK_WEAK_LOGIN_ENROLLMENT = "weak_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
 RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
+
+# Admin-advisory dedup window: at most one incapable-device email per user per 24h.
+# The client once-guard resets on every page load, so without a server-side gate one
+# in-scope incapable user could email every System Manager once per page view (up to
+# the endpoint's 30/hr rate cap). The window marker is stored the twofactor way — a
+# site-wide ``DefaultValue`` under ``__passkeys``, exactly like the grace state — so it
+# is shared across the user's browsers and swept on uninstall. The endpoint rate limit
+# stays as the coarse backstop.
+INCAPABLE_NOTIFY_WINDOW_SEC = 24 * 60 * 60
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +134,18 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 def record_enforcement_incapable(user: str) -> None:
 	"""The ``Block + Notify Admin`` half of the incapable-device escape hatch: a user in
 	scope for passkey enrollment enforcement reported their device cannot create a
-	passkey. Record an Activity Log risk event (always) and best-effort email the System
-	Managers so they can grant an exemption or issue a security key. Non-blocking — a
-	mail/log failure must never break the interstitial."""
+	passkey. Record an Activity Log risk event (**always** — telemetry) and best-effort
+	email the System Managers so they can grant an exemption or issue a security key. The
+	admin email is **deduped server-side** to at most one per user per 24h
+	(:data:`INCAPABLE_NOTIFY_WINDOW_SEC`): the client once-guard resets each page load, so
+	the dedup is what stops a single incapable user flooding admins one email per page view.
+	Non-blocking — a mail/log failure must never break the interstitial."""
 	try:
 		_activity_log(
 			user, RISK_ENFORCE_INCAPABLE, f"Passkey enforcement: {user}'s device cannot create a passkey"
 		)
+		if _incapable_notified_recently(user):
+			return  # admins already advised within the window; the Activity Log still recorded
 		managers = [m for m in _system_manager_emails() if m and m != user]
 		if managers:
 			frappe.sendmail(
@@ -141,8 +158,33 @@ def record_enforcement_incapable(user: str) -> None:
 				).format(user),
 				now=False,
 			)
+			_mark_incapable_notified(user)  # only after a dispatch — a manager-less site retries
 	except Exception:
 		frappe.log_error(title="passkeys: enforcement-incapable advisory failed")
+
+
+def _incapable_notify_key(user: str) -> str:
+	return f"{user}_passkey_incapable_notified"
+
+
+def _incapable_notified_recently(user: str) -> bool:
+	"""True iff an incapable-device admin advisory was emailed for ``user`` within the
+	dedup window. Absent/malformed marker ⇒ False (fail open to sending — a bad row must
+	never permanently silence the advisory)."""
+	raw = frappe.db.get_default(_incapable_notify_key(user), parent=DEFAULTS_PARENT)
+	if not raw:
+		return False
+	try:
+		last = get_datetime(raw)
+	except Exception:
+		return False
+	return (now_datetime() - last).total_seconds() < INCAPABLE_NOTIFY_WINDOW_SEC
+
+
+def _mark_incapable_notified(user: str) -> None:
+	"""Stamp the dedup window marker (twofactor-style ``DefaultValue`` under
+	``__passkeys``, swept on uninstall) after an advisory is dispatched."""
+	frappe.db.set_default(_incapable_notify_key(user), now_datetime().isoformat(), parent=DEFAULTS_PARENT)
 
 
 def _system_manager_emails() -> list[str]:
