@@ -720,6 +720,18 @@
 			body.appendChild(actions);
 		}
 		makeStaticIfBlocking(d, enf.blocking);
+		// Esc / backdrop / close-X dismiss of a NON-BLOCKING gate = "Remind me later"
+		// semantics: spend one grace login exactly once, however the modal closed. The
+		// explicit link sets `_acted` before hiding, so this fires only on an UNACTED
+		// dismissal (Esc / backdrop / X) — the route the click handlers never cover. The
+		// hide event is the one reliable catch-all across dismissal routes; the sibling
+		// nudge dialog uses the same guard. A blocking gate is static (undismissable) with
+		// no grace left to spend, so it wires nothing here.
+		if (!enf.blocking && d.$wrapper && d.$wrapper.on) {
+			d.$wrapper.on("hide.bs.modal", function () {
+				if (!d._acted) { d._acted = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); }
+			});
+		}
 		d.show();
 	}
 
@@ -824,4 +836,11 @@
 	if (window.frappe && frappe.router && frappe.after_ajax) frappe.after_ajax(onReady);
 	else if (document.readyState !== "loading") setTimeout(onReady, 0);
 	else document.addEventListener("DOMContentLoaded", function () { setTimeout(onReady, 0); });
+
+	// Node-only test seam (UMD-lite, mirrors passkey_login.bundle.js): expose the
+	// enforcement/nudge interstitials so `node --test` can pin the defer-on-dismiss
+	// contract without a bench. No-op in the browser — `module` is undefined there.
+	if (typeof module === "object" && module.exports) {
+		module.exports = { showEnforceDialog: showEnforceDialog, showNudgeDialog: showNudgeDialog };
+	}
 })();
