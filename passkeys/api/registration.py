@@ -262,7 +262,7 @@ def _enforce_request_host(origins: list) -> None:
 			title="passkeys: request host not in configured origins",
 			message=f"request origin {origin} not in {origins}",
 		)
-		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
+		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 
 
 # ---------------------------------------------------------------------------

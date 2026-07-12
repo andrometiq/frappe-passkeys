@@ -262,7 +262,7 @@
 			try {
 				publicKey = C.parseRequestOptionsFromJSON(state.login.options, window.PublicKeyCredential);
 			} catch (e) {
-				announce(t("Couldn't start passkey sign-in."));
+				announce(t("Couldn't start passkey sign-in — try again or sign in another way."));
 				return;
 			}
 			state.busyModal = true;
@@ -481,7 +481,7 @@
 	}
 
 	function loginWithPassword(usr, pwd) {
-		setStatus(t("Verifying..."));
+		setStatus(t("Verifying…"));
 		frappeCall(API.login_with_password, { usr: usr, pwd: pwd }, composedHandlers({
 			// 200 wrapper (below) already pre-inspects verification.method === "Passkey".
 			on401: function (data) {
@@ -512,7 +512,7 @@
 		var publicKey;
 		try {
 			publicKey = C.parseRequestOptionsFromJSON(options, window.PublicKeyCredential);
-		} catch (e) { announce(t("Couldn't start passkey verification.")); restore(); return; }
+		} catch (e) { announce(t("Couldn't start passkey verification — try again or sign in another way.")); restore(); return; }
 
 		var dlg = buildDialog({
 			titleText: t("Confirm it's you"),

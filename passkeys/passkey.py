@@ -116,7 +116,7 @@ def begin_login():
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
 		# Mode on but unconfigured — fail closed uniformly (fail-closed arm).
-		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
+		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
@@ -299,7 +299,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	except frappe.AuthenticationError:
 		state.record_password_failure(user)
 		_track_verify_failure(user)  # a wrong-password step-up feeds the tracker too
-		raise frappe.AuthenticationError(_("Incorrect password."))
+		raise frappe.AuthenticationError(_("That password didn't match — try again."))
 	state.clear_password_failures(user)
 
 	# C4: the uv-setup record lives up to 180 s post-assertion — re-check
@@ -384,7 +384,7 @@ def login_with_password(usr: str, pwd: str):
 	# protections automatically.
 	# 1. mirror `frappe/auth.py` login(): username/password login can be disabled.
 	if frappe.get_system_settings("disable_user_pass_login"):
-		raise frappe.AuthenticationError(_("Login with username and password is not allowed."))
+		raise frappe.AuthenticationError(_("Password sign-in is turned off for this site."))
 	# 2. before_login parity — fire iff a hook is registered (v16/develop fire it
 	#    in core login(); v15 never does, so there it is defense-in-depth).
 	login_manager = _request_login_manager()
@@ -447,7 +447,7 @@ def _dispatch_passkey_second_factor(user, pwd, credentials, settings, run_2fa):
 
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
-		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
+		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
 	_enforce_request_host(origins)
 
@@ -986,7 +986,7 @@ def _enforce_request_host(origins: list) -> None:
 			title="passkeys: request host not in configured origins",
 			message=f"request origin {origin} not in {origins}",
 		)
-		raise frappe.AuthenticationError(_("Passkeys are not available on this host."))
+		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 
 
 def _request_origin() -> str | None:
