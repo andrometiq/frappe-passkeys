@@ -27,6 +27,16 @@ The read-only **Resolved Configuration** panel shows the RP ID and origins the
 server actually resolved, plus the invalidation warning and — if the current
 request host does not match — a red mismatch banner.
 
+## Mobile Apps
+
+If a native iOS / Android app should share the site's passkeys, the **Mobile
+Apps** fields configure the trusted native origins and the two well-known
+association files: `passkey_app_origins`, `passkey_android_package_name`,
+`passkey_android_cert_fingerprints`, `passkey_ios_team_id`, and
+`passkey_ios_bundle_id`. They are documented in full — including how to obtain the
+Android signing-certificate fingerprint and how the association files are served —
+in [`mobile-apps.md`](mobile-apps.md). Leave them blank for a web-only site.
+
 ## Policy
 
 | Field | Default | What it does / consequence of changing it |
@@ -38,12 +48,34 @@ request host does not match — a red mismatch banner.
 
 ## Enrollment
 
+The **Enrollment Policy** is the rung control of the passkey adoption ladder — it
+decides whether, and how hard, the app pushes passkey-less users to enroll. The
+nudge and conditional-create knobs tune the softer rungs; the separate
+**Enforcement Scope & Escape Hatches** section below only takes effect on the
+harder ones.
+
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
-| **Enrollment Nudge** (`passkey_enrollment_nudge`) | On | Shows a dismissible "set up a passkey" prompt after login to users who have none. Off: no nudges. |
-| **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops. Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
+| **Enrollment Policy** (`passkey_enrollment_policy`) | Nudge | The adoption-ladder rung, a Select of four values. **Off** — never prompt. **Nudge** — show a dismissible "set up a passkey" prompt after login to users who have none, capped by the two nudge knobs below. **Enforce** — in-scope users must register a passkey to keep using the app (recovery stays available). **Enforce After Date** — behaves as *Nudge* until the date in *Enforce After*, then becomes *Enforce*. Enforce is a **post-login interstitial**: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block. |
+| **Enforce After** (`passkey_enforce_after`) | *blank* | Only shown, and required, when the policy is *Enforce After Date*. Enforcement begins on this date, evaluated against the server clock on every request; before it the policy behaves as *Nudge*, and a past date behaves as an immediate *Enforce*. |
+| **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops (applies to *Nudge*, and to *Enforce After Date* while it is still before its date). Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
 | **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. Off: only the explicit nudge/enroll flow creates passkeys. |
+
+## Enforcement Scope & Escape Hatches
+
+This section is shown, and takes effect, **only** when **Enrollment Policy** is
+*Enforce* or *Enforce After Date*. It scopes who enforcement applies to and keeps
+capable-but-stuck users — and administrators — from being dead-ended.
+
+| Field | Default | What it does / consequence of changing it |
+|---|---|---|
+| **Enforcement Scope** (`passkey_enforce_scope`) | All Users | Whether enforcement applies to everyone (*All Users*) or only to users holding one of the selected roles (*Selected Roles*). |
+| **Enforce for Roles** (`passkey_enforce_roles`) | *empty* | Only shown when scope is *Selected Roles*. A user is in scope for enforcement if they hold **any** of these roles. |
+| **Exempt Roles** (`passkey_enforce_exempt_roles`) | System Manager *(seeded)* | Users holding **any** of these roles are always exempt — the break-glass hatch. `System Manager` is seeded automatically (on install and on upgrade) so an administrator can never lock themselves out the moment enforcement is turned on. |
+| **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers a brand-new user's first session; `0` blocks immediately. |
+| **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
+| **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
 ## Notifications
 

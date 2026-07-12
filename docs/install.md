@@ -111,9 +111,12 @@ bench --site <site> migrate
 ```
 
 `bench migrate` runs the app's `after_migrate` hook, which re-syncs a small
-System Settings property setter used by the pluggable-two-factor integration.
-`patches.txt` is empty in this version, so there is no data migration to plan.
-No settings are changed by an upgrade; enabled modes stay enabled.
+System Settings property setter used by the pluggable-two-factor integration, and
+applies any pending `patches.txt` migrations. The current patch folds a legacy
+site's `passkey_enrollment_nudge` boolean into the `passkey_enrollment_policy`
+adoption ladder and seeds the break-glass exempt role; it is idempotent and never
+clobbers a policy an administrator has already chosen. No settings are otherwise
+changed by an upgrade; enabled modes stay enabled.
 
 ## Disable vs uninstall
 
