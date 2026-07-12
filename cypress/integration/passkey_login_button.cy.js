@@ -51,6 +51,27 @@ chromium_only("passkey explicit-button login", () => {
 		cy.assert_logged_user(USER);
 	});
 
+	it("shows the visible staged status: verifying → you're in", () => {
+		cy.stub_post_login_shell();
+		// Delay the server round-trip so the "Verifying…" progress beat is deterministically
+		// observable before the redirect. The status element is app-owned and renders
+		// identically on v15/v16/develop, so this assertion is version-agnostic.
+		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify_staged", (req) => {
+			req.continue((res) => { res.setDelay(700); });
+		});
+		cy.visit_login_without_conditional();
+		cy.get("#passkey-login-btn").click();
+		// Stage 2 — server round-trip: a progress-toned status appears on the page itself.
+		cy.get("#passkey-login-status")
+			.should("be.visible")
+			.and("have.class", "passkey-status--progress")
+			.and("contain", "Verifying");
+		cy.wait("@verify_staged", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
+		// Stage 3 — the resolved "You're in" beat, then core's redirect.
+		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
+		cy.assert_logged_user(USER);
+	});
+
 	it("removes itself when every login mode is off", () => {
 		cy.login(USER, PW());
 		cy.disable_passkey_login();
