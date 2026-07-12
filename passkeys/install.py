@@ -15,6 +15,12 @@ from frappe.utils import cint
 FRAPPE_VERSION_FLOOR = (15, 107, 0)
 DEFAULTS_PARENT = "__passkeys"
 
+# The legacy "My Passkeys" avatar-menu item we used to sync into Navbar Settings.
+# Passkey management now lives in the User-form "Passkeys" section, so the app no
+# longer declares a standard_navbar_items hook; this action string is how both
+# after_migrate and before_uninstall find and remove the previously-synced item.
+NAVBAR_ITEM_ACTION = "frappe.passkeys.manage.openManagerDialog()"
+
 
 def before_install():
 	"""The abort-capable gate: a raise here leaves zero site state, while an
@@ -41,15 +47,7 @@ def before_uninstall():
 	_block_uninstall_lockout()
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
 	_remove_registry_property_setter()
-	# Remove the "My Passkeys" navbar entry we synced into Navbar Settings on
-	# v16/develop (v15 never syncs it). Keyed on our own action string so nothing
-	# else is touched — leaves a clean Navbar Settings for a true fresh reinstall
-	# and for the core-merge story.
-	frappe.db.delete(
-		"Navbar Item",
-		{"parent": "Navbar Settings", "action": "frappe.passkeys.manage.openManagerDialog()"},
-	)
-	frappe.clear_document_cache("Navbar Settings", "Navbar Settings")
+	_remove_navbar_item()
 
 
 _CORE_NATIVE: bool | None = None
@@ -189,22 +187,29 @@ def sync_registry_fixture():
 		_remove_registry_property_setter()
 
 
-def sync_standard_navbar_items():
-	"""Sync the app's ``standard_navbar_items`` hook into Navbar Settings.
+def _remove_navbar_item():
+	"""Delete the legacy "My Passkeys" Navbar Item, keyed on our own action string so
+	nothing else is touched. Idempotent; safe on sites that never had it."""
+	frappe.db.delete("Navbar Item", {"parent": "Navbar Settings", "action": NAVBAR_ITEM_ACTION})
+	frappe.clear_document_cache("Navbar Settings", "Navbar Settings")
 
-	v16/develop expose an idempotent migrate-time sync helper that upserts each
-	app's standard items (and garbage-collects removed ones). v15 has no such
-	helper — its only core routine, ``add_standard_navbar_items``, rebuilds BOTH
-	dropdowns from scratch whenever either is empty, so calling it from our
-	``after_migrate`` hook would silently wipe an admin's custom navbar items on
-	any migrate where a dropdown happens to be empty. So on v15 we do NOT touch
-	Navbar Settings at all; the Desk bundle's old-navbar DOM fallback
-	(``#passkey-navbar-item``) delivers "My Passkeys" there instead.
+
+def sync_standard_navbar_items():
+	"""after_migrate: clean up the legacy "My Passkeys" avatar-menu item on existing
+	sites. Passkey management moved into the User-form "Passkeys" section, so the app
+	no longer declares a ``standard_navbar_items`` hook.
+
+	Remove the item we previously synced into Navbar Settings (idempotent — mirrors
+	``before_uninstall``), then let core's idempotent sync (v16/develop) reconcile the
+	remaining apps' standard items. v15 exposes no such core helper (and its destructive
+	``add_standard_navbar_items`` must never be called from a migrate hook), so the
+	explicit removal above is the whole story there.
 	"""
+	_remove_navbar_item()
 	try:
 		from frappe.core.doctype.navbar_settings.navbar_settings import sync_standard_items
 	except ImportError:
-		return  # v15: no idempotent core sync — rely on the desk-bundle DOM fallback
+		return  # v15: no idempotent core sync — the explicit removal above suffices
 	sync_standard_items()
 
 

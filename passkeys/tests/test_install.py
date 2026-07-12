@@ -111,6 +111,50 @@ class TestUninstallGuards(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("DefaultValue", {"parent": install.DEFAULTS_PARENT}))
 
 
+class TestNavbarCleanup(IntegrationTestCase):
+	"""E1: "My Passkeys" moved from the avatar menu into the User-form "Passkeys"
+	section, so the app no longer declares a standard_navbar_items hook and
+	after_migrate cleans up the previously-synced item on existing sites."""
+
+	def tearDown(self):
+		install._remove_navbar_item()
+		super().tearDown()
+
+	def _add_legacy_item(self):
+		navbar = frappe.get_doc("Navbar Settings")
+		navbar.append(
+			"settings_dropdown",
+			{
+				"item_label": "My Passkeys",
+				"item_type": "Action",
+				"action": install.NAVBAR_ITEM_ACTION,
+				"is_standard": 1,
+			},
+		)
+		navbar.save(ignore_permissions=True)
+
+	def _item_exists(self):
+		return frappe.db.exists(
+			"Navbar Item", {"parent": "Navbar Settings", "action": install.NAVBAR_ITEM_ACTION}
+		)
+
+	def test_app_no_longer_advertises_the_navbar_item(self):
+		items = frappe.get_hooks("standard_navbar_items") or []
+		labels = [it.get("item_label") for it in items if isinstance(it, dict)]
+		self.assertNotIn("My Passkeys", labels)
+
+	def test_after_migrate_removes_a_previously_synced_item(self):
+		self._add_legacy_item()
+		self.assertTrue(self._item_exists())
+		install.sync_standard_navbar_items()
+		self.assertFalse(self._item_exists())
+
+	def test_removal_is_idempotent_when_absent(self):
+		self.assertFalse(self._item_exists())
+		install.sync_standard_navbar_items()  # must not raise
+		self.assertFalse(self._item_exists())
+
+
 class TestRegistryPropertySetter(IntegrationTestCase):
 	"""Programmatic, module-tagged, guard-keyed — never a fixtures/ fixture."""
 

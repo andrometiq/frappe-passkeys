@@ -30,22 +30,12 @@ app_include_css = [
 	"/assets/passkeys/css/passkey_manage.css",
 ]
 
-# Native Desk user-menu entry. Frappe syncs this hook into the
-# Navbar Settings Single on install/migrate, then develop's sidebar renders it
-# through frappe.ui.create_menu from frappe.boot.navbar_settings.settings_dropdown.
-# The condition is only the runtime off/dormant gate. Older desks can evaluate
-# navbar conditions before this bundle publishes frappe.passkeys.manage; the
-# action itself is still available by the time the rendered menu item is clicked.
-standard_navbar_items = [
-	{
-		"item_label": "My Passkeys",
-		"item_type": "Action",
-		"action": "frappe.passkeys.manage.openManagerDialog()",
-		"condition": "!!(frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.enabled)",
-		"icon": "key",
-		"is_standard": 1,
-	}
-]
+# Passkey management is NOT a first-class avatar-menu item. It lives in the
+# "Passkeys" section of the User form (My Settings) via doctype_js below — the
+# natural, discoverable Settings home, with full manage capability (list / add /
+# rename / remove). The previously-synced "My Passkeys" navbar item is cleaned up
+# idempotently by after_migrate (install.sync_standard_navbar_items) on existing
+# sites. openManagerDialog() is retained for programmatic CTAs/nudges.
 
 # DocType client scripts (frontend)
 # --------------------------------------------------
