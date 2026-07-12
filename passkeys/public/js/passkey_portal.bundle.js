@@ -244,7 +244,7 @@
 	function addRow() { var row = el("div", "passkey-card-add-row"); row.appendChild(primary(t(M.COPY.addButton), addPasskey)); return row; }
 	function cardEl(vm) {
 		var li = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled")); li.setAttribute("data-name", vm.name);
-		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.innerHTML = '<svg class="icon" focusable="false"><use href="#icon-key"></use></svg>'; li.appendChild(g);
+		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg("key", "icon"); li.appendChild(g);
 		var main = el("div", "passkey-card-main");
 		var lr = el("div", "passkey-card-labelrow");
 		var le = el("span", "passkey-card-label", vm.label); le.setAttribute("title", vm.label); lr.appendChild(le);
@@ -374,7 +374,7 @@
 	function iconBtn(cls, iconName, name, on) {
 		var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-xs btn-default passkey-icon-btn " + cls;
 		b.setAttribute("aria-label", name); b.setAttribute("title", name);
-		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.innerHTML = '<svg class="icon icon-sm" focusable="false"><use href="#icon-' + iconName + '"></use></svg>'; b.appendChild(g);
+		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg(iconName, "icon icon-sm"); b.appendChild(g);
 		b.addEventListener("click", on); return b;
 	}
 	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) {} return String(v); }

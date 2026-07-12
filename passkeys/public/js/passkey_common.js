@@ -348,6 +348,46 @@
 		};
 	}
 
+	// ------------------------------------------------------------ inline icons
+	// App-shipped inline SVGs (lucide artwork — pencil, trash-2, key; lucide is
+	// ISC-licensed) so the management glyphs render IDENTICALLY on every Frappe
+	// version instead of depending on the host icon sprite. v15's timeless/espresso
+	// sprites carry NO #icon-pencil / #icon-trash / #icon-key, so the <use> refs
+	// resolved to nothing and the buttons rendered as blank squares (A2). Centralised
+	// here (loaded first on desk / login / portal) so every bundle shares one copy.
+	var ICON_PATHS = {
+		pencil:
+			'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>' +
+			'<path d="m15 5 4 4"/>',
+		trash:
+			'<path d="M3 6h18"/>' +
+			'<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>' +
+			'<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
+			'<line x1="10" x2="10" y1="11" y2="17"/>' +
+			'<line x1="14" x2="14" y1="11" y2="17"/>',
+		key:
+			'<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/>' +
+			'<path d="m21 2-9.6 9.6"/>' +
+			'<circle cx="7.5" cy="15.5" r="5.5"/>',
+	};
+
+	// Build an inline SVG icon string. `name` is a key in ICON_PATHS; unknown ⇒ "".
+	// Keeps the caller's classes (icon / icon-sm) so sizing + theming still apply, but
+	// PINS fill/stroke inline: Frappe's `.icon` drives them from CSS variables that
+	// flip per version (v15 fills, develop strokes), which would otherwise turn this
+	// outline art into solid blobs on v15. stroke:currentColor keeps dark-mode parity.
+	function iconSvg(name, className) {
+		var path = ICON_PATHS[name];
+		if (!path) return "";
+		var cls = className ? ' class="' + className + '"' : "";
+		return (
+			"<svg" + cls + ' viewBox="0 0 24 24" focusable="false" aria-hidden="true" ' +
+			'style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">' +
+			path +
+			"</svg>"
+		);
+	}
+
 	// ============================================================ confirm
 	// Action-confirmation ("passkey signing") primitive — the PURE protocol
 	// engine. Zero window/document/navigator/frappe references so the whole
@@ -673,6 +713,7 @@
 		ensureLiveRegion: ensureLiveRegion,
 		announce: announce,
 		captureFocus: captureFocus,
+		iconSvg: iconSvg,
 		LIVE_REGION_ID: LIVE_REGION_ID,
 		// action-confirmation ("passkey signing")
 		GRANT_HEADER: GRANT_HEADER,
