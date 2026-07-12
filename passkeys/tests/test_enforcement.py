@@ -5,10 +5,12 @@
 policy rung resolution (incl. ``Enforce After Date`` against the server clock), scope /
 exempt-role membership, grace-login budget, and the ``record_enforcement`` endpoint."""
 
-import frappe
-from frappe.utils import add_to_date, cint, nowdate
+from unittest.mock import patch
 
-from passkeys import boot, passkey
+import frappe
+from frappe.utils import add_to_date, cint, now_datetime, nowdate
+
+from passkeys import boot, notifications, passkey
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_user
@@ -75,6 +77,11 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		self.addCleanup(
 			frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_enforce"}
+		)
+		self.addCleanup(
+			frappe.db.delete,
+			"DefaultValue",
+			{"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_incapable_notified"},
 		)
 		if roles:
 			frappe.get_doc("User", user).add_roles(*roles)
@@ -199,6 +206,45 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertTrue(
 			frappe.db.exists("Activity Log", {"user": user, "content": "passkeys:enforce_incapable_device"})
 		)
+
+	def test_incapable_admin_advisory_is_deduped_within_the_window(self):
+		# A single incapable user must not flood admins: the client once-guard resets per
+		# page load, so the server dedups the email to one per user per 24h — but the
+		# Activity Log risk event (telemetry) still records on every report.
+		self._set(passkey_enforce_incapable="Block + Notify Admin")
+		user = self._user()
+		frappe.set_user(user)
+		with (
+			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
+			patch("frappe.sendmail") as mock_send,
+		):
+			passkey.record_enforcement("incapable")
+			passkey.record_enforcement("incapable")
+			passkey.record_enforcement("incapable")
+		self.assertEqual(mock_send.call_count, 1, "admins are emailed at most once within the dedup window")
+		frappe.set_user("Administrator")
+		rows = frappe.get_all(
+			"Activity Log", filters={"user": user, "content": "passkeys:enforce_incapable_device"}
+		)
+		self.assertEqual(
+			len(rows), 3, "the Activity Log risk event still records every time (dedup gates only the email)"
+		)
+
+	def test_incapable_admin_advisory_reemails_after_the_window_lapses(self):
+		# Past the dedup window a fresh report re-alerts admins (the backdated marker
+		# simulates a report a day later).
+		self._set(passkey_enforce_incapable="Block + Notify Admin")
+		user = self._user()
+		frappe.set_user(user)
+		with (
+			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
+			patch("frappe.sendmail") as mock_send,
+		):
+			passkey.record_enforcement("incapable")
+			stale = add_to_date(now_datetime(), hours=-25).isoformat()
+			frappe.db.set_default(f"{user}_passkey_incapable_notified", stale, parent=DEFAULTS_PARENT)
+			passkey.record_enforcement("incapable")
+		self.assertEqual(mock_send.call_count, 2, "a report past the dedup window re-emails admins")
 
 	def test_record_enforcement_rejects_unknown_event(self):
 		user = self._user()
