@@ -820,7 +820,17 @@ def get_signal_data():
 	credential_ids = frappe.get_all(
 		"WebAuthn Credential", filters={"user": user, "enabled": 1}, pluck="credential_id"
 	)
-	return {"rp_id": rp_id, "user_handle": handle, "credential_ids": credential_ids}
+	# name/display_name feed signalCurrentUserDetails (F2), keeping the provider's stored
+	# account-chooser label in sync when the user later edits full_name/email. name mirrors
+	# the WebAuthn userName set at registration (the login id); display_name the userDisplayName.
+	full_name = frappe.db.get_value("User", user, "full_name") or user
+	return {
+		"rp_id": rp_id,
+		"user_handle": handle,
+		"credential_ids": credential_ids,
+		"name": user,
+		"display_name": full_name,
+	}
 
 
 @frappe.whitelist(methods=["POST"])

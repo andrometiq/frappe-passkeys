@@ -352,6 +352,47 @@ test("signalPayload: shapes user_handle + credential_ids, else null", () => {
 	assert.strictEqual(M.signalPayload(null), null);
 });
 
+test("F3: an EMPTY credential_ids list passes through intentionally (last-delete ⇒ provider hides all)", () => {
+	// A non-array is rejected (nothing to signal); [] is a valid, deliberate hide-all.
+	assert.deepStrictEqual(
+		M.signalPayload({ signal: { user_handle: "uh", credential_ids: [] } }),
+		{ userHandle: "uh", allAcceptedCredentialIds: [] }
+	);
+});
+
+test("F2: currentUserDetailsPayload shapes {userHandle, name, displayName}", () => {
+	assert.deepStrictEqual(
+		M.currentUserDetailsPayload({
+			user_handle: "uh",
+			name: "user@example.com",
+			display_name: "Ada Lovelace",
+		}),
+		{ userHandle: "uh", name: "user@example.com", displayName: "Ada Lovelace" }
+	);
+	// also reads a verify_registration-style nested signal block
+	assert.deepStrictEqual(
+		M.currentUserDetailsPayload({ signal: { user_handle: "uh", name: "n", display_name: "d" } }),
+		{ userHandle: "uh", name: "n", displayName: "d" }
+	);
+});
+
+test("F2: currentUserDetailsPayload mirrors a lone field so neither name nor displayName is blank", () => {
+	assert.deepStrictEqual(
+		M.currentUserDetailsPayload({ user_handle: "uh", display_name: "Ada" }),
+		{ userHandle: "uh", name: "Ada", displayName: "Ada" }
+	);
+	assert.deepStrictEqual(
+		M.currentUserDetailsPayload({ user_handle: "uh", name: "ada@x.io" }),
+		{ userHandle: "uh", name: "ada@x.io", displayName: "ada@x.io" }
+	);
+});
+
+test("F2: currentUserDetailsPayload returns null with no handle or no name/displayName", () => {
+	assert.strictEqual(M.currentUserDetailsPayload({ name: "n", display_name: "d" }), null);
+	assert.strictEqual(M.currentUserDetailsPayload({ user_handle: "uh" }), null);
+	assert.strictEqual(M.currentUserDetailsPayload(null), null);
+});
+
 // ------------------------------------------------------- deriveOrigins (C7)
 // Client mirror of server policy.resolve_origins: the implicit https://<rp_id>
 // origin is ALWAYS included, then the custom lines (deduped, order preserved).

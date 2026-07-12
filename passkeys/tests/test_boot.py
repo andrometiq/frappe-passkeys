@@ -137,6 +137,17 @@ class BootInfoTest(IntegrationTestCase):
 		self.assertTrue(data["user_handle"])
 		self.assertEqual(data["credential_ids"], [cred.credential_id])
 
+	def test_get_signal_data_includes_name_and_display_name_for_current_user_details(self):
+		# F2: signalCurrentUserDetails feed — name mirrors the WebAuthn userName (login id),
+		# display_name the userDisplayName (full_name), so the provider's label stays in sync.
+		user = self._user()
+		make_handle(user)
+		frappe.db.set_value("User", user, "full_name", "Ada Lovelace")
+		frappe.set_user(user)
+		data = passkey.get_signal_data()
+		self.assertEqual(data["name"], user)
+		self.assertEqual(data["display_name"], "Ada Lovelace")
+
 	def test_get_signal_data_requires_auth(self):
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
