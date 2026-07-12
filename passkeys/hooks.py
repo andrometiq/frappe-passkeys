@@ -15,13 +15,16 @@ app_license = "MIT"
 # they self-gate on `frappe.passkeys` availability at runtime.
 #
 # Desk management surfaces (frontend). Order is load-bearing:
-# passkey_manage_common.js sets `frappe.passkeys_manage_common` and passkey_confirm.js
-# sets `frappe.passkeys.call`/`.confirm`; passkey_desk.bundle.js reads BOTH, so both
-# must load before it (frontend manifest). The desk bundle self-gates on
-# `frappe.boot.passkeys.enabled` — a both-modes-off / dormant site removes itself.
+# passkey_manage_common.js sets `frappe.passkeys_manage_common`, passkey_headless.js
+# sets `frappe.passkeys.headless` (the markup-free public lifecycle API, loaded after
+# the two shared libs it reads), and passkey_confirm.js sets `frappe.passkeys.call`/
+# `.confirm`; passkey_desk.bundle.js reads these, so they must load before it (frontend
+# manifest). The desk bundle self-gates on `frappe.boot.passkeys.enabled` — a
+# both-modes-off / dormant site removes itself.
 app_include_js = [
 	"/assets/passkeys/js/passkey_common.js",
 	"/assets/passkeys/js/passkey_manage_common.js",
+	"/assets/passkeys/js/passkey_headless.js",
 	"/assets/passkeys/js/passkey_confirm.js",
 	"/assets/passkeys/js/passkey_desk.bundle.js",
 ]
