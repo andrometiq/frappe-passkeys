@@ -14,6 +14,11 @@
   "resolved_rp_html",
   "mobile_apps_section",
   "passkey_app_origins",
+  "passkey_android_package_name",
+  "passkey_android_cert_fingerprints",
+  "column_break_mobile",
+  "passkey_ios_team_id",
+  "passkey_ios_bundle_id",
   "policy_section",
   "passkey_sign_count_hard_fail",
   "passkey_max_per_user",
@@ -100,6 +105,34 @@
    "fieldname": "passkey_app_origins",
    "fieldtype": "Small Text",
    "label": "Trusted App Origins"
+  },
+  {
+   "description": "Android application id for the served /.well-known/assetlinks.json, e.g. com.example.app. Leave blank to omit assetlinks.json.",
+   "fieldname": "passkey_android_package_name",
+   "fieldtype": "Data",
+   "label": "Android Package Name"
+  },
+  {
+   "description": "SHA-256 signing-certificate fingerprint(s) for assetlinks.json, one per line (hex; colons optional). Use Google's Play app-signing certificate (Play Console → App integrity → App signing); include the upload key too during rollout. Required together with the package name to serve assetlinks.json.",
+   "fieldname": "passkey_android_cert_fingerprints",
+   "fieldtype": "Small Text",
+   "label": "Android Signing Certificate SHA-256 Fingerprints"
+  },
+  {
+   "fieldname": "column_break_mobile",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Apple Team ID (App ID Prefix) for the served /.well-known/apple-app-site-association, e.g. ABCDE12345.",
+   "fieldname": "passkey_ios_team_id",
+   "fieldtype": "Data",
+   "label": "iOS Team ID"
+  },
+  {
+   "description": "iOS bundle identifier for apple-app-site-association, e.g. com.example.app. Team ID and Bundle ID are both required to serve the file.",
+   "fieldname": "passkey_ios_bundle_id",
+   "fieldtype": "Data",
+   "label": "iOS Bundle ID"
   },
   {
    "fieldname": "policy_section",
