@@ -201,11 +201,11 @@
 		btn.id = "passkey-login-btn";
 		btn.className = "btn btn-sm btn-block btn-login-option btn-passkey-login";
 		btn.setAttribute("aria-label", t("Sign in with a passkey"));
-		// Frappe's own icon sprite (web_include_icons ships lucide on /login) — no custom
-		// glyph art. .passkey-glyph is a bare test hook; core .icon/.icon-sm size it.
+		// App-shipped inline key glyph (C.iconSvg) — identical on every Frappe version,
+		// unlike the #icon-key sprite ref, which is blank on v15 (no web_include_icons).
+		// .passkey-glyph is a bare test hook; core .icon/.icon-sm size it.
 		btn.innerHTML =
-			'<svg class="icon icon-sm passkey-glyph" aria-hidden="true" focusable="false">' +
-			'<use href="#icon-key"></use></svg>' +
+			C.iconSvg("key", "icon icon-sm passkey-glyph") +
 			'<span class="passkey-label"></span>';
 		// text set via textContent to avoid any interpolation surprises
 		btn.querySelector(".passkey-label").textContent = t("Sign in with a passkey");

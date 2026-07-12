@@ -285,7 +285,7 @@
 
 		var glyph = el("span", "passkey-card-glyph");
 		glyph.setAttribute("aria-hidden", "true");
-		glyph.innerHTML = '<svg class="icon" focusable="false"><use href="#icon-key"></use></svg>';
+		glyph.innerHTML = C.iconSvg("key", "icon");
 		li.appendChild(glyph);
 
 		var main = el("div", "passkey-card-main");
@@ -691,7 +691,7 @@
 		b.setAttribute("aria-label", name); // accessible name for icon-only action
 		b.setAttribute("title", name);
 		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true");
-		g.innerHTML = '<svg class="icon icon-sm" focusable="false"><use href="#icon-' + iconName + '"></use></svg>';
+		g.innerHTML = C.iconSvg(iconName, "icon icon-sm");
 		b.appendChild(g);
 		b.addEventListener("click", on);
 		return b;
