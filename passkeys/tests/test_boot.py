@@ -77,6 +77,7 @@ class BootInfoTest(IntegrationTestCase):
 				"post_login_method",
 				"conditional_create",
 				"upsell_eligible",
+				"enforcement",
 				"settings_context",
 				"rp_id",
 			},
