@@ -90,6 +90,10 @@ reverse-proxy / RP-ID / origin requirements.
   / RP-ID / origin requirements.
 - [**Configuration**](docs/configuration.md) — every Passkey Settings field, its default, and the
   security consequence of changing it.
+- [**Custom UI**](docs/custom-ui.md) — build your own passkey login and management screens with the
+  markup-free `frappe.passkeys.headless` JavaScript API, or restyle the shipped barebones cards.
+- [**REST API**](docs/rest-api.md) — the raw whitelisted endpoints (args, response shapes, CSRF,
+  rate limits) for a native app or a no-JS single-page app.
 - [**Mobile apps**](docs/mobile-apps.md) — let a native iOS/Android app (Flutter-first) share the
   site's passkeys: Trusted App Origins, the two well-known association files, and the endpoints.
 - [**Operations**](docs/operations.md) — day-two playbooks: RP-ID / domain changes, backup / restore,
@@ -99,6 +103,17 @@ reverse-proxy / RP-ID / origin requirements.
 - [**Security**](docs/security.md) — the security model in operator terms: what the app enforces, what
   it trusts, residual risks, and disclosure.
 - [**Upstream**](docs/upstream/) — the plan and patches to move this into `frappe/frappe`.
+
+### Build your own UI
+
+Don't want the shipped screens? The whole passkey lifecycle — login, add, rename, remove, list,
+and the re-auth engine — is exposed for you to wrap in your own design. Three guides:
+
+- [**Custom UI**](docs/custom-ui.md) — the markup-free `frappe.passkeys.headless` JavaScript API (the
+  same code the shipped cards call), plus the semantic class hooks for restyling the barebones cards.
+- [**REST API**](docs/rest-api.md) — the raw endpoints for a native app or a no-JS single-page app.
+- [**Mobile apps**](docs/mobile-apps.md) — native iOS/Android association so a phone app shares the
+  site's passkeys.
 
 ## Development
 
