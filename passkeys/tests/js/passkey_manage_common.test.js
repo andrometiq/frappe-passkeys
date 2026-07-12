@@ -502,6 +502,68 @@ test("settingsBanners: no enforcement banners under Nudge / Off", () => {
 	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforceSelfLockout, M.COPY.enforcePreview].indexOf(x.key) !== -1));
 });
 
+// ---------------------------------------------------- security-posture panel
+
+test("posturePanel: passes the verdict headline + tone through, no copy of its own", () => {
+	const p = M.posturePanel({
+		verdict: { headline: "Passkeys can currently be bypassed via: password sign-in.", tone: "high", can_bypass: true },
+		rows: [],
+	});
+	assert.strictEqual(p.headline.text, "Passkeys can currently be bypassed via: password sign-in.");
+	assert.strictEqual(p.headline.tone, "high");
+	assert.strictEqual(p.headline.canBypass, true);
+	assert.deepStrictEqual(p.rows, []);
+});
+
+test("posturePanel: sorts rows high→medium→low→info, disclaimer (detectable:false) always last", () => {
+	const p = M.posturePanel({
+		verdict: { headline: "x", tone: "high", can_bypass: true },
+		rows: [
+			{ code: "custom_apps", severity: "info", what: "custom", detectable: false },
+			{ code: "sign_count_soft", severity: "low", what: "soft" },
+			{ code: "password_login", severity: "high", what: "pw" },
+			{ code: "core_2fa_on", severity: "info", what: "2fa" },
+			{ code: "email_link", severity: "medium", what: "email" },
+		],
+	});
+	assert.deepStrictEqual(
+		p.rows.map((r) => r.code),
+		["password_login", "email_link", "sign_count_soft", "core_2fa_on", "custom_apps"]
+	);
+	// the disclaimer sinks past the same-severity info row despite equal severity
+	assert.strictEqual(p.rows[p.rows.length - 1].code, "custom_apps");
+});
+
+test("posturePanel: preserves server order within a severity bucket (stable)", () => {
+	const p = M.posturePanel({
+		verdict: {},
+		rows: [
+			{ code: "password_login", severity: "high" },
+			{ code: "social_login", severity: "high" },
+			{ code: "ldap", severity: "high" },
+		],
+	});
+	assert.deepStrictEqual(p.rows.map((r) => r.code), ["password_login", "social_login", "ldap"]);
+});
+
+test("posturePanel: 'good' verdict + empty/absent response degrade cleanly", () => {
+	const good = M.posturePanel({ verdict: { headline: "No stock bypass paths detected.", tone: "good", can_bypass: false } });
+	assert.strictEqual(good.headline.tone, "good");
+	assert.strictEqual(good.headline.canBypass, false);
+	assert.deepStrictEqual(good.rows, []);
+	const empty = M.posturePanel();
+	assert.strictEqual(empty.headline.text, "");
+	assert.strictEqual(empty.headline.tone, "info");
+	assert.deepStrictEqual(empty.rows, []);
+});
+
+test("posturePanel: normalises row fields + detectable default (true)", () => {
+	const p = M.posturePanel({ verdict: {}, rows: [{ severity: "medium", what: "w", why: "y", recommendation: "fix" }] });
+	assert.deepStrictEqual(p.rows[0], {
+		code: "", severity: "medium", what: "w", why: "y", recommendation: "fix", detectable: true,
+	});
+});
+
 // ---------------------------------------------------------- origins + signal
 
 test("originsIncludeHost / originHost normalise scheme + path", () => {

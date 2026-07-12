@@ -24,6 +24,10 @@ frappe.ui.form.on("Passkey Settings", {
 		// be stale on a settings page left open, e.g. after host_name was just set in
 		// site_config.json). Repaints once it lands so the banner matches Save exactly.
 		fetchResolvedRpId(frm);
+		// The security-posture verdict — "what should I see first": can a passkey be
+		// bypassed right now, and how to close each gap. Reads SAVED server state, so it
+		// is fetched on refresh (which also fires after every save), not on keystroke.
+		fetchSecurityPosture(frm, M);
 	},
 	// Repaint on any knob change so the matrix stays live before save.
 	login_with_passkey: repaint,
@@ -89,6 +93,96 @@ function fetchResolvedRpId(frm) {
 			repaint(frm);
 		},
 	});
+}
+
+// Fetch + paint the admin security-posture verdict (System-Manager-gated, read-only
+// endpoint). The panel is a PURE renderer (M.posturePanel) fed by the server rows; this
+// only paints the returned view-model. On failure the panel simply doesn't render (no
+// worse than before it existed).
+function fetchSecurityPosture(frm, M) {
+	if (!M.posturePanel) return;
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_security_posture",
+		callback: function (r) {
+			if (!r || !r.message) return;
+			paintPosture(frm, M, r.message);
+		},
+	});
+}
+
+function paintPosture(frm, M, response) {
+	var host = postureHost(frm);
+	if (!host) return;
+	while (host.firstChild) host.removeChild(host.firstChild); // idempotent across repaints
+
+	var panel = M.posturePanel(response);
+
+	var title = document.createElement("div");
+	title.className = "passkey-posture-title";
+	title.textContent = __("Security posture");
+	host.appendChild(title);
+
+	// The one verdict line first — the attention anchor.
+	var verdictClass = panel.headline.tone === "high" ? "danger"
+		: panel.headline.tone === "good" ? "success" : "info";
+	var verdict = document.createElement("div");
+	verdict.className = "passkey-posture-verdict alert alert-" + verdictClass;
+	verdict.setAttribute("role", panel.headline.canBypass ? "alert" : "status");
+	verdict.textContent = panel.headline.text;
+	host.appendChild(verdict);
+
+	// Severity-ordered rows: one problem line + one recommendation line each.
+	panel.rows.forEach(function (row) {
+		host.appendChild(postureRowEl(row));
+	});
+}
+
+function postureRowEl(row) {
+	var color = row.severity === "high" ? "red"
+		: row.severity === "medium" ? "orange"
+		: row.severity === "low" ? "blue" : "gray";
+	var wrap = document.createElement("div");
+	wrap.className = "passkey-posture-row";
+	wrap.setAttribute("data-indicator", color);
+	if (!row.detectable) wrap.classList.add("passkey-posture-note");
+
+	var problem = document.createElement("div");
+	problem.className = "passkey-posture-problem";
+	var what = document.createElement("strong");
+	what.textContent = row.what;
+	problem.appendChild(what);
+	if (row.why) {
+		var why = document.createElement("span");
+		why.className = "passkey-posture-why text-muted";
+		why.textContent = " " + row.why;
+		problem.appendChild(why);
+	}
+	wrap.appendChild(problem);
+
+	if (row.recommendation) {
+		var fix = document.createElement("div");
+		fix.className = "passkey-posture-fix";
+		fix.textContent = row.recommendation;
+		wrap.appendChild(fix);
+	}
+	return wrap;
+}
+
+// A self-managed posture container, mounted ABOVE the banner host so the verdict is the
+// first thing an admin sees. Cleared on every paint (never stacks duplicates).
+function postureHost(frm) {
+	if (frm._passkey_posture_host && frm._passkey_posture_host.isConnected) return frm._passkey_posture_host;
+	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
+	var mount = $mount && $mount.get ? $mount.get(0) : $mount;
+	if (!mount) return null;
+	var host = document.createElement("div");
+	host.className = "passkey-posture";
+	// Insert above the banner host when it exists, else at the very top of the form.
+	var before = (frm._passkey_banner_host && frm._passkey_banner_host.isConnected)
+		? frm._passkey_banner_host : mount.firstChild;
+	mount.insertBefore(host, before);
+	frm._passkey_posture_host = host;
+	return host;
 }
 
 function paintBanners(frm, M) {
