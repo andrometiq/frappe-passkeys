@@ -45,6 +45,7 @@
 		verifyRegistration: "passkeys.api.registration.verify_registration",
 		// The server phase built these on passkey.py.
 		recordNudge: "passkeys.passkey.record_nudge",
+		recordEnforcement: "passkeys.passkey.record_enforcement",
 		getSignalData: "passkeys.passkey.get_signal_data",
 	};
 
@@ -59,6 +60,11 @@
 
 	// record_nudge event enum.
 	var NUDGE_EVENTS = { SHOWN: "shown", DECLINED: "declined", OPT_OUT: "opt_out" };
+
+	// record_enforcement event enum. DEFER spends one grace login ("Remind me later");
+	// INCAPABLE reports the device cannot create a passkey (admin advisory under
+	// Block + Notify Admin).
+	var ENFORCE_EVENTS = { DEFER: "defer", INCAPABLE: "incapable" };
 
 	// localStorage key the login bundle sets after a hybrid (QR) assertion with
 	// local isUVPAA (post-hybrid upsell).
@@ -113,6 +119,15 @@
 		upsellBody:
 			"You just signed in from another device. Add a passkey here to sign in " +
 			"directly next time.",
+		// enforcement interstitial (honest, guilt-free copy — FIDO no-dark-pattern rule)
+		enforceTitle: "Set up a passkey to continue",
+		enforceBody:
+			"Your organization requires a passkey to keep signing in. It only takes a " +
+			"moment — use your fingerprint, face, screen lock, or a security key.",
+		enforceRemindLater: "Remind me later ({0} sign-ins left)",
+		enforceCantSetUp: "I can't set one up here",
+		enforceBlockedNotice:
+			"We've let your administrator know. Please contact them to finish signing in.",
 		// passkey-only switch
 		passkeyOnlyLabel: "Passwordless login only",
 		passkeyOnlyHelp:
@@ -330,6 +345,68 @@
 			boot.post_login_method === "password" &&
 			boot.conditional_create === true;
 
+		return out;
+	}
+
+	// The post-login ENFORCEMENT decision — the §capability hinge. The server owns the
+	// verdict (`boot.enforcement`: scope / date / grace); the client's only job is to
+	// honor DEVICE CAPABILITY, which the server cannot know. Returns:
+	//   show        — surface an interstitial at all
+	//   variant     — "enforce" (the blocking/skippable enrollment gate) or "nudge"
+	//                 (a genuinely-incapable device under Degrade — never a dead-end)
+	//   blocking    — the enforce variant is non-dismissible (grace exhausted, or the
+	//                 admin chose Block + Notify Admin for an incapable device)
+	//   allowHybrid — offer the phone/QR enrollment path
+	//   notifyAdmin — record the incapable event so the admin is alerted (Block + Notify)
+	//   graceRemaining — honest "N sign-ins left" for the skippable copy
+	//   reason      — machine-readable, for tests/telemetry
+	//   boot: frappe.boot.passkeys (needs .enforcement + .credential_count)
+	//   caps: client capability probe (supported / uvpaa / hybrid)
+	function enforcementDecision(boot, caps) {
+		boot = boot || {};
+		caps = caps || {};
+		var enf = boot.enforcement || {};
+		var out = {
+			show: false, blocking: false, variant: "", allowHybrid: false,
+			notifyAdmin: false, graceRemaining: 0, reason: "",
+		};
+		// Only the server's enforce rung engages this surface; Off/Nudge/pre-date
+		// (effective !== "enforce") or out-of-scope ⇒ the nudge path owns things.
+		if (enf.effective !== "enforce" || !enf.in_scope) { out.reason = "not_enforcing"; return out; }
+		// Already holds a passkey ⇒ enforcement satisfied, nothing to prompt.
+		var count = typeof boot.credential_count === "number" ? boot.credential_count : 0;
+		if (count > 0) { out.reason = "satisfied"; return out; }
+
+		out.graceRemaining = typeof enf.grace_remaining === "number" ? enf.grace_remaining : 0;
+		out.allowHybrid = enf.allow_hybrid !== false; // default on unless server says false
+		var supported = caps.supported !== false; // unknown counts as capable
+		var uvpaaOk = caps.uvpaa !== false; // unknown counts as capable
+		var hybridOk = caps.hybrid !== false; // unknown counts as capable
+		// Enroll can fall through to a phone/QR (hybrid) when there's no platform
+		// authenticator — so "capable to enroll" is UVPAA OR (hybrid allowed ∧ hybrid).
+		var canEnroll = supported && (uvpaaOk || (out.allowHybrid && hybridOk));
+
+		if (canEnroll) {
+			out.show = true;
+			out.variant = "enforce";
+			out.blocking = enf.blocking === true;
+			out.reason = out.blocking ? "enforce_blocking" : "enforce_grace";
+			return out;
+		}
+		// Genuinely incapable device — never a hard lockout by default.
+		if (enf.incapable_policy === "block_notify") {
+			out.show = true;
+			out.variant = "enforce";
+			out.blocking = true;
+			out.notifyAdmin = true;
+			out.reason = "incapable_block_notify";
+		} else {
+			// Degrade to a non-blocking nudge variant (the default escape hatch).
+			out.show = true;
+			out.variant = "nudge";
+			out.blocking = false;
+			out.reason = "incapable_degrade";
+		}
 		return out;
 	}
 
@@ -569,6 +646,7 @@
 		MANAGE_ACTION: MANAGE_ACTION,
 		PASSKEY_ONLY_ACTION: PASSKEY_ONLY_ACTION,
 		NUDGE_EVENTS: NUDGE_EVENTS,
+		ENFORCE_EVENTS: ENFORCE_EVENTS,
 		UPSELL_FLAG_KEY: UPSELL_FLAG_KEY,
 		ZERO_AAGUID: ZERO_AAGUID,
 		COPY: COPY,
@@ -584,6 +662,7 @@
 		clientEligible: clientEligible,
 		serverEligible: serverEligible,
 		nudgeDecision: nudgeDecision,
+		enforcementDecision: enforcementDecision,
 		upsellDecision: upsellDecision,
 		deleteGuard: deleteGuard,
 		settingsBanners: settingsBanners,
