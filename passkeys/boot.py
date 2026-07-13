@@ -139,6 +139,22 @@ def record_enforcement_event(user: str, event: str) -> dict:
 	return state
 
 
+def clear_enforcement_state(user: str) -> None:
+	"""Drop the user's ``{user}_passkey_enforce`` grace blob so their budget is full
+	again (``get_enforcement_state`` then serves the fresh zero-state). Deleting the row —
+	rather than writing ``grace_used = 0`` — is the canonical reset: absent ≡ zero-state,
+	and it leaves no stale row behind. This clears EXACTLY the key
+	``record_enforcement_event`` writes and ``build_enforcement`` reads; the separate
+	incapable-advisory dedup marker (``notifications``) is not a grace counter and is left
+	untouched. The admin grace-reset endpoint is the only caller.
+
+	Uses ``frappe.defaults.clear_default`` (not a raw ``db.delete``) so the delete ALSO
+	busts the site-defaults cache — ``get_default`` is cache-served under the same parent,
+	so a raw row delete would leave a stale ``grace_used`` reading behind (the mirror of why
+	``_save_enforcement_state`` goes through ``set_default``)."""
+	frappe.defaults.clear_default(_enforce_key(user), parent=DEFAULTS_PARENT)
+
+
 def _cadence_ok(settings, state: dict) -> bool:
 	"""Shared nudge/upsell cadence. Gated first on the policy rung: the nudge cadence
 	only runs while the effective policy is ``nudge`` (``Off`` ⇒ silent; ``Enforce`` /

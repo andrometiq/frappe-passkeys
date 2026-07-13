@@ -45,6 +45,10 @@
 		recordNudge: "passkeys.passkey.record_nudge",
 		recordEnforcement: "passkeys.passkey.record_enforcement",
 		getSignalData: "passkeys.passkey.get_signal_data",
+		// admin enforcement-recovery (System-Manager-only; User-form Passkeys section)
+		getUserEnforcementAdmin: "passkeys.enforcement_admin.get_user_enforcement_admin",
+		setUserExemption: "passkeys.enforcement_admin.set_user_exemption",
+		resetEnforcementGrace: "passkeys.enforcement_admin.reset_enforcement_grace",
 	};
 
 	// The confirm-ceremony action that sudo-gates the app's own management
@@ -118,6 +122,21 @@
 		enforceCantSetUp: "I can't set one up here",
 		enforceBlockedNotice:
 			"We've let your administrator know. Please contact them to finish signing in.",
+		// admin enforcement-recovery (User-form Passkeys section, System-Manager-only)
+		enforceAdminHeading: "Passkey enrollment enforcement",
+		enforceAdminExempt: "Exempt from passkey enforcement",
+		enforceAdminUnexempt: "Remove enforcement exemption",
+		enforceAdminReset: "Reset grace logins",
+		enforceAdminGrace: "Grace logins used: {0} of {1} ({2} remaining).",
+		enforceAdminStateExempt: "Exempt from enforcement",
+		enforceAdminStateExemptOther: "Exempt via another role",
+		enforceAdminStateEnforced: "In scope — must enroll a passkey",
+		enforceAdminStateSatisfied: "In scope — already has a passkey",
+		enforceAdminStateNotScope: "Not in enforcement scope",
+		enforceAdminExemptDone: "{0} is now exempt from passkey enforcement.",
+		enforceAdminUnexemptDone: "Exemption removed — {0} is enforced again.",
+		enforceAdminResetDone: "Grace reset — {0} sign-ins to enroll before it blocks.",
+		enforceAdminFailed: "Couldn't update enforcement for this user — please try again.",
 		// passkey-only switch
 		passkeyOnlyLabel: "Passwordless login only",
 		passkeyOnlyHelp:
@@ -399,6 +418,55 @@
 		}
 		return out;
 	}
+
+	// ---------------------------------------------- admin enforcement recovery
+	// Whether the User-form Passkeys section admin area should surface the enforcement-
+	// recovery controls (one-click exemption + grace reset). Gated on the SITE policy
+	// being an enforcement rung — the policy is site-wide, so the admin's own boot
+	// `enforcement.policy` is the right signal and no per-target fetch is needed just to
+	// decide visibility. Off / Nudge ⇒ nothing to recover from, so the area stays hidden.
+	function shouldShowEnforcementAdmin(boot) {
+		var policy = boot && boot.enforcement && boot.enforcement.policy;
+		return policy === "Enforce" || policy === "Enforce After Date";
+	}
+
+	// Pure view-model for the admin enforcement-recovery controls, from the
+	// get_user_enforcement_admin payload. Returns the button labels/actions, the reset
+	// enable state, and a status indicator — the DOM layer translates the COPY keys and
+	// fills the numeric grace args. `exempt` is the dedicated-role exemption (the toggle
+	// target); `exempt_via_other_role` (e.g. System Manager) is surfaced distinctly so the
+	// admin isn't misled into thinking the button governs it.
+	function enforcementAdminViewModel(state) {
+		state = state || {};
+		var exempt = state.exempt === true;
+		var exemptOther = state.exempt_via_other_role === true;
+		var inScope = state.in_scope === true;
+		var hasCred = cint(state.credential_count) > 0;
+		var graceUsed = cint(state.grace_used);
+		var indicator;
+		if (exempt) indicator = { color: "green", textKey: "enforceAdminStateExempt" };
+		else if (exemptOther) indicator = { color: "blue", textKey: "enforceAdminStateExemptOther" };
+		else if (inScope && hasCred) indicator = { color: "green", textKey: "enforceAdminStateSatisfied" };
+		else if (inScope) indicator = { color: "orange", textKey: "enforceAdminStateEnforced" };
+		else indicator = { color: "gray", textKey: "enforceAdminStateNotScope" };
+		return {
+			exempt: exempt,
+			exemptViaOther: exemptOther,
+			inScope: inScope,
+			graceUsed: graceUsed,
+			graceTotal: cint(state.grace_total),
+			graceRemaining: cint(state.grace_remaining),
+			// The exempt toggle: label flips, and `nextExemptValue` is what to POST.
+			exemptButtonKey: exempt ? "enforceAdminUnexempt" : "enforceAdminExempt",
+			exemptButtonPrimary: !exempt,
+			nextExemptValue: !exempt,
+			// Reset is a no-op when no grace has been spent — disable it then.
+			resetDisabled: graceUsed <= 0,
+			indicator: indicator,
+		};
+	}
+
+	function cint(v) { var n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
 
 	// Post-hybrid upsell: after a hybrid (QR) assertion with local isUVPAA
 	// the login bundle set UPSELL_FLAG_KEY. Offer "add a passkey to this device",
@@ -737,6 +805,8 @@
 		serverEligible: serverEligible,
 		nudgeDecision: nudgeDecision,
 		enforcementDecision: enforcementDecision,
+		shouldShowEnforcementAdmin: shouldShowEnforcementAdmin,
+		enforcementAdminViewModel: enforcementAdminViewModel,
 		upsellDecision: upsellDecision,
 		settingsBanners: settingsBanners,
 		roleNames: roleNames,
