@@ -106,9 +106,16 @@ page shows a red mismatch banner — fail-closed is always diagnosable. See
 ## Upgrade
 
 ```bash
-bench update --apps passkeys        # or your normal bench update flow
+cd apps/passkeys && git pull --ff-only && cd ../..
+bench build --app passkeys
 bench --site <site> migrate
+bench restart
 ```
+
+Building *before* migrating is deliberate: migrate's cache flush then also picks up
+the freshly built asset map. (`bench build`'s own Redis invalidation can fail
+silently — if the UI looks stale after an upgrade, run
+`bench --site <site> clear-cache && bench --site <site> clear-website-cache`.)
 
 `bench migrate` runs the app's `after_migrate` hook, which re-syncs a small
 System Settings property setter used by the pluggable-two-factor integration, and
