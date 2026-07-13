@@ -95,56 +95,162 @@ function fetchResolvedRpId(frm) {
 	});
 }
 
-// Fetch + paint the admin security-posture verdict (System-Manager-gated, read-only
-// endpoint). The panel is a PURE renderer (M.posturePanel) fed by the server rows; this
-// only paints the returned view-model. On failure the panel simply doesn't render (no
-// worse than before it existed).
+// The hosted "why passkeys" explainer — the theory page the report footer points to
+// (opened in a new tab; never iframed, per the CSP-fragility note).
+var POSTURE_THEORY_URL = "https://andrometiq.github.io/frappe-passkeys/why-passkeys.html";
+
+// Fetch + paint the admin security-posture report (System-Manager-gated, read-only
+// endpoint). The view-model is PURE (M.postureReport) fed by the server rows; this only
+// paints it: a compact status card that lands the verdict at a glance — a satisfying
+// tick when everything is fine, a loud flag when a passkey can be bypassed — with a
+// call-to-action that reveals the full designed checklist in place. States rendered:
+// loading, all-clear (good), gaps (high), passkeys-not-active (info), and a calm
+// "unavailable" note on error. On any failure the surface degrades quietly (no worse
+// than before it existed).
 function fetchSecurityPosture(frm, M) {
-	if (!M.posturePanel) return;
+	if (!M.postureReport) return;
+	renderPostureState(frm, { state: "loading" });
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_security_posture",
 		callback: function (r) {
-			if (!r || !r.message) return;
-			paintPosture(frm, M, r.message);
+			if (!r || !r.message) { renderPostureState(frm, { state: "error" }); return; }
+			renderPostureState(frm, { state: "ready", report: M.postureReport(r.message) });
 		},
+		error: function () { renderPostureState(frm, { state: "error" }); },
 	});
 }
 
-function paintPosture(frm, M, response) {
+function renderPostureState(frm, opts) {
 	var host = postureHost(frm);
 	if (!host) return;
 	while (host.firstChild) host.removeChild(host.firstChild); // idempotent across repaints
+	if (opts.state === "loading") {
+		host.appendChild(postureNoticeCard("note", __("Checking your security posture…")));
+		return;
+	}
+	if (opts.state === "error") {
+		host.appendChild(postureNoticeCard("note", __("The security report couldn’t be loaded right now.")));
+		return;
+	}
+	paintPostureReport(host, opts.report);
+}
 
-	var panel = M.posturePanel(response);
+// A quiet single-line card (loading / unavailable) — same shell as the verdict card so
+// the surface never jumps as it settles.
+function postureNoticeCard(markKind, text) {
+	var card = postureCardShell("gray", markKind);
+	card.classList.add("passkey-posture-card--muted");
+	card.appendChild(postureCardBody(__("Security posture"), text, false));
+	return card;
+}
 
-	var title = document.createElement("div");
-	title.className = "passkey-posture-title";
-	title.textContent = __("Security posture");
-	host.appendChild(title);
+// The compact verdict card + the collapsible full report. The card always carries the
+// verdict text, so the point lands even before the CTA is clicked; the CTA reveals the
+// per-check breakdown + the theory link in place.
+function paintPostureReport(host, report) {
+	var summary = report.summary;
+	var tone = summary.tone; // "good" | "high" | "info"
+	var indicator = tone === "high" ? "red" : tone === "good" ? "green" : "blue";
+	var markKind = tone === "high" ? "flag" : tone === "good" ? "good" : "note";
 
-	// The one verdict line first — the attention anchor.
-	var verdictClass = panel.headline.tone === "high" ? "danger"
-		: panel.headline.tone === "good" ? "success" : "info";
-	var verdict = document.createElement("div");
-	verdict.className = "passkey-posture-verdict alert alert-" + verdictClass;
-	verdict.setAttribute("role", panel.headline.canBypass ? "alert" : "status");
-	verdict.textContent = panel.headline.text;
-	host.appendChild(verdict);
+	var card = postureCardShell(indicator, markKind);
+	card.classList.add("passkey-posture-card--" + tone);
+	card.appendChild(postureCardBody(__("Security posture"), report.headline.text || __("Security posture"), summary.canBypass));
 
-	// Severity-ordered rows: one problem line + one recommendation line each.
-	panel.rows.forEach(function (row) {
-		host.appendChild(postureRowEl(row));
+	var region = buildPostureReportRegion(report);
+	region.hidden = true;
+
+	// The CTA: a satisfying "view report" in the calm states, a loud "Review N gaps" when
+	// a passkey can be bypassed. Toggles the in-place report (aria-expanded on the button).
+	var gapLabel = summary.actionCount === 1 ? __("1 gap") : __("{0} gaps", [summary.actionCount]);
+	var ctaOpen = summary.canBypass && summary.actionCount ? __("Review {0}", [gapLabel]) : __("View report");
+	var ctaClose = __("Hide report");
+	var cta = document.createElement("button");
+	cta.type = "button";
+	cta.className = "btn btn-sm passkey-posture-cta " + (tone === "high" ? "btn-danger" : "btn-default");
+	cta.setAttribute("aria-expanded", "false");
+	cta.setAttribute("aria-controls", region.id);
+	cta.textContent = ctaOpen;
+	cta.addEventListener("click", function () {
+		var open = region.hidden; // about to open?
+		region.hidden = !open;
+		cta.setAttribute("aria-expanded", open ? "true" : "false");
+		cta.textContent = open ? ctaClose : ctaOpen;
 	});
+	card.appendChild(cta);
+
+	host.appendChild(card);
+	host.appendChild(region);
+}
+
+// Card shell: the coloured indicator rail + the leading tick/flag mark.
+function postureCardShell(indicator, markKind) {
+	var card = document.createElement("div");
+	card.className = "passkey-posture-card";
+	card.setAttribute("data-indicator", indicator);
+	card.appendChild(postureMark(markKind));
+	return card;
+}
+
+// Card body: a small "Security posture" eyebrow + the verdict line. `alert` marks the
+// verdict line as an assertive live region when a bypass exists.
+function postureCardBody(eyebrowText, verdictText, alert) {
+	var body = document.createElement("div");
+	body.className = "passkey-posture-headline";
+	var eyebrow = document.createElement("div");
+	eyebrow.className = "passkey-posture-eyebrow";
+	eyebrow.textContent = eyebrowText;
+	body.appendChild(eyebrow);
+	var verdict = document.createElement("div");
+	verdict.className = "passkey-posture-verdict-text";
+	verdict.setAttribute("role", alert ? "alert" : "status");
+	verdict.textContent = verdictText;
+	body.appendChild(verdict);
+	return body;
+}
+
+function buildPostureReportRegion(report) {
+	var region = document.createElement("div");
+	region.className = "passkey-posture-report";
+	region.id = "passkey-posture-report";
+
+	var heading = document.createElement("div");
+	heading.className = "passkey-posture-report-heading";
+	heading.textContent = __("What this checks");
+	region.appendChild(heading);
+
+	report.rows.forEach(function (row) {
+		region.appendChild(postureRowEl(row));
+	});
+
+	// Footer: the hosted theory explainer. A plain link opened in a new tab — external
+	// URL, so no iframe (avoids CSP fragility); noopener/noreferrer on the new tab.
+	var footer = document.createElement("div");
+	footer.className = "passkey-posture-footer";
+	var link = document.createElement("a");
+	link.className = "passkey-posture-theory";
+	link.href = POSTURE_THEORY_URL;
+	link.target = "_blank";
+	link.rel = "noopener noreferrer";
+	link.textContent = __("Why passkeys are safer — and when they aren’t →");
+	footer.appendChild(link);
+	region.appendChild(footer);
+	return region;
 }
 
 function postureRowEl(row) {
-	var color = row.severity === "high" ? "red"
-		: row.severity === "medium" ? "orange"
-		: row.severity === "low" ? "blue" : "gray";
+	var indicator = row.mark === "flag" ? "red"
+		: row.mark === "warn" ? "orange"
+		: row.mark === "tune" ? "blue" : "gray";
 	var wrap = document.createElement("div");
 	wrap.className = "passkey-posture-row";
-	wrap.setAttribute("data-indicator", color);
+	wrap.setAttribute("data-indicator", indicator);
 	if (!row.detectable) wrap.classList.add("passkey-posture-note");
+
+	wrap.appendChild(postureMark(row.mark));
+
+	var main = document.createElement("div");
+	main.className = "passkey-posture-row-main";
 
 	var problem = document.createElement("div");
 	problem.className = "passkey-posture-problem";
@@ -157,15 +263,39 @@ function postureRowEl(row) {
 		why.textContent = " " + row.why;
 		problem.appendChild(why);
 	}
-	wrap.appendChild(problem);
+	main.appendChild(problem);
 
 	if (row.recommendation) {
 		var fix = document.createElement("div");
 		fix.className = "passkey-posture-fix";
 		fix.textContent = row.recommendation;
-		wrap.appendChild(fix);
+		main.appendChild(fix);
 	}
+	wrap.appendChild(main);
 	return wrap;
+}
+
+// The tick/flag glyphs. App-shipped inline SVG (lucide-style artwork, stroke=currentColor)
+// — NEVER a desk "#icon-*" sprite href (v15's sprite lacks many symbols), so the mark
+// renders identically on v15 / v16 / develop and colours itself from the row indicator.
+var POSTURE_MARK_SVG = {
+	good: '<circle cx="12" cy="12" r="9"></circle><path d="m8.2 12.4 2.6 2.6 5-5.4"></path>',
+	flag: '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>',
+	warn: '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>',
+	tune: '<circle cx="12" cy="12" r="9"></circle><line x1="8.2" y1="12" x2="15.8" y2="12"></line>',
+	note: '<circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16.4"></line><line x1="12" y1="7.7" x2="12" y2="7.8"></line>',
+};
+
+function postureMark(kind) {
+	var span = document.createElement("span");
+	span.className = "passkey-posture-mark passkey-posture-mark--" + kind;
+	span.setAttribute("aria-hidden", "true");
+	// Constant artwork (no user data) — safe to set as innerHTML, same idiom as
+	// passkey_common.js::iconSvg / the desk bundle's glyph render.
+	span.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true" ' +
+		'style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">' +
+		(POSTURE_MARK_SVG[kind] || POSTURE_MARK_SVG.note) + "</svg>";
+	return span;
 }
 
 // A self-managed posture container, mounted ABOVE the banner host so the verdict is the
