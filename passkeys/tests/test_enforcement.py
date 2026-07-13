@@ -12,7 +12,7 @@ from frappe.utils import add_to_date, cint, now_datetime, nowdate
 
 from passkeys import boot, notifications, passkey
 from passkeys.install import DEFAULTS_PARENT
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
 
 RP_ID = "example.com"
@@ -49,11 +49,15 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		settings.set("passkey_enforce_roles", [])
 		settings.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
+		# This battery's record_enforcement legs send an admin advisory (frappe.sendmail
+		# enqueues + commits), which durably commits the modes-on Passkey Settings write
+		# past the runner's per-test savepoint rollback. Restore the pre-test snapshot and
+		# COMMIT it, mirroring test_passkey_only_veto/_SweptBase, so the modes never leak.
 		frappe.set_user("Administrator")
 		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
@@ -62,7 +66,8 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		doc.flags.ignore_permissions = True
 		doc.save()
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
+		frappe.db.commit()  # must survive past the (per-class) rollback
 
 	def _settings(self):
 		return frappe.get_cached_doc("Passkey Settings")
@@ -70,7 +75,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def _set(self, **scalars):
 		for field, value in scalars.items():
 			frappe.db.set_single_value("Passkey Settings", field, value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self, roles=None) -> str:
 		user = make_user()
@@ -144,7 +149,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		doc.set("passkey_enforce_roles", [{"role": "Sales User"}])
 		doc.flags.ignore_permissions = True
 		doc.save()
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.assertFalse(self._verdict(self._user())["in_scope"])  # no Sales User role
 		self.assertTrue(self._verdict(self._user(roles=["Sales User"]))["in_scope"])
 

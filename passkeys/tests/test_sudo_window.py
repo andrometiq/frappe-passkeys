@@ -13,7 +13,7 @@ import frappe
 
 from passkeys import session, state
 from passkeys.passkey import PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -88,7 +88,7 @@ class SudoWindowTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user)  # ≥1 enabled credential
 		frappe.set_user(user)
-		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(flush_settings_cache)
 		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_notify_password_login", 0)
 
 		def seed_as_password():
@@ -97,14 +97,14 @@ class SudoWindowTest(IntegrationTestCase):
 
 		# knob OFF (default) → nothing recorded
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		before = frappe.db.count("Activity Log", {"user": user})
 		seed_as_password()
 		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before)
 
 		# knob ON → the risk event is recorded
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 1)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		seed_as_password()
 		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
 		self.assertIn("passkeys:password_login_by_passkey_holder", contents)

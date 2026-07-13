@@ -20,7 +20,7 @@ from frappe.utils.password import update_password
 from passkeys import passkey, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, UnknownCredential, UVSetupRequired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
@@ -40,7 +40,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		settings.passkey_as_second_factor = 0
 		settings.passkey_sign_count_hard_fail = 0
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self._ip = frappe.generate_hash(length=12)  # per-test rate-limit bucket
 		self.addCleanup(self._restore)
 
@@ -68,7 +68,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 			"passkey_sign_count_hard_fail",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	# -- fixtures -----------------------------------------------------------
 
@@ -179,7 +179,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 
 	def test_begin_login_mode_off_is_pure_config_no_state(self):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		begun, binder = self._begin()
 		self.assertFalse(begun["enabled"])
 		self.assertNotIn("state_id", begun)

@@ -11,7 +11,7 @@ import json
 import frappe
 
 from passkeys import well_known
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 
 PACKAGE = "com.example.app"
 FINGERPRINT = (
@@ -96,12 +96,12 @@ class TestEndpoints(IntegrationTestCase):
 			"passkey_ios_bundle_id",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or "")
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _set(self, **values):
 		for field, value in values.items():
 			frappe.db.set_single_value("Passkey Settings", field, value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _assert_json_response(self, response, expected):
 		self.assertEqual(response.status_code, 200)

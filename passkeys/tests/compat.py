@@ -4,9 +4,27 @@
 """Test base-class shim: `IntegrationTestCase` on v16+/develop,
 `FrappeTestCase` on v15 — without it the v15 CI leg fails at import."""
 
+import frappe
+
 try:
 	from frappe.tests import IntegrationTestCase
 except ImportError:  # v15
 	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
 
-__all__ = ["IntegrationTestCase"]
+__all__ = ["IntegrationTestCase", "flush_settings_cache"]
+
+
+def flush_settings_cache():
+	"""Immediately drop the ``Passkey Settings`` document-cache entry.
+
+	``frappe.clear_document_cache`` deletes the redis key once, but ALSO schedules
+	the same delete on ``db.after_commit``/``after_rollback``. The test runner rolls
+	each test back to a savepoint, and ``after_rollback`` fires only on a FULL
+	rollback — so a document-cache entry populated from in-transaction (or a
+	committed-poisoned) read can survive between tests and make a settings-dependent
+	test read the wrong modes ("Passkeys are not enabled" while its setUp set them
+	on). Deleting the key directly here keeps the invalidation immediate, not
+	deferred, so suites stay deterministic even on a poisoned local site.
+	"""
+	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	frappe.cache.delete_value("document_cache::Passkey Settings::Passkey Settings")

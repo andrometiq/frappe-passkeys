@@ -11,7 +11,7 @@ import frappe
 from passkeys import state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
@@ -28,14 +28,14 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		settings.passkey_origins = ""
 		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore_settings)
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore_settings(self):
 		for field in ("login_with_passkey", "passkey_as_second_factor", "passkey_rp_id", "passkey_origins"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self) -> str:
 		user = make_user()
@@ -139,7 +139,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		user = self._user()
 		frappe.set_user(user)
 		# the allow knob defaults on; pin it explicitly + restore (setUp does not).
-		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
 			frappe.db.set_single_value,
 			"Passkey Settings",
@@ -147,7 +147,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
 		)
 		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 		# direction 1 — zero credentials + weak window → first enrollment is allowed,
 		# and the weak-login-bootstrap risk event is recorded.
@@ -178,7 +178,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		opt-in allowance, not a default."""
 		user = self._user()
 		frappe.set_user(user)
-		self.addCleanup(frappe.clear_document_cache, "Passkey Settings", "Passkey Settings")
+		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
 			frappe.db.set_single_value,
 			"Passkey Settings",
@@ -186,7 +186,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
 		)
 		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 		self._seed_sudo(user, seeded_by="weak")
 		with self.assertRaises(PasskeyConfirmationRequired):

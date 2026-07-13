@@ -19,6 +19,8 @@ discipline is not at stake, but the parity is cheap)."""
 import frappe
 from frappe.utils import cint
 
+from passkeys.tests.compat import flush_settings_cache
+
 
 def _guard() -> None:
 	"""Admin-only, developer/test bench only — never callable in production."""
@@ -46,7 +48,7 @@ def configure_login(
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	flush_settings_cache()
 	frappe.db.commit()
 	return values
 
@@ -82,7 +84,7 @@ def configure_second_factor(
 		frappe.db.set_single_value("Passkey Settings", field, value)
 	frappe.local.system_settings = None
 	frappe.clear_document_cache("System Settings", "System Settings")
-	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	flush_settings_cache()
 	frappe.db.commit()
 	return values
 
@@ -99,7 +101,7 @@ def teardown_second_factor() -> dict:
 	frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
 	frappe.local.system_settings = None
 	frappe.clear_document_cache("System Settings", "System Settings")
-	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	flush_settings_cache()
 	frappe.db.commit()
 	return {"ok": 1}
 
@@ -260,7 +262,7 @@ def configure_nudge(
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	flush_settings_cache()
 	frappe.db.commit()
 	return values
 

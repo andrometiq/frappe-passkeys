@@ -23,7 +23,7 @@ from frappe.utils.password import update_password
 from passkeys import passkey, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
@@ -80,7 +80,7 @@ class SecondFactorTest(IntegrationTestCase):
 		frappe.clear_document_cache("System Settings", "System Settings")
 
 	def _sync_settings(self):
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _set_passkey_setting(self, field, value):
 		frappe.db.set_single_value("Passkey Settings", field, value)
