@@ -1,4 +1,4 @@
-// passkey_headless.js — the documented, markup-free ("headless") public JS API a
+// passkey_headless.bundle.js — the documented, markup-free ("headless") public JS API a
 // custom UI calls to drive the WHOLE passkey lifecycle without any of the app's
 // own DOM: first-factor login, registration (add), list, rename, remove, the
 // passwordless-only switch, and capability detection. Destination on core merge:
@@ -10,22 +10,22 @@
 // exercises the exact same, tested code path the shipped UI does.
 //
 // Everything protocol/state-machine-shaped already lives in the two PURE libs:
-//   * frappe.passkeys_common (passkey_common.js)        — base64url, the L3 JSON
+//   * frappe.passkeys_common (passkey_common.bundle.js)        — base64url, the L3 JSON
 //     shim, capability detection, DOMException/typed-error mapping, and the
 //     node-tested createConfirmEngine (the re-auth engine behind frappe.passkeys.
 //     confirm / .call).
-//   * frappe.passkeys_manage_common (passkey_manage_common.js) — MANAGE_METHODS,
+//   * frappe.passkeys_manage_common (passkey_manage_common.bundle.js) — MANAGE_METHODS,
 //     the card view-models, provider lookup, and the nudge/enforcement decisions.
 // This module is the THIN browser wiring (fetch + CSRF + navigator.credentials)
 // that ties those pure pieces to the server whitelist. It carries no markup and
 // ships no styling — a custom UI supplies its own DOM and reads the result.
 //
-// Dual export (UMD-lite, mirrors passkey_common.js): the pure `createHeadless`
+// Dual export (UMD-lite, mirrors passkey_common.bundle.js): the pure `createHeadless`
 // factory (all browser deps injected) is `module.exports`-ed for `node --test`;
 // the browser side wires the real fetch/navigator deps and publishes a default
 // instance at `frappe.passkeys.headless` (+ forward-compat `frappe.ui.passkey.
 // headless`). Loaded as its own web_include_js/app_include_js entry AFTER
-// passkey_common.js (required) and passkey_manage_common.js (required for the
+// passkey_common.bundle.js (required) and passkey_manage_common.bundle.js (required for the
 // management calls; login + capability detection need only the former).
 //
 // eslint-env browser, node
@@ -143,7 +143,7 @@
 			createCredential: createCredential,
 			capabilities: function () { return C.detectCapabilities({ window: win }); },
 			// Resolved LAZILY at call time: the confirm engine is published by
-			// passkey_confirm.js (desk) or passkey_portal.bundle.js (portal), which may
+			// passkey_confirm.bundle.js (desk) or passkey_portal.bundle.js (portal), which may
 			// load after this module. On a bare custom page the integrator wires their
 			// own (see docs/custom-ui.md); until then removeCredential / the sudo dance
 			// reject with a clear confirmation_unavailable.
@@ -173,7 +173,7 @@
 
 	// Server whitelist method paths for the first-factor login ceremony. MUST
 	// mirror passkeys/passkey.py (kept here so the server phase can grep the exact
-	// strings, exactly like CONFIRM_METHODS in passkey_common.js). The richer
+	// strings, exactly like CONFIRM_METHODS in passkey_common.bundle.js). The richer
 	// second-factor / uv-setup endpoints are the shipped login bundle's job; the
 	// headless login() drives the first-factor discoverable ceremony only.
 	var LOGIN_METHODS = {

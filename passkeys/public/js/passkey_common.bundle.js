@@ -1,4 +1,4 @@
-// passkey_common.js — shared WebAuthn L3 helpers for the passkeys app.
+// passkey_common.bundle.js — shared WebAuthn L3 helpers for the passkeys app.
 // Destination on core merge: frappe/public/js/frappe/passkey/ (frappe.ui.passkey.*).
 //
 // This module is deliberately framework-light and side-effect-free at load time so its
@@ -579,7 +579,7 @@
 	// begin -> gesture -> verify -> grant flow (+ the 401 retry / fingerprint
 	// echo, + concurrency dedupe) is unit-testable under node:test
 	// with injected deps. The frappe.ui.Dialog UI + fetch/navigator wiring live
-	// in passkey_confirm.js, which passes real deps here.
+	// in passkey_confirm.bundle.js, which passes real deps here.
 
 	// Wire constants — MUST mirror passkeys/session.py GRANT_HEADER/GRANT_KWARG.
 	var GRANT_HEADER = "X-Passkey-Grant";

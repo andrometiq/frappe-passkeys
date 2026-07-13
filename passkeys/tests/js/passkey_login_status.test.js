@@ -1,12 +1,12 @@
 // passkey_login_status.test.js — pure unit tests for the VISIBLE login-status state
-// machine in passkey_common.js: the copy/tone table (one source of truth feeding both
+// machine in passkey_common.bundle.js: the copy/tone table (one source of truth feeding both
 // the on-page element and the aria-live region), the legal staged transitions, and the
 // browser-gesture-error → state mapping. Runs WITHOUT the bench and WITHOUT jsdom:
 //   node --test passkeys/tests/js
 
 const test = require("node:test");
 const assert = require("node:assert");
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 // ---------------------------------------------------------- copy/tone table
 

@@ -114,7 +114,7 @@ class PasskeySettings(Document):
 
 	def _warn_enforcement_risks(self):
 		"""Non-blocking heads-ups for the enforcement rungs (the save proceeds). Mirror
-		the enrollment-policy banner matrix in ``passkey_manage_common.js``."""
+		the enrollment-policy banner matrix in ``passkey_manage_common.bundle.js``."""
 		if not self._enforcing():
 			return
 		# Enforcement is inert without a passkey login mode — nothing to require.

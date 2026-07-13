@@ -1,4 +1,4 @@
-/* passkey_login.css — login-page passkey button, dialog, and a11y styles.
+/* passkey_login.bundle.css — login-page passkey button, dialog, and a11y styles.
  * Inherits core .btn / focus-ring styling; adds only what core doesn't ship.
  * Destination on core merge: frappe/public/scss/website/login.scss. */
 

@@ -1,5 +1,5 @@
 // passkey_confirm.test.js — dependency-free unit harness for the PURE
-// action-confirmation logic in passkey_common.js::createConfirmEngine + helpers.
+// action-confirmation logic in passkey_common.bundle.js::createConfirmEngine + helpers.
 // Runs WITHOUT the bench and WITHOUT jsdom:  node --test passkeys/tests/js
 //
 // Covers: 401 contract parsing (exc_type match only), grant-header build,
@@ -12,7 +12,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 // ------------------------------------------------------------- test doubles
 // A scripted `post` that records every call and returns queued responses keyed

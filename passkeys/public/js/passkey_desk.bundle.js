@@ -1,7 +1,7 @@
 // passkey_desk.bundle.js — Desk-wide credential management + enrollment nudges.
 // Loaded via app_include_js on every Desk page, AFTER
-// passkey_common.js (frappe.passkeys_common), passkey_manage_common.js
-// (frappe.passkeys_manage_common) and passkey_confirm.js (frappe.passkeys.confirm/
+// passkey_common.bundle.js (frappe.passkeys_common), passkey_manage_common.bundle.js
+// (frappe.passkeys_manage_common) and passkey_confirm.bundle.js (frappe.passkeys.confirm/
 // call). Destination on core merge: frappe/public/js/frappe/passkey/desk.js.
 //
 // Publishes `frappe.passkeys.manage`:
@@ -18,7 +18,7 @@
 // signalAllAcceptedCredentials fire-and-forget.
 //
 // The DOM/frappe wiring lives here; all pure decisions (view-models, nudge
-// cadence, upsell gate, delete guard) come from passkey_manage_common.js so they
+// cadence, upsell gate, delete guard) come from passkey_manage_common.bundle.js so they
 // stay node-testable without a bench.
 //
 // eslint-env browser
@@ -64,7 +64,7 @@
 	// ---------------------------------------------------------------- transport
 	// Raw fetch so we own the 401 body (the retry contract for sudo-gated
 	// mutations). Resolves {ok, status, body} for ANY status; rejects only on a
-	// transport failure. Mirrors passkey_confirm.js::post.
+	// transport failure. Mirrors passkey_confirm.bundle.js::post.
 	function post(method, body, headers) {
 		return fetch("/api/method/" + method, {
 			method: "POST",
@@ -637,7 +637,7 @@
 			body.appendChild(actions);
 		}
 		// Esc / backdrop dismiss = "Not now" semantics: the modal's hide event
-		// is the one reliable catch-all across dismissal routes (cf. passkey_confirm.js).
+		// is the one reliable catch-all across dismissal routes (cf. passkey_confirm.bundle.js).
 		if (d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () { if (!d._acted) { d._acted = true; recordNudge(M.NUDGE_EVENTS.DECLINED); } });
 		}

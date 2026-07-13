@@ -10,27 +10,31 @@ app_license = "MIT"
 # The confirm.* surface is delivered on EVERY desk page independent of login
 # modes: consuming apps' @passkey_protected actions must not
 # silently break when an admin toggles login modes — it is re-auth, not login.
-# passkey_common.js MUST load first (sets the frappe.passkeys_common global the
-# confirm bundle reads). Both files are UMD-lite browser globals (no build step);
-# they self-gate on `frappe.passkeys` availability at runtime.
+# passkey_common.bundle.js MUST load first (sets the frappe.passkeys_common global the
+# confirm bundle reads). Every entry is referenced by BARE bundle name (no /assets
+# prefix) so core's bundled_asset() resolves each to its content-hashed filename from
+# assets.json — an /assets-prefixed path would BYPASS the hash map and be served raw
+# (uncache-busted). The files are UMD-lite browser globals; they self-gate on
+# `frappe.passkeys` availability at runtime.
 #
 # Desk management surfaces (frontend). Order is load-bearing:
-# passkey_manage_common.js sets `frappe.passkeys_manage_common`, passkey_headless.js
-# sets `frappe.passkeys.headless` (the markup-free public lifecycle API, loaded after
-# the two shared libs it reads), and passkey_confirm.js sets `frappe.passkeys.call`/
-# `.confirm`; passkey_desk.bundle.js reads these, so they must load before it (frontend
+# passkey_manage_common.bundle.js sets `frappe.passkeys_manage_common`,
+# passkey_headless.bundle.js sets `frappe.passkeys.headless` (the markup-free public
+# lifecycle API, loaded after the two shared libs it reads), and
+# passkey_confirm.bundle.js sets `frappe.passkeys.call`/`.confirm`;
+# passkey_desk.bundle.js reads these, so they must load before it (frontend
 # manifest). The desk bundle self-gates on `frappe.boot.passkeys.enabled` — a
 # both-modes-off / dormant site removes itself.
 app_include_js = [
-	"/assets/passkeys/js/passkey_common.js",
-	"/assets/passkeys/js/passkey_manage_common.js",
-	"/assets/passkeys/js/passkey_headless.js",
-	"/assets/passkeys/js/passkey_confirm.js",
-	"/assets/passkeys/js/passkey_desk.bundle.js",
+	"passkey_common.bundle.js",
+	"passkey_manage_common.bundle.js",
+	"passkey_headless.bundle.js",
+	"passkey_confirm.bundle.js",
+	"passkey_desk.bundle.js",
 ]
 app_include_css = [
-	"/assets/passkeys/css/passkey_confirm.css",
-	"/assets/passkeys/css/passkey_manage.css",
+	"passkey_confirm.bundle.css",
+	"passkey_manage.bundle.css",
 ]
 
 # Passkey management is NOT a first-class avatar-menu item. It lives in the
