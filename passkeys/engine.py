@@ -253,7 +253,7 @@ def verify_registration(
 
 # ---------------------------------------------------------------------------
 # Verification — authentication. Shared by first-factor login,
-# second factor, and action confirmation (Phase 2b/3 consumers).
+# second factor, and action confirmation.
 # ---------------------------------------------------------------------------
 
 
@@ -369,7 +369,7 @@ def build_authentication_options(
 	timeout_ms: int = DEFAULT_TIMEOUT_MS,
 ) -> tuple[dict, str]:
 	"""Returns ``(options_json_dict, challenge_b64)`` for a first/second-factor
-	or confirmation ceremony (consumed by Phase 2b/3)."""
+	or confirmation ceremony."""
 	options = webauthn.generate_authentication_options(
 		rp_id=rp_id,
 		timeout=timeout_ms,

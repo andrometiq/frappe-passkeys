@@ -38,7 +38,7 @@ def list_credentials():
 	"""Return the caller's own credentials for the management cards. A
 	read — not sudo-gated; ownership is implicit (filtered to the session user)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("list_credentials", 60, 60)  # 60/min/user
 	rows = frappe.get_all(
 		CREDENTIAL_DOCTYPE,
@@ -83,7 +83,7 @@ def rename_credential(name: str, label: str):
 	"""Rename the caller's own credential. Display-only, so no sudo gate;
 	the DocType ``validate`` sanitizes + length-caps the label (stored-XSS)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
 	doc = _own_credential(user, name)
 	if not (label or "").strip():
@@ -106,7 +106,7 @@ def delete_credential(name: str):
 	``passkey_only_login`` user (or under site ``disable_user_pass_login``), the
 	endpoint enforcement of the handle-row floor."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("delete_credential", 10, 3600)  # 10/hr/user
 	session.require_management_sudo(user)
 	doc = _own_credential(user, name)
@@ -152,16 +152,9 @@ def set_passkey_only_login(enabled):
 	single-use **passkey grant only**: never a sudo window, never a
 	password-minted grant — a password must never be sufficient to disable the
 	"password is not sufficient" flag. Enable additionally requires ≥2 enabled
-	passkeys (the ≥1 floor binds every writer via the handle-row ``validate``).
-
-	Phase-5 note: the grant is minted by the confirm ceremony
-	(``begin_confirmation`` / ``verify_confirmation`` for ``action`` =
-	``passkeys.set_passkey_only_login``) under the general
-	``@passkey_protected`` decorator — that MINTER is not yet built. This
-	endpoint wires the fully-real *consumer* guard; until Phase 5 ships the
-	ceremony, a grant can only be produced by that phase's passkey assertion."""
+	passkeys (the ≥1 floor binds every writer via the handle-row ``validate``)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_user()
+	user = session.require_authed_user()
 	enabled_int = cint(enabled)
 	payload = {"enabled": bool(enabled_int)}
 	if not session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, payload):
@@ -199,13 +192,6 @@ def set_passkey_only_login(enabled):
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
-
-
-def _require_user() -> str:
-	user = frappe.session.user
-	if not user or user in ("Guest", ""):
-		raise frappe.AuthenticationError(_("Not permitted."))
-	return user
 
 
 def _own_credential(user: str, name: str):

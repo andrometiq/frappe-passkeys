@@ -22,7 +22,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
-from passkeys import install, policy, state
+from passkeys import install, policy, session, state
 
 # Attempt cap for the failed-passkey second-factor retry: a leg-2
 # verify failure re-arms a fresh state up to this many attempts, then falls back
@@ -147,7 +147,7 @@ def begin_login():
 def verify_login(state_id: str, credential):
 	"""Verify a discoverable assertion, resolve the account from its
 	``userHandle`` + credential id, enforce the UV outcome policy, and mint a
-	session via the one sanctioned seam (PENDING ladder).
+	session via the one sanctioned seam.
 
 	Success returns ``None`` so the core login envelope set by ``login_as`` /
 	``post_login`` (``message: "Logged In"``, ``home_page``) stays at the top
@@ -812,7 +812,7 @@ def get_signal_data():
 	deleted credential is pruned from the browser's autofill list. Identity is
 	strictly ``frappe.session.user``; no client param selects the account."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_authed_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("get_signal_data", 60, 60)  # 60/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
@@ -840,7 +840,7 @@ def record_nudge(event: str):
 	counters are **server-side per-user** so a three-browser user gets N prompts
 	total (not 3N); capability checks stay client-side."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_authed_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("record_nudge", 30, 3600)  # 30/hr/user
 	from passkeys import boot
 
@@ -856,7 +856,7 @@ def record_enforcement(event: str):
 	advisory. The grace counter is **server-side per-user** so a multi-browser user has
 	one shared grace budget; capability detection stays client-side."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
-	user = _require_authed_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("record_enforcement", 30, 3600)  # 30/hr/user
 	from passkeys import boot, notifications
 
@@ -872,13 +872,6 @@ def _incapable_policy_is_block_notify() -> bool:
 	)
 
 
-def _require_authed_user() -> str:
-	user = frappe.session.user
-	if not user or user in ("Guest", ""):
-		raise frappe.AuthenticationError(_("Not permitted."))
-	return user
-
-
 # ---------------------------------------------------------------------------
 # session mint (the one auditable choke point)
 # ---------------------------------------------------------------------------
@@ -887,9 +880,9 @@ def _require_authed_user() -> str:
 def _mint_session(user: str) -> None:
 	"""Funnel every passkey session through ``login_as`` → ``post_login``
 	— full ``on_login``/``on_session_creation`` hooks, IP/hour checks, fresh
-	session + cookies, Activity Log; never a fresh ``LoginManager()`` mid-flow
-	(the PR #34181 mistake). ``frappe.local.flags.passkey_login`` must already be
-	set by the caller so ``seed_sudo_window`` classifies the window as passkey."""
+	session + cookies, Activity Log; never a fresh ``LoginManager()`` mid-flow.
+	``frappe.local.flags.passkey_login`` must already be set by the caller so
+	``seed_sudo_window`` classifies the window as passkey."""
 	login_manager = getattr(frappe.local, "login_manager", None)
 	if login_manager is None:
 		# No request-time LoginManager (direct-call / unit path): build one.
@@ -1017,6 +1010,4 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def _as_dict(value):
-	import json
-
 	return json.loads(value) if isinstance(value, str) else value
