@@ -1,7 +1,7 @@
 // passkey_portal.bundle.js — the portal /passkeys page component + the portal
 // enrollment-nudge banner. Delivered via web_include_js on
-// authenticated portal pages when a passkey mode is enabled (the shim gates it;
-// see the build manifest). Loaded AFTER passkey_common.bundle.js
+// authenticated portal pages when a passkey mode is enabled (the shim gates it).
+// Loaded AFTER passkey_common.bundle.js
 // (frappe.passkeys_common) and passkey_manage_common.bundle.js
 // (frappe.passkeys_manage_common). Destination on core merge: frappe/public/js/
 // frappe/passkey/portal.js + frappe/www/passkeys.js.

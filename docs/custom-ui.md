@@ -307,9 +307,9 @@ that requested it. A custom UI keeps that intact by holding these lines:
 5. **Don't invent existence signals.** Surface the generic failure copy; the server
    deliberately returns uniform errors so an attacker can't enumerate accounts or
    credentials. Do not branch your visible copy on anything that could reveal one.
-6. **Let the server be the authority.** Client checks (capability, the last-method
-   guard mirror in `passkey_manage_common`) are for UX only; every rule is enforced
-   server-side. Trust its verdict, don't reimplement it.
+6. **Let the server be the authority.** Client checks (capability, credential counts,
+   and the like) are for UX only; every rule is enforced server-side. Trust its
+   verdict, don't reimplement it.
 
 ---
 

@@ -1,6 +1,6 @@
 // passkey_settings.js — the Passkey Settings form UX. Wired via
-// `doctype_js = {"Passkey Settings": "public/js/passkey_settings.js"}` (see the
-// build manifest). Renders the banner/dialog matrix on the settings form and
+// `doctype_js = {"Passkey Settings": "public/js/passkey_settings.js"}`. Renders
+// the banner/dialog matrix on the settings form and
 // puts the loud one-way-door confirm on the RP-ID field. Destination on core merge:
 // the passkey section of frappe/core/doctype/system_settings/system_settings.js.
 //
@@ -8,7 +8,7 @@
 // node-tested); this file only paints them and wires the confirm dialog. Cross-flag
 // context (core enable_two_factor_auth / disable_user_pass_login / the passkey-only
 // user count) is read from frappe.boot.passkeys.settings_context when the server
-// provides it — see the manifest for the exact contract.
+// provides it.
 //
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
