@@ -1,6 +1,5 @@
 #!/bin/bash
-# Local pre-push gate for frappe-passkeys — the cheap, always-run half; the
-# full 3x2 matrix stays CI's job.
+# Local pre-push gate for frappe-passkeys — the cheap, always-run half.
 #
 # Checks:
 #   1. Lint — pre-commit if configured, else ruff (reads pyproject.toml).
@@ -16,8 +15,8 @@
 # ${XDG_CACHE_HOME:-$HOME/.cache}/frappe-passkeys/tools-venv — no global
 # installs, works from any (or no) active virtualenv.
 #
-# Pieces whose inputs don't exist yet (scaffold phase) skip with a notice;
-# a check that RUNS and fails blocks the push.
+# Pieces whose inputs don't exist yet skip with a notice; a check that RUNS
+# and fails blocks the push.
 #
 # Wire-up (optional):  printf '#!/bin/sh\nexec bash scripts/pre-push-checks.sh\n' \
 #                        > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
