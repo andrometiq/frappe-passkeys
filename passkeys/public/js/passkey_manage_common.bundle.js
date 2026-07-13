@@ -1,8 +1,8 @@
-// passkey_manage_common.js — shared PURE logic for the credential-management
+// passkey_manage_common.bundle.js — shared PURE logic for the credential-management
 // surfaces + enrollment nudges + settings UX. Destination on core merge:
 // frappe/public/js/frappe/passkey/ (frappe.ui.passkey.*).
 //
-// Like passkey_common.js this module is deliberately framework-light and
+// Like passkey_common.bundle.js this module is deliberately framework-light and
 // side-effect-free at load time so its pure logic (card view-models, provider
 // resolution, the nudge cadence decision, the post-hybrid upsell gate, the
 // settings-banner matrix, the last-method delete guard, signal-payload shaping)
@@ -15,7 +15,7 @@
 //
 // Dual export (UMD-lite): CommonJS `module.exports` for node tests; browser
 // global `frappe.passkeys_manage_common` for the bundles (loaded as its own
-// app_include_js/web_include_js entry AFTER passkey_common.js).
+// app_include_js/web_include_js entry AFTER passkey_common.bundle.js).
 //
 // eslint-env browser, node
 (function (root, factory) {

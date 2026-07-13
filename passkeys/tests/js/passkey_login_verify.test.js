@@ -19,7 +19,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 // Keep the real timer so tests can yield a macrotask even while the bundle sees fakes.
 const realSetTimeout = global.setTimeout;

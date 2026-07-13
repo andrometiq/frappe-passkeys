@@ -1,6 +1,6 @@
 // passkey_manage_common.test.js — dependency-free unit harness for the PURE
 // credential-management + nudge + settings logic in
-// passkey_manage_common.js. Runs WITHOUT the bench and WITHOUT jsdom:
+// passkey_manage_common.bundle.js. Runs WITHOUT the bench and WITHOUT jsdom:
 //   node --test passkeys/tests/js
 //
 // Covers: provider resolution (server-supplied / injected map / zero-AAGUID /
@@ -12,7 +12,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const M = require("../../public/js/passkey_manage_common.js");
+const M = require("../../public/js/passkey_manage_common.bundle.js");
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-07-06T00:00:00Z");

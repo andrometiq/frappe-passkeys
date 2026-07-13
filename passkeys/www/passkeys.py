@@ -22,24 +22,27 @@ from passkeys import boot, install
 
 no_cache = 1
 
-# The portal management bundle (frontend manifest). Order is load-bearing:
-# passkey_common.js sets the confirm engine + JSON-shim globals, passkey_manage_
-# common.js sets the shared card view-models, passkey_headless.js sets the
-# markup-free lifecycle API (``frappe.passkeys.headless`` — the add-passkey ceremony
-# the card engine calls), and passkey_portal.bundle.js reads these and mounts into
-# ``#passkey-portal-root``. Delivered page-scoped here for the
-# /passkeys management page; the SAME set also reaches other authenticated portal
-# pages via ``shims/portal_nudge.py`` so the nudge finds portal-only users
-# ("on authenticated web pages when enabled"), where the bundle self-gates to
-# the nudge alone (no mount). Portal pages ship no ``frappe.ui.Dialog`` / desk
-# confirm bundle, so passkey_common.js is required.
+# The portal management bundle (frontend manifest). Referenced by BARE bundle name
+# (no /assets prefix) so core's bundled_asset() resolves each to its content-hashed
+# filename from assets.json — the browser revalidates on every deploy instead of
+# serving a stale cached copy (an /assets-prefixed path would bypass the hash map).
+# Order is load-bearing: passkey_common.bundle.js sets the confirm engine + JSON-shim
+# globals, passkey_manage_common.bundle.js sets the shared card view-models,
+# passkey_headless.bundle.js sets the markup-free lifecycle API
+# (``frappe.passkeys.headless`` — the add-passkey ceremony the card engine calls), and
+# passkey_portal.bundle.js reads these and mounts into ``#passkey-portal-root``.
+# Delivered page-scoped here for the /passkeys management page; the SAME set also
+# reaches other authenticated portal pages via ``shims/portal_nudge.py`` so the nudge
+# finds portal-only users ("on authenticated web pages when enabled"), where the bundle
+# self-gates to the nudge alone (no mount). Portal pages ship no ``frappe.ui.Dialog`` /
+# desk confirm bundle, so passkey_common.bundle.js is required.
 PORTAL_JS = (
-	"/assets/passkeys/js/passkey_common.js",
-	"/assets/passkeys/js/passkey_manage_common.js",
-	"/assets/passkeys/js/passkey_headless.js",
-	"/assets/passkeys/js/passkey_portal.bundle.js",
+	"passkey_common.bundle.js",
+	"passkey_manage_common.bundle.js",
+	"passkey_headless.bundle.js",
+	"passkey_portal.bundle.js",
 )
-PORTAL_CSS = ("/assets/passkeys/css/passkey_manage.css",)
+PORTAL_CSS = ("passkey_manage.bundle.css",)
 
 
 def get_context(context):

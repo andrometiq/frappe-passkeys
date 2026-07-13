@@ -15,8 +15,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const C = require("../../public/js/passkey_common.js");
-const M = require("../../public/js/passkey_manage_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
+const M = require("../../public/js/passkey_manage_common.bundle.js");
 
 // Swallow the focus setTimeout buildModal.open() schedules.
 global.setTimeout = function () { return 0; };

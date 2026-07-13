@@ -2,7 +2,7 @@
 // button, cross-device, password->passkey second factor, uv-setup step-up).
 //
 // Delivered via update_website_context -> context.web_include_js on /login when any mode is
-// enabled. Loaded AFTER passkey_common.js (which sets frappe.passkeys_common) and
+// enabled. Loaded AFTER passkey_common.bundle.js (which sets frappe.passkeys_common) and
 // AFTER frappe-web.bundle.js (which defines window.__). Owns its own lifecycle: boots once on
 // login_rendered, with a DOMContentLoaded fallback and an idempotent guard. Any JS
 // failure degrades to the untouched core password form — the page is never deadened.
@@ -887,7 +887,7 @@
 	window.frappe = window.frappe || {};
 	window.frappe._passkey_login = { boot: boot, _state: state, API: API, applyLoginStatus: applyLoginStatus };
 
-	// Node-only test seam (UMD-lite, mirrors passkey_common.js / passkey_confirm.js): expose
+	// Node-only test seam (UMD-lite, mirrors passkey_common.bundle.js / passkey_confirm.bundle.js): expose
 	// the verify round-trip + status machine so `node --test` can pin the terminal-cleanup
 	// behaviour without a bench/jsdom. No-op in the browser — `module` is undefined there.
 	if (typeof module === "object" && module.exports) {

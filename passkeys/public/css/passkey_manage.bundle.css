@@ -1,11 +1,11 @@
-/* passkey_manage.css — credential-management cards, badges, enrollment nudges,
+/* passkey_manage.bundle.css — credential-management cards, badges, enrollment nudges,
  * the portal page, and the settings banners. Loaded on Desk
  * (app_include_css) and portal (web_include_css). Inherits core .btn / focus
  * styles; adds only what core doesn't ship. Destination on core merge:
  * frappe/public/scss/passkey.scss.
  *
  * The shared visually-hidden live-region rule (.passkey-sr-only) also lives in
- * passkey_login.css / passkey_confirm.css; a copy here keeps the manage surfaces
+ * passkey_login.bundle.css / passkey_confirm.bundle.css; a copy here keeps the manage surfaces
  * announcing even if those bundles are absent. */
 .passkey-sr-only {
 	position: absolute !important;

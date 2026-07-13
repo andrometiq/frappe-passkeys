@@ -18,16 +18,18 @@ from frappe.utils import cint
 
 from passkeys import install
 
-# Served statically from the app's public/ tree at /assets/passkeys/… . The
-# login bundle is a plain IIFE (no ES imports), so it needs no esbuild entry;
-# referencing the full /assets path bypasses the bundle map entirely and is
-# build-map-free. Order is load-bearing: passkey_common.js sets the
-# `frappe.passkeys_common` global the bundle reads (frontend notes).
+# Referenced by BARE bundle name (no /assets prefix) so core's bundled_asset()
+# resolves each to its content-hashed filename from assets.json — the browser then
+# revalidates on every deploy instead of serving a stale cached copy (an /assets-
+# prefixed path would bypass the hash map and be served raw). esbuild auto-discovers
+# every *.bundle.js under public/ as an entry, so the plain-IIFE common lib bundles
+# fine. Order is load-bearing: passkey_common.bundle.js sets the
+# `frappe.passkeys_common` global the login bundle reads (frontend notes).
 LOGIN_JS = (
-	"/assets/passkeys/js/passkey_common.js",
-	"/assets/passkeys/js/passkey_login.bundle.js",
+	"passkey_common.bundle.js",
+	"passkey_login.bundle.js",
 )
-LOGIN_CSS = ("/assets/passkeys/css/passkey_login.css",)
+LOGIN_CSS = ("passkey_login.bundle.css",)
 
 
 def website_context(context) -> None:

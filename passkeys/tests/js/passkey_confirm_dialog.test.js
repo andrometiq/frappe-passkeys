@@ -1,5 +1,5 @@
-// passkey_confirm_dialog.test.js — the ONE DOM-adapter test for passkey_confirm.js
-// (C3). Everything else in the confirm client is pure and lives in passkey_common.js;
+// passkey_confirm_dialog.test.js — the ONE DOM-adapter test for passkey_confirm.bundle.js
+// (C3). Everything else in the confirm client is pure and lives in passkey_common.bundle.js;
 // this covers the frappe.ui.Dialog UI factory's straight-to-password crash.
 //
 // The engine can route STRAIGHT to the password leg (caps.passkey false — a
@@ -16,7 +16,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 // --------------------------------------------------- minimal DOM stub (no jsdom)
 function makeDoc() {
@@ -73,8 +73,8 @@ test("C3: collectPassword self-creates the dialog on the straight-to-password ro
 	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
 
 	// require AFTER the globals exist — the confirm bundle reads window at load
-	delete require.cache[require.resolve("../../public/js/passkey_confirm.js")];
-	const confirmMod = require("../../public/js/passkey_confirm.js");
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	const confirmMod = require("../../public/js/passkey_confirm.bundle.js");
 	assert.strictEqual(typeof confirmMod.makeDialogUI, "function", "node test seam must be exported");
 
 	const ui = confirmMod.makeDialogUI();

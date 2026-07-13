@@ -1,7 +1,7 @@
-/* passkey_confirm.css — action-confirmation dialog (Desk + portal).
+/* passkey_confirm.bundle.css — action-confirmation dialog (Desk + portal).
  * Rides inside frappe.ui.Dialog's $body; only the confirmation-specific bits
  * live here. The shared .passkey-sr-only live-region rule lives in
- * passkey_login.css — if this bundle ships without the login CSS, the fallback
+ * passkey_login.bundle.css — if this bundle ships without the login CSS, the fallback
  * rule below keeps the aria-live region visually hidden but screen-reader-live.
  */
 

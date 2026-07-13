@@ -20,7 +20,7 @@ this exact payload)* before the wrapped function runs; absent/invalid, it raises
 ``PasskeyConfirmationRequired`` (HTTP 401) carrying a server-computed
 ``payload_fingerprint`` the client echoes back. The client half
 (``frappe.passkeys.confirm`` / ``frappe.passkeys.call`` + dialog) is the frozen
-JS bundle (``public/js/passkey_confirm.js``); this module answers the three
+JS bundle (``public/js/passkey_confirm.bundle.js``); this module answers the three
 whitelisted method paths that bundle pins:
 
 * ``passkeys.confirm.begin_confirmation`` — mint the assertion options + ceremony.

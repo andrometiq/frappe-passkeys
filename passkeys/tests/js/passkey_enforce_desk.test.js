@@ -17,8 +17,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const C = require("../../public/js/passkey_common.js");
-const M = require("../../public/js/passkey_manage_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
+const M = require("../../public/js/passkey_manage_common.bundle.js");
 
 // Swallow load-time timers (the bundle schedules onReady via setTimeout at boot).
 global.setTimeout = function () { return 0; };
