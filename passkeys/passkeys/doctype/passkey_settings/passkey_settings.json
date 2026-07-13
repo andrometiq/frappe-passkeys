@@ -193,6 +193,8 @@
   },
   {
    "default": "3",
+   "depends_on": "eval:[\"Nudge\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy)",
+   "description": "How many times the dismissible enrollment nudge may appear before it stops. Governs the Nudge cadence only, so it is hidden under Off (no prompt) and Enforce (the enforcement interstitial owns the surface); under 'Enforce After Date' it still applies during the pre-date Nudge phase.",
    "fieldname": "passkey_nudge_max_prompts",
    "fieldtype": "Int",
    "label": "Maximum Nudge Prompts"
@@ -203,6 +205,8 @@
   },
   {
    "default": "30",
+   "depends_on": "eval:[\"Nudge\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy)",
+   "description": "Minimum days between nudge prompts. Governs the Nudge cadence only, so it is hidden under Off and Enforce; under 'Enforce After Date' it still applies during the pre-date Nudge phase.",
    "fieldname": "passkey_nudge_cooldown_days",
    "fieldtype": "Int",
    "label": "Nudge Cooldown (Days)"
