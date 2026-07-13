@@ -59,12 +59,17 @@ PR. Splitting it means Stage 2 never has to argue two things at once.
 
 Closes #4252. A `two_factor_methods` registry hook in `frappe/twofactor.py`: an app registers a
 method by name supplying `{is_configured(user), issue(user, tmp_id) → verification_obj,
-verify(login_manager, otp, tmp_id) → bool}`. Dispatch is consulted inside the three existing
-functions — `authenticate_for_2factor`, `get_verification_obj`, `confirm_otp_token` — behind a
-`get_two_factor_method_provider()` resolver; the built-in `OTP App`/`SMS`/`Email` paths are
-**byte-identical** when no provider is registered. Rides along: the
-`validate_user_pass_login` allowlist +1 (patch 02) and the `autocomplete="username webauthn"`
-token (patch 04) go with whichever PR lands first. See
+verify(login_manager, otp, tmp_id) → bool}`. Dispatch is consulted inside **two** of the existing
+functions — `authenticate_for_2factor` (issuance) and `confirm_otp_token` (verification) — behind a
+`get_two_factor_method_provider()` resolver; `get_verification_obj` stays a pure OTP builder and
+issuance is routed one level up (its `(user, token, otp_secret)` signature has no `tmp_id` for a
+provider to key its challenge — rationale in patch 01). The built-in `OTP App`/`SMS`/`Email` paths
+are **byte-identical** when no provider is registered, with one disclosed edge (the
+`tmp_id`-without-`otp` re-issue — see patch 01). Rides along: only the
+`autocomplete="username webauthn"` token (patch 04) is method-agnostic and goes with whichever PR
+lands first. **Patch 02 is Stage 2 only** — it reads `self.login_with_passkey`, a field that does
+not exist before Stage 2, and frappe's model layer has no `__getattr__` fallback, so a Stage-1
+ride would crash System Settings saves on the lockout-guard path (see patch 02). See
 [`patch-01-two-factor-methods-registry.md`](./patch-01-two-factor-methods-registry.md).
 
 ### Stage 2 — `feat: passkey (WebAuthn) authentication`
@@ -109,7 +114,10 @@ not a copy:
 #   1. Reassign `WebAuthn Credential` + `WebAuthn User Handle` DocTypes: module "Passkeys" -> "Core".
 #      Same table names (tabWebAuthn Credential / tabWebAuthn User Handle) => ZERO row surgery,
 #      no INSERT...SELECT — the rows are already in the destination tables by construction.
-#   2. Copy Passkey Settings (Single) field values into the new System Settings fields.
+#   2. Copy Passkey Settings (Single) scalar field values into the new System Settings fields,
+#      AND re-parent the `tabPasskey Enforcement Role` child rows (the two Table MultiSelect
+#      enforce-roles fields) from parent "Passkey Settings" to "System Settings" — the one
+#      genuine piece of row surgery in the patch (see mapping.md).
 #   3. Remove the app's `Passkey` two_factor_method Property Setter (now a core-native option).
 #   4. Mark the app dormant (see below).
 ```

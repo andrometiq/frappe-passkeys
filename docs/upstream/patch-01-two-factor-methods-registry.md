@@ -14,7 +14,9 @@ that wants to add a method (passkey, WebAuthn, a hardware push, …) must monkey
 functions `frappe/auth.py` imports by name (`frappe/auth.py:18-23`; also re-imported at
 `frappe/integrations/doctype/ldap_settings/ldap_settings.py:22`).
 
-This patch makes those three functions consult a `two_factor_methods` hook. A provider is a dict
+This patch adds a resolver and routes 2FA issuance and verification through a `two_factor_methods`
+hook — consulted in **two** functions (`authenticate_for_2factor` and `confirm_otp_token`);
+`get_verification_obj` stays a pure OTP builder (see the note under diff 2). A provider is a dict
 of dotted paths keyed by method name:
 
 ```python
@@ -34,11 +36,24 @@ handler for that method needs; it rides `frappe.local.response["verification"]` 
 `["tmp_id"]` exactly as OTP does today (`authenticate_for_2factor` `:90-91`), so the wire
 protocol and `login.js` dispatch (`:311-323`) are unchanged for a new method.
 
+**`is_configured` — the per-user fallback (this is what consults the third contract key).**
+`get_two_factor_method_provider()` resolves a method → provider at the *method* level; the
+*per-user* gate is `provider["is_configured"](user)`, consulted at each dispatch site. If the
+active method is `Passkey` globally but a given user has **no** passkey registered, issuing a
+passkey challenge would hard-fail that user's 2FA with no way back — so when `is_configured` is
+`False`, dispatch falls through to the built-in OTP path (which self-bootstraps a secret via
+`get_otpsecret_for_`). The app already implements exactly this check —
+`passkeys.passkey._enabled_credentials(user)` (`passkey.py:709`) — so `is_configured` maps 1:1 to
+`bool(_enabled_credentials(user))`. Without this consult, `is_configured` would be a dead contract
+key; with it, the provider interface can express "this user can't use this method," which is the
+whole point of the key.
+
 **Additivity guarantee:** when `two_factor_methods` is empty or the active method has no
 provider, `get_two_factor_method_provider()` returns `None` and every function falls through to
-its existing body **unchanged** — `OTP App`/`SMS`/`Email` behaviour is byte-identical. The core
-`Passkey` option itself is only added to the `two_factor_method` Select in Stage 2 (or by the
-app's Property Setter pre-merge).
+its existing body **unchanged** — `OTP App`/`SMS`/`Email` behaviour is byte-identical, **with one
+disclosed exception** (the `tmp_id`-without-`otp` edge case in `authenticate_for_2factor` — see
+**Behavior delta** below). The core `Passkey` option itself is only added to the
+`two_factor_method` Select in Stage 2 (or by the app's Property Setter pre-merge).
 
 ## The diff
 
@@ -93,6 +108,9 @@ def get_two_factor_method_provider(method: str | None = None):
 -	cache_2fa_data(user, token, otp_secret, tmp_id)
 -	verification_obj = get_verification_obj(user, token, otp_secret)
 +	provider = get_two_factor_method_provider()
++	if provider and not provider["is_configured"](user):
++		provider = None  # method active globally but this user isn't set up for it →
++		                 # fall through to built-in OTP (which self-bootstraps a secret)
 +	if provider:
 +		verification_obj = provider["issue"](user, tmp_id)
 +	else:
@@ -104,6 +122,17 @@ def get_two_factor_method_provider(method: str | None = None):
  	frappe.local.response["verification"] = verification_obj
  	frappe.local.response["tmp_id"] = tmp_id
 ```
+
+> **Behavior delta (disclose in the PR — the one place this patch is *not* byte-identical).**
+> The guard generalises from `if frappe.form_dict.get("otp")` to
+> `if … or frappe.form_dict.get("tmp_id")`. That changes one stock-OTP edge case: a request
+> carrying `tmp_id` **without** `otp`. Today (`frappe/twofactor.py:82-91`) that request does **not**
+> early-return — it re-runs `get_otpsecret_for_`, generates a fresh token, `cache_2fa_data`, and
+> returns a **new** `verification` + **new** `tmp_id` in the response. After the patch it
+> early-returns with no re-issue. This is deliberate — the verification leg re-POSTs `tmp_id` and
+> must never mint a second challenge — but it is a real change to stock behaviour and must be
+> disclosed rather than filed under "byte-identical." Add a regression test for exactly this leg
+> (`tmp_id` present, `otp` absent → no re-issue, original challenge still valid).
 
 > The task brief asks that `get_verification_obj` also dispatch through the registry. It is left
 > as a pure OTP builder here and issuance is routed one level up in `authenticate_for_2factor`,
@@ -125,6 +154,9 @@ a passkey verification carries no `otp`, so falling through would let it bypass 
  	from frappe.auth import get_login_attempt_tracker
 
 +	provider = get_two_factor_method_provider()
++	if provider and not provider["is_configured"](login_manager.user):
++		provider = None  # symmetric with authenticate_for_2factor's issuance gate:
++		                 # a user who fell through to OTP verifies through the OTP path
 +	if provider:
 +		if not tmp_id:
 +			tmp_id = frappe.form_dict.get("tmp_id")
@@ -163,7 +195,7 @@ arm so an unknown method is handed to a client handler the registering app attac
 
 ## Branch notes (v15 / v16)
 
-- The three functions exist on all three branches with the same signatures:
+- The extension-point functions exist on all three branches with the same signatures:
   `authenticate_for_2factor` (v15 `:82`, v16 `:80`), `get_verification_method` (v15 `:146`),
   `confirm_otp_token` (v15 `:150`, v16 `:149`), `get_verification_obj` (v15 `:192`, v16 `:191`).
   The patch applies structurally identically; only line numbers drift.
