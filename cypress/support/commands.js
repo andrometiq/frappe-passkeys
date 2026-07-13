@@ -64,15 +64,6 @@ Cypress.Commands.add("disable_virtual_authenticator", () =>
 	})
 );
 
-Cypress.Commands.add("remove_virtual_authenticator", () =>
-	cy.wrap(null, { log: false }).then(() => {
-		if (!current_authenticator_id) return null;
-		const id = current_authenticator_id;
-		current_authenticator_id = null;
-		return cdp("WebAuthn.removeVirtualAuthenticator", { authenticatorId: id });
-	})
-);
-
 // ---------------------------------------------------------------------------
 // Presence ("tap") + UV knobs
 // ---------------------------------------------------------------------------
@@ -91,23 +82,6 @@ Cypress.Commands.add("simulate_passkey_tap", (id) =>
 			authenticatorId: id || current_authenticator_id,
 			enabled: true,
 		})
-	)
-);
-
-Cypress.Commands.add("set_user_verified", (is_user_verified, id) =>
-	cy.wrap(null, { log: false }).then(() =>
-		cdp("WebAuthn.setUserVerified", {
-			authenticatorId: id || current_authenticator_id,
-			isUserVerified: !!is_user_verified,
-		})
-	)
-);
-
-Cypress.Commands.add("get_virtual_credentials", (id) =>
-	cy.wrap(null, { log: false }).then(() =>
-		cdp("WebAuthn.getCredentials", { authenticatorId: id || current_authenticator_id }).then(
-			({ credentials }) => credentials
-		)
 	)
 );
 
@@ -403,4 +377,30 @@ Cypress.Commands.add("register_passkey", (user, password, options = {}) => {
 					})
 			)
 		);
+});
+
+// ---------------------------------------------------------------------------
+// Action-confirmation suite lifecycle (shared by the confirm.cy.js describes so
+// each keeps its own reset of the virtual authenticator + server passkeys).
+// ---------------------------------------------------------------------------
+Cypress.Commands.add("confirm_setup", () => {
+	const USER = "Administrator";
+	const PW = () => Cypress.env("adminPassword") || "admin";
+	cy.enable_virtual_authenticator();
+	cy.login(USER, PW());
+	cy.visit_desk(USER);
+	cy.setup_passkey_settings();
+	cy.purge_server_passkeys(USER);
+	cy.register_passkey(USER, PW());
+	cy.login(USER, PW());
+});
+
+Cypress.Commands.add("confirm_teardown", () => {
+	const USER = "Administrator";
+	const PW = () => Cypress.env("adminPassword") || "admin";
+	cy.login(USER, PW());
+	cy.visit_desk(USER);
+	cy.purge_server_passkeys(USER);
+	cy.disable_virtual_authenticator();
+	cy.clearCookies();
 });

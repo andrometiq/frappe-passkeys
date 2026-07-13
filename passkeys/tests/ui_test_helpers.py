@@ -225,7 +225,7 @@ def credential_count(user: str) -> int:
 
 # ---------------------------------------------------------------------------
 # management + nudge helpers — the sudo-gate delete dance
-# (manage_sudo_gate.cy.js) and the nudge-cadence spec (nudge_cadence.cy.js) drive
+# (manage_user_form.cy.js) and the nudge-cadence spec (nudge_cadence.cy.js) drive
 # these via cy.call. The FRONTEND agent cannot add Python, so integration owns
 # them. Test-only; fold away with the shims.
 # ---------------------------------------------------------------------------
@@ -234,7 +234,7 @@ def credential_count(user: str) -> int:
 @frappe.whitelist()
 def clear_sudo_window() -> dict:
 	"""Expire the caller's fresh-login sudo window so a sudo-gated mutation must
-	re-confirm. Drives ``manage_sudo_gate.cy.js``."""
+	re-confirm. Drives ``manage_user_form.cy.js``."""
 	_guard()
 	from passkeys import state
 

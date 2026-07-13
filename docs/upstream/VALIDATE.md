@@ -61,7 +61,7 @@ all four off it still throws. This is the whole behavioural surface of the one-l
   successful assertion redirects via the returned `home_page`. Run `eslint`/`prettier` on
   `login.js` and `login.html` (prettier formats Jinja-adjacent JS in this repo).
 - **Flake mitigation (patches 03/04).** CDP virtual-authenticator specs are flaky in this
-  project's own CI (`confirm_grant_semantics.cy.js` has intermittently timed out mid-ceremony on
+  project's own CI (the `confirm.cy.js` grant-semantics suite has intermittently timed out mid-ceremony on
   a `cy.wrap()`). For the maintainer-facing validation story, do **not** rest the additivity
   proof on the browser spec alone: gate the assertion-level checks to **server-side** tests
   (endpoint returns the login envelope; context flag present/absent drives button render) and
