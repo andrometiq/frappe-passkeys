@@ -187,6 +187,32 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertEqual(v["grace_remaining"], 0)
 		self.assertTrue(v["blocking"])
 
+	def test_nondefault_grace_budget_owns_the_exact_boundary(self):
+		# The product-owner report: grace "is only three, always three". Prove the
+		# configured value — not a hardcoded default — drives the verdict, and that the
+		# block arrives at EXACTLY the configured deferral, never the default 3.
+		self._set(passkey_enforce_grace_logins=5)
+		user = self._user()
+		self.assertEqual(self._verdict(user)["grace_remaining"], 5)
+		# Three deferrals: a hardcoded-3 budget would already be blocking here — it must not.
+		for _ in range(3):
+			boot.record_enforcement_event(user, "defer")
+		v = self._verdict(user)
+		self.assertEqual(v["grace_remaining"], 2)
+		self.assertFalse(v["blocking"])
+		self.assertEqual(v["reason"], "grace")
+		# Fourth deferral: still one grace login left — not yet blocking.
+		boot.record_enforcement_event(user, "defer")
+		v = self._verdict(user)
+		self.assertEqual(v["grace_remaining"], 1)
+		self.assertFalse(v["blocking"])
+		# Fifth (the configured boundary) spends the last grace login → the verdict flips.
+		boot.record_enforcement_event(user, "defer")
+		v = self._verdict(user)
+		self.assertEqual(v["grace_remaining"], 0)
+		self.assertTrue(v["blocking"])
+		self.assertEqual(v["reason"], "blocking")
+
 	# ---- record_enforcement endpoint -----------------------------------
 
 	def test_record_enforcement_defer_folds_state(self):
