@@ -265,6 +265,30 @@ test("enforcementDecision: capable device shows the enforce variant; grace vs bl
 	assert.strictEqual(block.reason, "enforce_blocking");
 });
 
+test("enforcementDecision: honors a non-default server grace budget verbatim (no hardcoded 3)", () => {
+	// The product-owner report was "grace is only three, always three". The client view-model
+	// must surface EXACTLY the grace the server computed — never a baked-in default of 3 — so
+	// the "N sign-ins left" copy is honest for any configured budget.
+	const d = M.enforcementDecision(
+		enfBoot({ enforcement: { grace_remaining: 5, grace_total: 5, blocking: false } }),
+		{ supported: true, uvpaa: true }
+	);
+	assert.strictEqual(d.show, true);
+	assert.strictEqual(d.variant, "enforce");
+	assert.strictEqual(d.graceRemaining, 5);
+	assert.strictEqual(d.blocking, false);
+	assert.strictEqual(d.reason, "enforce_grace");
+
+	// At the configured boundary the server flips `blocking`; the client mirrors it exactly.
+	const atBoundary = M.enforcementDecision(
+		enfBoot({ enforcement: { grace_remaining: 0, grace_total: 5, blocking: true } }),
+		{ supported: true, uvpaa: true }
+	);
+	assert.strictEqual(atBoundary.graceRemaining, 0);
+	assert.strictEqual(atBoundary.blocking, true);
+	assert.strictEqual(atBoundary.reason, "enforce_blocking");
+});
+
 test("enforcementDecision: unknown capability counts as capable (tri-state)", () => {
 	// uvpaa unknown (null) + hybrid unknown ⇒ still show the enroll gate, never dead-end.
 	const d = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: null, hybrid: null });
