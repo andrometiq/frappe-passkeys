@@ -16,7 +16,7 @@
 	<img src=".github/screenshots/login.png" alt="Sign in with a passkey" width="371" />
 </div>
 
-> **Passkeys end phishing, credential stuffing, and password-database breaches at the root: there is no shared secret to steal, reuse, or replay, and a user's private key never leaves their device.** If that sounds like something every Frappe site should have — and every Frappe maintainer should ship by default — spend five minutes with the diagram-driven explainer of exactly **why**: **[Why passkeys are safer — and when they aren't](https://andrometiq.github.io/frappe-passkeys/why-passkeys.html)** ([source](docs/why-passkeys.html)).
+> **Passkeys end phishing, credential stuffing, and password-database breaches at the root: there is no shared secret to steal, reuse, or replay, and a user's private key never leaves their device.** If that sounds like something every Frappe site should have — and every Frappe maintainer should ship by default — read the short, plain-language, diagram-driven explainer of exactly **why**: **[Why passkeys are safer — and when they aren't](https://andrometiq.github.io/frappe-passkeys/why-passkeys.html)** ([source](docs/why-passkeys.html)).
 
 ## Passkeys for Frappe
 
