@@ -32,6 +32,17 @@ const visit_user_passkeys = () => {
 		tab.click();
 	});
 	cy.get("#user-settings_tab", { timeout: 20000 }).should("be.visible");
+	// The "Passkeys" section is collapsible and renders collapsed by default
+	// (install.py marks the Section Break collapsible: 1). Expand it — only if it is
+	// currently collapsed — so its cards become visible; the toggle handler lives on
+	// the section head.
+	cy.get("#user-settings_tab [data-fieldname='passkeys_section'] .section-head", {
+		timeout: 20000,
+	}).then(($head) => {
+		if ($head.hasClass("collapsed")) {
+			cy.wrap($head).click();
+		}
+	});
 };
 
 const own_passkey_root = () => cy.get(".passkey-cards-root:visible", { timeout: 20000 }).last();
