@@ -9,19 +9,17 @@ endpoint will receive in the request body — plus the server-side context
 verify it, and the declared outcome.
 
 Everything is deterministic: fixed seed-derived keys, fixed challenges,
-RFC 6979 deterministic ECDSA. Regenerating produces byte-identical files
-(proven by `test_vectors_are_deterministic`).
+RFC 6979 deterministic ECDSA.
 
-**The private keys in `generator.py` are intentionally public TEST keys.
-Never use them outside tests.**
+**The private keys used to sign these vectors are intentionally public TEST
+keys. Never use them outside tests.**
 
 ## Files
 
-| File | Purpose |
-| --- | --- |
-| `generator.py` | Software authenticator + vector builder. `python generator.py --out vectors/` regenerates everything. Needs `cryptography` + `cbor2`. |
-| `vectors/*.json` | 35 golden vectors (15 positive, 20 negative), one file each. 4 negatives are **library-divergent** (crossOrigin/topOrigin — py_webauthn accepts them; see below). |
-| `test_vectors_selfcheck.py` | Proof of correctness: every vector behaves as declared under [py_webauthn](https://pypi.org/project/webauthn/) `>=2.8,<3` (an independent, widely-used implementation). Needs `webauthn` + `pytest`. |
+All vectors live in a single `vectors.json` array — 35 golden vectors (15
+positive, 20 negative); 4 negatives are **library-divergent** (crossOrigin/
+topOrigin — py_webauthn accepts them; see below). The suite loads the array
+directly (`test_engine.py`).
 
 ## Vector schema
 
@@ -95,70 +93,6 @@ count)**, rpIdHash mismatch, origin mismatch, challenge mismatch,
 registered credential — signature must fail), UV required but absent, UP
 absent, clientData type mismatch, **crossOrigin:true (± topOrigin) —
 app-side rejection, library-divergent**.
-
-## How the frappe test suite consumes these
-
-No browser, no mocking of crypto — unit tests drive the server verifier with
-the vector's `credential` dict and pin the server state from `context`:
-
-```python
-import json
-from pathlib import Path
-
-import pytest
-
-VECTORS = sorted((Path(__file__).parent / "fixtures" / "vectors").glob("*.json"))
-
-@pytest.mark.parametrize("path", VECTORS, ids=lambda p: p.stem)
-def test_webauthn_verifier(path):
-    v = json.loads(path.read_text())
-
-    # 1. Seed server state from v["context"]:
-    #    - stash context["expected_challenge"] in the pending-challenge store
-    #      (cache/session) for the test user, as begin-registration/-login would
-    #    - for authentication vectors, create the stored credential row with
-    #      context["credential_public_key"] and
-    #      context["credential_current_sign_count"]
-    #    - configure the site's RP ID / origin to context values
-    #      ("example.com" / "https://example.com")
-
-    # 2. POST v["credential"] to the finish-registration / finish-login
-    #    endpoint (frappe test client), or call the verify function directly.
-
-    # 3. Assert:
-    if v["expect"] == "pass":
-        pass  # ceremony accepted; stored values match v["expected"]
-              # (credential_id, public key, sign counter, backup flags)
-    else:
-        pass  # ceremony rejected (v["description"] says why it must fail);
-              # no credential row created / no login session issued
-```
-
-Points worth pinning in the frappe tests beyond accept/reject:
-
-- after a positive registration, the stored credential matches
-  `expected.credential_id`, `expected.credential_public_key` (COSE bytes),
-  `expected.sign_count`, and the backup/device-type fields;
-- after a positive authentication, the stored counter becomes
-  `expected.new_sign_count`;
-- a negative vector must not mutate state (no credential created, counter
-  unchanged, no session).
-
-Because the fixtures are deterministic, tests can also hard-code derived
-values (credential IDs, challenges) without regenerating anything.
-
-## Regenerating / extending
-
-```sh
-python -m venv .venv && . .venv/bin/activate
-pip install "cryptography>=42" cbor2 "webauthn>=2.8,<3" pytest
-python generator.py --out vectors/
-pytest test_vectors_selfcheck.py   # must be green before committing vectors
-```
-
-Add new cases in `build_vectors()` (one `SoftAuthenticator` call with the
-right knobs), regenerate, and keep the self-check green — the py_webauthn
-round-trip is what makes a vector trustworthy.
 
 ## crossOrigin/topOrigin behavior in py_webauthn 2.8
 

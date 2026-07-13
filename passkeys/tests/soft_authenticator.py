@@ -83,12 +83,8 @@ def _flags(up, uv, be, bs, at) -> int:
 	return value
 
 
-def _client_data(ceremony_type, challenge_b64, origin, cross_origin, top_origin) -> bytes:
+def _client_data(ceremony_type, challenge_b64, origin) -> bytes:
 	payload = {"type": ceremony_type, "challenge": challenge_b64, "origin": origin}
-	if cross_origin is not None:
-		payload["crossOrigin"] = cross_origin
-	if top_origin is not None:
-		payload["topOrigin"] = top_origin
 	return json.dumps(payload, separators=(",", ":")).encode()
 
 
@@ -120,11 +116,9 @@ class SoftAuthenticator:
 		be: bool = False,
 		bs: bool = False,
 		sign_count: int = 0,
-		cross_origin=False,
-		top_origin=None,
 		credprops_rk=None,
 	) -> dict:
-		client_data = _client_data("webauthn.create", challenge_b64, origin, cross_origin, top_origin)
+		client_data = _client_data("webauthn.create", challenge_b64, origin)
 		auth_data = _auth_data(
 			rp_id,
 			_flags(up, uv, be, bs, at=True),
@@ -161,11 +155,8 @@ class SoftAuthenticator:
 		be: bool = False,
 		bs: bool = False,
 		sign_count: int = 1,
-		include_user_handle: bool = True,
-		cross_origin=False,
-		top_origin=None,
 	) -> dict:
-		client_data = _client_data("webauthn.get", challenge_b64, origin, cross_origin, top_origin)
+		client_data = _client_data("webauthn.get", challenge_b64, origin)
 		auth_data = _auth_data(rp_id, _flags(up, uv, be, bs, at=False), sign_count)
 		signature = self.key.sign(auth_data + _sha256(client_data))
 		cred_id = b64url(self.credential_id)
@@ -176,7 +167,7 @@ class SoftAuthenticator:
 				"clientDataJSON": b64url(client_data),
 				"authenticatorData": b64url(auth_data),
 				"signature": b64url(signature),
-				"userHandle": b64url(self.user_handle) if include_user_handle else None,
+				"userHandle": b64url(self.user_handle),
 			},
 			"authenticatorAttachment": "platform",
 			"clientExtensionResults": {},

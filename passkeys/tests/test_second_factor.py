@@ -23,16 +23,16 @@ from frappe.utils.password import update_password
 from passkeys import passkey, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
 PWD = "Secret_passw0rd_9x!"
 
 
-class SecondFactorTest(IntegrationTestCase):
+class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._settings_snap = frappe.db.get_singles_dict("Passkey Settings")
@@ -142,7 +142,7 @@ class SecondFactorTest(IntegrationTestCase):
 		)
 		registration.verify_registration(begun["state_id"], credential)
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
-		auth.user_handle = _b64url_decode(handle)
+		auth.user_handle = b64url_decode(handle)
 		frappe.set_user("Guest")
 		return auth
 
@@ -170,9 +170,6 @@ class SecondFactorTest(IntegrationTestCase):
 	def _leg2(self, state_id, credential, binder):
 		self._request("/api/method/passkeys.passkey.verify_second_factor", binder=binder)
 		return passkey.verify_second_factor(state_id, credential)
-
-	def _assert(self, auth, options, **kw):
-		return auth.assertion(challenge_b64=options["challenge"], rp_id=RP_ID, origin=ORIGIN, **kw)
 
 	# ======================================================================
 	# full 2-leg success
@@ -509,9 +506,3 @@ class SecondFactorTest(IntegrationTestCase):
 
 		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
 		self.assertEqual(int(fresh.login_failed_count or 0), 2)
-
-
-def _b64url_decode(value: str) -> bytes:
-	import base64
-
-	return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
