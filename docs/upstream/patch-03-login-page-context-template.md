@@ -83,9 +83,11 @@ path):
   (`frappe.two_factor_methods["Passkey"]`), so no `Passkey`-specific `verification.method` arm is
   needed here — the passkey bundle registers its handler on that map.
 
-The button click + the conditional-UI assertion both POST the app's guest endpoints
-(`passkey.begin_login` / `passkey.verify_login`) and, on success, receive the **core login
-envelope** (`{"message": "Logged In", "home_page": ...}`) so `login.login_handlers`
+The button click + the conditional-UI assertion both POST the passkey guest endpoints
+`begin_login` / `verify_login`. In the core PR these are **`frappe/passkey.py`'s own** endpoints
+(`frappe.passkey.begin_login` / `frappe.passkey.verify_login`), not the app's — the app names
+(`passkeys.passkey.*`) are only what the pre-merge injection shim targets. On success they return
+the **core login envelope** (`{"message": "Logged In", "home_page": ...}`) so `login.login_handlers`
 (`login.js:271-333`) does the redirect with zero protocol change.
 
 ## Branch notes — the two markup generations (v15/v16 vs develop)

@@ -2,8 +2,14 @@
 
 **Target:** `frappe/core/doctype/system_settings/system_settings.py`
 **Base:** `develop` @ `9b48af62aff88522638e38b1f4738e79ce0902fd`
-**PR:** rides Stage 1 or Stage 2 (whichever lands first); the message only makes sense once the
-`login_with_passkey` field exists, so functionally it belongs to **Stage 2**.
+**PR:** **Stage 2 only.** The diff reads `self.login_with_passkey`, a System Settings field that
+does not exist until Stage 2 adds it. Frappe's model layer has **no `__getattr__` fallback**
+(verified: zero `__getattr__` in `frappe/model/` on develop; `load_from_db` only sets attributes
+for columns in the DocType meta), so `self.login_with_passkey` on a pre-Stage-2 System Settings
+doc raises `AttributeError`. If this patch rode **Stage 1** — before the field exists — every
+System Settings save with `disable_user_pass_login = 1` and no other method enabled would crash
+on exactly the lockout-guard path it is meant to protect. It must land **with Stage 2**, not
+"whichever lands first."
 **Size:** +1 / −1 code line (+1 message string).
 
 ## What it does
