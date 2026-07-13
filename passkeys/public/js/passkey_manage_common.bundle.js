@@ -654,6 +654,62 @@
 		};
 	}
 
+	// The at-a-glance MARK for a posture row — the tick/flag language the settings
+	// report paints. Purely a function of severity + detectability (no copy):
+	//   high   -> "flag" (active bypass / critical gap ; red)
+	//   medium -> "warn" (a gap worth closing          ; orange)
+	//   low    -> "tune" (a hardening heads-up          ; blue)
+	//   info / undetectable -> "note" (neutral context  ; gray)
+	var POSTURE_ROW_MARK = { high: "flag", medium: "warn", low: "tune", info: "note" };
+
+	function postureRowMark(row) {
+		row = row || {};
+		if (row.detectable === false) return "note";
+		return POSTURE_ROW_MARK[row.severity] || "note";
+	}
+
+	// The settings-report view-model: the CTA/summary + per-row marks the Passkey
+	// Settings form paints (a satisfying headline verdict, a call-to-action, then a
+	// severity-ordered checklist). Builds ON posturePanel (same ordering + normalisation)
+	// and adds ONLY presentation-neutral shape — the copy still lives server-side.
+	//   summary.tone       "good" | "high" | "info" (mirrors the verdict)
+	//   summary.allClear   true iff the verdict is "good" (no stock bypass path) —
+	//                      the "satisfying tick when everything is fine" signal
+	//   summary.canBypass  true iff at least one active bypass path exists
+	//   summary.actionCount how many rows want action now (flags + warnings) — the
+	//                      count the CTA surfaces ("Review N gaps")
+	//   rows[].mark        "flag" | "warn" | "tune" | "note" (see postureRowMark)
+	function postureReport(response) {
+		var panel = posturePanel(response);
+		var flagCount = 0;
+		var warnCount = 0;
+		var rows = panel.rows.map(function (r) {
+			var mark = postureRowMark(r);
+			if (mark === "flag") flagCount++;
+			else if (mark === "warn") warnCount++;
+			return {
+				code: r.code,
+				severity: r.severity,
+				what: r.what,
+				why: r.why,
+				recommendation: r.recommendation,
+				detectable: r.detectable,
+				mark: mark,
+			};
+		});
+		return {
+			headline: panel.headline,
+			rows: rows,
+			summary: {
+				tone: panel.headline.tone,
+				allClear: panel.headline.tone === "good",
+				canBypass: panel.headline.canBypass,
+				actionCount: flagCount + warnCount,
+				rowCount: rows.length,
+			},
+		};
+	}
+
 	// ---------------------------------------------------------- signal payloads
 	// Shape a signalAllAcceptedCredentials payload from a verify_registration
 	// signal block or a get_signal_data response. Returns null when
@@ -716,6 +772,8 @@
 		originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
 		posturePanel: posturePanel,
+		postureRowMark: postureRowMark,
+		postureReport: postureReport,
 		signalPayload: signalPayload,
 		currentUserDetailsPayload: currentUserDetailsPayload,
 	};

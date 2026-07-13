@@ -315,32 +315,109 @@
 }
 
 /* --------------------------------------------------------------------------
- * Security-posture panel (Passkey Settings form). Admin-only verdict: one
- * headline first, then severity-ordered rows (one problem line + one
- * recommendation line each), disclaimer last. Uses Frappe's semantic tokens so
- * light/dark both adapt without a prefers-color-scheme dependency.
+ * Security-posture report (Passkey Settings form). Admin-only. A compact verdict
+ * CARD lands the point at a glance — a satisfying tick when everything is fine, a
+ * loud flag when a passkey can be bypassed — with a call-to-action that reveals the
+ * full designed checklist in place (one problem line + one recommendation each,
+ * disclaimer last) and a footer link to the hosted theory explainer. Uses Frappe's
+ * semantic tokens so light/dark both adapt without a prefers-color-scheme dependency.
  * ------------------------------------------------------------------------ */
 .passkey-posture {
 	margin: 0 0 12px;
 }
-.passkey-posture-title {
-	font-weight: 600;
-	font-size: var(--text-md, 14px);
-	margin: 4px 0 6px;
+
+/* ---- the compact verdict card ---- */
+.passkey-posture-card {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 14px;
+	border: 1px solid var(--border-color, #ebeef0);
+	border-left: 4px solid var(--gray-400, #b8bcc5);
+	border-radius: var(--border-radius-md, 8px);
+	background: var(--card-bg, var(--fg-color, #fff));
 }
-.passkey-posture-verdict {
+.passkey-posture-card[data-indicator="green"] { border-left-color: var(--green-500, #28a745); }
+.passkey-posture-card[data-indicator="red"] { border-left-color: var(--red-500, #e24c4c); }
+.passkey-posture-card[data-indicator="blue"] { border-left-color: var(--blue-500, #2490ef); }
+.passkey-posture-card[data-indicator="gray"] { border-left-color: var(--gray-400, #b8bcc5); }
+.passkey-posture-card--muted { color: var(--text-muted, #6c7680); }
+
+.passkey-posture-headline {
+	flex: 1 1 auto;
+	min-width: 0; /* let long verdict text wrap instead of overflowing the card */
+}
+.passkey-posture-eyebrow {
+	font-size: var(--text-xs, 11px);
 	font-weight: 600;
-	margin-bottom: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted, #6c7680);
+	margin-bottom: 2px;
+}
+.passkey-posture-verdict-text {
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--text-color, #1f272e);
+}
+.passkey-posture-card--muted .passkey-posture-verdict-text {
+	font-weight: 400;
+	color: var(--text-muted, #6c7680);
+}
+
+.passkey-posture-cta {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+/* ---- the leading tick/flag mark ---- */
+.passkey-posture-mark {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	color: var(--gray-500, #8d949e);
+}
+.passkey-posture-card .passkey-posture-mark svg { width: 26px; height: 26px; }
+.passkey-posture-row .passkey-posture-mark svg { width: 18px; height: 18px; }
+.passkey-posture-mark--good { color: var(--green-500, #28a745); }
+.passkey-posture-mark--flag { color: var(--red-500, #e24c4c); }
+.passkey-posture-mark--warn { color: var(--orange-500, #f5a623); }
+.passkey-posture-mark--tune { color: var(--blue-500, #2490ef); }
+.passkey-posture-mark--note { color: var(--gray-500, #8d949e); }
+
+/* ---- the collapsible full report ---- */
+.passkey-posture-report {
+	margin-top: 8px;
+	padding: 12px 14px;
+	border: 1px solid var(--border-color, #ebeef0);
+	border-radius: var(--border-radius-md, 8px);
+	background: var(--control-bg, var(--subtle-fg, #f4f5f6));
+}
+.passkey-posture-report[hidden] { display: none; }
+.passkey-posture-report-heading {
+	font-size: var(--text-xs, 11px);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted, #6c7680);
+	margin-bottom: 8px;
 }
 .passkey-posture-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 9px;
 	border-left: 3px solid var(--gray-400, #b8bcc5);
-	padding: 4px 0 4px 10px;
-	margin: 6px 0;
+	padding: 6px 0 6px 10px;
+	margin: 8px 0;
 }
 .passkey-posture-row[data-indicator="red"] { border-left-color: var(--red-500, #e24c4c); }
 .passkey-posture-row[data-indicator="orange"] { border-left-color: var(--orange-500, #f5a623); }
 .passkey-posture-row[data-indicator="blue"] { border-left-color: var(--blue-500, #2490ef); }
 .passkey-posture-row[data-indicator="gray"] { border-left-color: var(--gray-400, #b8bcc5); }
+.passkey-posture-row .passkey-posture-mark { margin-top: 1px; }
+.passkey-posture-row-main { flex: 1 1 auto; min-width: 0; }
 .passkey-posture-problem {
 	line-height: 1.4;
 }
@@ -354,4 +431,18 @@
 }
 .passkey-posture-note {
 	opacity: 0.85;
+}
+
+/* ---- theory-explainer footer ---- */
+.passkey-posture-footer {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--border-color, #ebeef0);
+}
+.passkey-posture-theory {
+	font-size: var(--text-sm, 12px);
+	font-weight: 500;
+	/* Pin a theme-adaptive link colour (Frappe's blue ramp) so the explainer link
+	 * stays legible in dark mode instead of falling back to the UA default. */
+	color: var(--blue-500, #2490ef);
 }
