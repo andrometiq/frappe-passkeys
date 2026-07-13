@@ -12,7 +12,7 @@ import frappe
 
 from passkeys import confirm, notifications, passkey, state
 from passkeys.api import credentials
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 PWD = "Secret_passw0rd_9x!"
@@ -40,7 +40,7 @@ class NotificationTest(_Base):
 		settings.passkey_notify_on_change = 1
 		settings.passkey_notify_password_fallback = 1
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.sent = []
 		self._orig_sendmail = frappe.sendmail
 		frappe.sendmail = lambda **kw: self.sent.append(kw)
@@ -51,7 +51,7 @@ class NotificationTest(_Base):
 		frappe.set_user("Administrator")
 		for field in ("passkey_notify_on_change", "passkey_notify_password_fallback"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _subjects(self):
 		return " ".join(m["subject"].lower() for m in self.sent)
@@ -66,7 +66,7 @@ class NotificationTest(_Base):
 	def test_no_email_when_notify_knob_off_but_activity_still_logged(self):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		before = frappe.db.count("Activity Log", {"user": user})
 		notifications.notify_credential_added(user, "Phone")
 		self.assertEqual(self.sent, [])
@@ -102,7 +102,7 @@ class NotificationTest(_Base):
 	def test_fallback_risk_event_silent_when_knob_off(self):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_fallback", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		before = frappe.db.count("Activity Log", {"user": user})
 		notifications.record_risk_event(notifications.RISK_FALLBACK_USED, user, "otp fallback")
 		self.assertEqual(self.sent, [])

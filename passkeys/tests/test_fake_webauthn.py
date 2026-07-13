@@ -17,7 +17,7 @@ from frappe.utils import set_request
 
 from passkeys import passkey, state
 from passkeys.tests import fake_webauthn
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
@@ -45,7 +45,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		# fields, which this committing tearDown would then leak into the shared single).
 		for field in _SETTINGS_FIELDS:
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
@@ -145,7 +145,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		doc.passkey_origins = origin
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 		# the test-mode path writes it directly, and the ceremony verifies against it
 		report = fake_webauthn.round_trip(rp_id=rp_id, origin=origin)

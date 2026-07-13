@@ -30,7 +30,7 @@ from frappe.utils import add_to_date, now_datetime, nowdate
 
 from passkeys import boot, session, state
 from passkeys.api import registration
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
@@ -103,7 +103,7 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 		settings.passkey_origins = ""
 		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -112,14 +112,14 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 		# Faithful restore (never `or 0` — that writes a literal "0" into the text rp/origin fields).
 		for field in ("login_with_passkey", "passkey_rp_id", "passkey_origins", "passkey_max_per_user"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		# begin_registration commits mid-test, defeating the runner's per-test rollback; commit the
 		# restore (and the addCleanup user delete that ran just before it) so nothing leaks onward.
 		frappe.db.commit()
 
 	def _set_cap(self, cap):
 		frappe.db.set_single_value("Passkey Settings", "passkey_max_per_user", cap)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self):
 		user = make_user()
@@ -164,7 +164,7 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 	def _restore(self):
 		frappe.set_user("Administrator")
 		frappe.db.set_single_value("Passkey Settings", "passkey_reauth_window", self._snapshot or 600)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		frappe.local.flags.pop("passkey_login", None)
 		# seed_sudo_window's login flow commits mid-test; commit the restore so a custom/0 window
 		# (test_zero_window sets 0) never leaks onto the shared single for a later module/run.
@@ -172,7 +172,7 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 
 	def _set_window(self, seconds):
 		frappe.db.set_single_value("Passkey Settings", "passkey_reauth_window", seconds)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self):
 		user = make_user()
@@ -244,7 +244,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 			"passkey_nudge_cooldown_days": 30,
 		}.items():
 			frappe.db.set_single_value("Passkey Settings", field, value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -257,7 +257,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 			"passkey_nudge_cooldown_days",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		# set_default (nudge blob) commits mid-test; commit the restore + the addCleanup user/
 		# DefaultValue deletes so nothing leaks into a later module or a later run.
 		frappe.db.commit()
@@ -265,7 +265,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 	def _set(self, **scalars):
 		for field, value in scalars.items():
 			frappe.db.set_single_value("Passkey Settings", field, value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _settings(self):
 		return frappe.get_cached_doc("Passkey Settings")
@@ -337,7 +337,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		settings.set("passkey_enforce_roles", [])
 		settings.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -362,7 +362,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		# an earlier committing test in the run must not make cleanup raise (cascade guard).
 		doc.flags.ignore_validate = True
 		doc.save()
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		# record_enforcement_event (set_default) commits mid-test; commit the restore + the
 		# addCleanup user/DefaultValue deletes so no enforce state leaks onward.
 		frappe.db.commit()
@@ -370,7 +370,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 	def _set(self, **scalars):
 		for field, value in scalars.items():
 			frappe.db.set_single_value("Passkey Settings", field, value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _settings(self):
 		return frappe.get_cached_doc("Passkey Settings")

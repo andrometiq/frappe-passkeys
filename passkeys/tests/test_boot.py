@@ -11,7 +11,7 @@ import frappe
 
 from passkeys import boot, passkey, state
 from passkeys.install import DEFAULTS_PARENT
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 RP_ID = "example.com"
@@ -30,7 +30,7 @@ class BootInfoTest(IntegrationTestCase):
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -46,7 +46,7 @@ class BootInfoTest(IntegrationTestCase):
 			"passkey_nudge_cooldown_days",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self) -> str:
 		user = make_user()

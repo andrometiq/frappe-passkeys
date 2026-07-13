@@ -10,7 +10,7 @@ from frappe.utils import add_to_date, now_datetime
 
 from passkeys import boot, passkey
 from passkeys.install import DEFAULTS_PARENT
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 
 _NUDGE_KNOBS = ("passkey_enrollment_policy", "passkey_nudge_max_prompts", "passkey_nudge_cooldown_days")
@@ -25,7 +25,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -33,7 +33,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		for field in _NUDGE_KNOBS:
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self) -> str:
 		user = make_user()
@@ -59,7 +59,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 	def test_policy_off_disables_the_nudge(self):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Off")
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
 
 	def test_enforce_policy_suppresses_the_nudge_cadence(self):
@@ -67,7 +67,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		interstitial owns the surface, not the dismissible nudge."""
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Enforce")
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
 
 	# ---- cap (max_prompts, knob-referenced) ----------------------
@@ -84,7 +84,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		user = self._user()
 		boot.record_nudge_event(user, "shown")  # declines == 1
 		frappe.db.set_single_value("Passkey Settings", "passkey_nudge_max_prompts", 1)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
 
 	# ---- cooldown (cooldown_days, knob-referenced) ---------------

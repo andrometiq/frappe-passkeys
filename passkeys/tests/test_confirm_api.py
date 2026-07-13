@@ -20,7 +20,7 @@ from frappe.utils.password import update_password
 from passkeys import confirm, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
@@ -49,7 +49,7 @@ class ConfirmationTest(IntegrationTestCase):
 		# don't depend on ambient Passkey Settings state (mirrors RegistrationCeremonyTest).
 		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self._ip = frappe.generate_hash(length=12)
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
@@ -63,7 +63,7 @@ class ConfirmationTest(IntegrationTestCase):
 			"passkey_sign_count_hard_fail",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snap.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	# -- fixtures -----------------------------------------------------------
 
