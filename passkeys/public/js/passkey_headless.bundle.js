@@ -172,8 +172,7 @@
 	"use strict";
 
 	// Server whitelist method paths for the first-factor login ceremony. MUST
-	// mirror passkeys/passkey.py (kept here so the server phase can grep the exact
-	// strings, exactly like CONFIRM_METHODS in passkey_common.bundle.js). The richer
+	// mirror passkeys/passkey.py. The richer
 	// second-factor / uv-setup endpoints are the shipped login bundle's job; the
 	// headless login() drives the first-factor discoverable ceremony only.
 	var LOGIN_METHODS = {

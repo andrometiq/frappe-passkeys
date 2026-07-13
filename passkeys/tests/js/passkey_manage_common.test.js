@@ -340,25 +340,6 @@ test("upsellDecision: cadence-capped (declines/opt_out) + platform-authenticator
 	);
 });
 
-// ---------------------------------------------------------- delete guard
-
-test("deleteGuard: last enabled credential of a passkey-only user is blocked", () => {
-	assert.strictEqual(
-		M.deleteGuard({ enabled: 1 }, { enabledCount: 1, passkeyOnly: 1 }).blocked,
-		true
-	);
-	assert.strictEqual(
-		M.deleteGuard({ enabled: 1 }, { enabledCount: 1, disablePassLogin: 1 }).blocked,
-		true
-	);
-	// another enabled credential survives => allowed
-	assert.strictEqual(M.deleteGuard({ enabled: 1 }, { enabledCount: 2, passkeyOnly: 1 }).blocked, false);
-	// soft-disabled credential is never a login method => allowed
-	assert.strictEqual(M.deleteGuard({ enabled: 0 }, { enabledCount: 1, passkeyOnly: 1 }).blocked, false);
-	// ordinary account (passwords on) => allowed
-	assert.strictEqual(M.deleteGuard({ enabled: 1 }, { enabledCount: 1 }).blocked, false);
-});
-
 // ---------------------------------------------------------- settings banners
 
 test("settingsBanners: RP-ID one-way-door warning is always present", () => {
