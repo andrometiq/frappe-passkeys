@@ -1,12 +1,10 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// "My Passkeys" was demoted from the first-class avatar/user menu into the
-// "Passkeys" section of the User form (My Settings). This spec is the regression
-// guard that the old navbar entry is GONE — both the item the app used to sync into
-// Navbar Settings and the legacy DOM-injected fallback. The management home itself
-// (list / add / rename / remove on the User form) is covered by
-// manage_cards_user_form.cy.js.
+// Regression guard that the old "My Passkeys" navbar entry is GONE — both the item
+// the app used to sync into Navbar Settings and the legacy DOM-injected fallback.
+// The management home (list / add / rename / remove on the User form) is covered by
+// manage_user_form.cy.js.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";

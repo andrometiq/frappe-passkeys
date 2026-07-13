@@ -74,7 +74,7 @@ chromium_only("passkey explicit-button login", () => {
 
 	it("a removed/stale passkey shows a distinct visible reason instead of nothing (A5)", () => {
 		// The credential is still on the device, but the server no longer recognises it
-		// → UnknownCredential 401. Before this fix, v15/v16 showed no visible reaction.
+		// → UnknownCredential 401.
 		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify_unknown", (req) => {
 			req.reply({
 				statusCode: 401,
