@@ -192,6 +192,19 @@ class CredentialManagementTest(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			credentials.set_passkey_only_login(1)
 
+	def test_set_passkey_only_enable_refused_with_zero_enabled_credentials(self):
+		"""The reverse-race floor, sequential form: with no enabled credential at
+		all (a disabled shell does not count) the enable direction refuses and
+		the flag stays off."""
+		user = self._user()
+		make_credential(user, enabled=0)
+		make_handle(user)
+		frappe.set_user(user)
+		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
+		with self.assertRaises(frappe.ValidationError):
+			credentials.set_passkey_only_login(1)
+		self.assertFalse(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
+
 	def test_set_passkey_only_enable_with_grant_and_two_passkeys(self):
 		user = self._user()
 		make_credential(user)
