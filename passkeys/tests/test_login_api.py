@@ -20,16 +20,16 @@ from frappe.utils.password import update_password
 from passkeys import passkey, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, UnknownCredential, UVSetupRequired
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
 PWD = "Secret_passw0rd_9x!"
 
 
-class LoginCeremonyTest(IntegrationTestCase):
+class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
@@ -97,7 +97,7 @@ class LoginCeremonyTest(IntegrationTestCase):
 		registration.verify_registration(begun["state_id"], credential)
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
 		# drive the assertion's userHandle from the SERVER-stored handle bytes
-		auth.user_handle = _b64url_decode(handle)
+		auth.user_handle = b64url_decode(handle)
 		frappe.set_user("Guest")
 		return auth, handle
 
@@ -119,9 +119,6 @@ class LoginCeremonyTest(IntegrationTestCase):
 	def _verify(self, state_id, credential, binder):
 		self._request("/api/method/passkeys.passkey.verify_login", binder=binder)
 		return passkey.verify_login(state_id, credential)
-
-	def _assert(self, auth, options, **kw):
-		return auth.assertion(challenge_b64=options["challenge"], rp_id=RP_ID, origin=ORIGIN, **kw)
 
 	# ======================================================================
 	# full passwordless round-trip
@@ -718,9 +715,3 @@ class LoginCeremonyTest(IntegrationTestCase):
 		with patch("passkeys.state._put_json", side_effect=redis.exceptions.ConnectionError("store down")):
 			with self.assertRaises(redis.exceptions.ConnectionError):
 				passkey.begin_login()
-
-
-def _b64url_decode(value: str) -> bytes:
-	import base64
-
-	return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))

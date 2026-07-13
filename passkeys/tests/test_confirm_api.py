@@ -20,22 +20,16 @@ from frappe.utils.password import update_password
 from passkeys import confirm, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
 PWD = "Secret_passw0rd_9x!"
 
 
-def _b64url_decode(value: str) -> bytes:
-	import base64
-
-	return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-
-
-class ConfirmationTest(IntegrationTestCase):
+class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snap = frappe.db.get_singles_dict("Passkey Settings")
@@ -96,7 +90,7 @@ class ConfirmationTest(IntegrationTestCase):
 		)
 		registration.verify_registration(begun["state_id"], credential)
 		handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
-		auth.user_handle = _b64url_decode(handle)
+		auth.user_handle = b64url_decode(handle)
 		return auth
 
 	# -- request harness ----------------------------------------------------
@@ -116,9 +110,6 @@ class ConfirmationTest(IntegrationTestCase):
 	def _verify(self, state_id, credential):
 		self._request("/api/method/passkeys.confirm.verify_confirmation")
 		return confirm.verify_confirmation(state_id, credential)
-
-	def _assert(self, auth, options, **kw):
-		return auth.assertion(challenge_b64=options["challenge"], rp_id=RP_ID, origin=ORIGIN, **kw)
 
 	def _attach_grant(self, token):
 		"""Present a grant token exactly as the client's retry does (header path)."""
