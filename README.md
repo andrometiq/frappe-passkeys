@@ -106,25 +106,10 @@ reverse-proxy / RP-ID / origin requirements.
   it trusts, residual risks, and disclosure.
 - [**Upstream**](docs/upstream/) — the plan and patches to move this into `frappe/frappe`.
 
-### Build your own UI
-
-Don't want the shipped screens? The whole passkey lifecycle — login, add, rename, remove, list,
-and the re-auth engine — is exposed for you to wrap in your own design. Three guides:
-
-- [**Custom UI**](docs/custom-ui.md) — the markup-free `frappe.passkeys.headless` JavaScript API (the
-  same code the shipped cards call), plus the semantic class hooks for restyling the barebones cards.
-- [**REST API**](docs/rest-api.md) — the raw endpoints for a native app or a no-JS single-page app.
-- [**Mobile apps**](docs/mobile-apps.md) — native iOS/Android association so a phone app shares the
-  site's passkeys.
-
 ## Development
 
-```bash
-cd apps/passkeys
-pre-commit install
-bench --site <site> run-tests --app passkeys   # server suite
-node --test 'passkeys/tests/js/*.test.js'        # client-logic unit suite
-```
+Install the app and `pre-commit install`, then run the suites before you push — the exact commands
+(server, JS unit, and Cypress) live in [`CONTRIBUTING.md`](CONTRIBUTING.md#development-setup).
 
 The app carries a full server suite, a dependency-free JavaScript suite, and a Cypress end-to-end
 suite; CI runs all three against Frappe v15, v16, and develop.

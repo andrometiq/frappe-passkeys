@@ -4,9 +4,8 @@
 // App-local Cypress config. `bench run-ui-tests passkeys`
 // does `os.chdir(<app base>)` and runs Cypress from here, so the app ships its
 // own config + `cypress/` tree.
-// Mirrors frappe's own `cypress.config.js`, minus coverage/split. baseUrl and
-// adminPassword are overridden by CYPRESS_baseUrl / CYPRESS_adminPassword that
-// bench exports at launch.
+// baseUrl and adminPassword are overridden by CYPRESS_baseUrl /
+// CYPRESS_adminPassword that bench exports at launch.
 
 // `defineConfig` is only an editor-typings identity wrapper; export a plain object
 // so this config never has to `require("cypress")`, which is not resolvable from the

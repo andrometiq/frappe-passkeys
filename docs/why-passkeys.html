@@ -221,22 +221,6 @@
     color: var(--brass); margin-right: .55em; vertical-align: .05em;
   }
 
-  /* generic note / honest callout */
-  .note {
-    max-width: var(--measure); margin: 1.1rem auto;
-    border: 1px solid var(--hairline); border-radius: 8px;
-    padding: .85rem 1rem; background: var(--surface);
-    font-size: .95rem;
-  }
-  .note.warn { border-left: 4px solid var(--red); }
-  .note.safe { border-left: 4px solid var(--green); }
-  .note .lbl {
-    display: inline-block; font: 700 .68rem/1 var(--sans);
-    letter-spacing: .1em; text-transform: uppercase; margin-right: .5em;
-  }
-  .note.warn .lbl { color: var(--red); }
-  .note.safe .lbl { color: var(--green); }
-
   /* ---------- SVG diagram theming ----------
      Element rules below are a net-safe default; because a rule like
      ".dgm rect" has element+class specificity, every colour utility is
