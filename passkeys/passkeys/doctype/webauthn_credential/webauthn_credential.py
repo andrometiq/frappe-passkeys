@@ -6,6 +6,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, strip_html
 
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
+
 LABEL_MAX_LENGTH = 140
 
 
@@ -27,10 +29,11 @@ class WebAuthnCredential(Document):
 		# admin/recovery interlock: a System Manager form-delete of the last
 		# enabled credential of a passkey-only user (or under disable_user_pass_login)
 		# would produce the documented total lockout — refuse with remediation. The
-		# User on_trash cascade uses raw ``frappe.db.delete``, which does NOT
-		# fire this hook, so deleting a User is never blocked by it.
-		if cint(self.enabled):
-			self._guard_last_login_method("delete")
+		# guard decides on fresh, locked reads (never this transaction's snapshot)
+		# whether the row still counts as an enabled credential. The User on_trash
+		# cascade uses raw ``frappe.db.delete``, which does NOT fire this hook, so
+		# deleting a User is never blocked by it.
+		self._guard_last_login_method("delete")
 
 	def after_delete(self):
 		# Owner notification is sent even when a System Manager removes
@@ -72,13 +75,16 @@ class WebAuthnCredential(Document):
 	def _guard_last_login_method(self, action: str):
 		"""Refuse removing/disabling the caller's final passkey-capable credential
 		when the owner would then have no login method (census mirroring
-		``validate_user_pass_login``)."""
-		others = frappe.db.count(self.doctype, {"user": self.user, "enabled": 1, "name": ["!=", self.name]})
-		if others > 0:
+		``validate_user_pass_login``). Serialized: every writer of the lockout
+		invariant queues on the owner's handle row and re-checks against locking
+		reads — a plain count re-reads the REPEATABLE READ snapshot even after the
+		lock, which is what let two overlapping removals each see a survivor and
+		drop every credential of a passkey-only user."""
+		passkey_only, enabled_names = lock_login_floor(self.user)
+		if any(name != self.name for name in enabled_names):
 			return  # another enabled credential survives
-		passkey_only = cint(
-			frappe.db.get_value("WebAuthn User Handle", {"user": self.user}, "passkey_only_login")
-		)
+		if action == "delete" and self.name not in enabled_names:
+			return  # not an enabled credential (fresh, under lock) — dropping it removes no login method
 		if passkey_only or frappe.get_system_settings("disable_user_pass_login"):
 			frappe.throw(
 				_(

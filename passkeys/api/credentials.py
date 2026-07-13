@@ -23,6 +23,7 @@ from passkeys import aaguid, session, state
 # module scope (the crypto engine is imported lazily inside its ceremony bodies),
 # so this management module stays webauthn-free at import time.
 from passkeys.passkey import refuse_if_core_native
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
 
 CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 
@@ -120,13 +121,17 @@ def _guard_last_credential(user: str, doc) -> None:
 	"""Refuse removing the final passkey-capable credential when the user would
 	then have no login method (census-mirroring ``validate_user_pass_login``).
 	It covers the two released-branch levers: the per-user ``passkey_only_login``
-	flag and site ``disable_user_pass_login``."""
-	if not cint(doc.enabled):
+	flag and site ``disable_user_pass_login``. Locks first — overlapping removals
+	serialize on the handle row and re-check against locking reads, so two rapid
+	deletes can never both see "another credential survives" and together drop
+	every credential of a passkey-only user (the retry-click lockout)."""
+	passkey_only, enabled_names = lock_login_floor(user)
+	if doc.name not in enabled_names:
 		return  # a soft-disabled credential is not a login method; safe to drop
-	# doc is enabled + still present, so it is included in this count.
-	if frappe.db.count(CREDENTIAL_DOCTYPE, {"user": user, "enabled": 1}) > 1:
+	# doc is enabled + still present (fresh, under lock), so it is in this census.
+	if len(enabled_names) > 1:
 		return  # another enabled credential survives
-	if _is_passkey_only(user) or frappe.get_system_settings("disable_user_pass_login"):
+	if passkey_only or frappe.get_system_settings("disable_user_pass_login"):
 		frappe.throw(
 			_(
 				"This is your only passkey and passwordless login is on for your account — "
@@ -172,7 +177,12 @@ def set_passkey_only_login(enabled):
 			payload_fingerprint=session.payload_hash(payload),
 		)
 
-	if enabled_int and frappe.db.count(CREDENTIAL_DOCTYPE, {"user": user, "enabled": 1}) < 2:
+	# Hold the invariant lock before checking the enable floor: the census must
+	# be a locking read, or a concurrent delete's commit stays invisible to this
+	# transaction's REPEATABLE READ snapshot and the flag flips on while the
+	# last credential disappears — the mirror image of the delete-delete race.
+	enabled_credentials = lock_login_floor(user)[1]
+	if enabled_int and len(enabled_credentials) < 2:
 		frappe.throw(
 			_(
 				"Enabling passkey-only login needs at least two enabled passkeys, so a lost device never locks you out."
@@ -206,10 +216,6 @@ def _own_credential(user: str, name: str):
 	if owner != user:
 		raise frappe.DoesNotExistError(_("Passkey not found."))
 	return frappe.get_doc(CREDENTIAL_DOCTYPE, name)
-
-
-def _is_passkey_only(user: str) -> bool:
-	return bool(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
 
 
 def _get_handle(user: str):
