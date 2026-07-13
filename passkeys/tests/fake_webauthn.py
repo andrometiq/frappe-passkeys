@@ -41,6 +41,7 @@ from frappe.utils import cint, set_request
 
 from passkeys import passkey, state
 from passkeys.api import credentials, registration
+from passkeys.tests.compat import flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import ES256, SoftAuthenticator, b64url_decode
 
@@ -73,7 +74,7 @@ def enable(rp_id: str = DEFAULT_RP_ID, origin: str = DEFAULT_ORIGIN, second_fact
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+	flush_settings_cache()
 	return values
 
 

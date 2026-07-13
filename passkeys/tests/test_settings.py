@@ -8,7 +8,7 @@ browser host, which never matches an RP ID resolved from ``host_name``)."""
 import frappe
 
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_resolved_rp_id
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 
 
 class ResolvedRpIdEndpointTest(IntegrationTestCase):
@@ -22,12 +22,12 @@ class ResolvedRpIdEndpointTest(IntegrationTestCase):
 		frappe.db.set_single_value(
 			"Passkey Settings", "passkey_rp_id", self._snapshot.get("passkey_rp_id") or ""
 		)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		frappe.conf.host_name = self._host_name
 
 	def _set_rp_id(self, value):
 		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", value)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def test_explicit_field_wins_over_host_name(self):
 		self._set_rp_id("example.com")
@@ -72,7 +72,7 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 		doc.flags.ignore_permissions = True
 		doc.flags.ignore_mandatory = True
 		doc.save()
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _save(self, **values):
 		doc = frappe.get_doc("Passkey Settings")

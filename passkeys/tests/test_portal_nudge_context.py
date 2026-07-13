@@ -13,7 +13,7 @@ import frappe
 
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
 from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
 
@@ -43,7 +43,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
 
@@ -51,7 +51,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		for field in _SETTINGS_FIELDS:
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 
 	def _user(self) -> str:
 		user = make_user()
@@ -115,7 +115,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 	def test_modes_off_ships_no_bundle(self):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		user = self._user()
 		frappe.set_user(user)
 		ctx = self._ctx()

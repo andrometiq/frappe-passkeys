@@ -14,7 +14,7 @@ escape."""
 import frappe
 
 from passkeys import auth_hooks
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -200,4 +200,4 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		for field in ("login_with_passkey", "passkey_as_second_factor"):
 			frappe.db.set_single_value("Passkey Settings", field, snap.get(field) or 0)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()

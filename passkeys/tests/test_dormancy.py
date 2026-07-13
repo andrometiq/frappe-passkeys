@@ -21,7 +21,7 @@ from passkeys import auth_hooks, boot, install, passkey, session, state, well_kn
 from passkeys.api import credentials, registration
 from passkeys.passkey import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -218,11 +218,11 @@ class DormantHooksTest(IntegrationTestCase):
 
 		def _restore():
 			frappe.db.set_single_value("Passkey Settings", "login_with_passkey", orig)
-			frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+			flush_settings_cache()
 
 		self.addCleanup(_restore)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		# control: with a mode on, the shim appends the login bundle on /login
 		ctrl = frappe._dict(path="login")
 		login_page.website_context(ctrl)
@@ -238,11 +238,11 @@ class DormantHooksTest(IntegrationTestCase):
 
 		def _restore():
 			frappe.db.set_single_value("Passkey Settings", "login_with_passkey", orig)
-			frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+			flush_settings_cache()
 
 		self.addCleanup(_restore)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
-		frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
+		flush_settings_cache()
 		user = self._user()
 		frappe.set_user(user)
 		# control: with a mode on, the shim delivers the portal bundle to a portal page
