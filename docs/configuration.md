@@ -77,6 +77,40 @@ capable-but-stuck users — and administrators — from being dead-ended.
 | **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
 | **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
+### A user can't get past enforcement — what to do
+
+Enforce is a **post-login interstitial**, not an auth block, so a stuck user is
+never truly locked out — the levers below go from least to most drastic. Pick the
+narrowest one that fits.
+
+1. **They said "I can't set one up here."** With the default *Incapable Device
+   Policy* (**Degrade to Nudge**) the interstitial already let them through as a
+   dismissible nudge, and their administrators were emailed. Nothing is blocking;
+   help them enroll on a capable device (or issue a security key) when convenient.
+   Only **Block + Notify Admin** keeps the gate up — the fixes below apply then.
+2. **Exempt this one user (one click).** Open the user's **User** form → the
+   **Passkeys** section (System Managers see it on anyone's form). While the policy
+   is *Enforce* / *Enforce After Date* it shows two admin actions; click **Exempt
+   from passkey enforcement**. Under the hood this assigns the dedicated
+   **`Passkey Enforcement Exempt`** role (created on first use) and adds it to
+   *Exempt Roles* — the user drops out of scope immediately. **Remove enforcement
+   exemption** reverses it. The role and the *Exempt Roles* entry are left in place
+   for reuse.
+3. **Give them more grace logins.** In the same section, **Reset grace logins**
+   restores the user's full deferral budget (the *Grace Logins* count) so the
+   interstitial goes back to "Remind me later" instead of blocking. Use it to buy a
+   capable-but-not-right-now user time to enroll.
+4. **Adjust scope or roles.** If a whole group is caught wrongly, narrow
+   **Enforcement Scope** to *Selected Roles* (and set *Enforce for Roles*), or add a
+   role they all share to **Exempt Roles**. Both take effect on the next login.
+5. **Back off the policy.** Flipping **Enrollment Policy** to **Nudge** turns every
+   interstitial back into a dismissible prompt site-wide — the escape hatch when a
+   rollout is biting more users than expected.
+
+**Break-glass guarantee:** **System Manager** is a seeded *Exempt Role*, so an
+administrator is never enforced and can always reach these settings — even if the
+policy is misconfigured. Keep it exempt unless you are certain.
+
 ## Notifications
 
 | Field | Default | What it does / consequence of changing it |
