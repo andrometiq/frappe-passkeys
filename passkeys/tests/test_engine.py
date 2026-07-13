@@ -50,7 +50,7 @@ def _run(vector: dict):
 		stored_sign_count=ctx["credential_current_sign_count"],
 		require_user_verification=ctx.get("require_user_verification", False),
 		# The negative sign-count vectors (regression) must be REFUSED here; the
-		# knob-off log+flag-proceed behavior is pinned separately (test_engine_policy).
+		# knob-off log+flag-proceed behavior is pinned by TestSignCountPolicy below.
 		sign_count_hard_fail=True,
 	)
 
