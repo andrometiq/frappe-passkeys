@@ -117,7 +117,7 @@ else
 fi
 
 # The WebAuthn golden-vector pack (passkeys/tests/vectors/) is validated by the
-# frappe test suite (passkeys.tests.test_engine_vectors), run by CI and by the
+# frappe test suite (passkeys.tests.test_engine), run by CI and by the
 # opt-in dev-bench cell below.
 
 # --------------------------- 3. opt-in: server tests on the dev bench
