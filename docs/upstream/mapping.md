@@ -82,15 +82,17 @@ placement (`frappe/core/…`, DocType names kept); if review picks `frappe/integ
 
 ## What stays in the app forever
 
-**Open decision — do not treat "Nothing" as settled.** The stated design goal is *total collapse*,
-but the app is now materially bigger than PR #34181 (+1007): it carries an enrollment/enforcement
-policy ladder, admin posture verdicts, mobile-app attestation endpoints, a portal page, and ~28
-System Settings fields. Whether **all** of that lands in one Stage-2 PR (total collapse) or a
-**core-minimal** Stage 2 ships (login + registration + credential management + 2FA provider +
-~6-8 settings) with the policy/posture/mobile layers staying app-side or landing as follow-up
-PRs is an **owner's call that must be made before Stage 0** — because it changes what the #37486
-comment stakes. This document does not decide it; it flags it. (Previously this section asserted
-"Nothing stays in the app forever"; that presumed the total-collapse answer.)
+**DECIDED: core-minimal Stage 2, incremental shedding after.** The first core PR carries
+login + registration + credential management + the 2FA provider + ~6-8 settings; the
+enrollment/enforcement policy ladder, admin posture verdicts, mobile-app attestation endpoints,
+and portal page stay app-side at first and land as follow-up PRs. The app then sheds
+incrementally: once the core-minimal set is **merged and released for a given Frappe version**,
+the app's branch for that version drops the now-core surfaces and keeps only the not-yet-merged
+extras — repeating piece by piece as follow-up PRs merge — so sites running the app never break
+on upgrade (the `CORE_NATIVE` dormant-shell gate is the mechanism that makes each handover
+seamless). The end state is still total collapse; it is reached in steps, not one PR.
+(Rationale: the app is materially bigger than PR #34181, which stalled unmerged at +1007 lines —
+a small first PR is the reviewable one.)
 
 Independent of that scope call, what is unambiguously **not** permanent app surface is the
 **dormant-shell + adoption machinery** — `before_install` refusal, the `CORE_NATIVE` no-op switch
