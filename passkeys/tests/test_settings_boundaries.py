@@ -512,3 +512,38 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 			passkey_enforce_grace_logins=0,
 		)
 		self.assertEqual(doc.passkey_enrollment_policy, "Enforce")
+
+
+class EnrollmentFieldVisibilityTest(IntegrationTestCase):
+	"""Policy-scoped visibility of the enrollment knobs.
+
+	Regression for the bug where the Nudge cadence knobs rendered under every policy, plus
+	a guard that Grace Logins stays reachable under Enforce. ``depends_on`` is a static,
+	ship-time declaration evaluated client-side, so this asserts the meta the form drives
+	off of directly."""
+
+	# The knobs are consumed ONLY while the effective policy is "nudge" — boot._cadence_ok
+	# short-circuits (`if _policy_effective(settings) != "nudge": return False`) before it
+	# ever reads passkey_nudge_max_prompts / passkey_nudge_cooldown_days. _policy_effective
+	# resolves to "nudge" for policy "Nudge" AND the pre-date phase of "Enforce After Date",
+	# so those two policies are exactly the honest visibility set (hidden under Off/Enforce).
+	NUDGE_DEPENDS_ON = 'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'
+
+	def _field(self, fieldname):
+		return frappe.get_meta("Passkey Settings").get_field(fieldname)
+
+	def test_nudge_knobs_are_scoped_to_the_nudge_cadence_policies(self):
+		for fieldname in ("passkey_nudge_max_prompts", "passkey_nudge_cooldown_days"):
+			self.assertEqual(
+				self._field(fieldname).depends_on,
+				self.NUDGE_DEPENDS_ON,
+				f"{fieldname} must be visible only under Nudge / Enforce After Date",
+			)
+
+	def test_grace_logins_stays_reachable_under_enforce(self):
+		# The field carries no hiding depends_on of its own; the enforcement section gates it
+		# to the enforcing policies, so it is visible + settable whenever enforcement can bite.
+		self.assertFalse(self._field("passkey_enforce_grace_logins").depends_on)
+		section = self._field("enforcement_section").depends_on
+		self.assertIn("Enforce", section)
+		self.assertIn("Enforce After Date", section)
