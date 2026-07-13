@@ -1,0 +1,1226 @@
+[
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "gCOegh4_TWtDbruVU_7k9DZrkjngyOMSdueiZQhEE8I",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoicnpId1k5ZlY3RW9adzRuT0lkcDFrTk5qVGRabnBVTHBrQ0JidEdraFIzWSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCIDFsAu1xlrmZWf6R5QazBC1maKv6-6n047e61hOTJ0dbAiAbHkVG2zbN72CVfzOjN4e9iLS4MWwPERl_EJl_e0rX3A",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON carries a different challenge than the server issued; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "challenge",
+    "kind": "authentication",
+    "name": "auth-challenge-mismatch"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "NW94VOy2OLCVnmbyRH_wAWxTthCcLdSh7IxOOxhLnws",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiTlc5NFZPeTJPTENWbm1ieVJIX3dBV3hUdGhDY0xkU2g3SXhPT3hoTG53cyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCIBoj-J2R1Cp5lau2YK3RA3jYMl6Gpxzd9VaXDjeXMtryAiEAzQYFYpUfTmsBZUsmCrg8gE8bnR3HclG7yHH-XHFFALk",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Assertion signed by a DIFFERENT ES256 key than the registered credential public key (credential substitution); signature verification must fail.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "signature",
+    "kind": "authentication",
+    "name": "auth-credential-substitution"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "ILPovd0cC4D7pDsBiOlVjGjrppzplH_EDJ8IrjlojtQ",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSUxQb3ZkMGNDNEQ3cERzQmlPbFZqR2pycHB6cGxIX0VESjhJcmpsb2p0USIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6dHJ1ZSwidG9wT3JpZ2luIjoiaHR0cHM6Ly9lbWJlZGRlci5leGFtcGxlLm9yZyJ9",
+        "signature": "MEUCIBmXBp7zkbwDABW7gSHlVZ7DXDnt3NmsCwrRZOlyRMlzAiEA5J__fINOCJmSPfV3MPPyuWTX-tgyHvhC1GUt__Msp28",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Assertion clientDataJSON has crossOrigin:true plus topOrigin naming the embedding page; the verifier must reject this APP-SIDE — py_webauthn 2.8 accepts it (topOrigin is not even parsed).",
+    "expect": "fail",
+    "expected_error": null,
+    "expected_error_substring": null,
+    "kind": "authentication",
+    "library_expect": "pass",
+    "library_expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "name": "auth-crossorigin-true-toporigin"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "yr3MVEFa5_w5GVFbyGzop2GIRZ2V-XX0zbrLywArOiU",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieXIzTVZFRmE1X3c1R1ZGYnlHem9wMkdJUloyVi1YWDB6YnJMeXdBck9pVSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6dHJ1ZX0",
+        "signature": "MEYCIQDOl1jyr94M7cgDvxfLzA2D0EacpwChbS9jwKx6Af6mCQIhAP9O-TlzM3QqJn1i3a7d3s6bp4cFa7TB_E9JPd--Y7WN",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Assertion clientDataJSON has crossOrigin:true (ceremony ran inside a cross-origin iframe); the verifier must reject this APP-SIDE — py_webauthn 2.8 accepts it (crossOrigin is parsed but never checked).",
+    "expect": "fail",
+    "expected_error": null,
+    "expected_error_substring": null,
+    "kind": "authentication",
+    "library_expect": "pass",
+    "library_expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "name": "auth-crossorigin-true"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+      "expected_challenge": "Re2RKBAl8VxbzXSiAenv4VIGqf_GQvzFEflHFkytQTY",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "rawId": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiUmUyUktCQWw4VnhielhTaUFlbnY0VklHcWZfR1F2ekZFZmxIRmt5dFFUWSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "V_xm7AwWtPsc98MRChlKyrFTvO6Y50v3HEZ3iVZxf2gfphlkIifbkvgmkKzLFd8f8M6bLxprOxIcng7O5ClBCw",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ED25519 assertion, UP+UV set, sign count 0 -> 1.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-ed25519-uv"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "z2C3VtgquowzdeUVmSSbckM5qzboXnkm0AVjfLrdWJk",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcdAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiejJDM1Z0Z3F1b3d6ZGVVVm1TU2Jja001cXpib1hua20wQVZqZkxyZFdKayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCIEIOcBbqzmnlQ-0a8ZNZH3WKdZx_B-p9tTdVM-4tBrXhAiARn7joOMJi86fo8fLRxLpfMAoWSP4os2DweMKRNk12Og",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 assertion with BE=1 and BS=1 (synced passkey).",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": true,
+      "credential_device_type": "multi_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-es256-backup-eligible-backed-up"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "WboKxafGBW79pu4j1aAqIqUwQXz_bMtFos7YWOyt7yk",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": false
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcBAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiV2JvS3hhZkdCVzc5cHU0ajFhQXFJcVV3UVh6X2JNdEZvczdZV095dDd5ayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCIQDW9MtVSHOkXfui-7QrYg7iUDp_vihkqbGbx-GzbddXkwIgRBMxc1FHjGT5obgKvHvGzWYcsPRZ1XD1he1xpUF6KUw",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 assertion without user verification (UV=0); server verifies with require_user_verification=False.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": false
+    },
+    "kind": "authentication",
+    "name": "auth-es256-nouv"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 41,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "Oq4RioQWR1eVl_8eC4W4fCFvTlUrpsbUqNDNht_qBYk",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAKg",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiT3E0UmlvUVdSMWVWbF84ZUM0VzRmQ0Z2VGxVcnBzYlVxTkROaHRfcUJZayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCIGfBXja2RdHadZvQXOZ5P2-bzMf7-OpoDEtH4BdI760JAiAA1fN_ld7nxoHCzYmvgYNQvKyrCvF1C1PVT1z6GPU98A",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 assertion where the counter advances 41 -> 42.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 42,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-es256-signcount-increment"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "mr8QId9JpPi00SWBU0d4SRBwMeNmeSII_L8mrxCzWFk",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAA",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoibXI4UUlkOUpwUGkwMFNXQlUwZDRTUkJ3TWVObWVTSUlfTDhtcnhDeldGayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCID9DaenH3AHpwLZw6sudr6xVZf9VvvBWIK9Akri9fkdTAiBe_82QrHPOlclNhNbhtuV1Zp31JVKMQ413NfRzQufIeQ",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 assertion from a counter-less authenticator: stored count 0 and response count 0 must be accepted.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 0,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-es256-signcount-zero"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "JZDDxt_rTCpP_3vODhOhvteRyZgPb2i_mqfnPYvy-m4",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSlpERHh0X3JUQ3BQXzN2T0RoT2h2dGVSeVpnUGIyaV9tcWZuUFl2eS1tNCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCICPB6_o-72cNkKvePcz0C1vBMS-MUs1P6GofXNJSwpVYAiEAxrmr3UQsXZ6cL1bXzt2l8-S6LQEGduu3EkJwsiwWnRE",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 assertion, UP+UV set, sign count 0 -> 1.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-es256-uv"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "rNIBffIMntKovgJEgwKx437uCoKDO-8T-t6IULfSROY",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoick5JQmZmSU1udEtvdmdKRWd3S3g0Mzd1Q29LRE8tOFQtdDZJVUxmU1JPWSIsIm9yaWdpbiI6Imh0dHBzOi8vZXZpbC5leGFtcGxlLm9yZyIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+        "signature": "MEUCIQCfJM_84yh9mCEk_8V_idJjL0Xk3w6OdC2L6E3jlU6viQIgE6_hVknlOSdVZtEVK8Xb1-W4f-bQdH3cJMuMIc_BhQI",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON origin differs from the expected origin; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "origin",
+    "kind": "authentication",
+    "name": "auth-origin-mismatch"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "-eV7cdVeZC2uxzMg6g5kvf9aAsK9ecu7niydhthaeT8",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "BEgEWSoRnfQXmiFfLO7zLBKGZFHTyLlgof9rig9ua8EFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiLWVWN2NkVmVaQzJ1eHpNZzZnNWt2ZjlhQXNLOWVjdTduaXlkaHRoYWVUOCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEYCIQDaa5cblPM4XNB-vz7lRbRJa8ry89tszY8gBBQQxOSpYQIhAIDXc4teBuWw0rHAUWuMQBMlNnfGFNLOr9rF8THnPtIh",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "authData rpIdHash computed over a different RP ID; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "RP ID",
+    "kind": "authentication",
+    "name": "auth-rpidhash-mismatch"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pAEDAzkBACBZAQDz_JWqLkP2ggBNpiqVda9k0kHrmdQh50QkEKRQLHw4C0oRvuEnmAdD13BI5cwvjokmkqaezTIAbg4BCBkGyoOUeAY3933Nez8rjIQ6xojnELj8riq5N9dBcM3OKgZ7jh8nnFOJEgph1rc4qrsT9g_TtDHoFXqeGTW0jqH7n6gFPbF7_lwj_8j_XgB9phoDCW8EwQtveD1t9-M71Ql8yesNbSdVUnIPkL8j9_-RSLeLo63D6BL0zClhMpMbQc2ivtc7pGHdRg-S1_S9DwQ9lMk7JRaf_8MnGHrxQ4LjXgvbsMR121VIla4l_GFTi-gJ8ZUX-1XGOAQ79lrMPNH05fLzIUMBAAE",
+      "expected_challenge": "eks5IR7Db6rKIB_rnmEdSlvc_FyxRNVgqzGAk0eM8dQ",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "rawId": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiZWtzNUlSN0RiNnJLSUJfcm5tRWRTbHZjX0Z5eFJOVmdxekdBazBlTThkUSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "syCySIErEpucoP9PTXVw6KQtcWKE5TcFCRrjx_8TziLgQLWq1vk7MedYqKcEHSG7LJQJTgyWShf16lcl6Nb4pNkBwbpHLepGf6XSJ4d1uoE18_QxyYh51ywSjjwvms4r8RNaFX9X5TkMbGlnlTl2kfe4rurPtgY64brJUQKDL7ymJmkf-Szamf_hGbsHYxcDg9g9gNtDPZWfqYn_se60GqO_IipM5dPDElXU7zyL61S1l-M06t7wwycXZyPfm0EF56i6o7QuQChVSGyRIljQxpu0QYpQ80RJWp4tDEKRlHhDlm3RJdmhQwyrQmsBO3RL9Kuz4GtG-S_prBPKcuyr3Q",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Valid RS256 assertion, UP+UV set, sign count 0 -> 1.",
+    "expect": "pass",
+    "expected": {
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "new_sign_count": 1,
+      "user_handle": "0OhPz2HgqmB48tz46b3EyA",
+      "user_verified": true
+    },
+    "kind": "authentication",
+    "name": "auth-rs256-uv"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 42,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "Z9NkozB8S8G7QGFiGRbRiE8M4H5YsiWvrv6HTxXBSXA",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAKg",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWjlOa296QjhTOEc3UUdGaUdSYlJpRThNNEg1WXNpV3ZydjZIVHhYQlNYQSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCICQzM3CmYkBNEDcdn7tVm1FoNCBVHbDzzjP3CDhWYG1tAiBnLldaAjzaG0IhMnmcN1oNiCXjzNnx8nZILLUr9tu4ag",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Replayed counter: response count equals the stored count (42); must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "sign count",
+    "kind": "authentication",
+    "name": "auth-signcount-equal"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 42,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "HswzHrp7PzyIPZl3PgH8ohXau91SvNq_Nl7Zm39SjJE",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAKQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSHN3ekhycDdQenlJUFpsM1BnSDhvaFhhdTkxU3ZOcV9ObDdabTM5U2pKRSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCIAm4Ye2X0BPiNlDe881QoYkpisKe5mlNZrmVN9q2Brv3AiBFBSGXzWm_ZE9FK2J0jR3ezQzvIAKUaQHe41ZZ0zpDZw",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "Sign count regression: response count 41 while the server has already seen 42 (possible cloned authenticator); must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "sign count",
+    "kind": "authentication",
+    "name": "auth-signcount-regression"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "0WjgynZMip0STwjMuG_jcl6nyyusdCBXEJA8ApndzAQ",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiMFdqZ3luWk1pcDBTVHdqTXVHX2pjbDZueXl1c2RDQlhFSkE4QXBuZHpBUSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCIQD5GWzKmFDqueB-ppg948qUg2NCSqsMH8P1El99n50HiwIgYpMLt3ND9cgYNILnb4KxFr_DwCUkQqnDVlw0_Igg_IU",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON type is webauthn.create inside an authentication ceremony; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "client data type",
+    "kind": "authentication",
+    "name": "auth-type-mismatch"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "3bR1GQlHl2oo3MY-DU8lpYzQaqXqdDICmPBnpUX1Vt0",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcEAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiM2JSMUdRbEhsMm9vM01ZLURVOGxwWXpRYXFYcWRESUNtUEJucFVYMVZ0MCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEQCIGeO1RNjekLfydTsKN51ETb9A8aAMBzmMLjuLd5yYQLaAiBAKLOv24krH2Ehqhku92ZRtEI3Dk5zJGiP65E3C949rw",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "UP flag is 0 (no user presence) in an assertion; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "present",
+    "kind": "authentication",
+    "name": "auth-up-missing"
+  },
+  {
+    "context": {
+      "credential_current_sign_count": 0,
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "expected_challenge": "8Eqf9XzqHuCqMqAdykugh9dhobxg6cbJuilFqZxbbtY",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcBAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiOEVxZjlYenFIdUNxTXFBZHlrdWdoOWRob2J4ZzZjYkp1aWxGcVp4YmJ0WSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "signature": "MEUCID-6NTzYak9EvNABQbVYKx22ruyIfSFXqmd-fi2qaVbUAiEA_2Sxll8RKQPMywyPMr6fnDhU3RO4cl7vS_nxsGx3G8o",
+        "userHandle": "0OhPz2HgqmB48tz46b3EyA"
+      },
+      "type": "public-key"
+    },
+    "description": "UV flag is 0 but the server requires user verification; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidAuthenticationResponse",
+    "expected_error_substring": "verification",
+    "kind": "authentication",
+    "name": "auth-uv-required-missing"
+  },
+  {
+    "context": {
+      "expected_challenge": "U12VKqRsYDCNYk-CxwjY8QDZUDsN9dIbK74jwnFWVuU",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdVAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdVAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVTEyVktxUnNZRENOWWstQ3h3alk4UURaVURzTjlkSWJLNzRqd25GV1Z1VSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "BS=1 with BE=0 is an impossible backup state per the WebAuthn spec; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidBackupFlags",
+    "expected_error_substring": "backed up",
+    "kind": "registration",
+    "name": "reg-bs-without-be"
+  },
+  {
+    "context": {
+      "expected_challenge": "BE6eMmD63MTeMTn4nX6VJZlbnCQcQo8sMNtq_gFvQXg",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiNGlHbUZfcHozYnF1aVpmR3hRUjB3UjlUMVZESWl0bWxvMVZ6WjVvNndtcyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON carries a different challenge than the server issued; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "challenge",
+    "kind": "registration",
+    "name": "reg-challenge-mismatch"
+  },
+  {
+    "context": {
+      "expected_challenge": "EjHVt_B4WMWGEomBtcw-_8aLUfJc3heNWhxalsliZVw",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiRWpIVnRfQjRXTVdHRW9tQnRjdy1fOGFMVWZKYzNoZU5XaHhhbHNsaVpWdyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6dHJ1ZSwidG9wT3JpZ2luIjoiaHR0cHM6Ly9lbWJlZGRlci5leGFtcGxlLm9yZyJ9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON has crossOrigin:true plus topOrigin naming the embedding page; the verifier must reject this APP-SIDE — py_webauthn 2.8 accepts it (topOrigin is not even parsed).",
+    "expect": "fail",
+    "expected_error": null,
+    "expected_error_substring": null,
+    "kind": "registration",
+    "library_expect": "pass",
+    "library_expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "name": "reg-crossorigin-true-toporigin"
+  },
+  {
+    "context": {
+      "expected_challenge": "uFyf40ZfiQEdWpLJP8qzIMVRn4l479_CL8Hqfq6UPqI",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoidUZ5ZjQwWmZpUUVkV3BMSlA4cXpJTVZSbjRsNDc5X0NMOEhxZnE2VVBxSSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6dHJ1ZX0",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON has crossOrigin:true (ceremony ran inside a cross-origin iframe); the verifier must reject this APP-SIDE — py_webauthn 2.8 accepts it (crossOrigin is parsed but never checked).",
+    "expect": "fail",
+    "expected_error": null,
+    "expected_error_substring": null,
+    "kind": "registration",
+    "library_expect": "pass",
+    "library_expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "name": "reg-crossorigin-true"
+  },
+  {
+    "context": {
+      "expected_challenge": "cQWhUFgkhMi2_6E-DcQFJxQRVA_Ss3mm0eFqb8kfyKo",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "rawId": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViBo3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIP5mDardFjr1SHQFnOVVEUg_i5TRy5KlrSpGl6FWqgtQpAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIP5mDardFjr1SHQFnOVVEUg_i5TRy5KlrSpGl6FWqgtQpAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiY1FXaFVGZ2toTWkyXzZFLURjUUZKeFFSVkFfU3MzbW0wZUZxYjhrZnlLbyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MCowBQYDK2VwAyEAsJq-f-Rbp65uRSuMmu8t__uZfDj5bqWTt3VcxsDBtTc",
+        "publicKeyAlgorithm": -8,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ED25519 registration, UP+UV set, attestation none.",
+    "expect": "pass",
+    "expected": {
+      "alg": -8,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "_mYNqt0WOvVIdAWc5VURSD-LlNHLkqWtKkaXoVaqC1A",
+      "credential_public_key": "pAEBAycgBiFYILCavn_kW6eubkUrjJrvLf_7mXw4-W6lk7d1XMbAwbU3",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-ed25519-uv"
+  },
+  {
+    "context": {
+      "expected_challenge": "ETcYhcZy6OqAoAGt-iGpLQ7Q7MDxyLb4izm0Mm5xh6c",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUddAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUddAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiRVRjWWhjWnk2T3FBb0FHdC1pR3BMUTdRN01EeHlMYjRpem0wTW01eGg2YyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration with BE=1 and BS=1 (synced/multi-device passkey, currently backed up).",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": true,
+      "credential_device_type": "multi_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-es256-backup-eligible-backed-up"
+  },
+  {
+    "context": {
+      "expected_challenge": "fvCJk9ianIthLY2l0z6008FKfTXuVtAegpKYPJEgTG8",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdNAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdNAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiZnZDSms5aWFuSXRoTFkybDB6NjAwOEZLZlRYdVZ0QWVncEtZUEpFZ1RHOCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration with BE=1 and BS=0 (multi-device eligible, not currently backed up).",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "multi_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-es256-backup-eligible-not-backed-up"
+  },
+  {
+    "context": {
+      "expected_challenge": "OG7tsN7WKb243arw9VwRzpmXoATXENOx39VoFSHSwWg",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {
+        "credProps": {
+          "rk": true
+        }
+      },
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiT0c3dHNON1dLYjI0M2FydzlWd1J6cG1Yb0FUWEVOT3gzOVZvRlNIU3dXZyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration where the client requested the credProps extension and the client reported rk:true in clientExtensionResults. py_webauthn 2.8 drops clientExtensionResults when parsing and returns no extension output, so the verifier must read credProps.rk from the credential JSON itself and mark the credential discoverable.",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "credprops_rk": true,
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-es256-credprops"
+  },
+  {
+    "context": {
+      "expected_challenge": "h3GQgaCsKeQtF_egE_LHmZIE1MQiMhNyraPTys3EQu0",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAKgAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAKgAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiaDNHUWdhQ3NLZVF0Rl9lZ0VfTEhtWklFMU1RaU1oTnlyYVBUeXMzRVF1MCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration with an initial sign count of 42; the server must store 42 as the credential's starting counter.",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 42,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-es256-nonzero-signcount"
+  },
+  {
+    "context": {
+      "expected_challenge": "IryjY1YLvRRMRQnGB0ry_EmencHyDkht-3mhnKVmQvw",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": false
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSXJ5alkxWUx2UlJNUlFuR0IwcnlfRW1lbmNIeURraHQtM21obktWbVF2dyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration without user verification (UV=0); server verifies with require_user_verification=False.",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": false
+    },
+    "kind": "registration",
+    "name": "reg-es256-nouv"
+  },
+  {
+    "context": {
+      "expected_challenge": "8fw0a4MDWeW-7rL0bNXO8kvvr1Fcm2U2Nbk8F3inWN0",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiOGZ3MGE0TURXZVctN3JMMGJOWE84a3Z2cjFGY20yVTJOYms4RjNpbldOMCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid ES256 registration, UP+UV set, attestation none.",
+    "expect": "pass",
+    "expected": {
+      "alg": -7,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "credential_public_key": "pQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-es256-uv"
+  },
+  {
+    "context": {
+      "expected_challenge": "WbjtlndQCSbhHZBACN3ehAO8fMXw9RxXAn821eLKI6w",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiV2JqdGxuZFFDU2JoSFpCQUNOM2VoQU84Zk1YdzlSeFhBbjgyMWVMS0k2dyIsIm9yaWdpbiI6Imh0dHBzOi8vZXZpbC5leGFtcGxlLm9yZyIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON origin is a different origin than the server expects; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "origin",
+    "kind": "registration",
+    "name": "reg-origin-mismatch"
+  },
+  {
+    "context": {
+      "expected_challenge": "Fr3q2e1hVnd9BExPz34utJ3u0SUTjgakySkZUDQQQbA",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikBEgEWSoRnfQXmiFfLO7zLBKGZFHTyLlgof9rig9ua8FFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "BEgEWSoRnfQXmiFfLO7zLBKGZFHTyLlgof9rig9ua8FFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiRnIzcTJlMWhWbmQ5QkV4UHozNHV0SjN1MFNVVGpnYWt5U2taVURRUVFiQSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "authData rpIdHash computed over a different RP ID than the server expects; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "RP ID",
+    "kind": "registration",
+    "name": "reg-rpidhash-mismatch"
+  },
+  {
+    "context": {
+      "expected_challenge": "a6FrSYVEbEjdtldsX7_HmoFGLmMeg2h1DocqcB1QC-Q",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "rawId": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVkBZ6N5pvbur7mlXjeMEYA04nUeaC-rny0wqxPSElWGzhlHRQAAAAAAAAAAAAAAAAAAAAAAAAAAACDNfoKrgV0h_sei0GsrUGh_j3hQvrXusFx5qOknaNb9z6QBAwM5AQAgWQEA8_yVqi5D9oIATaYqlXWvZNJB65nUIedEJBCkUCx8OAtKEb7hJ5gHQ9dwSOXML46JJpKmns0yAG4OAQgZBsqDlHgGN_d9zXs_K4yEOsaI5xC4_K4quTfXQXDNzioGe44fJ5xTiRIKYda3OKq7E_YP07Qx6BV6nhk1tI6h-5-oBT2xe_5cI__I_14AfaYaAwlvBMELb3g9bffjO9UJfMnrDW0nVVJyD5C_I_f_kUi3i6Otw-gS9MwpYTKTG0HNor7XO6Rh3UYPktf0vQ8EPZTJOyUWn__DJxh68UOC414L27DEddtVSJWuJfxhU4voCfGVF_tVxjgEO_ZazDzR9OXy8yFDAQAB",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIM1-gquBXSH-x6LQaytQaH-PeFC-te6wXHmo6Sdo1v3PpAEDAzkBACBZAQDz_JWqLkP2ggBNpiqVda9k0kHrmdQh50QkEKRQLHw4C0oRvuEnmAdD13BI5cwvjokmkqaezTIAbg4BCBkGyoOUeAY3933Nez8rjIQ6xojnELj8riq5N9dBcM3OKgZ7jh8nnFOJEgph1rc4qrsT9g_TtDHoFXqeGTW0jqH7n6gFPbF7_lwj_8j_XgB9phoDCW8EwQtveD1t9-M71Ql8yesNbSdVUnIPkL8j9_-RSLeLo63D6BL0zClhMpMbQc2ivtc7pGHdRg-S1_S9DwQ9lMk7JRaf_8MnGHrxQ4LjXgvbsMR121VIla4l_GFTi-gJ8ZUX-1XGOAQ79lrMPNH05fLzIUMBAAE",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiYTZGclNZVkViRWpkdGxkc1g3X0htb0ZHTG1NZWcyaDFEb2NxY0IxUUMtUSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8_yVqi5D9oIATaYqlXWvZNJB65nUIedEJBCkUCx8OAtKEb7hJ5gHQ9dwSOXML46JJpKmns0yAG4OAQgZBsqDlHgGN_d9zXs_K4yEOsaI5xC4_K4quTfXQXDNzioGe44fJ5xTiRIKYda3OKq7E_YP07Qx6BV6nhk1tI6h-5-oBT2xe_5cI__I_14AfaYaAwlvBMELb3g9bffjO9UJfMnrDW0nVVJyD5C_I_f_kUi3i6Otw-gS9MwpYTKTG0HNor7XO6Rh3UYPktf0vQ8EPZTJOyUWn__DJxh68UOC414L27DEddtVSJWuJfxhU4voCfGVF_tVxjgEO_ZazDzR9OXy8wIDAQAB",
+        "publicKeyAlgorithm": -257,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "Valid RS256 registration, UP+UV set, attestation none.",
+    "expect": "pass",
+    "expected": {
+      "alg": -257,
+      "credential_backed_up": false,
+      "credential_device_type": "single_device",
+      "credential_id": "zX6Cq4FdIf7HotBrK1Bof494UL617rBceajpJ2jW_c8",
+      "credential_public_key": "pAEDAzkBACBZAQDz_JWqLkP2ggBNpiqVda9k0kHrmdQh50QkEKRQLHw4C0oRvuEnmAdD13BI5cwvjokmkqaezTIAbg4BCBkGyoOUeAY3933Nez8rjIQ6xojnELj8riq5N9dBcM3OKgZ7jh8nnFOJEgph1rc4qrsT9g_TtDHoFXqeGTW0jqH7n6gFPbF7_lwj_8j_XgB9phoDCW8EwQtveD1t9-M71Ql8yesNbSdVUnIPkL8j9_-RSLeLo63D6BL0zClhMpMbQc2ivtc7pGHdRg-S1_S9DwQ9lMk7JRaf_8MnGHrxQ4LjXgvbsMR121VIla4l_GFTi-gJ8ZUX-1XGOAQ79lrMPNH05fLzIUMBAAE",
+      "sign_count": 0,
+      "user_verified": true
+    },
+    "kind": "registration",
+    "name": "reg-rs256-uv"
+  },
+  {
+    "context": {
+      "expected_challenge": "Vf2anbkj7dDaKLRoU5wwhAczKsDDkjaPQIucrQkYwNk",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVmYyYW5ia2o3ZERhS0xSb1U1d3doQWN6S3NERGtqYVBRSXVjclFrWXdOayIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "clientDataJSON type is webauthn.get inside a registration ceremony; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "client data type",
+    "kind": "registration",
+    "name": "reg-type-mismatch"
+  },
+  {
+    "context": {
+      "expected_challenge": "EQljTR902yVlO1L4eQV282Lq2UZskJ49SM88TiY_ev8",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdEAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdEAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiRVFsalRSOTAyeVZsTzFMNGVRVjI4MkxxMlVac2tKNDlTTTg4VGlZX2V2OCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "UP flag is 0 (no user presence) with user presence required; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "present",
+    "kind": "registration",
+    "name": "reg-up-missing"
+  },
+  {
+    "context": {
+      "expected_challenge": "Y9M-HlXY05Y2rvTwrO1UUSsHhwvTw8YcldS7UGY3oPs",
+      "expected_origin": "https://example.com",
+      "expected_rp_id": "example.com",
+      "require_user_presence": true,
+      "require_user_verification": true
+    },
+    "credential": {
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {},
+      "id": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "rawId": "hhM79Omco9FQrLTwemcU-ljdDjfw_d7MNypd9G2uuwA",
+      "response": {
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViko3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdBAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIYTO_TpnKPRUKy08HpnFPpY3Q438P3ezDcqXfRtrrsApQECAyYgASFYIPE9MeKJrqb1T-ifleTVZCzCgoYw0HvAZ2CYBcwFpGTWIlgg6uqQMj_bCXwRT9KmctGegIfv6_45DtLBfpezvL4VRNo",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWTlNLUhsWFkwNVkycnZUd3JPMVVVU3NIaHd2VHc4WWNsZFM3VUdZM29QcyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8T0x4omupvVP6J-V5NVkLMKChjDQe8BnYJgFzAWkZNbq6pAyP9sJfBFP0qZy0Z6Ah-_r_jkO0sF-l7O8vhVE2g",
+        "publicKeyAlgorithm": -7,
+        "transports": [
+          "internal",
+          "hybrid"
+        ]
+      },
+      "type": "public-key"
+    },
+    "description": "UV flag is 0 but the server requires user verification; must be rejected.",
+    "expect": "fail",
+    "expected_error": "InvalidRegistrationResponse",
+    "expected_error_substring": "verification",
+    "kind": "registration",
+    "name": "reg-uv-required-missing"
+  }
+]

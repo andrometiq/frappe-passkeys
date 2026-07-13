@@ -11,7 +11,17 @@ try:
 except ImportError:  # v15
 	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
 
-__all__ = ["IntegrationTestCase", "flush_settings_cache"]
+__all__ = ["IntegrationTestCase", "WebAuthnAssertMixin", "flush_settings_cache"]
+
+
+class WebAuthnAssertMixin:
+	"""Shared soft-authenticator assertion builder for the request-cycle harnesses
+	(login / second-factor / confirm), which all pin the same test RP."""
+
+	def _assert(self, auth, options, **kw):
+		return auth.assertion(
+			challenge_b64=options["challenge"], rp_id="example.com", origin="https://example.com", **kw
+		)
 
 
 def flush_settings_cache():
