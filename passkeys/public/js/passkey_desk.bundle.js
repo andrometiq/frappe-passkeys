@@ -512,6 +512,87 @@
 		});
 	}
 
+	// ------------------------------------------------ admin enforcement recovery
+	// System-Manager enforcement-recovery controls for ANOTHER user (one-click exemption +
+	// grace reset), rendered beneath the read-only inventory on the User-form Passkeys
+	// section. Visibility is gated on the SITE enforcement policy (shouldShowEnforcementAdmin
+	// off the admin's own boot — policy is site-wide); the per-target exemption + grace
+	// state comes from the System-Manager-gated get_user_enforcement_admin read. Every
+	// server endpoint re-checks only_for("System Manager"), so this is a convenience
+	// surface, never the trust boundary.
+	function enfAdminCall(method, args) {
+		return post(method, args || {}).then(function (res) {
+			if (res && res.ok) return unwrap(res.body);
+			throw new Error("enforcement_admin_call_failed");
+		});
+	}
+	function enfAdminFail() {
+		frappe.msgprint({ title: t("Passkeys"), message: t(M.COPY.enforceAdminFailed), indicator: "orange" });
+	}
+	function enfAdminBusy(actionsEl, on) {
+		if (!actionsEl || !actionsEl.querySelectorAll) return;
+		var btns = actionsEl.querySelectorAll("button");
+		for (var i = 0; i < btns.length; i++) btns[i].disabled = !!on;
+	}
+	function renderEnforcementAdmin(container, user, bootObj) {
+		if (!container) return;
+		container.innerHTML = "";
+		if (!M.shouldShowEnforcementAdmin(bootObj || boot())) return; // policy not enforcing
+		return enfAdminCall(METHODS.getUserEnforcementAdmin, { user: user }).then(function (view) {
+			paintEnforcementAdmin(container, user, view);
+		}).catch(function () {
+			container.innerHTML = ""; // read failed (permission / transport) — render nothing
+		});
+	}
+	function paintEnforcementAdmin(container, user, view) {
+		container.innerHTML = "";
+		var vm = M.enforcementAdminViewModel(view);
+		var wrap = el("div", "passkey-enforcement-admin");
+		wrap.appendChild(el("div", "passkey-enforcement-admin-title text-muted", t(M.COPY.enforceAdminHeading)));
+
+		var status = el("div", "passkey-enforcement-admin-status");
+		status.appendChild(el("span", "indicator-pill " + vm.indicator.color));
+		status.appendChild(el("span", "passkey-enforcement-admin-status-text", t(M.COPY[vm.indicator.textKey])));
+		wrap.appendChild(status);
+
+		var graceText = t(M.COPY.enforceAdminGrace)
+			.replace("{0}", vm.graceUsed).replace("{1}", vm.graceTotal).replace("{2}", vm.graceRemaining);
+		wrap.appendChild(el("div", "passkey-enforcement-admin-grace small text-muted", graceText));
+
+		var actions = el("div", "passkey-enforcement-admin-actions");
+		var exemptBtn = el("button", "btn btn-xs " + (vm.exemptButtonPrimary ? "btn-primary" : "btn-default"), t(M.COPY[vm.exemptButtonKey]));
+		exemptBtn.setAttribute("type", "button");
+		exemptBtn.addEventListener("click", function () {
+			enfAdminBusy(actions, true);
+			enfAdminCall(METHODS.setUserExemption, { user: user, exempt: vm.nextExemptValue }).then(function (nv) {
+				paintEnforcementAdmin(container, user, nv);
+				frappe.show_alert({
+					message: t(nv.exempt ? M.COPY.enforceAdminExemptDone : M.COPY.enforceAdminUnexemptDone).replace("{0}", user),
+					indicator: "green",
+				});
+			}).catch(function () { enfAdminBusy(actions, false); enfAdminFail(); });
+		});
+		actions.appendChild(exemptBtn);
+
+		var resetBtn = el("button", "btn btn-xs btn-default", t(M.COPY.enforceAdminReset));
+		resetBtn.setAttribute("type", "button");
+		if (vm.resetDisabled) resetBtn.disabled = true;
+		resetBtn.addEventListener("click", function () {
+			enfAdminBusy(actions, true);
+			enfAdminCall(METHODS.resetEnforcementGrace, { user: user }).then(function (nv) {
+				paintEnforcementAdmin(container, user, nv);
+				frappe.show_alert({
+					message: t(M.COPY.enforceAdminResetDone).replace("{0}", nv.grace_total),
+					indicator: "green",
+				});
+			}).catch(function () { enfAdminBusy(actions, false); enfAdminFail(); });
+		});
+		actions.appendChild(resetBtn);
+
+		wrap.appendChild(actions);
+		container.appendChild(wrap);
+	}
+
 	// ---------------------------------------------------------- navbar dialog
 	var _managerDialog = null;
 	function isEscapeEvent(e) {
@@ -810,6 +891,7 @@
 	var manage = {
 		renderCards: renderCards,
 		renderReadOnlyInventory: renderReadOnlyInventory,
+		renderEnforcementAdmin: renderEnforcementAdmin,
 		openManagerDialog: openManagerDialog,
 		addPasskey: addPasskey,
 		refresh: refresh,

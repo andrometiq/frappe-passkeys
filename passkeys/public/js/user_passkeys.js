@@ -76,6 +76,15 @@ frappe.ui.form.on("User", {
 			root.className = "passkey-admin-inventory";
 			host.appendChild(root);
 			manage.renderReadOnlyInventory(root, frm.doc.name);
+			// Admin enforcement-recovery controls (one-click exemption + grace reset),
+			// beneath the inventory. renderEnforcementAdmin self-gates on the site
+			// enforcement policy (from boot), so it renders nothing on Off/Nudge sites.
+			if (manage.renderEnforcementAdmin) {
+				var enfRoot = document.createElement("div");
+				enfRoot.className = "passkey-admin-enforcement";
+				host.appendChild(enfRoot);
+				manage.renderEnforcementAdmin(enfRoot, frm.doc.name, boot);
+			}
 		}
 	},
 });
