@@ -34,6 +34,35 @@ node --test 'passkeys/tests/js/*.test.js'          # dependency-free client-logi
 # Cypress end-to-end: see .github/workflows/ci.yml for the exact invocation
 ```
 
+## Browserless WebAuthn test mode
+
+Most of the Python suite exercises the *real* ceremonies without a browser through a bench-guarded
+fake-service layer, `passkeys/tests/fake_webauthn.py`: real server-minted challenges, the unmodified
+`py_webauthn` verifier, and every app-side check, driven by a deterministic software authenticator
+(`SoftAuthenticator`). It is reusable — adopt it in your own app's CI to test passkey flows headlessly.
+
+```python
+from passkeys.tests import fake_webauthn
+
+# register → login (discoverable) → delete, all through the real verify paths:
+report = fake_webauthn.round_trip()
+assert report["session_matches"] and report["credential_gone"]
+
+# or enrol a committed passkey for a specific user to seed a fixture:
+fake_webauthn.enable()                       # point settings at a test RP + origin
+fake_webauthn.enroll(user="alice@example.com")
+```
+
+Every whitelisted entry point calls `_guard()` first (`frappe.only_for("System Manager")` plus a
+`developer_mode` / `flags.in_test` check), so it is reachable only by a System Manager on a dev/test
+bench — never in production, never by a guest — and folds away with `shims/` on the core merge. Two
+invariants keep it safe:
+
+- **It adds no skip-verification path.** Nothing touches `engine.py`; the authenticator emits
+  spec-valid payloads that pass the *unmodified* verifier, so a tampered assertion is still rejected.
+- **It relaxes only the enable-time HTTPS validator** (an `http://*.localhost` origin is accepted for
+  a local bench); the ceremony-time `expected_origin` check the verifier enforces is fully intact.
+
 ## Branches
 
 The code is a single feature-detecting codebase; the branches mirror `frappe/frappe` so users
