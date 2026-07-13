@@ -1,5 +1,5 @@
 // passkey_headless.test.js — dependency-free unit harness for the PURE
-// createHeadless ceremony orchestrator (passkey_headless.js). Runs WITHOUT the
+// createHeadless ceremony orchestrator (passkey_headless.bundle.js). Runs WITHOUT the
 // bench and WITHOUT jsdom:  node --test passkeys/tests/js
 //
 // Covers the whole headless lifecycle a custom UI drives: first-factor login
@@ -13,9 +13,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const C = require("../../public/js/passkey_common.js");
-const M = require("../../public/js/passkey_manage_common.js");
-const H = require("../../public/js/passkey_headless.js");
+const C = require("../../public/js/passkey_common.bundle.js");
+const M = require("../../public/js/passkey_manage_common.bundle.js");
+const H = require("../../public/js/passkey_headless.bundle.js");
 
 const LM = H.LOGIN_METHODS;
 const MM = M.MANAGE_METHODS;

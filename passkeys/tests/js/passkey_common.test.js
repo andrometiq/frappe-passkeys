@@ -8,7 +8,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 // --------------------------------------------------------- tiny DOM stub
 // Just enough of the DOM for selector-resolution + a11y helpers, no jsdom needed.

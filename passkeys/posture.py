@@ -21,7 +21,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-# Severity ranks. The client renderer (``passkey_manage_common.js::posturePanel``)
+# Severity ranks. The client renderer (``passkey_manage_common.bundle.js::posturePanel``)
 # mirrors this order; the detectability disclaimer always sorts last regardless.
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}
 

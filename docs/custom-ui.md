@@ -80,12 +80,20 @@ last-passkey delete guard — surfaced verbatim).
 Serve these from the app's public tree (order matters — each reads the one before):
 
 ```html
-<script src="/assets/passkeys/js/passkey_common.js"></script>          <!-- always -->
-<script src="/assets/passkeys/js/passkey_manage_common.js"></script>   <!-- for management -->
-<script src="/assets/passkeys/js/passkey_headless.js"></script>        <!-- the API -->
+<script src="/assets/passkeys/js/passkey_common.bundle.js"></script>          <!-- always -->
+<script src="/assets/passkeys/js/passkey_manage_common.bundle.js"></script>   <!-- for management -->
+<script src="/assets/passkeys/js/passkey_headless.bundle.js"></script>        <!-- the API -->
 ```
 
-A **login-only** page needs just `passkey_common.js` + `passkey_headless.js`. On Desk
+Every library ships as a `*.bundle.js` file. Esbuild content-hashes each one at
+`bench build`, so on a **Frappe-rendered** page you should register the **bare bundle
+name** (no `/assets` prefix) — via `web_include_js` on a website page, or `app_include_js`
+in your `hooks.py` on Desk — and Frappe's `bundled_asset()` rewrites it to the hashed,
+cache-busted URL. The raw `/assets/passkeys/js/…bundle.js` paths above are the
+un-hashed physical fallback for a hand-rolled page Frappe doesn't render; they load, but
+the browser may cache them across a deploy, so prefer the bare-name registration when you can.
+
+A **login-only** page needs just `passkey_common.bundle.js` + `passkey_headless.bundle.js`. On Desk
 and on the app's own portal pages these are already loaded for you, so
 `frappe.passkeys.headless` is simply there.
 
@@ -104,8 +112,8 @@ Your own markup, your own styles. The only app dependency is the two scripts.
   <p id="status" role="status" aria-live="polite"></p>
 </form>
 
-<script src="/assets/passkeys/js/passkey_common.js"></script>
-<script src="/assets/passkeys/js/passkey_headless.js"></script>
+<script src="/assets/passkeys/js/passkey_common.bundle.js"></script>
+<script src="/assets/passkeys/js/passkey_headless.bundle.js"></script>
 <script>
   const pk = frappe.passkeys.headless;
   const status = document.getElementById("status");
@@ -151,9 +159,9 @@ pk.login({ mediation: "conditional", signal: ac.signal }).then((r) => {
 <label><input type="checkbox" id="passwordless"> Passwordless login only</label>
 <p id="msg" role="status" aria-live="polite"></p>
 
-<script src="/assets/passkeys/js/passkey_common.js"></script>
-<script src="/assets/passkeys/js/passkey_manage_common.js"></script>
-<script src="/assets/passkeys/js/passkey_headless.js"></script>
+<script src="/assets/passkeys/js/passkey_common.bundle.js"></script>
+<script src="/assets/passkeys/js/passkey_manage_common.bundle.js"></script>
+<script src="/assets/passkeys/js/passkey_headless.bundle.js"></script>
 <script>
   const pk = frappe.passkeys.headless;
   const M  = frappe.passkeys_manage_common;   // optional: card view-models + copy

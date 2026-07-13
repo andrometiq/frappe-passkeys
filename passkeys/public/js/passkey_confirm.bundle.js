@@ -1,4 +1,4 @@
-// passkey_confirm.js — the client half of the action-confirmation
+// passkey_confirm.bundle.js — the client half of the action-confirmation
 // ("passkey signing") primitive. Publishes the public JS API other Desk / portal
 // apps call to require a fresh passkey confirmation for a sensitive action.
 //
@@ -11,12 +11,12 @@
 // the WebAuthn L3 gesture, and the frappe.ui.Dialog confirmation UI + a11y. ALL
 // protocol/state-machine logic (begin -> gesture -> verify -> grant, the 401
 // retry / verbatim payload_fingerprint echo, concurrency dedupe, the
-// typed rejection taxonomy) lives in passkey_common.js::createConfirmEngine so
+// typed rejection taxonomy) lives in passkey_common.bundle.js::createConfirmEngine so
 // it is unit-testable under `node --test` without a bench. JS NEVER computes a
 // payload hash — begin_confirmation is handed raw params, or echoes back a
 // server-issued payload_fingerprint verbatim.
 //
-// Loaded as an app_include_js entry AFTER passkey_common.js (which sets the
+// Loaded as an app_include_js entry AFTER passkey_common.bundle.js (which sets the
 // frappe.passkeys_common global this file reads).
 //
 // eslint-env browser
@@ -394,7 +394,7 @@
 		if (!f.passkeys.call) f.passkeys.call = unavailable;
 	}
 
-	// Node-only test seam (UMD-lite, mirrors passkey_common.js): expose the dialog
+	// Node-only test seam (UMD-lite, mirrors passkey_common.bundle.js): expose the dialog
 	// UI factory so `node --test` can exercise the straight-to-password route
 	// without a bench/jsdom. No-op in the browser — `module` is undefined there.
 	if (typeof module === "object" && module.exports) {

@@ -4,7 +4,7 @@
 // puts the loud one-way-door confirm on the RP-ID field. Destination on core merge:
 // the passkey section of frappe/core/doctype/system_settings/system_settings.js.
 //
-// The banner DECISIONS come from passkey_manage_common.js::settingsBanners (pure,
+// The banner DECISIONS come from passkey_manage_common.bundle.js::settingsBanners (pure,
 // node-tested); this file only paints them and wires the confirm dialog. Cross-flag
 // context (core enable_two_factor_auth / disable_user_pass_login / the passkey-only
 // user count) is read from frappe.boot.passkeys.settings_context when the server
@@ -62,7 +62,7 @@ frappe.ui.form.on("Passkey Settings", {
 		// Cancel / Esc / backdrop dismissal MUST revert the field, so a backed-out
 		// change can never be saved (the confirm has to actually gate the save).
 		// The modal hide event is the reliable catch-all across dismissal routes
-		// (same idiom as the desk nudge dialog + passkey_confirm.js::wireCancel).
+		// (same idiom as the desk nudge dialog + passkey_confirm.bundle.js::wireCancel).
 		if (d && d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () {
 				if (proceeded) return;

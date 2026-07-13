@@ -22,7 +22,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const C = require("../../public/js/passkey_common.js");
+const C = require("../../public/js/passkey_common.bundle.js");
 
 const realSetTimeout = global.setTimeout;
 const tick = () => new Promise((r) => realSetTimeout(r, 0));

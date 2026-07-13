@@ -53,12 +53,12 @@ placement (`frappe/core/…`, DocType names kept); if review picks `frappe/integ
 | `passkeys/shims/login_page.py` (`update_website_context` → conditional `web_include_js`) | `frappe/www/login.py` + `login.html` native slot (patch 03) | **shim** (deleted) |
 | `passkeys/shims/portal_nudge.py` (`update_website_context` → the self-gating portal bundle + a `frappe.boot.passkeys` bridge on **every** authenticated website render — website boot omits `extend_bootinfo`); **built** | native portal boot + `web_include_js` slot | **shim** (deleted — website nudge becomes native) |
 | `passkeys/public/js/passkey_login.bundle.js` (conditional UI, button, 2FA step, uv-setup) | `frappe/public/js/` passkey bundle + `frappe/templates/includes/login/login.js` sections | fold |
-| `passkeys/public/js/passkey_common.js` (JSON shim, b64url, ceremony helpers, Signal API) | `frappe/public/js/frappe/utils/` + passkey bundle | fold (cf. #34181's `utils.js` +40) |
-| `passkeys/public/js/passkey_confirm.js` (confirm dialog helper) | passkey bundle | fold |
+| `passkeys/public/js/passkey_common.bundle.js` (JSON shim, b64url, ceremony helpers, Signal API) | `frappe/public/js/frappe/utils/` + passkey bundle | fold (cf. #34181's `utils.js` +40) |
+| `passkeys/public/js/passkey_confirm.bundle.js` (confirm dialog helper) | passkey bundle | fold |
 | `passkeys/public/js/passkey_desk.bundle.js` (User-form cards, nudge, `frappe.passkeys.*`) | `frappe/core/doctype/user/user.js` + Desk bundle | fold (cf. #34181's `user.js` +288) |
 | `passkeys/public/js/passkey_portal.bundle.js` (portal `/passkeys` management cards + `maybeNudgeBanner`; self-gates on a `#passkey-portal-root` mount) | `frappe/public/js/` passkey bundle + portal template | fold |
-| `passkeys/public/js/passkey_manage_common.js` (shared Desk+portal management logic: banners, origins mirror, RP-ID one-way-door revert) | `frappe/public/js/frappe/utils/` + passkey bundle | fold |
-| `passkeys/public/js/passkey_settings.js` (Passkey Settings form — RP-ID one-way-door confirm gating the save, cross-flag data) + `passkeys/public/css/passkey_manage.css` | `frappe/core/doctype/passkey_settings/…` (folds with the Settings fields) + Desk CSS | fold |
+| `passkeys/public/js/passkey_manage_common.bundle.js` (shared Desk+portal management logic: banners, origins mirror, RP-ID one-way-door revert) | `frappe/public/js/frappe/utils/` + passkey bundle | fold |
+| `passkeys/public/js/passkey_settings.js` (Passkey Settings form — RP-ID one-way-door confirm gating the save, cross-flag data) + `passkeys/public/css/passkey_manage.bundle.css` | `frappe/core/doctype/passkey_settings/…` (folds with the Settings fields) + Desk CSS | fold |
 | `doctype_js` User-form section (`user_passkeys.js`) + `doc_events` `User.on_trash` cascade | `frappe/core/doctype/user/user.js` + `user.py` | fold |
 | `passkeys/www/passkeys.{html,py}` portal management page; **built** | `frappe/www/passkeys.{html,py}` | verbatim |
 | `passkeys/translations/` guest-i18n endpoint (`get_app_translations`, `passkey.py:766` — version-keyed `Cache-Control`) | native guest translation delivery on develop; **stays app-only for v15/v16** | mostly **discard** on merge |
