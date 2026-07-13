@@ -329,7 +329,7 @@
 	// unit-testable under node:test with no browser.
 	//
 	// Copy is the English base (the bundle wraps each string in t() at render time) and
-	// follows the Wave-3 error-copy playbook: geeky-but-accurate on the happy path
+	// follows the error-copy playbook: geeky-but-accurate on the happy path
 	// (WebAuthn really does wait for the device, then verify a signature), plain + routed
 	// on failure — every error names a way out, and there is no humor in an error state.
 	// Tone drives styling: "progress" (spinner), "success" (resolved beat), "error".
@@ -585,8 +585,7 @@
 	var GRANT_HEADER = "X-Passkey-Grant";
 	var GRANT_KWARG = "_passkey_grant";
 
-	// Method paths the confirm client calls (server whitelist names). Kept
-	// here so the server phase can grep the exact strings.
+	// Method paths the confirm client calls (server whitelist names).
 	var CONFIRM_METHODS = {
 		begin: "passkeys.confirm.begin_confirmation",
 		verify: "passkeys.confirm.verify_confirmation",

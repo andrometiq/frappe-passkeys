@@ -32,10 +32,9 @@
 	"use strict";
 
 	// ================================================================ wire seam
-	// Whitelisted server method dotted-paths the management UI calls. Kept here so
-	// the parallel server phase can grep the exact strings. The credential/
-	// registration rows are the EXISTING P2b endpoints (passkeys/api/*.py); the
-	// nudge rows are REQUESTED endpoints — see the build manifest.
+	// Whitelisted server method dotted-paths the management UI calls. The credential/
+	// registration rows live in passkeys/api/*.py; the nudge/enforcement rows in
+	// passkeys/passkey.py.
 	var MANAGE_METHODS = {
 		list: "passkeys.api.credentials.list_credentials",
 		rename: "passkeys.api.credentials.rename_credential",
@@ -43,7 +42,6 @@
 		setPasskeyOnly: "passkeys.api.credentials.set_passkey_only_login",
 		beginRegistration: "passkeys.api.registration.begin_registration",
 		verifyRegistration: "passkeys.api.registration.verify_registration",
-		// The server phase built these on passkey.py.
 		recordNudge: "passkeys.passkey.record_nudge",
 		recordEnforcement: "passkeys.passkey.record_enforcement",
 		getSignalData: "passkeys.passkey.get_signal_data",
@@ -53,10 +51,6 @@
 	// surface: a live `passkeys.manage` window OR a fresh passkey
 	// confirmation satisfies delete / explicit registration.
 	var MANAGE_ACTION = "passkeys.manage";
-
-	// The dedicated per-user passkey-grant action for the passkey-only switch.
-	// set_passkey_only_login accepts a passkey grant ONLY.
-	var PASSKEY_ONLY_ACTION = "passkeys.set_passkey_only_login";
 
 	// record_nudge event enum.
 	var NUDGE_EVENTS = { SHOWN: "shown", DECLINED: "declined", OPT_OUT: "opt_out" };
@@ -73,8 +67,8 @@
 	var ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
 	// ===================================================== translatable copy keys
-	// English source strings (the DOM layer wraps each with __()). Grouped so the
-	// server phase can mirror them into translations/{lang}.csv. Logic here
+	// English source strings (the DOM layer wraps each with __()). These map into
+	// translations/{lang}.csv. Logic here
 	// never bakes a language in — it returns keys/args, the renderer translates.
 	var COPY = {
 		// cards / empty state
@@ -103,10 +97,6 @@
 		alreadyRegistered: "This device already has a passkey for this account.",
 		addExpired: "That took too long — please try again.",
 		addFailed: "Couldn't add a passkey — please try again.",
-		// last-method guard
-		lastMethodBlocked:
-			"This is your only passkey and passwordless login is on for your account — " +
-			"add another passkey (or turn off passkey-only login) before removing it.",
 		// nudge
 		nudgeTitle: "Sign in faster next time",
 		nudgeBody:
@@ -320,7 +310,7 @@
 	// The post-login enrollment-nudge decision. The server owns cadence
 	// (`nudge_state.eligible`); the client only ANDs its capability checks. Returns
 	// a verdict with a machine-readable `reason` for tests/telemetry.
-	//   boot: frappe.boot.passkeys (see the build manifest for the exact contract)
+	//   boot: frappe.boot.passkeys
 	//   caps: client capability probe (supported / conditionalCreate)
 	function nudgeDecision(boot, caps, now) {
 		boot = boot || {};
@@ -444,22 +434,6 @@
 			out.reason = "eligible";
 		}
 		return out;
-	}
-
-	// ------------------------------------------------- last-method delete guard
-	// Client mirror of the census guard (advisory — delete_credential enforces
-	// it server-side and is authoritative). Refuse dropping the final enabled
-	// credential of a passkey-only user (or under site disable_user_pass_login).
-	//   ctx: { enabledCount, passkeyOnly, disablePassLogin }
-	function deleteGuard(cred, ctx) {
-		cred = cred || {};
-		ctx = ctx || {};
-		if (!isTruthy(cred.enabled)) return { blocked: false, reason: "soft_disabled" };
-		if ((ctx.enabledCount || 0) > 1) return { blocked: false, reason: "another_survives" };
-		if (isTruthy(ctx.passkeyOnly) || isTruthy(ctx.disablePassLogin)) {
-			return { blocked: true, reason: "last_method", messageKey: COPY.lastMethodBlocked };
-		}
-		return { blocked: false, reason: "ok" };
 	}
 
 	// ---------------------------------------------------- settings banners
@@ -745,7 +719,6 @@
 		// wire seam
 		MANAGE_METHODS: MANAGE_METHODS,
 		MANAGE_ACTION: MANAGE_ACTION,
-		PASSKEY_ONLY_ACTION: PASSKEY_ONLY_ACTION,
 		NUDGE_EVENTS: NUDGE_EVENTS,
 		ENFORCE_EVENTS: ENFORCE_EVENTS,
 		UPSELL_FLAG_KEY: UPSELL_FLAG_KEY,
@@ -765,7 +738,6 @@
 		nudgeDecision: nudgeDecision,
 		enforcementDecision: enforcementDecision,
 		upsellDecision: upsellDecision,
-		deleteGuard: deleteGuard,
 		settingsBanners: settingsBanners,
 		roleNames: roleNames,
 		deriveOrigins: deriveOrigins,

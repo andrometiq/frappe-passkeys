@@ -1,5 +1,5 @@
 // user_passkeys.js — the "Passkeys" section on the Desk User form. Wired via
-// `doctype_js = {"User": "public/js/user_passkeys.js"}` (see the build manifest).
+// `doctype_js = {"User": "public/js/user_passkeys.js"}`.
 //
 // Placement is DETERMINISTIC. install.sync_user_form_section adds a Custom Field
 // Section Break ("passkeys_section", label "Passkeys") + an HTML wrapper

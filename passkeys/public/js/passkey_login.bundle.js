@@ -8,7 +8,7 @@
 // failure degrades to the untouched core password form — the page is never deadened.
 //
 // The whole file is an IIFE (classic script) so it needs no bundler module resolution and is
-// `node --check`-able as-is. Server contracts are the FROZEN spec's pinned wire shapes.
+// `node --check`-able as-is. Server contracts are pinned wire shapes.
 //
 // eslint-env browser
 (function () {
