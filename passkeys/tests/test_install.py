@@ -420,7 +420,7 @@ class TestUserFormSection(IntegrationTestCase):
 		return frappe.db.get_value(
 			"Custom Field",
 			{"dt": "User", "fieldname": fieldname},
-			["fieldtype", "label", "insert_after"],
+			["fieldtype", "label", "insert_after", "collapsible"],
 			as_dict=True,
 		)
 
@@ -431,6 +431,8 @@ class TestUserFormSection(IntegrationTestCase):
 		html = self._field(install.USER_FORM_HTML_FIELD)
 		self.assertEqual(section.fieldtype, "Section Break")
 		self.assertEqual(section.label, "Passkeys")
+		# collapsible ⇒ the section renders collapsed by default (management one click away)
+		self.assertEqual(section.collapsible, 1)
 		self.assertEqual(html.fieldtype, "HTML")
 		# the HTML wrapper sits inside the Passkeys section
 		self.assertEqual(html.insert_after, install.USER_FORM_SECTION_FIELD)
