@@ -7,11 +7,7 @@ own auth surface on the core merge).
 **Hook-path import discipline:** ``guard_system_settings`` rides
 ``doc_events`` on System Settings ``validate`` — a hook that fires on every
 System Settings save — so this module MUST NOT import ``webauthn`` (directly or
-transitively). It imports only ``frappe``.
-
-The ``on_login`` veto (``passkey_only_login``) and the sudo-window seed
-(currently in ``session.py``) are the other tenants of this module in the
-core-merge layout; only the two-way 2FA-floor guard is built here."""
+transitively). It imports only ``frappe``."""
 
 import frappe
 from frappe import _

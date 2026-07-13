@@ -10,17 +10,16 @@ merge.
 login/logout of *every* user — so it MUST NOT import ``webauthn`` (directly or
 transitively). It imports only ``frappe`` and :mod:`passkeys.state`.
 
-Placement note: ``seed_sudo_window`` would naturally live in
-``auth_hooks.py`` (alongside the on_login veto + System Settings 2FA guard,
-which land in later phases). Those seams are unbuilt; keeping the sudo seed +
-check here in ``session.py`` avoids colliding with that future module and keeps
-this hook-path file import-clean. ``hooks.py`` points the hooks here.
+Placement note: the sudo seed + check live here in ``session.py`` (not
+``auth_hooks.py``) to keep this hook-path file import-clean. ``hooks.py`` points
+the hooks here.
 """
 
 import hashlib
 import json
 
 import frappe
+from frappe import _
 from frappe.utils import cint, now
 
 from passkeys import install, state
@@ -168,6 +167,16 @@ def has_management_sudo(user: str, sid: str | None = None) -> bool:
 	return bool(window and window.get("seeded_by") in FULL_SUDO_METHODS)
 
 
+def require_authed_user() -> str:
+	"""The current session user, or raise ``AuthenticationError`` for Guest/empty.
+	The shared authenticated-user guard the confirm / registration / credentials
+	endpoints front their handlers with."""
+	user = frappe.session.user
+	if not user or user in ("Guest", ""):
+		raise frappe.AuthenticationError(_("Not permitted."))
+	return user
+
+
 def require_management_sudo(user: str) -> None:
 	"""Gate the app's management surface. Raises the typed
 	``PasskeyConfirmationRequired`` retry contract when no full-sudo
@@ -179,10 +188,9 @@ def require_management_sudo(user: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# passkey-grant consumer — the consumer half of the action-signing
-# primitive. The MINTER (confirm.begin_confirmation / verify_confirmation +
-# the general @passkey_protected decorator) is Phase 5; only the grant-consuming
-# guard needed by set_passkey_only_login is built here.
+# passkey-grant consumer — the consumer half of the action-signing primitive
+# (the minter is confirm.begin_confirmation / verify_confirmation + the
+# @passkey_protected decorator).
 # ---------------------------------------------------------------------------
 
 
@@ -208,13 +216,7 @@ def consume_passkey_grant(user: str, action: str, params: dict) -> bool:
 	record = state.consume_grant(hashlib.sha256(token.encode("utf-8")).hexdigest())
 	if not record:
 		return False
-	return (
-		record.get("user") == user
-		and record.get("sid") == frappe.session.sid
-		and record.get("action") == action
-		and record.get("method") == "passkey"
-		and record.get("payload_hash") == payload_hash(params)
-	)
+	return _grant_matches(record, user, action, params) and record.get("method") == "passkey"
 
 
 def _grant_matches(record: dict, user: str, action: str, params: dict) -> bool:

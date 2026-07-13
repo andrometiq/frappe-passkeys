@@ -18,7 +18,12 @@ import frappe
 from frappe import _
 
 from passkeys import aaguid, policy, state
-from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired, refuse_if_core_native
+from passkeys.passkey import (
+	CeremonyExpired,
+	PasskeyConfirmationRequired,
+	_enforce_request_host,
+	refuse_if_core_native,
+)
 
 MANAGE_ACTION = "passkeys.manage"
 
@@ -249,22 +254,6 @@ def _enforce_max_per_user(settings, credentials: list, flow: str) -> None:
 		)
 
 
-def _enforce_request_host(origins: list) -> None:
-	"""Fail-closed host membership. No-ops when there is no HTTP
-	request context (direct-call unit/integration paths) — the library's
-	``expected_origin`` check against clientDataJSON is the binding enforcement;
-	this is the ops-diagnosable pre-check."""
-	origin = _request_origin()
-	if origin is None:
-		return
-	if origin not in origins:
-		frappe.log_error(
-			title="passkeys: request host not in configured origins",
-			message=f"request origin {origin} not in {origins}",
-		)
-		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
-
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -314,16 +303,6 @@ def _load_transports(raw) -> list:
 	except (TypeError, ValueError):
 		return []
 	return value if isinstance(value, list) else []
-
-
-def _request_origin() -> str | None:
-	request = getattr(frappe.local, "request", None)
-	if request is None:
-		return None
-	headers = getattr(request, "headers", None)
-	if headers is None:
-		return None
-	return headers.get("Origin")
 
 
 def _rp_name() -> str:
