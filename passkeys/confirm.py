@@ -45,6 +45,15 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 from passkeys import policy, session, state
+from passkeys.passkey import (
+	CeremonyExpired,
+	_advance_credential,
+	_b64url_decode,
+	_enforce_request_host,
+)
+from passkeys.passkey import (
+	refuse_if_core_native as _refuse_if_core_native,
+)
 
 # ---------------------------------------------------------------------------
 # Per-action policy registry. The @passkey_protected decorator declares
@@ -80,10 +89,10 @@ def register_action(policy_: ActionPolicy) -> None:
 def get_action_policy(action: str) -> ActionPolicy:
 	"""The registered policy for ``action``, or a safe default. The default
 	mirrors the decorator defaults (``allow_password_fallback=True``,
-	``allow_sudo_window=False``) so an app using only the imperative
-	:func:`require_passkey_confirmation` (no import-time decorator) still gets the
-	universal-re-auth behaviour. Actions that must never accept a password
-	are pre-registered below, so the default can never weaken them."""
+	``allow_sudo_window=False``) so an action confirmed without an import-time
+	:func:`passkey_protected` registration still gets the universal-re-auth
+	behaviour. Actions that must never accept a password are pre-registered below,
+	so the default can never weaken them."""
 	return _ACTION_POLICIES.get(action) or ActionPolicy(action=action)
 
 
@@ -109,7 +118,7 @@ register_action(
 
 
 # ===========================================================================
-# Public API — the decorator + imperative guards other apps import
+# Public API — the @passkey_protected decorator other apps import
 # ===========================================================================
 
 
@@ -175,57 +184,6 @@ def passkey_protected(
 		return wrapper
 
 	return decorator
-
-
-def require_passkey_confirmation(
-	action: str,
-	params: dict | None = None,
-	*,
-	allow_password_fallback: bool = True,
-	allow_sudo_window: bool = False,
-) -> None:
-	"""Imperative form of :func:`passkey_protected`, for dynamic call sites where
-	the action or payload is only known at runtime::
-
-	    require_passkey_confirmation("myapp.release_payment", {"payment_id": pid})
-
-	Consumes a matching grant (or a permitted fallback) and returns; otherwise
-	raises the 401 retry contract. Registers/updates the action policy so the
-	minter offers the same ``methods``."""
-	params = dict(params or {})
-	policy_ = _ACTION_POLICIES.get(action) or ActionPolicy(
-		action=action,
-		bind_params=tuple(params.keys()),
-		allow_password_fallback=bool(allow_password_fallback),
-		allow_sudo_window=bool(allow_sudo_window),
-	)
-	register_action(policy_)
-	_consume_or_raise(policy_, params)
-
-
-def has_valid_grant(
-	action: str,
-	params: dict | None = None,
-	*,
-	allow_password_fallback: bool = True,
-	allow_sudo_window: bool = False,
-) -> bool:
-	"""Non-raising predicate: ``True`` iff a grant (or permitted fallback) for
-	``(action, params)`` is present for the current session. **Consumes** the
-	grant on a hit — grants are single-use, so "check" and "spend" are the same
-	atomic operation; call this exactly once at the point you act. Prefer the
-	decorator or :func:`require_passkey_confirmation` unless you need to branch on
-	the outcome yourself."""
-	user = frappe.session.user
-	if not user or user in ("Guest", ""):
-		return False
-	return session.consume_action_grant(
-		user,
-		action,
-		dict(params or {}),
-		allow_password_fallback=bool(allow_password_fallback),
-		allow_sudo_window=bool(allow_sudo_window),
-	)
 
 
 def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
@@ -297,7 +255,7 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 	authoritative per-user subset of ``["passkey","password","sudo"]``. Raises
 	417 ``PasskeyServedByCore`` when core serves passkeys natively."""
 	_refuse_if_core_native()
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("begin_confirmation", 30, 300)  # 30/5 min/user
 	action = _require_action(action)
 	fingerprint = _resolve_payload_hash(params, payload_hash)
@@ -364,7 +322,7 @@ def verify_confirmation(state_id: str, credential):
 	bound, ``passkey``-method grant. Any failure raises the uniform typed error;
 	the client never re-POSTs an assertion."""
 	_refuse_if_core_native()
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("verify_confirmation", 30, 300)  # 30/5 min/user
 
 	from passkeys import engine
@@ -373,7 +331,7 @@ def verify_confirmation(state_id: str, credential):
 
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
-		raise _ceremony_expired()
+		raise CeremonyExpired(_("That took too long — please try again."))
 	# sid + user binding: a ceremony minted for another session/user is unusable.
 	if record.get("user") != user or record.get("sid") != frappe.session.sid:
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
@@ -458,7 +416,7 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 	from frappe.utils.password import check_password
 
 	_refuse_if_core_native()
-	user = _require_user()
+	user = session.require_authed_user()
 	state.rate_limit_user("reauth_password", 5, 300)  # 5/5 min/user
 
 	# Under site `disable_user_pass_login`, a password can no
@@ -570,51 +528,11 @@ def _has_enabled_passkey(user: str) -> bool:
 	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
 
 
-def _refuse_if_core_native() -> None:
-	"""Dormant-shell contract: delegate to the canonical guard so the confirm
-	surface raises the SAME typed 417 (and rides the same one-time advisory) as
-	every other app endpoint — no duplicated switch logic."""
-	from passkeys.passkey import refuse_if_core_native
-
-	refuse_if_core_native()
-
-
-def _require_user() -> str:
-	user = frappe.session.user
-	if not user or user in ("Guest", ""):
-		raise frappe.AuthenticationError(_("Not permitted."))
-	return user
-
-
 def _require_action(action) -> str:
 	action = (action or "").strip() if isinstance(action, str) else action
 	if not action or not isinstance(action, str):
 		frappe.throw(_("A confirmation action is required."), frappe.ValidationError)
 	return action
-
-
-def _ceremony_expired():
-	from passkeys.passkey import CeremonyExpired
-
-	return CeremonyExpired(_("That took too long — please try again."))
-
-
-def _advance_credential(name, result) -> None:
-	from passkeys.passkey import _advance_credential as advance
-
-	advance(name, result)
-
-
-def _enforce_request_host(origins) -> None:
-	from passkeys.passkey import _enforce_request_host as enforce
-
-	enforce(origins or [])
-
-
-def _b64url_decode(value: str) -> bytes:
-	from passkeys.passkey import _b64url_decode as decode
-
-	return decode(value)
 
 
 def _transports(raw) -> list:
