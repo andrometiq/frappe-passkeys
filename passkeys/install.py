@@ -346,6 +346,13 @@ def _create_user_form_section():
 					"label": "Passkeys",
 					"fieldtype": "Section Break",
 					"insert_after": _user_form_anchor(),
+					# Collapsible: the section renders collapsed by default (Frappe's
+					# refresh_section_collapse collapses a collapsible section with no
+					# mandatory fields), so passkey management stays one click away
+					# without adding vertical noise to My Settings. create_custom_fields
+					# runs with update=True on after_migrate, so existing sites pick this
+					# up on the next migrate.
+					"collapsible": 1,
 					# module set so core's uninstaller also cleans it (mirrors the
 					# registry Property Setter); before_uninstall removes it explicitly too.
 					"module": "Passkeys",
