@@ -564,6 +564,80 @@ test("posturePanel: normalises row fields + detectable default (true)", () => {
 	});
 });
 
+// ---------------------------------------------------- security-posture report (CTA)
+
+test("postureRowMark: maps severity to the tick/flag language", () => {
+	assert.strictEqual(M.postureRowMark({ severity: "high" }), "flag");
+	assert.strictEqual(M.postureRowMark({ severity: "medium" }), "warn");
+	assert.strictEqual(M.postureRowMark({ severity: "low" }), "tune");
+	assert.strictEqual(M.postureRowMark({ severity: "info" }), "note");
+	// an undetectable row is a neutral note regardless of its (info) severity
+	assert.strictEqual(M.postureRowMark({ severity: "info", detectable: false }), "note");
+	// unknown / missing severity degrades to a note, never throws
+	assert.strictEqual(M.postureRowMark({}), "note");
+	assert.strictEqual(M.postureRowMark(), "note");
+});
+
+test("postureReport: 'good' verdict is all-clear with zero actions (the satisfying tick)", () => {
+	const r = M.postureReport({
+		verdict: {
+			headline: "No stock bypass paths detected — passkeys are the only stock way to sign in.",
+			tone: "good",
+			can_bypass: false,
+		},
+		rows: [
+			{ code: "core_2fa_on", severity: "info", what: "2FA is on", recommendation: "No change needed" },
+			{ code: "sign_count_soft", severity: "low", what: "hard-fail off", recommendation: "turn it on" },
+			{ code: "custom_apps", severity: "info", what: "custom apps", detectable: false },
+		],
+	});
+	assert.strictEqual(r.summary.tone, "good");
+	assert.strictEqual(r.summary.allClear, true);
+	assert.strictEqual(r.summary.canBypass, false);
+	assert.strictEqual(r.summary.actionCount, 0); // low/info are not "action" items
+	assert.strictEqual(r.summary.rowCount, 3);
+	assert.strictEqual(r.headline.text.indexOf("No stock bypass paths") === 0, true);
+});
+
+test("postureReport: bypass verdict counts flags+warnings as actions, marks each row", () => {
+	const r = M.postureReport({
+		verdict: { headline: "Passkeys can currently be bypassed via: password sign-in.", tone: "high", can_bypass: true },
+		rows: [
+			{ code: "custom_apps", severity: "info", what: "custom", detectable: false },
+			{ code: "sign_count_soft", severity: "low", what: "soft" },
+			{ code: "password_login", severity: "high", what: "pw", recommendation: "disable it" },
+			{ code: "email_link", severity: "medium", what: "email", recommendation: "turn it off" },
+		],
+	});
+	// ordering is inherited from posturePanel: high, medium, low, then the disclaimer last
+	assert.deepStrictEqual(r.rows.map((x) => x.code), ["password_login", "email_link", "sign_count_soft", "custom_apps"]);
+	assert.deepStrictEqual(r.rows.map((x) => x.mark), ["flag", "warn", "tune", "note"]);
+	assert.strictEqual(r.summary.tone, "high");
+	assert.strictEqual(r.summary.allClear, false);
+	assert.strictEqual(r.summary.canBypass, true);
+	assert.strictEqual(r.summary.actionCount, 2); // one flag + one warn
+});
+
+test("postureReport: 'info' (passkeys not active) is neither all-clear nor a bypass", () => {
+	const r = M.postureReport({
+		verdict: { headline: "Passkeys are not an active login factor on this site.", tone: "info", can_bypass: false },
+		rows: [{ code: "no_mode", severity: "info", what: "not active" }],
+	});
+	assert.strictEqual(r.summary.tone, "info");
+	assert.strictEqual(r.summary.allClear, false);
+	assert.strictEqual(r.summary.canBypass, false);
+	assert.strictEqual(r.summary.actionCount, 0);
+});
+
+test("postureReport: empty/absent response degrades cleanly", () => {
+	const r = M.postureReport();
+	assert.strictEqual(r.summary.tone, "info");
+	assert.strictEqual(r.summary.allClear, false);
+	assert.strictEqual(r.summary.actionCount, 0);
+	assert.strictEqual(r.summary.rowCount, 0);
+	assert.deepStrictEqual(r.rows, []);
+});
+
 // ---------------------------------------------------------- origins + signal
 
 test("originsIncludeHost / originHost normalise scheme + path", () => {
