@@ -248,7 +248,9 @@ def classify_posture(ctx: dict) -> dict:
 	bypass_labels = [r["bypass_label"] for r in ordered if r.get("bypass_label")]
 	if bypass_labels:
 		verdict = {
-			"headline": _("Passkeys can currently be bypassed via: {0}.").format(", ".join(bypass_labels)),
+			"headline": _("Users can still sign in without a passkey via: {0}.").format(
+				", ".join(bypass_labels)
+			),
 			"tone": "high",
 			"can_bypass": True,
 			"bypass_labels": bypass_labels,

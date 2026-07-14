@@ -78,7 +78,7 @@
    "label": "Relying Party"
   },
   {
-   "description": "One-way door: changing the RP ID invalidates every enrolled passkey. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
+   "description": "Changing the RP ID invalidates every existing passkey. This cannot be undone. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
    "fieldname": "passkey_rp_id",
    "fieldtype": "Data",
    "label": "Passkey RP ID"
@@ -93,7 +93,7 @@
    "fieldname": "resolved_rp_html",
    "fieldtype": "HTML",
    "label": "Resolved Configuration",
-   "options": "<p class=\"text-muted\">Changing the RP ID after enrollment invalidates every passkey registered under it. The resolved RP ID and origins are validated when a login mode is enabled.</p>"
+   "options": "<p class=\"text-muted small\">The resolved RP ID and origins are validated when a login mode is enabled.</p>"
   },
   {
    "fieldname": "mobile_apps_section",
