@@ -3,6 +3,7 @@ CLAUDE.local.md
 local-notes/
 HANDOVER.md
 handover/
+.claude/
 
 # secrets
 .env*
@@ -16,7 +17,9 @@ dev-benches/
 
 # build artifacts
 passkeys/public/dist/
-node_modules/
+# bare (no trailing slash) so it also ignores the dev node_modules *symlinks*
+# (into the bench), not just real directories, at any depth.
+node_modules
 
 # python
 __pycache__/
