@@ -102,8 +102,9 @@ var POSTURE_THEORY_URL = "https://andrometiq.github.io/frappe-passkeys/why-passk
 // Fetch + paint the admin security-posture report (System-Manager-gated, read-only
 // endpoint). The view-model is PURE (M.postureReport) fed by the server rows; this only
 // paints it: a compact status card that lands the verdict at a glance — a satisfying
-// tick when everything is fine, a loud flag when a passkey can be bypassed — with a
-// call-to-action that reveals the full designed checklist in place. States rendered:
+// tick when everything is fine, otherwise a calm "here are some recommendations" card
+// (never alarm-red) — with a call-to-action that reveals the full designed checklist in
+// place. States rendered:
 // loading, all-clear (good), gaps (high), passkeys-not-active (info), and a calm
 // "unavailable" note on error. On any failure the surface degrades quietly (no worse
 // than before it existed).
@@ -150,24 +151,31 @@ function postureNoticeCard(markKind, text) {
 function paintPostureReport(host, report) {
 	var summary = report.summary;
 	var tone = summary.tone; // "good" | "high" | "info"
-	var indicator = tone === "high" ? "red" : tone === "good" ? "green" : "blue";
-	var markKind = tone === "high" ? "flag" : tone === "good" ? "good" : "note";
+	// Calm, never alarmist (the owner's principle): the posture surface has NO alarm-red.
+	// A clean site is a satisfying green tick; anything else is a calm BLUE "here are some
+	// recommendations" card — a bypass path is a recommendation, not an emergency. Red is
+	// reserved for the genuine save-blocking errors in the banner host ABOVE this card.
+	var indicator = tone === "good" ? "green" : tone === "high" ? "blue" : "gray";
+	var markKind = tone === "good" ? "good" : "note"; // tick for all-clear, info-circle otherwise
 
 	var card = postureCardShell(indicator, markKind);
 	card.classList.add("passkey-posture-card--" + tone);
-	card.appendChild(postureCardBody(__("Security posture"), report.headline.text || __("Security posture"), summary.canBypass));
+	// role="status", not "alert" (last arg false): a recommendation is announced politely,
+	// never as an assertive interruption (the screen-reader equivalent of the rejected red).
+	card.appendChild(postureCardBody(__("Security posture"), report.headline.text || __("Security posture"), false));
 
 	var region = buildPostureReportRegion(report);
 	region.hidden = true;
 
-	// The CTA: a satisfying "view report" in the calm states, a loud "Review N gaps" when
-	// a passkey can be bypassed. Toggles the in-place report (aria-expanded on the button).
-	var gapLabel = summary.actionCount === 1 ? __("1 gap") : __("{0} gaps", [summary.actionCount]);
-	var ctaOpen = summary.canBypass && summary.actionCount ? __("Review {0}", [gapLabel]) : __("View report");
+	// The CTA: "View recommendations" when there are hardening suggestions, "View report"
+	// when all-clear. NO "Review N gaps" count — the numeric gap badge read like a virus
+	// scanner (and the collapsed report already lists the rows). Always btn-default, never
+	// btn-danger — this surface never alarms. Toggles the in-place report (aria-expanded).
+	var ctaOpen = summary.canBypass ? __("View recommendations") : __("View report");
 	var ctaClose = __("Hide report");
 	var cta = document.createElement("button");
 	cta.type = "button";
-	cta.className = "btn btn-sm passkey-posture-cta " + (tone === "high" ? "btn-danger" : "btn-default");
+	cta.className = "btn btn-sm passkey-posture-cta btn-default";
 	cta.setAttribute("aria-expanded", "false");
 	cta.setAttribute("aria-controls", region.id);
 	cta.textContent = ctaOpen;
@@ -239,7 +247,9 @@ function buildPostureReportRegion(report) {
 }
 
 function postureRowEl(row) {
-	var indicator = row.mark === "flag" ? "red"
+	// No alarm-red here either — a "flag" (high-severity bypass path) shares the "warn"
+	// amber; this is a calm recommendations list, priority carried by row order not colour.
+	var indicator = row.mark === "flag" ? "orange"
 		: row.mark === "warn" ? "orange"
 		: row.mark === "tune" ? "blue" : "gray";
 	var wrap = document.createElement("div");
@@ -298,8 +308,9 @@ function postureMark(kind) {
 	return span;
 }
 
-// A self-managed posture container, mounted ABOVE the banner host so the verdict is the
-// first thing an admin sees. Cleared on every paint (never stacks duplicates).
+// A self-managed posture container, mounted just BELOW the banner host so a genuine (red)
+// save-blocker in the banners always outranks the calm recommendations card — real
+// problems first. Cleared on every paint (never stacks duplicates).
 function postureHost(frm) {
 	if (frm._passkey_posture_host && frm._passkey_posture_host.isConnected) return frm._passkey_posture_host;
 	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
@@ -307,10 +318,10 @@ function postureHost(frm) {
 	if (!mount) return null;
 	var host = document.createElement("div");
 	host.className = "passkey-posture";
-	// Insert above the banner host when it exists, else at the very top of the form.
-	var before = (frm._passkey_banner_host && frm._passkey_banner_host.isConnected)
-		? frm._passkey_banner_host : mount.firstChild;
-	mount.insertBefore(host, before);
+	// Below the banner host when it exists, else at the very top of the form.
+	var bannerHostEl = (frm._passkey_banner_host && frm._passkey_banner_host.isConnected)
+		? frm._passkey_banner_host : null;
+	mount.insertBefore(host, bannerHostEl ? bannerHostEl.nextSibling : mount.firstChild);
 	frm._passkey_posture_host = host;
 	return host;
 }
@@ -328,13 +339,42 @@ function paintBanners(frm, M) {
 	banners.forEach(function (bn) {
 		host.appendChild(bannerEl(bn.level, M.format(__(bn.key), bn.args || [])));
 	});
-	// Resolved RP ID / origins read-only echo ("Read-only display").
-	if (ctx.resolvedRpId || (ctx.resolvedOrigins && ctx.resolvedOrigins.length)) {
-		var lines = [];
-		if (ctx.resolvedRpId) lines.push(__("Resolved RP ID: {0}", [ctx.resolvedRpId]));
-		if (ctx.resolvedOrigins && ctx.resolvedOrigins.length) lines.push(__("Origins: {0}", [ctx.resolvedOrigins.join(", ")]));
-		host.appendChild(bannerEl("info", lines.join(" · ")));
+	// The resolved RP ID / origins echo is NOT a top banner anymore — it renders inline in
+	// the "Resolved Configuration" field, right next to the RP-ID / origins fields.
+	paintResolvedConfig(frm, ctx);
+}
+
+// Render the resolved RP ID + origins INLINE in the "Resolved Configuration" HTML field
+// (resolved_rp_html), which sits directly below the RP-ID / origins fields — the subtle,
+// near-the-field home the owner asked for, instead of a top banner. Dynamic values go in
+// as DOM text nodes (auto-escaped) before the field's .html() sink, so free-text
+// passkey_origins can never inject markup.
+function paintResolvedConfig(frm, ctx) {
+	var field = frm.get_field && frm.get_field("resolved_rp_html");
+	if (!field || !field.html) return;
+	var rpId = ctx.resolvedRpId;
+	var origins = ctx.resolvedOrigins && ctx.resolvedOrigins.length ? ctx.resolvedOrigins : null;
+	if (!rpId && !origins) {
+		field.html(); // nothing resolves yet — fall back to the field's own static note
+		return;
 	}
+	var line = document.createElement("p");
+	line.className = "text-muted small";
+	line.style.margin = "0";
+	if (rpId) {
+		line.appendChild(document.createTextNode(__("Resolves to") + ": "));
+		var strong = document.createElement("strong");
+		strong.textContent = rpId;
+		line.appendChild(strong);
+	}
+	if (origins) {
+		// One translatable unit (no <strong> here, unlike the RP-ID line above) so the label stays localizable.
+		line.appendChild(document.createTextNode((rpId ? " · " : "") + __("Origins: {0}", [origins.join(", ")])));
+	}
+	var box = document.createElement("div");
+	box.appendChild(line);
+	// box.innerHTML is safe: every dynamic value entered via textContent, so it is escaped.
+	field.html(box.innerHTML);
 }
 
 // A self-managed banner container so repaints never stack duplicates. Mounted once

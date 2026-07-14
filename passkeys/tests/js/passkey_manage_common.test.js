@@ -366,9 +366,12 @@ test("upsellDecision: cadence-capped (declines/opt_out) + platform-authenticator
 
 // ---------------------------------------------------------- settings banners
 
-test("settingsBanners: RP-ID one-way-door warning is always present", () => {
+test("settingsBanners: RP-ID one-way-door is NOT a top banner (moved to the field description)", () => {
+	// The caution now lives inline on the passkey_rp_id field (near its field, subtle) +
+	// the loud typed confirm on an actual change — never a permanent, attention-grabbing
+	// top banner.
 	const b = M.settingsBanners({ login_with_passkey: 1 }, {});
-	assert.ok(b.some((x) => x.key === M.COPY.rpIdOneWayDoor && x.level === "warning"));
+	assert.ok(!b.some((x) => x.key === M.COPY.rpIdOneWayDoor));
 });
 
 test("settingsBanners: no-RP-ID error when a mode is enabled but nothing resolves (A1)", () => {
@@ -511,10 +514,10 @@ test("settingsBanners: no enforcement banners under Nudge / Off", () => {
 
 test("posturePanel: passes the verdict headline + tone through, no copy of its own", () => {
 	const p = M.posturePanel({
-		verdict: { headline: "Passkeys can currently be bypassed via: password sign-in.", tone: "high", can_bypass: true },
+		verdict: { headline: "Users can still sign in without a passkey via: password sign-in.", tone: "high", can_bypass: true },
 		rows: [],
 	});
-	assert.strictEqual(p.headline.text, "Passkeys can currently be bypassed via: password sign-in.");
+	assert.strictEqual(p.headline.text, "Users can still sign in without a passkey via: password sign-in.");
 	assert.strictEqual(p.headline.tone, "high");
 	assert.strictEqual(p.headline.canBypass, true);
 	assert.deepStrictEqual(p.rows, []);
@@ -606,7 +609,7 @@ test("postureReport: 'good' verdict is all-clear with zero actions (the satisfyi
 
 test("postureReport: bypass verdict counts flags+warnings as actions, marks each row", () => {
 	const r = M.postureReport({
-		verdict: { headline: "Passkeys can currently be bypassed via: password sign-in.", tone: "high", can_bypass: true },
+		verdict: { headline: "Users can still sign in without a passkey via: password sign-in.", tone: "high", can_bypass: true },
 		rows: [
 			{ code: "custom_apps", severity: "info", what: "custom", detectable: false },
 			{ code: "sign_count_soft", severity: "low", what: "soft" },

@@ -316,9 +316,9 @@
 
 /* --------------------------------------------------------------------------
  * Security-posture report (Passkey Settings form). Admin-only. A compact verdict
- * CARD lands the point at a glance — a satisfying tick when everything is fine, a
- * loud flag when a passkey can be bypassed — with a call-to-action that reveals the
- * full designed checklist in place (one problem line + one recommendation each,
+ * CARD lands the point at a glance — a satisfying tick when everything is fine,
+ * otherwise a calm recommendations card (never alarm-red) — with a call-to-action
+ * that reveals the full designed checklist in place (one problem line + one recommendation each,
  * disclaimer last) and a footer link to the hosted theory explainer. Uses Frappe's
  * semantic tokens so light/dark both adapt without a prefers-color-scheme dependency.
  * ------------------------------------------------------------------------ */
@@ -338,7 +338,6 @@
 	background: var(--card-bg, var(--fg-color, #fff));
 }
 .passkey-posture-card[data-indicator="green"] { border-left-color: var(--green-500, #28a745); }
-.passkey-posture-card[data-indicator="red"] { border-left-color: var(--red-500, #e24c4c); }
 .passkey-posture-card[data-indicator="blue"] { border-left-color: var(--blue-500, #2490ef); }
 .passkey-posture-card[data-indicator="gray"] { border-left-color: var(--gray-400, #b8bcc5); }
 .passkey-posture-card--muted { color: var(--text-muted, #6c7680); }
@@ -382,7 +381,11 @@
 .passkey-posture-card .passkey-posture-mark svg { width: 26px; height: 26px; }
 .passkey-posture-row .passkey-posture-mark svg { width: 18px; height: 18px; }
 .passkey-posture-mark--good { color: var(--green-500, #28a745); }
-.passkey-posture-mark--flag { color: var(--red-500, #e24c4c); }
+/* No alarm-red in the posture surface — it is a calm recommendations checklist, not a
+ * problem report (the owner's "calm, not alarmist" principle). "flag" (a high-severity
+ * bypass path) renders in the SAME amber as "warn": both read as "worth a look", and
+ * priority is carried by row ORDER (posturePanel sorts high first), not by colour. */
+.passkey-posture-mark--flag { color: var(--orange-500, #f5a623); }
 .passkey-posture-mark--warn { color: var(--orange-500, #f5a623); }
 .passkey-posture-mark--tune { color: var(--blue-500, #2490ef); }
 .passkey-posture-mark--note { color: var(--gray-500, #8d949e); }
@@ -412,7 +415,6 @@
 	padding: 6px 0 6px 10px;
 	margin: 8px 0;
 }
-.passkey-posture-row[data-indicator="red"] { border-left-color: var(--red-500, #e24c4c); }
 .passkey-posture-row[data-indicator="orange"] { border-left-color: var(--orange-500, #f5a623); }
 .passkey-posture-row[data-indicator="blue"] { border-left-color: var(--blue-500, #2490ef); }
 .passkey-posture-row[data-indicator="gray"] { border-left-color: var(--gray-400, #b8bcc5); }
