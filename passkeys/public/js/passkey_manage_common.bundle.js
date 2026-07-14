@@ -522,8 +522,9 @@
 		var secondFactor = isTruthy(doc.passkey_as_second_factor);
 		var anyMode = firstFactor || secondFactor;
 
-		// Always warn about the RP-ID one-way door (loud warning).
-		banners.push({ level: "warning", key: COPY.rpIdOneWayDoor });
+		// The RP-ID one-way-door caution is NOT a permanent top banner anymore — it lives
+		// inline as the passkey_rp_id field description (near its field, subtle), plus the
+		// loud typed confirm on an actual change. COPY.rpIdOneWayDoor stays the confirm copy.
 
 		// No RP ID resolves while a mode is being enabled — this is exactly the
 		// save-blocking condition the server throws on (_validate_enablement), surfaced
