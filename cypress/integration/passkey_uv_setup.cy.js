@@ -23,6 +23,10 @@ chromium_only("passkey uv-setup step-up", () => {
 		cy.visit_desk(USER);
 		cy.call("passkeys.tests.ui_test_helpers.make_uv_uninitialized", { user: USER });
 		cy.clear_password_failures(USER);
+		// This spec runs late in the suite; the shared CI runner IP has been hitting
+		// the 30/min guest begin_login limit across earlier specs. Reset it (while still
+		// authed) so the step-up ceremony below starts with a fresh budget instead of 429ing.
+		cy.call("passkeys.tests.ui_test_helpers.clear_guest_ceremony_rate_limit");
 		cy.call("logout");
 	});
 
