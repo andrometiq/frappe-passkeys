@@ -14,6 +14,25 @@ const PROBE = "passkeys.tests.ui_test_helpers.confirm_probe";
 const PROBE_FAIL = "passkeys.tests.ui_test_helpers.confirm_probe_failing";
 const ACTION = "passkeys.tests.confirm_probe";
 
+// Raw POST to a @passkey_protected method with a grant header, via fetch — which
+// always settles on ANY HTTP status. The grant-semantics specs deliberately hit
+// error responses (the action throws, or the burned grant is refused); frappe.call
+// can leave its promise unsettled on such a 4xx, hanging the spec for the full
+// cy.wrap timeout (the A-F20 flake). fetch resolves with the response object, so the
+// specs read the HTTP outcome (ok / status) directly — the bundle's own post() does
+// the same for exactly this reason.
+const grantedPost = (win, method, token, grant) =>
+	win.fetch("/api/method/" + method, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"X-Frappe-CSRF-Token": win.frappe.csrf_token || "",
+			"X-Passkey-Grant": grant,
+		},
+		credentials: "same-origin",
+		body: JSON.stringify({ token: token }),
+	});
+
 chromium_only("passkey action-confirmation", () => {
 	describe("happy path", () => {
 		before(() => cy.confirm_setup());
@@ -203,68 +222,59 @@ chromium_only("passkey action-confirmation", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.window().then((win) => {
-				const p = win.frappe.passkeys.confirm(ACTION, { token: "G1" });
-				cy.get(".passkey-confirm-passkey").should("be.visible").click();
-				return cy.wrap(p, { timeout: 20000 }).then((grant) => {
-					const first = win.frappe.call({
-						method: PROBE,
-						args: { token: "G1" },
-						headers: { "X-Passkey-Grant": grant },
-					});
-					return cy.wrap(first).then((r1) => {
-						expect(r1.message.confirmed).to.eq(true);
-						// replay the same grant → 401 retry contract (rejected server-side)
-						const replay = win.frappe
-							.call({
-								method: PROBE,
-								args: { token: "G1" },
-								headers: { "X-Passkey-Grant": grant },
-							})
-							.then(
-								() => "ACCEPTED",
-								() => "REJECTED"
-							);
-						return cy.wrap(replay).should("eq", "REJECTED");
-					});
-				});
+				win.__gs = {};
+				win.frappe.passkeys
+					.confirm(ACTION, { token: "G1" })
+					.then((g) => (win.__gs.grant = g), (e) => (win.__gs.err = (e && e.code) || "err"));
 			});
+			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			// Poll the grant off the window instead of cy.wrap()-ing a cross-realm promise.
+			cy.window().its("__gs.grant", { timeout: 20000 }).should("be.a", "string");
+			cy.window().then((win) => {
+				// a valid grant authorizes the action once
+				grantedPost(win, PROBE, "G1", win.__gs.grant).then((r) =>
+					r.json().then((b) => (win.__gs.first = { ok: r.ok, confirmed: !!(b && b.message && b.message.confirmed) }))
+				);
+			});
+			cy.window().its("__gs.first.ok", { timeout: 20000 }).should("eq", true);
+			cy.window().its("__gs.first.confirmed").should("eq", true);
+			cy.window().then((win) => {
+				// replay the same grant → refused server-side (single-use: it was burned)
+				grantedPost(win, PROBE, "G1", win.__gs.grant).then(
+					(r) => (win.__gs.replay = r.ok ? "ACCEPTED" : "REJECTED"),
+					() => (win.__gs.replay = "neterr")
+				);
+			});
+			cy.window().its("__gs.replay", { timeout: 20000 }).should("eq", "REJECTED");
 		});
 
 		it("burns the grant even when the wrapped action fails (A-F20)", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.window().then((win) => {
-				const p = win.frappe.passkeys.confirm(PROBE_FAIL, { token: "G2" });
-				cy.get(".passkey-confirm-passkey").should("be.visible").click();
-				return cy.wrap(p, { timeout: 20000 }).then((grant) => {
-					// the action throws AFTER the grant is consumed → the gesture is spent
-					const failed = win.frappe
-						.call({
-							method: PROBE_FAIL,
-							args: { token: "G2" },
-							headers: { "X-Passkey-Grant": grant },
-						})
-						.then(
-							() => "ACCEPTED",
-							() => "FAILED"
-						);
-					return cy.wrap(failed).then((outcome) => {
-						expect(outcome).to.eq("FAILED");
-						// the same grant no longer authorizes a retry — it was burned
-						const replay = win.frappe
-							.call({
-								method: PROBE_FAIL,
-								args: { token: "G2" },
-								headers: { "X-Passkey-Grant": grant },
-							})
-							.then(
-								() => "ACCEPTED",
-								() => "REJECTED"
-							);
-						return cy.wrap(replay).should("eq", "REJECTED");
-					});
-				});
+				win.__gs = {};
+				win.frappe.passkeys
+					.confirm(PROBE_FAIL, { token: "G2" })
+					.then((g) => (win.__gs.grant = g), (e) => (win.__gs.err = (e && e.code) || "err"));
 			});
+			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			cy.window().its("__gs.grant", { timeout: 20000 }).should("be.a", "string");
+			cy.window().then((win) => {
+				// the action throws AFTER the grant is consumed → the gesture is spent
+				grantedPost(win, PROBE_FAIL, "G2", win.__gs.grant).then(
+					(r) => (win.__gs.first = r.ok ? "ACCEPTED" : "FAILED"),
+					() => (win.__gs.first = "neterr")
+				);
+			});
+			cy.window().its("__gs.first", { timeout: 20000 }).should("eq", "FAILED");
+			cy.window().then((win) => {
+				// the same grant no longer authorizes a retry — it was burned
+				grantedPost(win, PROBE_FAIL, "G2", win.__gs.grant).then(
+					(r) => (win.__gs.replay = r.ok ? "ACCEPTED" : "REJECTED"),
+					() => (win.__gs.replay = "neterr")
+				);
+			});
+			cy.window().its("__gs.replay", { timeout: 20000 }).should("eq", "REJECTED");
 		});
 	});
 });
