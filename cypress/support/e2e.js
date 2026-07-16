@@ -4,7 +4,7 @@
 // Cypress support entry: load app-local commands. Browser exceptions retain
 // Cypress's fail-fast default so application regressions cannot become green.
 
-import "./commands";
+require("./commands");
 
 // Frappe aborts some in-flight page requests during login/logout navigation by
 // rejecting their promise with the literal value `undefined`. Cypress wraps that
