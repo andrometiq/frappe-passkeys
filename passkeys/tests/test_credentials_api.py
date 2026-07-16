@@ -13,13 +13,14 @@ import frappe
 from passkeys import session, state
 from passkeys.api import credentials
 from passkeys.passkey import PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
 class CredentialManagementTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		arrange_mode_floor(self)  # floor for flagged handles + set_passkey_only_login enables
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	@property

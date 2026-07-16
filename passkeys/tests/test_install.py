@@ -15,7 +15,7 @@ from frappe.utils import cint
 
 from passkeys import install
 from passkeys.patches.v17_0 import fold_nudge_flag_into_enrollment_policy as fold_nudge_patch
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -188,6 +188,7 @@ class TestUninstallGuards(IntegrationTestCase):
 	def test_blocks_while_any_user_is_passkey_only(self):
 		user = self._make_user()
 		make_credential(user)
+		arrange_mode_floor(self)  # mode floor for the flagged handle
 		make_handle(user, passkey_only_login=1)
 
 		with self.assertRaises(frappe.ValidationError) as ctx:
@@ -267,6 +268,10 @@ class TestCredentialExportImport(IntegrationTestCase):
 	"""L1: an uninstall exports the credential tables (which it is about to drop) so
 	removal is non-destructive, and a documented console helper restores them
 	idempotently on reinstall while refusing identifier-matched data conflicts."""
+
+	def setUp(self):
+		super().setUp()
+		arrange_mode_floor(self)  # floor for flagged handles + the flagged-handle import insert
 
 	def _make_user(self) -> str:
 		user = make_user()
