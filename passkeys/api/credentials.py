@@ -115,8 +115,8 @@ def delete_credential(name: str):
 	doc = _own_credential(user, name)
 	_guard_last_credential(user, doc)
 	frappe.delete_doc(CREDENTIAL_DOCTYPE, doc.name, ignore_permissions=True)
-	# out-of-band "passkey removed" notification + Activity Log rows are
-	# owned by notifications.py (a later phase); the mutation itself is complete.
+	# the out-of-band "passkey removed" notification + Activity Log row are owned by
+	# notifications.py, fired off this delete via the WebAuthn Credential after_delete hook.
 	return {"deleted": name}
 
 
