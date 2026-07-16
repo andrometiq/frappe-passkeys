@@ -222,8 +222,8 @@ def clear_password_failures(user: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def clear_guest_ceremony_rate_limit() -> dict:
 	"""Clear frappe's IP-keyed ``@rate_limit`` counters for the guest passkey
-	ceremony endpoints (``begin_login`` and ``get_app_translations`` — both
-	30/min/IP).
+	ceremony endpoints (``begin_login`` and ``get_app_translations`` at 30/min/IP,
+	and ``verify_login`` at 10/min/IP).
 
 	Every Cypress spec runs from the same CI runner IP against one shared bench,
 	and each login-page visit fires ``begin_login`` (button-config channel) plus
@@ -235,7 +235,11 @@ def clear_guest_ceremony_rate_limit() -> dict:
 	identity, so it is robust to how the proxy presents the client IP."""
 	_guard()
 
-	for method in ("passkeys.passkey.begin_login", "passkeys.passkey.get_app_translations"):
+	for method in (
+		"passkeys.passkey.begin_login",
+		"passkeys.passkey.verify_login",
+		"passkeys.passkey.get_app_translations",
+	):
 		frappe.cache.delete_keys(f"rl:{method}:")
 	return {"ok": 1}
 

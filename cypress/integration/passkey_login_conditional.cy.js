@@ -71,6 +71,11 @@ chromium_only("passkey conditional-UI login", () => {
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
+		// The shared CI runner IP fills the guest ceremony rate limits (begin_login
+		// 30/60s, verify_login 10/60s) across earlier specs. Reset them (while still
+		// authed) so this spec's login ceremonies start with a fresh budget instead
+		// of 429ing.
+		cy.call("passkeys.tests.ui_test_helpers.clear_guest_ceremony_rate_limit");
 	});
 
 	after(() => {
