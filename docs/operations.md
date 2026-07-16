@@ -109,6 +109,8 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:passkey_flagged` | A sign-count regression / anomaly was recorded on a sign-in. |
 | `passkeys:fallback_used` | A passkey holder completed the second factor with a one-time code instead. |
 | `passkeys:weak_login_enrollment` | The restricted first-enrollment-on-weak-login path was used. |
+| `passkeys:password_login_by_passkey_holder` | A user who holds an enabled passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
+| `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
 
 Structured error/log entries worth alerting on:
 
