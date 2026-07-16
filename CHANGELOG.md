@@ -23,7 +23,10 @@ release.
 ### Changed
 
 - RP IDs no longer imply trust in `https://<rp_id>`. Only a compatible configured `host_name`
-  origin and explicitly listed Passkey Origins are accepted.
+  origin and explicitly listed Passkey Origins are accepted. **Action required before upgrading an
+  already-enabled site:** confirm `host_name` or an explicit Passkey Origin resolves within the RP
+  ID scope first, or the resolved origin set can become empty and every ceremony fails silently —
+  see the [upgrade note](docs/install.md#upgrade).
 - Administrator remains exempt from the per-user passkey-only password veto, but an Administrator
   enrolled in passkey second-factor mode must complete that factor.
 - Passkey second-factor ceremonies detect password changes between legs without normally retaining
