@@ -453,7 +453,9 @@ def import_credentials(
 	Exports from app version 1 were unsigned; they are refused unless the operator has
 	reviewed the file and explicitly passes ``allow_unsigned_legacy=True``.
 	Credentials are restored before handles so a ``passkey_only_login`` handle clears
-	its enabled-credential floor. Returns a created / skipped / rejected summary.
+	its *enabled-credential* floor; its *login-mode* floor is a site-wide precondition
+	the caller must satisfy first (see the up-front refusal below). Returns a created /
+	skipped / rejected summary.
 
 	Console-only by design (never whitelisted) — but a *crafted* export file must not be
 	able to bind a public key to an account of the attacker's choosing, so every row is
@@ -481,6 +483,31 @@ def import_credentials(
 			_(
 				"Refusing to merge a credential export into live passkey data. Import into an empty installation, or pass allow_existing=True after reviewing conflicts."
 			)
+		)
+
+	# Up-front login-mode precondition. A ``passkey_only_login`` handle asserts its user
+	# MUST use a passkey as first factor, which is only viable while a passkey login mode
+	# is enabled site-wide. A fresh reinstall lands with every mode off, so restoring such
+	# a handle would trip its mode-floor validator mid-restore (after credential rows were
+	# already inserted) and — if forced past it — recreate a user who is vetoed off password
+	# login yet cannot use a passkey: a lockout. Refuse before touching any row, with the
+	# exact remedy, rather than failing partway with a bare ValidationError.
+	from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_passkey_mode_floor
+
+	new_passkey_only = sorted(
+		{
+			row.get("user")
+			for row in data.get("user_handles", [])
+			if cint(row.get("passkey_only_login"))
+			and not frappe.db.exists("WebAuthn User Handle", {"user": row.get("user")})
+		}
+	)
+	if new_passkey_only and not lock_passkey_mode_floor():
+		frappe.throw(
+			_(
+				"This export restores passkey-only user(s) ({0}), but no passkey login mode is enabled on this site. "
+				"Enable 'Login with Passkey' in Passkey Settings before importing, or those users would be locked out."
+			).format(", ".join(new_passkey_only))
 		)
 
 	summary = {
