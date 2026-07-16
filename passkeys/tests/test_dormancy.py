@@ -21,7 +21,7 @@ from passkeys import auth_hooks, boot, install, passkey, session, state, well_kn
 from passkeys.api import credentials, registration
 from passkeys.passkey import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -155,6 +155,7 @@ class DormantHooksTest(IntegrationTestCase):
 	def test_on_login_veto_noop_instead_of_throwing(self):
 		user = self._user()
 		make_credential(user)
+		arrange_mode_floor(self)  # floor for the flagged handle; the veto is flag-driven, not mode-driven
 		make_handle(user, passkey_only_login=1)
 		frappe.set_user("Guest")  # genuine first-factor context
 		self._clear_flags()
@@ -167,8 +168,9 @@ class DormantHooksTest(IntegrationTestCase):
 
 	def test_guard_system_settings_noop_instead_of_throwing(self):
 		orig_2fa = cint(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"))
+		orig_pk2f = cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor"))
 		self.addCleanup(frappe.db.set_single_value, "System Settings", "enable_two_factor_auth", orig_2fa)
-		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_as_second_factor", 0)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_as_second_factor", orig_pk2f)
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 1)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
 		doc = frappe._dict(enable_two_factor_auth=0)  # the disallowed 1→0 flip
