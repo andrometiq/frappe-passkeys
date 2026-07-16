@@ -110,7 +110,7 @@ def _fingerprints(raw) -> list[str]:
 	out: list[str] = []
 	for line in (raw or "").splitlines():
 		line = re.sub(r"(?i)^\s*sha-?256\s*[:=]?", "", line).strip()
-		hexits = line.replace(":", "")
+		hexits = re.sub(r"\s+", "", line.replace(":", ""))
 		if not re.fullmatch(r"[0-9A-Fa-f]{64}", hexits):
 			continue
 		hexits = hexits.upper()
