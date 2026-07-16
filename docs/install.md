@@ -108,6 +108,17 @@ page shows a red mismatch banner — fail-closed is always diagnosable. See
 
 ## Upgrade
 
+> **Action required before upgrading an already-enabled site.** This release removes
+> the implicit `https://<rp_id>` origin — origins now resolve from `host_name` (only
+> when it falls within the configured RP ID scope) plus any explicit **Passkey
+> Origins**. Before upgrading, verify that either `host_name` resolves to an origin
+> within the configured RP ID scope, or the exact web origin is listed in Passkey
+> Origins. Otherwise the resolved origin set can become empty immediately after the
+> upgrade and every passkey sign-in/ceremony fails silently until the settings are
+> fixed (the settings-save validation only re-runs on the next save). To recover, see
+> [Scenario F](recovery.md#scenario-f--restore-a-site-to-a-new-host-and-nobody-can-log-in)
+> — turn the modes off and fix the origins from the bench console.
+
 ```bash
 cd apps/passkeys && git pull --ff-only && cd ../..
 bench build --app passkeys
