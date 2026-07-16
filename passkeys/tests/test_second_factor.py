@@ -15,12 +15,15 @@ change AND user-disable both fail closed; OTP fallback knob ON completes
 via core OTP, knob OFF refuses server-side; the two-way 2FA floor guard; and
 compose-with-core-OTP (dispatch, never stack)."""
 
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
+
 import frappe
-from frappe.auth import CookieManager, LoginManager
+from frappe.auth import CookieManager
 from frappe.utils import set_request
 from frappe.utils.password import update_password
 
-from passkeys import passkey, state
+from passkeys import auth_hooks, passkey, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired
 from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
@@ -32,9 +35,15 @@ ORIGIN = "https://example.com"
 PWD = "Secret_passw0rd_9x!"
 
 
+class _LoginTarget:
+	def __init__(self, user):
+		self.user = user
+
+
 class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		frappe.local.flags.pop("passkey_login", None)
 		self._settings_snap = frappe.db.get_singles_dict("Passkey Settings")
 		self._ss_2fa = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
 		self._ss_method = frappe.db.get_single_value("System Settings", "two_factor_method")
@@ -43,7 +52,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._set_system_2fa(enabled=1, method="OTP App", disable_pass=0)
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 0
 		settings.passkey_as_second_factor = 1
 		settings.passkey_2fa_allow_otp_fallback = 0
@@ -320,6 +329,32 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 			self._leg2(resp["tmp_id"], credential, binder)
 		self.assertEqual(frappe.session.user, "Guest")
 
+	def test_password_change_blocks_when_otp_fallback_is_off(self):
+		"""The password-version marker is unconditional; plaintext retention is not."""
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+		record = state.consume_ceremony(resp["tmp_id"])
+		self.assertIsNone(record.get("pwd"))
+		self.assertTrue(record.get("password_version"))
+		# Put back an equivalent one-shot state so the real leg-two path consumes it.
+		state_id = state.store_ceremony(record)
+		credential = self._assert(auth, resp["verification"]["options"], sign_count=6)
+		update_password(user, "A_Different_passw0rd_2y!")
+
+		with self.assertRaises(frappe.AuthenticationError):
+			self._leg2(state_id, credential, binder)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_external_auth_without_local_hash_retains_password_for_leg2_reauth(self):
+		user = self._user()
+		self._enroll(user)
+		with patch.object(passkey, "_password_version", return_value=None):
+			resp, _binder = self._leg1(user, PWD)
+		record = state.consume_ceremony(resp["tmp_id"])
+		self.assertEqual(record.get("pwd"), PWD)
+		self.assertIsNone(record.get("password_version"))
+
 	def test_user_disabled_between_legs_blocks_session(self):
 		user = self._user()
 		auth = self._enroll(user)
@@ -332,6 +367,124 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 			self._leg2(resp["tmp_id"], credential, binder)
 		self.assertEqual(frappe.session.user, "Guest")
 		frappe.db.set_value("User", user, "enabled", 1)  # let the sweep delete it
+
+	# ======================================================================
+	# final on_login enforcement: stock/core/alternate paths cannot bypass
+	# ======================================================================
+
+	def _run_login_veto(self, user, *, path="/api/method/login", **form_values):
+		frappe.set_user("Guest")
+		frappe.local.flags.pop("passkey_login", None)
+		self._request(path)
+		frappe.form_dict.update(form_values)
+		return auth_hooks.on_login_veto(login_manager=_LoginTarget(user))
+
+	def test_uncovered_user_stock_login_is_vetoed(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(user)
+
+	def test_alternate_login_is_also_vetoed_for_enrolled_user(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		# No request-path heuristic: email-link/social/LDAP post_login reaches the
+		# same final hook and cannot silently bypass the selected second factor.
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(user, path="/api/method/frappe.www.login.login_via_key")
+
+	def test_verified_passkey_leg_passes_final_veto(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		frappe.set_user("Guest")
+		frappe.local.flags.passkey_login = True
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LoginTarget(user)))
+
+	def test_one_time_otp_fallback_marker_passes_then_replay_fails(self):
+		user = self._user(otp_capable=True)
+		self._enroll(user)
+		tmp_id = frappe.generate_hash()
+		state.store_otp_fallback(tmp_id, {"v": 1, "user": user})
+		self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(user, tmp_id=tmp_id, otp="123456")
+
+	def test_otp_marker_cannot_be_consumed_by_an_alternate_login_route(self):
+		user = self._user(otp_capable=True)
+		self._enroll(user)
+		tmp_id = frappe.generate_hash()
+		state.store_otp_fallback(tmp_id, {"v": 1, "user": user})
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(
+				user,
+				path="/api/method/frappe.www.login.login_via_key",
+				tmp_id=tmp_id,
+				otp="attacker-controlled",
+			)
+		# The rejected route did not burn the marker; a core OTP completion can use it.
+		self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
+
+	def test_otp_fallback_marker_is_user_bound(self):
+		user = self._user(otp_capable=True)
+		other = self._user(otp_capable=True)
+		self._enroll(user)
+		tmp_id = frappe.generate_hash()
+		state.store_otp_fallback(tmp_id, {"v": 1, "user": other})
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(user, tmp_id=tmp_id, otp="123456")
+
+	def test_otp_marker_is_not_consumed_after_core_2fa_policy_is_removed(self):
+		user = self._user(otp_capable=True)
+		self._enroll(user)
+		tmp_id = frappe.generate_hash()
+		state.store_otp_fallback(tmp_id, {"v": 1, "user": user})
+		with patch("frappe.twofactor.should_run_2fa", return_value=False):
+			with self.assertRaises(frappe.AuthenticationError):
+				self._run_login_veto(user, tmp_id=tmp_id, otp="123456")
+		# A policy race cannot burn the marker; a genuinely covered core OTP leg can.
+		with patch("frappe.twofactor.should_run_2fa", return_value=True):
+			self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
+
+	def test_reset_key_changes_password_but_mints_only_a_guest_session(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		from frappe.auth import LoginManager
+		from frappe.core.doctype.user.user import update_password as complete_password_reset
+		from frappe.utils.password import check_password
+
+		link = frappe.get_doc("User", user)._reset_password(send_email=False)
+		key = parse_qs(urlparse(link).query)["key"][0]
+		method = "frappe.core.doctype.user.user.update_password"
+		self._request(f"/api/method/{method}")
+		frappe.local.form_dict.update({"cmd": method, "key": key})
+		frappe.local.login_manager = LoginManager()
+		# LoginManager may resume the test harness's prior cookie; the public reset
+		# endpoint is a Guest request, so pin the real attack/recovery boundary.
+		frappe.set_user("Guest")
+		new_password = "Reset_passw0rd_4z!"
+
+		complete_password_reset(new_password, key=key)
+
+		self.assertEqual(frappe.local.login_manager.user, "Guest")
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(check_password(user, new_password), user)
+
+	def test_arbitrary_login_cannot_claim_password_reset_exemption(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		with self.assertRaises(frappe.AuthenticationError):
+			self._run_login_veto(user, key="valid-reset-key")
+
+	def test_missing_encryption_key_never_stores_plaintext_password(self):
+		user = self._user(otp_capable=False)
+		self._enroll(user)
+		original = frappe.local.conf.get("encryption_key")
+		self.addCleanup(frappe.local.conf.__setitem__, "encryption_key", original)
+		frappe.local.conf["encryption_key"] = None
+		with patch("passkeys.state.store_ceremony") as store:
+			with self.assertRaisesRegex(frappe.AuthenticationError, "encryption key"):
+				self._leg1(user, PWD)
+		store.assert_not_called()
 
 	# ======================================================================
 	# OTP fallback knob — both directions

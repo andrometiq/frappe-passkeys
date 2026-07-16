@@ -9,12 +9,12 @@ themselves is in [`configuration.md`](configuration.md).
 | Branch | Supported | Why |
 |---|---|---|
 | **v15** | **v15.107.0 and newer** | The `webauthn` library (2.8.x) requires both `cryptography>=46` and `pyOpenSSL>=26`. v15 bumped `cryptography` in 15.101.0 but only shipped `pyOpenSSL~=26` from **v15.107.0** (2026-04-28). On 15.101.0–15.106.x the dependency resolver cannot satisfy `pyOpenSSL>=26`. Older v15 (cryptography 41.x/44.x) cannot run any usable `py_webauthn` 2.x at all. |
-| **v16** | Yes | Ships the required `cryptography` / `pyOpenSSL` pins. |
-| **develop** | Yes | Ships newer pins (`cryptography~=48`, `pyOpenSSL~=26.2`). |
+| **v16** | Candidate branch | Use `version-16`; release CI validates a reviewed, pinned Frappe baseline. Validate the exact Frappe patch level you deploy. |
+| **develop** | Integration target | Pre-release only. Moving branch-tip CI fails visibly on drift but is not a release or production-readiness attestation. |
 
-The app pins `webauthn>=2.8.0,<3`. The `<3` cap is deliberate: `webauthn` 3.x
-needs `cryptography>=49`, which none of the three supported branches ship yet.
-Python `>=3.10` is required (v16/develop run 3.14).
+The app pins `webauthn==2.8.0`; changing that authentication-critical dependency requires the full
+resolver and ceremony matrix. Python `>=3.10,<3.15` is declared. These constraints describe what the
+candidate accepts, not a promise that every future Frappe patch release in the range is compatible.
 
 The floor is declared in four places that must agree: `pyproject.toml`
 (`[tool.bench.frappe-dependencies] frappe = ">=15.107.0,<18.0.0"`), this
@@ -56,18 +56,19 @@ re-runs its hooks on every `bench migrate`.
   Fix: upgrade Frappe (or the whole bench) to a supported version, then retry.
   The `bench get-app` step is unaffected — only `install-app` aborts.
 
-- **Native-core refusal.** If the Frappe you are installing onto already serves
-  passkeys natively (the `frappe.passkey` module exists), the install aborts
+- **Native-module refusal.** If the Frappe tree contains a `frappe.passkey` module, the install aborts
   with:
 
   > This Frappe installation serves passkeys natively (frappe.passkey). The
   > passkeys app is an upgrade vehicle for sites that predate the native
   > implementation — it cannot be freshly installed on top of it.
 
-  This is expected on a future Frappe that has adopted the upstream
-  implementation. Do not install the app there; use the native feature. A site
-  that had the app installed *before* upgrading is migrated by core's adoption
-  patch and does not hit this path.
+  Module presence prevents two fresh authorities from being installed together, but it does **not**
+  prove that core implements this app's runtime handover contract. For an already-installed app to
+  become dormant safely, `frappe.passkey` must also define the exact marker
+  `FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Without that marker, the app
+  stays active. No current core adoption patch is assumed; follow the proposal and validation
+  checklist in [`upstream/`](upstream/) for any future migration.
 
 ## Site configuration, reverse proxy, RP-ID and origin
 
@@ -88,9 +89,11 @@ configuration; the app never derives them from the live `Host` or
   - Terminate TLS at, and serve from, the public host that equals the RP ID.
     Passkeys require **HTTPS**; `http://` origins are rejected except
     `http://localhost` while `developer_mode` is on.
-  - Ensure the browser reaches the site on exactly that host. The default
-    origins are `https://<rp_id>`; add any additional exact origins (including
-    explicit ports, one per line) in Passkey Settings → Passkey Origins. Every
+  - Ensure the browser reaches the site on exactly that host. The exact origin parsed from a
+    compatible `host_name` is trusted automatically. **The RP ID never creates an implicit
+    `https://<rp_id>` origin.** Add every other exact origin (including
+    explicit ports, one per line) in Passkey Settings → Passkey Origins. The resolved set must not
+    be empty. Every
     listed origin's host must equal the RP ID or be a subdomain of it — an
     out-of-scope origin passes every server check and then dies client-side with
     a permanent browser `SecurityError`, so the settings validator refuses it.
@@ -117,13 +120,17 @@ the freshly built asset map. (`bench build`'s own Redis invalidation can fail
 silently — if the UI looks stale after an upgrade, run
 `bench --site <site> clear-cache && bench --site <site> clear-website-cache`.)
 
-`bench migrate` runs the app's `after_migrate` hook, which re-syncs a small
-System Settings property setter used by the pluggable-two-factor integration, and
+`bench migrate` runs the app's `after_migrate` hook, which removes an obsolete
+development-build System Settings customization, syncs the User-form passkey section, and
 applies any pending `patches.txt` migrations. The current patch folds a legacy
 site's `passkey_enrollment_nudge` boolean into the `passkey_enrollment_policy`
 adoption ladder and seeds the break-glass exempt role; it is idempotent and never
 clobbers a policy an administrator has already chosen. No settings are otherwise
 changed by an upgrade; enabled modes stay enabled.
+
+Do not promote an upgrade from this command sequence alone. Complete the
+[release checklist](release-checklist.md), including candidate-specific CI, a database and private
+files backup, staging validation on the real proxy/origin topology, and a tested recovery path.
 
 ## Disable vs uninstall
 
@@ -159,7 +166,7 @@ lockout cases, so you cannot strand your users by accident:
   see [`recovery.md`](recovery.md)).
 
 Once the guards pass, uninstall also deletes the app's per-user nudge state and
-its property setter, so a later reinstall is a clean slate. Cached challenge /
+obsolete development-build customization, so a later reinstall is a clean slate. Cached challenge /
 grant / sudo state in Redis expires on its own.
 
 ### Credential export on uninstall
@@ -178,11 +185,18 @@ passkeys:   from passkeys.install import import_credentials; import_credentials(
   `sites/<site>/private/files/passkeys-credentials-<timestamp>.json`. It is not a
   web-served public file. The export is skipped (no file, nothing printed) when
   there are no credentials to save.
-- **What it contains.** Public-key material and metadata only — the credential
+- **Format and integrity.** The current format is schema version **2**, bound to the originating
+  site name and authenticated with **HMAC-SHA256** using a key derived from that site's
+  `encryption_key`. It is not portable to another site or to a replacement encryption key. The file
+  is written through a same-directory temporary file, `fsync`ed, atomically replaced, and forced to
+  mode `0600`. A data-bearing uninstall/export refuses to proceed when the site has no
+  `encryption_key`; confirm the key exists in `site_config.json` before enrolling production users.
+- **What it contains.** Public-key material and metadata — the credential
   public keys, signature counters, backup flags, labels, transports, AAGUID, and
   the opaque user handles with each user's *Passkey Only Login* flag. **No server
-  secret exists in either table**, so the file is safe to keep alongside a site
-  backup; a public key is useless to an attacker who obtains it.
+  secret exists in either table**, but labels, user references, and authenticator metadata may still
+  be sensitive. Protect and retain the file like the matching site backup; the matching
+  `encryption_key` is required to verify it.
 
 **Restore (reinstall on the same site).** Reinstall the app, then replay the file:
 
@@ -194,17 +208,25 @@ bench --site <site> console
 {'credentials_created': 4, 'credentials_skipped': 0, 'handles_created': 3, 'handles_skipped': 0}
 ```
 
-`import_credentials` is **idempotent**, keyed on `credential_id_sha256` for
-credentials and on `user` for handles: a row that already exists is skipped, so
-re-running is safe and never duplicates. Signature counters are restored verbatim
-(never reset to zero), and credentials are restored before handles so a
-`Passkey Only Login` handle clears its "needs an enabled passkey" floor. The
-authenticators users still hold keep working against the restored public keys —
-no re-enrollment.
+By default, `import_credentials` requires **both passkey tables to be empty**. This makes an
+accidental import into a live credential set fail before merging anything. `allow_existing=True` is
+an explicit, operator-reviewed merge mode, not an idempotency convenience: inspect handle ownership
+and credential conflicts before using it. Matching rows are skipped, inconsistent or disabled-user
+rows are rejected and reported, and valid rows may still be imported. Signature counters are
+restored verbatim (never reset to zero), and credentials are restored before handles. On a clean,
+same-site restore, authenticators users still hold continue to match the restored public keys.
 
-**Core-handoff note (honest).** When a future Frappe serves passkeys natively,
-this same export is the **migration seed** — the durable, secret-free record of
-every credential a site had. The exact field-to-field mapping into core's schema
-is deliberately *not* written yet: it will be authored once that schema actually
-exists, so the mapping matches reality instead of a guess. Until then, keep the
-export file if you plan to adopt the native feature later.
+App builds before export schema v2 wrote unsigned version-1 files. They remain recoverable, but the
+importer refuses them by default because their integrity cannot be established. After comparing the
+file with the matching site backup and reviewing every user/handle row, opt in explicitly:
+
+```python
+import_credentials("<legacy-version-1-path>", allow_unsigned_legacy=True)
+```
+
+Never use this flag for an untrusted file. Site binding in an unsigned file is only a claim.
+
+**Possible core-handoff input.** The export may be useful as a migration input for a future native
+implementation, but no current core schema or compatible importer is claimed. A future adoption
+must define and test the field mapping, preserve counters and ownership, and advertise the exact
+handover marker before the app can yield safely.

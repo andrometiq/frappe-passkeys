@@ -19,6 +19,7 @@ frappe.ui.form.on("Passkey Settings", {
 		// fall back to if the user backs out of the confirm. refresh() re-fires after
 		// every load and save, so this always tracks the persisted RP ID.
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
+		paintMobileFieldDescriptions(frm);
 		paintBanners(frm, M);
 		// Pull the RP ID the SERVER will actually resolve right now (fresh — boot can
 		// be stale on a settings page left open, e.g. after host_name was just set in
@@ -41,6 +42,17 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_enforce_roles: repaint,
 	passkey_enforce_exempt_roles: repaint,
 	passkey_enforce_incapable: repaint,
+	validate: function (frm) {
+		var M = frappe.passkeys_manage_common;
+		if (!M || typeof M.validateAndroidFingerprints !== "function") return;
+		var result = M.validateAndroidFingerprints(frm.doc.passkey_android_cert_fingerprints);
+		if (!result.valid) {
+			frappe.throw(__(
+				"Each Android signing-certificate fingerprint must contain exactly 64 hexadecimal characters; colons and a SHA-256 label are optional. Invalid line(s): {0}",
+				[result.invalid.join(", ")]
+			));
+		}
+	},
 	passkey_rp_id: function (frm) {
 		repaint(frm);
 		var M = frappe.passkeys_manage_common;
@@ -75,6 +87,13 @@ frappe.ui.form.on("Passkey Settings", {
 	},
 });
 
+function paintMobileFieldDescriptions(frm) {
+	if (!frm.set_df_property) return;
+	frm.set_df_property("passkey_app_origins", "description", __(
+		"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
+	));
+}
+
 function repaint(frm) {
 	var M = frappe.passkeys_manage_common;
 	if (M) paintBanners(frm, M);
@@ -89,6 +108,10 @@ function fetchResolvedRpId(frm) {
 		callback: function (r) {
 			if (!r || !r.message) return;
 			frm._passkey_server_rpid = r.message.rp_id || null;
+			// Newer servers return the exact configured host_name origin. Accept the
+			// transition aliases but never synthesize an origin from the RP ID.
+			frm._passkey_server_site_origin = r.message.configured_site_origin ||
+				r.message.site_origin || r.message.exact_site_origin || null;
 			frm._passkey_host_name_configured = !!r.message.host_name_configured;
 			repaint(frm);
 		},
@@ -401,8 +424,9 @@ function bannerEl(level, msg) {
 	return div;
 }
 
-// Resolve the settings context. RP ID / origins are computed from the doc (blank
-// rp_id ⇒ the current host, exact-host default). Cross-flag data rides
+// Resolve the settings context. RP ID is credential scope. Trusted origins are the
+// exact configured site origin supplied by the server plus explicit passkey_origins;
+// an RP apex is never inferred as an origin. Cross-flag data rides
 // frappe.boot.passkeys.settings_context when the server ships it (optional — the
 // pure matrix omits the banners that need it if absent).
 function buildContext(frm) {
@@ -419,11 +443,15 @@ function buildContext(frm) {
 		? frm._passkey_server_rpid
 		: (boot.rp_id || null);
 	var rpId = explicit || serverResolved || null;
-	var origins = parseOrigins(frm.doc.passkey_origins, rpId);
+	var configuredSiteOrigin = frm._passkey_server_site_origin !== undefined
+		? frm._passkey_server_site_origin
+		: (sc.configured_site_origin || sc.site_origin || boot.configured_site_origin || boot.site_origin || null);
+	var origins = parseOrigins(frm.doc.passkey_origins, configuredSiteOrigin);
 	return {
 		currentHost: host,
 		resolvedRpId: rpId,
 		resolvedOrigins: origins,
+		configuredSiteOrigin: configuredSiteOrigin,
 		hostNameConfigured: frm._passkey_host_name_configured,
 		// server-supplied cross-flag context (optional)
 		coreTwoFactor: sc.core_two_factor_auth,
@@ -436,14 +464,12 @@ function buildContext(frm) {
 }
 
 // Derive the resolved origins the same way the server does (policy.resolve_origins):
-// the implicit https://<rp_id> origin is ALWAYS included, then the custom lines.
+// exact configured site origin first, then explicit custom lines. RP ID is never used.
 // Delegates to the pure, node-tested helper so this stays a thin DOM glue file.
-function parseOrigins(raw, rpId) {
+function parseOrigins(raw, configuredSiteOrigin) {
 	var M = typeof frappe !== "undefined" && frappe.passkeys_manage_common;
-	if (M && M.deriveOrigins) return M.deriveOrigins(raw, rpId);
-	// Fallback if the pure lib is missing — still include the implicit origin so a
-	// healthy site never shows a false host-mismatch (mirror the server).
+	if (M && M.deriveOrigins) return M.deriveOrigins(raw, configuredSiteOrigin);
 	var lines = String(raw || "").split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
-	if (rpId && lines.indexOf("https://" + rpId) === -1) lines.unshift("https://" + rpId);
+	if (configuredSiteOrigin && lines.indexOf(configuredSiteOrigin) === -1) lines.unshift(configuredSiteOrigin);
 	return lines;
 }

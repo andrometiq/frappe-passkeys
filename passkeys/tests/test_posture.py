@@ -77,13 +77,14 @@ class ClassifyPostureTest(IntegrationTestCase):
 		self.assertIn("core_2fa_on", _codes(result))
 		self.assertFalse(result["verdict"]["can_bypass"])
 
-	def test_second_factor_floor_off_is_a_bypass(self):
+	def test_second_factor_floor_off_is_unsupported_but_final_vetoed(self):
 		result = posture.classify_posture(
 			_ctx(first_factor=False, second_factor=True, core_2fa_enabled=False)
 		)
-		self.assertTrue(result["verdict"]["can_bypass"])
+		self.assertFalse(result["verdict"]["can_bypass"])
 		row = next(r for r in result["rows"] if r["code"] == "core_2fa_off")
 		self.assertEqual(row["severity"], "high")
+		self.assertIsNone(row["bypass_label"])
 
 	def test_social_and_ldap_and_email_link_are_bypasses(self):
 		result = posture.classify_posture(
@@ -99,6 +100,23 @@ class ClassifyPostureTest(IntegrationTestCase):
 		# email-link is a softer bypass than social/ldap
 		email = next(r for r in result["rows"] if r["code"] == "email_link")
 		self.assertEqual(email["severity"], "medium")
+
+	def test_alternate_logins_are_availability_risks_not_bypasses_under_second_factor(self):
+		result = posture.classify_posture(
+			_ctx(
+				first_factor=False,
+				second_factor=True,
+				core_2fa_enabled=True,
+				social_providers=["Google"],
+				ldap_enabled=True,
+				email_link_login=True,
+			)
+		)
+		self.assertFalse(result["verdict"]["can_bypass"])
+		for code in ("social_login", "ldap", "email_link"):
+			row = next(r for r in result["rows"] if r["code"] == code)
+			self.assertIsNone(row["bypass_label"])
+			self.assertIn("cannot finish", row["why"])
 
 	def test_bypass_labels_are_severity_ordered(self):
 		# password(high) + email-link(medium) → high label precedes the medium label.

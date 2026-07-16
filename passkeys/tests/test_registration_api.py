@@ -12,7 +12,7 @@ from passkeys import state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_user
+from passkeys.tests.factories import make_credential, make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator
 
 RP_ID = "example.com"
@@ -25,7 +25,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
@@ -33,7 +33,13 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore_settings(self):
-		for field in ("login_with_passkey", "passkey_as_second_factor", "passkey_rp_id", "passkey_origins"):
+		for field in (
+			"login_with_passkey",
+			"passkey_as_second_factor",
+			"passkey_rp_id",
+			"passkey_origins",
+			"passkey_allow_first_enrollment_on_weak_login",
+		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
 		flush_settings_cache()
 
@@ -85,6 +91,16 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		# ...while the reusable sudo window still holds (store invariants)
 		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
 
+	def test_registration_signal_excludes_disabled_credentials(self):
+		user = self._user()
+		disabled = make_credential(user, enabled=0)
+		begun, credential, _auth = self._register(user, seed="signal-enabled-only")
+
+		result = registration.verify_registration(begun["state_id"], credential)
+
+		self.assertNotIn(disabled.credential_id, result["signal"]["credential_ids"])
+		self.assertEqual(result["signal"]["credential_ids"], [credential["id"]])
+
 	def test_duplicate_credential_id_rejected(self):
 		user = self._user()
 		begun, credential, _auth = self._register(user)
@@ -105,6 +121,58 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertEqual(credential_b["id"], credential_a["id"])
 		with self.assertRaises(frappe.AuthenticationError):
 			registration.verify_registration(begun_b["state_id"], credential_b)
+
+	def test_verify_rechecks_cap_against_current_credentials(self):
+		"""A ceremony begun below the cap cannot insert after another credential wins."""
+		user = self._user()
+		frappe.db.set_single_value("Passkey Settings", "passkey_max_per_user", 1)
+		self.addCleanup(
+			frappe.db.set_single_value,
+			"Passkey Settings",
+			"passkey_max_per_user",
+			self._snapshot.get("passkey_max_per_user") or 10,
+		)
+		flush_settings_cache()
+		self.addCleanup(flush_settings_cache)
+
+		begun, credential, _auth = self._register(user, seed="stale-cap")
+		make_credential(user)
+
+		with self.assertRaises(frappe.ValidationError):
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertEqual(frappe.db.count("WebAuthn Credential", {"user": user}), 1)
+
+	def test_duplicate_uses_savepoint_and_preserves_unrelated_work(self):
+		user = self._user()
+		begun, credential, _auth = self._register(user, seed="savepoint-duplicate")
+		registration.verify_registration(begun["state_id"], credential)
+
+		frappe.db.set_value("User", user, "first_name", "Savepoint Sentinel")
+		savepoints = []
+		rollbacks = []
+		original_savepoint = frappe.db.savepoint
+		original_rollback = frappe.db.rollback
+
+		def savepoint_spy(name):
+			savepoints.append(name)
+			return original_savepoint(name)
+
+		def rollback_spy(*, save_point=None, **kwargs):
+			rollbacks.append(save_point)
+			return original_rollback(save_point=save_point, **kwargs)
+
+		frappe.db.savepoint = savepoint_spy
+		frappe.db.rollback = rollback_spy
+		self.addCleanup(setattr, frappe.db, "savepoint", original_savepoint)
+		self.addCleanup(setattr, frappe.db, "rollback", original_rollback)
+
+		begun2, credential2, _auth2 = self._register(user, seed="savepoint-duplicate")
+		with self.assertRaises(frappe.AuthenticationError):
+			registration.verify_registration(begun2["state_id"], credential2)
+
+		self.assertIn(registration.REGISTRATION_INSERT_SAVEPOINT, savepoints)
+		self.assertEqual(rollbacks, [registration.REGISTRATION_INSERT_SAVEPOINT])
+		self.assertEqual(frappe.db.get_value("User", user, "first_name"), "Savepoint Sentinel")
 
 	# ---- sudo gating -------------------------------------------------
 
@@ -188,6 +256,19 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 0)
 		flush_settings_cache()
 
+		self._seed_sudo(user, seeded_by="weak")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			registration.begin_registration(flow="explicit")
+
+	def test_weak_login_bootstrap_refused_in_second_factor_only_mode(self):
+		"""A social/email-only user cannot enroll into a state where that same
+		login is vetoed and no first-factor passkey route exists."""
+		user = self._user()
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		flush_settings_cache()
+		frappe.set_user(user)
 		self._seed_sudo(user, seeded_by="weak")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")

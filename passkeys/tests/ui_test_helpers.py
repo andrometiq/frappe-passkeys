@@ -3,8 +3,8 @@
 
 """Whitelisted helpers the Cypress login specs (`cypress/integration/*.cy.js`)
 call via ``cy.call`` to set up + tear down server state on the shared UI-test
-site. Mirrors ``frappe/tests/ui_test_helpers.py``: admin-only,
-gated to a developer/test bench, never a production surface.
+site. Mirrors ``frappe/tests/ui_test_helpers.py``: POST-only and admin-only,
+with explicit test-site configuration required outside the test runner.
 
 These are the app's **test scaffolding only** — they fold away with the
 ``shims/`` on the core merge. They set Passkey Settings values **directly**
@@ -16,6 +16,8 @@ but the runtime login path (``resolve_origins`` + the library's
 DocType validator. ``webauthn`` is never imported here (hook-path
 discipline is not at stake, but the parity is cheap)."""
 
+import functools
+
 import frappe
 from frappe.utils import cint
 
@@ -23,13 +25,29 @@ from passkeys.tests.compat import flush_settings_cache
 
 
 def _guard() -> None:
-	"""Admin-only, developer/test bench only — never callable in production."""
+	"""Admin-only; require explicit development and test-site flags outside tests."""
 	frappe.only_for("System Manager")
-	if not (frappe.conf.get("developer_mode") or getattr(frappe.flags, "in_test", False)):
-		frappe.throw("passkeys UI-test helpers require a developer/test bench")
+	if getattr(frappe.flags, "in_test", False):
+		return
+	if not (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests"))):
+		frappe.throw(
+			"passkeys UI-test helpers require test mode or both developer_mode and allow_tests",
+			frappe.ValidationError,
+		)
 
 
-@frappe.whitelist()
+def _guarded_test_helper(fn):
+	"""Run the test-site guard before any inner endpoint decorator."""
+
+	@functools.wraps(fn)
+	def guarded(*args, **kwargs):
+		_guard()
+		return fn(*args, **kwargs)
+
+	return guarded
+
+
+@frappe.whitelist(methods=["POST"])
 def configure_login(
 	rp_id: str,
 	origin: str,
@@ -56,7 +74,7 @@ def configure_login(
 _2FA_ROLE = "Passkey 2FA UI Role"
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def configure_second_factor(
 	rp_id: str,
 	origin: str,
@@ -89,7 +107,7 @@ def configure_second_factor(
 	return values
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def teardown_second_factor() -> dict:
 	"""Undo :func:`configure_second_factor` (spec ``after``): drop the app
 	second-factor mode, then core 2FA. ``set_single_value`` bypasses the
@@ -106,10 +124,9 @@ def teardown_second_factor() -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def ensure_second_factor_user(email: str, pwd: str) -> str:
-	"""Get-or-create a NON-admin test user with a known password (the passkey
-	second factor is hard-exempt for Administrator). Returns the user name."""
+	"""Get or create a non-admin test user with a known password."""
 	_guard()
 	from frappe.utils.password import update_password
 
@@ -130,7 +147,7 @@ def ensure_second_factor_user(email: str, pwd: str) -> str:
 	return email
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def enroll_user_in_2fa(user: str) -> dict:
 	"""Cover ``user`` with a role carrying ``two_factor_auth=1`` so
 	``should_run_2fa(user)`` is True (drives pwd retention + OTP fallback), and
@@ -150,7 +167,7 @@ def enroll_user_in_2fa(user: str) -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def delete_test_user(email: str) -> dict:
 	"""Remove a user created by :func:`ensure_second_factor_user` (spec cleanup)."""
 	_guard()
@@ -162,10 +179,9 @@ def delete_test_user(email: str) -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def purge_passkeys(user: str) -> dict:
-	"""Delete every WebAuthn Credential + User Handle row for ``user`` — DB
-	cleanup for ``testIsolation:false`` specs on a shared bench site."""
+	"""Delete every WebAuthn Credential + User Handle row for ``user``."""
 	_guard()
 	deleted = frappe.db.count("WebAuthn Credential", {"user": user})
 	frappe.db.delete("WebAuthn Credential", {"user": user})
@@ -174,7 +190,7 @@ def purge_passkeys(user: str) -> dict:
 	return {"deleted": deleted}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_registration_rate_limit(user: str) -> dict:
 	"""Clear the test-setup registration throttles for ``user``.
 
@@ -189,7 +205,7 @@ def clear_registration_rate_limit(user: str) -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_password_failures(user: str) -> dict:
 	"""Clear the app-owned password-oracle throttle for ``user``.
 
@@ -203,7 +219,7 @@ def clear_password_failures(user: str) -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_guest_ceremony_rate_limit() -> dict:
 	"""Clear frappe's IP-keyed ``@rate_limit`` counters for the guest passkey
 	ceremony endpoints (``begin_login`` and ``get_app_translations`` — both
@@ -224,7 +240,7 @@ def clear_guest_ceremony_rate_limit() -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def make_uv_uninitialized(user: str) -> dict:
 	"""Force ``uv_initialized=0`` on the user's credential(s) so a UV=1 assertion
 	drives the uv-setup step-up (the conditional-create-born state, produced
@@ -237,7 +253,7 @@ def make_uv_uninitialized(user: str) -> dict:
 	return {"updated": names}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def credential_count(user: str) -> int:
 	"""Server-side truth for a spec's post-condition assertions."""
 	_guard()
@@ -252,7 +268,7 @@ def credential_count(user: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_sudo_window() -> dict:
 	"""Expire the caller's fresh-login sudo window so a sudo-gated mutation must
 	re-confirm. Drives ``manage_user_form.cy.js``."""
@@ -263,7 +279,7 @@ def clear_sudo_window() -> dict:
 	return {"ok": 1}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def configure_nudge(
 	enrollment_nudge: int = 1,
 	max_prompts: int = 3,
@@ -288,7 +304,7 @@ def configure_nudge(
 	return values
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def seed_nudge_state(declines: int = 0, last_shown=None, opt_out: int = 0) -> dict:
 	"""Write the caller's ``{user}_passkey_nudge`` Defaults row directly (idiom)
 	so a spec can drive a specific cadence state. Drives ``nudge_cadence.cy.js``."""
@@ -303,7 +319,7 @@ def seed_nudge_state(declines: int = 0, last_shown=None, opt_out: int = 0) -> di
 	return blob
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def get_nudge_state() -> dict:
 	"""Read the caller's server-side nudge state back for a spec's post-condition
 	assertions. Drives ``nudge_cadence.cy.js``."""
@@ -329,6 +345,7 @@ CONFIRM_PROBE_FAILING_ACTION = "passkeys.tests.confirm_probe_failing"
 
 
 @frappe.whitelist(methods=["POST"])
+@_guarded_test_helper
 @passkey_protected(action=CONFIRM_PROBE_ACTION, bind_params=["token"], allow_password_fallback=True)
 def confirm_probe(token=None) -> dict:
 	"""A @passkey_protected endpoint the confirm-happy / call-retry / password-
@@ -339,6 +356,7 @@ def confirm_probe(token=None) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+@_guarded_test_helper
 @passkey_protected(
 	action=CONFIRM_PROBE_PASSKEY_ONLY_ACTION, bind_params=["token"], allow_password_fallback=False
 )
@@ -350,6 +368,7 @@ def confirm_probe_passkey_only(token=None) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+@_guarded_test_helper
 @passkey_protected(action=CONFIRM_PROBE_FAILING_ACTION, bind_params=["token"])
 def confirm_probe_failing(token=None):
 	"""Consumes the grant, then fails — the grant-semantics spec asserts the

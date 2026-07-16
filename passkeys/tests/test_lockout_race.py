@@ -22,12 +22,18 @@ transaction's old snapshot.
 """
 
 import hashlib
+import queue
+import threading
+import time
 
 import frappe
 from frappe.utils import cint
 
 from passkeys import session, state
 from passkeys.api import credentials
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
+	lock_passkey_mode_floor,
+)
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -42,6 +48,12 @@ class _SweptBase(IntegrationTestCase):
 
 	def setUp(self):
 		super().setUp()
+		self._mode_snapshot = (
+			frappe.db.get_single_value("Passkey Settings", "login_with_passkey"),
+			frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor"),
+		)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def tearDown(self):
@@ -51,7 +63,75 @@ class _SweptBase(IntegrationTestCase):
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
 			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", cint(self._mode_snapshot[0]))
+		frappe.db.set_single_value(
+			"Passkey Settings", "passkey_as_second_factor", cint(self._mode_snapshot[1])
+		)
 		frappe.db.commit()
+
+
+class CoreTwoFactorFloorRaceTest(IntegrationTestCase):
+	"""Concurrent settings saves cannot commit core-2FA-off/passkey-2FA-on."""
+
+	def setUp(self):
+		super().setUp()
+		self.site = frappe.local.site
+		self.sites_path = frappe.local.sites_path
+		self.passkey_snapshot = frappe.db.get_singles_dict("Passkey Settings")
+		self.core_snapshot = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
+		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "example.com")
+		frappe.db.set_single_value("Passkey Settings", "passkey_origins", "https://example.com")
+		frappe.db.commit()
+
+	def tearDown(self):
+		super().tearDown()
+		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", cint(self.core_snapshot))
+		for field in ("passkey_as_second_factor", "passkey_rp_id", "passkey_origins"):
+			frappe.db.set_single_value("Passkey Settings", field, self.passkey_snapshot.get(field) or 0)
+		frappe.db.commit()
+
+	def test_forward_and_reverse_saves_serialize_on_core_flag(self):
+		barrier = threading.Barrier(2)
+		outcomes = queue.Queue()
+
+		def save(kind: str):
+			frappe.init(self.site, sites_path=self.sites_path)
+			frappe.connect()
+			try:
+				if kind == "passkey":
+					doc = frappe.get_doc("Passkey Settings")
+					doc.passkey_as_second_factor = 1
+				else:
+					doc = frappe.get_doc("System Settings")
+					doc.enable_two_factor_auth = 0
+				frappe.db.rollback()
+				barrier.wait(timeout=10)
+				doc.save(ignore_permissions=True)
+				frappe.db.commit()
+				outcomes.put((kind, "success"))
+			except (frappe.ValidationError, frappe.QueryDeadlockError):
+				frappe.db.rollback()
+				outcomes.put((kind, "rejected"))
+			except Exception as exc:
+				frappe.db.rollback()
+				outcomes.put((kind, f"error: {exc!r}"))
+			finally:
+				frappe.destroy()
+
+		threads = [threading.Thread(target=save, args=(kind,)) for kind in ("passkey", "core")]
+		for thread in threads:
+			thread.start()
+		for thread in threads:
+			thread.join(timeout=20)
+
+		self.assertFalse(any(thread.is_alive() for thread in threads), "2FA floor race deadlocked")
+		results = [outcomes.get_nowait() for _thread in threads]
+		self.assertEqual(sorted(status for _kind, status in results), ["rejected", "success"], results)
+		core_on = cint(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"))
+		passkey_on = cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor"))
+		self.assertFalse(passkey_on and not core_on, results)
 
 
 class HandleLockSerializationTest(_SweptBase):
@@ -116,6 +196,35 @@ class HandleLockSerializationTest(_SweptBase):
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", drop.name))
 		self.assertTrue(frappe.db.exists("WebAuthn Credential", keep.name))
 
+	def test_mode_floor_lock_returns_the_foreign_connections_committed_values(self):
+		"""After waiting on a foreign writer, return that writer's committed values."""
+		frappe.db.commit()
+		foreign = self._foreign_connection()
+		self.addCleanup(foreign.close)
+		foreign.begin()
+		with foreign.cursor() as cursor:
+			cursor.execute(
+				"select `value` from `tabSingles` where `doctype` = %s and `field` = %s",
+				("Passkey Settings", "login_with_passkey"),
+			)
+			self.assertEqual(cint(cursor.fetchone()[0]), 1)
+			cursor.execute(
+				"update `tabSingles` set `value` = 0 where `doctype` = %s and `field` in (%s, %s)",
+				("Passkey Settings", "login_with_passkey", "passkey_as_second_factor"),
+			)
+
+		# Hold the mode rows long enough for the app connection's FOR UPDATE to
+		# queue, then commit from the owning connection. This is the actual race
+		# shape: the returned values must come from the locking read after the wait.
+		releaser = threading.Thread(target=lambda: (time.sleep(0.2), foreign.commit()))
+		releaser.start()
+		started = time.monotonic()
+		try:
+			self.assertFalse(lock_passkey_mode_floor())
+		finally:
+			releaser.join(timeout=2)
+		self.assertGreaterEqual(time.monotonic() - started, 0.15)
+
 
 class LockingReadTest(_SweptBase):
 	"""Every writer of the invariant issues ``FOR UPDATE`` reads on both the
@@ -149,6 +258,21 @@ class LockingReadTest(_SweptBase):
 		hits = [query for query in self._locking_reads() if table in query]
 		self.assertTrue(hits, f"no FOR UPDATE read on {table}; locking reads seen: {self._locking_reads()}")
 
+	def _authorize_toggle(self, user: str, enabled: bool = True) -> None:
+		token = frappe.generate_hash()
+		state.store_grant(
+			hashlib.sha256(token.encode()).hexdigest(),
+			{
+				"v": 1,
+				"user": user,
+				"sid": self.sid,
+				"action": session.SET_PASSKEY_ONLY_ACTION,
+				"method": "passkey",
+				"payload_hash": session.payload_hash({"enabled": enabled}),
+			},
+		)
+		frappe.local.form_dict[session.GRANT_KWARG] = token
+
 	def test_endpoint_delete_guard_uses_locking_reads(self):
 		user = self._user()
 		make_credential(user)
@@ -178,21 +302,10 @@ class LockingReadTest(_SweptBase):
 		make_credential(user)
 		make_handle(user)
 		frappe.set_user(user)
-		token = frappe.generate_hash()
-		state.store_grant(
-			hashlib.sha256(token.encode()).hexdigest(),
-			{
-				"v": 1,
-				"user": user,
-				"sid": self.sid,
-				"action": session.SET_PASSKEY_ONLY_ACTION,
-				"method": "passkey",
-				"payload_hash": session.payload_hash({"enabled": True}),
-			},
-		)
-		frappe.local.form_dict[session.GRANT_KWARG] = token
+		self._authorize_toggle(user)
 		self.captured.clear()
 		credentials.set_passkey_only_login(1)
+		self._assert_locking_read("tabSingles")
 		self._assert_locking_read("tabWebAuthn User Handle")
 		self._assert_locking_read("tabWebAuthn Credential")
 
@@ -203,5 +316,41 @@ class LockingReadTest(_SweptBase):
 		handle.passkey_only_login = 1
 		self.captured.clear()
 		handle.save(ignore_permissions=True)
+		self._assert_locking_read("tabSingles")
 		self._assert_locking_read("tabWebAuthn User Handle")
 		self._assert_locking_read("tabWebAuthn Credential")
+
+	def test_settings_mode_off_guard_uses_shared_lock(self):
+		user = self._user()
+		make_credential(user)
+		make_handle(user, passkey_only_login=1)
+		settings = frappe.get_doc("Passkey Settings")
+		settings.login_with_passkey = 0
+		settings.passkey_as_second_factor = 0
+		self.captured.clear()
+		with self.assertRaises(frappe.ValidationError):
+			settings.save(ignore_permissions=True)
+		self._assert_locking_read("tabSingles")
+		self._assert_locking_read("tabWebAuthn User Handle")
+
+	def test_toggle_refuses_when_both_passkey_modes_are_off(self):
+		user = self._user()
+		make_credential(user)
+		make_credential(user)
+		make_handle(user)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
+		frappe.set_user(user)
+		self._authorize_toggle(user)
+		with self.assertRaises(frappe.ValidationError):
+			credentials.set_passkey_only_login(1)
+
+	def test_direct_handle_save_refuses_when_both_passkey_modes_are_off(self):
+		user = self._user()
+		make_credential(user)
+		handle = make_handle(user)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
+		handle.passkey_only_login = 1
+		with self.assertRaises(frappe.ValidationError):
+			handle.save(ignore_permissions=True)

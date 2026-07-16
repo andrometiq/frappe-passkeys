@@ -20,9 +20,11 @@
 		<p class="passkey-portal-sub text-muted">
 			{{ _("Passkeys let you sign in with your fingerprint, face, screen lock, or a security key — no password to type.") }}
 		</p>
-	</header>
+		</header>
 
-	{# The card component mounts here (passkey_portal.bundle.js). #}
+		<div id="passkey-portal-status" class="passkey-portal-status" role="status" aria-live="polite" hidden></div>
+
+		{# The card component mounts here (passkey_portal.bundle.js). #}
 	<div id="passkey-portal-root" class="passkey-portal-root" aria-live="polite">
 		<noscript>
 			<p class="passkey-portal-noscript">

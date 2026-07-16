@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
 
@@ -46,14 +47,77 @@ def validate_rp_id_shape(rp_id: str) -> None:
 
 
 def resolve_origins(settings, rp_id: str) -> list[str]:
-	"""Expected origins: ``https://{rp_id}`` + the `passkey_origins` lines
-	(exact-match allowlist, explicit ports allowed)."""
-	origins = [f"https://{rp_id}"]
+	"""Resolve exact trusted web origins without widening from the RP ID.
+
+	The configured site origin is included when its host is inside ``rp_id``;
+	additional origins must be listed explicitly. An RP ID is a credential scope,
+	not evidence that its apex is an application origin.
+	"""
+	origins = []
+	configured = resolve_site_origin(rp_id)
+	if configured:
+		host = (urlsplit(configured).hostname or "").lower()
+		if host == rp_id or host.endswith("." + rp_id):
+			origins.append(configured)
 	for line in (settings.get("passkey_origins") or "").splitlines():
 		line = line.strip()
-		if line and line not in origins:
-			origins.append(line)
+		canonical = canonical_web_origin(line) if line else None
+		origin = canonical or line
+		if origin and origin not in origins:
+			origins.append(origin)
 	return origins
+
+
+def canonical_web_origin(raw: str) -> str | None:
+	"""Return the browser-canonical ``scheme://host[:port]`` form, or ``None``.
+
+	Host and scheme are case-insensitive; browsers omit default ports in
+	``clientDataJSON.origin``. Canonicalizing configuration prevents a valid
+	``https://host:443`` entry from becoming an impossible exact match.
+	"""
+	raw = (raw or "").strip()
+	if not raw:
+		return None
+	parts = urlsplit(raw)
+	if (
+		parts.scheme.lower() not in ("http", "https")
+		or not parts.hostname
+		or parts.username
+		or parts.password
+		or parts.path
+		or parts.query
+		or parts.fragment
+		or any(char.isspace() for char in parts.hostname)
+	):
+		return None
+	try:
+		port = parts.port
+		host = parts.hostname.encode("idna").decode("ascii").lower()
+	except (UnicodeError, ValueError):
+		return None
+	scheme = parts.scheme.lower()
+	if port == (443 if scheme == "https" else 80):
+		port = None
+	return f"{scheme}://{host}{f':{port}' if port else ''}"
+
+
+def configured_site_origin() -> str | None:
+	"""Return the exact origin portion of the trusted ``host_name`` setting."""
+	raw = (frappe.conf.get("host_name") or "").strip()
+	if not raw:
+		return None
+	if "//" not in raw:
+		raw = "https://" + raw
+	return canonical_web_origin(raw)
+
+
+def resolve_site_origin(rp_id: str) -> str | None:
+	"""Return ``host_name``'s origin only when it falls within the RP scope."""
+	configured = configured_site_origin()
+	if not configured:
+		return None
+	host = (urlsplit(configured).hostname or "").lower()
+	return configured if host == rp_id or host.endswith("." + rp_id) else None
 
 
 def validate_origins(settings, rp_id: str) -> None:
@@ -61,21 +125,28 @@ def validate_origins(settings, rp_id: str) -> None:
 	developer mode), and every origin host within the RP ID's registrable
 	scope — an out-of-scope origin passes every server check and then dies
 	client-side with a browser SecurityError, forever."""
-	for origin in resolve_origins(settings, rp_id):
-		parts = urlsplit(origin)
-		host = (parts.hostname or "").lower()
-		if not host or parts.path not in ("", "/") or parts.query or parts.fragment:
+	origins = resolve_origins(settings, rp_id)
+	if not origins:
+		frappe.throw(
+			_(
+				"Configure at least one exact passkey origin or set this site's host_name within the RP ID scope."
+			)
+		)
+	for origin in origins:
+		canonical = canonical_web_origin(origin)
+		if not canonical:
 			frappe.throw(
 				_("Invalid passkey origin {0}: expected scheme://host[:port], one per line").format(origin)
 			)
+		parts = urlsplit(canonical)
+		host = (parts.hostname or "").lower()
 		if parts.scheme != "https":
-			if parts.scheme == "http" and _is_dev_localhost(host):
-				continue
-			frappe.throw(
-				_(
-					"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
-				).format(origin)
-			)
+			if not (parts.scheme == "http" and _is_dev_localhost(host)):
+				frappe.throw(
+					_(
+						"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
+					).format(origin)
+				)
 		if host != rp_id and not host.endswith("." + rp_id):
 			frappe.throw(
 				_(
@@ -88,6 +159,22 @@ def _is_dev_localhost(host: str) -> bool:
 	return bool(frappe.conf.get("developer_mode")) and host in LOCALHOST_HOSTS
 
 
+def lock_core_2fa_floor() -> int:
+	"""Lock and return core's 2FA flag.
+
+	Both the Passkey Settings forward validator and the System Settings reverse
+	validator take this same ``tabSingles`` row lock. Concurrent saves therefore
+	cannot each validate the other's stale pre-change value and commit a desync.
+	"""
+	rows = frappe.db.sql(
+		"""select `value` from `tabSingles`
+		where `doctype` = %s and `field` = %s
+		for update""",
+		("System Settings", "enable_two_factor_auth"),
+	)
+	return cint(rows[0][0] if rows else 0)
+
+
 # ---------------------------------------------------------------------------
 # Trusted app origins (native mobile)
 # ---------------------------------------------------------------------------
@@ -96,8 +183,9 @@ def _is_dev_localhost(host: str) -> bool:
 # ``https://<rp_id>``. These lines are appended to the ``expected_origin`` list the
 # ceremony engine matches ``clientDataJSON.origin`` against, but they are EXEMPT from
 # the web-origin validator (:func:`validate_origins`): they are not URLs, and web
-# origin validation must never weaken. iOS needs NO entry — it presents
-# ``https://<rp_id>`` (already the leading web origin), so it rides the existing list.
+# origin validation must never weaken. iOS needs no Trusted App Origin entry; it
+# presents ``https://<rp_id>``, which must itself be present in the exact web-origin
+# allowlist when that is the native app's asserted origin.
 
 _APK_KEY_HASH_PREFIX = "android:apk-key-hash:"
 # SHA-256 is 32 bytes → 43 unpadded base64url characters.
@@ -132,7 +220,9 @@ def resolve_expected_origins(settings, rp_id: str) -> list[str]:
 def validate_app_origins(settings) -> None:
 	"""Enable-time, fail-closed shape check for the Trusted App Origins. Each line
 	must be ``android:apk-key-hash:<hash>`` where ``<hash>`` is the unpadded
-	base64url SHA-256 (43 chars) of the app's signing certificate. iOS needs no entry.
+	base64url SHA-256 (43 chars) of the app's signing certificate. iOS needs no
+	Trusted App Origin entry, but its asserted ``https://<rp_id>`` must be configured
+	as a web origin.
 
 	Play App Signing note: the hash MUST come from Google's app-signing certificate
 	(Play Console → App integrity → App signing), NOT the local upload key — the single
@@ -144,7 +234,7 @@ def validate_app_origins(settings) -> None:
 		if not origin.startswith(_APK_KEY_HASH_PREFIX):
 			frappe.throw(
 				_(
-					"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs none — it presents https://<RP ID>, already covered by the origins above."
+					"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure its https://<RP ID> value under Passkey Origins."
 				).format(origin)
 			)
 		digest = origin[len(_APK_KEY_HASH_PREFIX) :]

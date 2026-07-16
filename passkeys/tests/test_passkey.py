@@ -17,6 +17,17 @@ class PasskeyTestCase(IntegrationTestCase):
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		return user
 
+	def enable_passkey_login_mode(self) -> None:
+		"""Establish the production invariant required by passkey-only handles."""
+		previous = frappe.db.get_single_value("Passkey Settings", "login_with_passkey")
+		self.addCleanup(
+			frappe.db.set_single_value,
+			"Passkey Settings",
+			"login_with_passkey",
+			previous or 0,
+		)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+
 
 class TestDocTypeSchemas(PasskeyTestCase):
 	def test_doctypes_installed(self):
@@ -106,6 +117,10 @@ class TestWebAuthnCredential(PasskeyTestCase):
 
 
 class TestWebAuthnUserHandle(PasskeyTestCase):
+	def setUp(self):
+		super().setUp()
+		self.enable_passkey_login_mode()
+
 	def test_handle_identity_is_immutable(self):
 		handle = make_handle(self.make_user())
 
@@ -161,6 +176,7 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		self._two_factor_auth = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
 		self._conf_host_name = frappe.local.conf.get("host_name")
 		self._conf_developer_mode = frappe.local.conf.get("developer_mode")
+		self._conf_encryption_key = frappe.local.conf.get("encryption_key")
 
 	def tearDown(self):
 		from frappe.utils import cint
@@ -171,6 +187,7 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or "")
 		frappe.local.conf["host_name"] = self._conf_host_name
 		frappe.local.conf["developer_mode"] = self._conf_developer_mode
+		frappe.local.conf["encryption_key"] = self._conf_encryption_key
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", cint(self._two_factor_auth))
 		super().tearDown()
 
@@ -198,9 +215,19 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		self.assertRaises(frappe.ValidationError, doc.save)
 
 	def test_enable_refuses_without_webauthn(self):
-		doc = self._settings(login_with_passkey=1, passkey_rp_id="example.com")
+		doc = self._settings(
+			login_with_passkey=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
 		with patch("passkeys.policy.webauthn_available", return_value=False):
 			self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_explicit_rp_id_does_not_implicitly_trust_its_apex(self):
+		frappe.local.conf["host_name"] = "https://other.test"
+		doc = self._settings(login_with_passkey=1, passkey_rp_id="example.com", passkey_origins="")
+		with self.assertRaises(frappe.ValidationError):
+			doc.save()
 
 	def test_origins_must_be_https(self):
 		doc = self._settings(
@@ -208,18 +235,45 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		)
 		self.assertRaises(frappe.ValidationError, doc.save)
 
+	def test_origin_must_be_exact_origin_without_userinfo_or_path(self):
+		for origin in ("https://user@example.com", "https://example.com/"):
+			with self.subTest(origin=origin):
+				doc = self._settings(
+					login_with_passkey=1,
+					passkey_rp_id="example.com",
+					passkey_origins=origin,
+				)
+				with self.assertRaises(frappe.ValidationError):
+					doc.save()
+
 	def test_localhost_origin_only_under_developer_mode(self):
 		frappe.local.conf["developer_mode"] = 0
 		doc = self._settings(
-			login_with_passkey=1, passkey_rp_id="example.com", passkey_origins="http://localhost:8000"
+			login_with_passkey=1, passkey_rp_id="localhost", passkey_origins="http://localhost:8000"
 		)
 		self.assertRaises(frappe.ValidationError, doc.save)
 
 		frappe.local.conf["developer_mode"] = 1
 		doc = self._settings(
-			login_with_passkey=1, passkey_rp_id="example.com", passkey_origins="http://localhost:8000"
+			login_with_passkey=1, passkey_rp_id="localhost", passkey_origins="http://localhost:8000"
 		)
 		doc.save()
+
+	def test_localhost_origin_must_still_match_rp_scope(self):
+		frappe.local.conf["developer_mode"] = 1
+		doc = self._settings(
+			login_with_passkey=1, passkey_rp_id="example.com", passkey_origins="http://localhost:8000"
+		)
+		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_enable_requires_site_encryption_key(self):
+		frappe.local.conf["encryption_key"] = None
+		doc = self._settings(
+			login_with_passkey=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
+		self.assertRaisesRegex(frappe.ValidationError, "encryption_key", doc.save)
 
 	def test_origin_outside_rp_scope_is_refused(self):
 		doc = self._settings(
@@ -237,16 +291,25 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 
 	def test_second_factor_requires_core_two_factor_auth(self):
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
-		doc = self._settings(passkey_as_second_factor=1, passkey_rp_id="example.com")
+		doc = self._settings(
+			passkey_as_second_factor=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
 		self.assertRaises(frappe.ValidationError, doc.save)
 
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 1)
-		doc = self._settings(passkey_as_second_factor=1, passkey_rp_id="example.com")
+		doc = self._settings(
+			passkey_as_second_factor=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
 		doc.save()
 
 	def test_disable_guard_protects_passkey_only_users(self):
 		"""Generalized guard: a save leaving no passkey-capable
 		mode while flagged users exist is refused; the message lists them."""
+		self.enable_passkey_login_mode()
 		user = self.make_user()
 		make_credential(user)
 		make_handle(user, passkey_only_login=1)
@@ -257,7 +320,12 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		self.assertIn(user, str(ctx.exception))
 
 		# keeping one passkey-capable mode on: the save proceeds
-		doc = self._settings(login_with_passkey=1, passkey_as_second_factor=0, passkey_rp_id="example.com")
+		doc = self._settings(
+			login_with_passkey=1,
+			passkey_as_second_factor=0,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
 		doc.save()
 
 		# clearing the flag unblocks the all-off save

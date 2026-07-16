@@ -52,10 +52,10 @@ def classify_posture(ctx: dict) -> dict:
 	Mode lens:
 	  * **first-factor** (``login_with_passkey``): a passkey is *a* first factor, so
 	    every OTHER first factor (password / email-link / social / LDAP) is a bypass.
-	  * **second-factor only** (``passkey_as_second_factor`` without first-factor):
-	    a password login is funnelled through the passkey step, so it is NOT itself a
-	    bypass — the bypasses are the paths that skip the passkey step (social / email
-	    link) and, critically, core Two Factor Authentication being off (the floor)."""
+	  * **second-factor enabled**: enrolled users are final-vetoed on every stock login
+	    path unless this app completed its passkey or OTP-fallback leg. Alternate login
+	    methods are therefore availability constraints, not passkey bypasses. Core Two
+	    Factor Authentication remains a required defence-in-depth floor."""
 	first = bool(ctx.get("first_factor"))
 	second = bool(ctx.get("second_factor"))
 	pw_enabled = bool(ctx.get("password_login_enabled"))
@@ -75,6 +75,7 @@ def classify_posture(ctx: dict) -> dict:
 	# In first-factor mode, password login is an alternative first factor. In
 	# second-factor-only mode it rides the passkey step, so it is not a bypass.
 	pw_is_bypass = first and pw_enabled
+	alternate_is_bypass = first and not second
 
 	# ---- no active passkey mode -------------------------------------------------
 	if not any_mode:
@@ -114,7 +115,7 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
-	if providers:
+	if providers and alternate_is_bypass:
 		rows.append(
 			_row(
 				"social_login",
@@ -125,8 +126,21 @@ def classify_posture(ctx: dict) -> dict:
 				bypass_label=_("social login"),
 			)
 		)
+	elif providers:
+		rows.append(
+			_row(
+				"social_login",
+				"medium",
+				_("Social login is enabled: {0}.").format(", ".join(providers)),
+				_("Enrolled users cannot finish these login paths without this app's passkey leg."),
+				_(
+					"Keep 'Login with Passkey' on for enrolled accounts that rely on social login, "
+					"or ensure they can start the app's password-to-passkey flow."
+				),
+			)
+		)
 
-	if ldap:
+	if ldap and alternate_is_bypass:
 		rows.append(
 			_row(
 				"ldap",
@@ -137,9 +151,22 @@ def classify_posture(ctx: dict) -> dict:
 				bypass_label=_("LDAP sign-in"),
 			)
 		)
+	elif ldap:
+		rows.append(
+			_row(
+				"ldap",
+				"medium",
+				_("LDAP sign-in is enabled."),
+				_("Enrolled users cannot finish LDAP login without this app's passkey leg."),
+				_(
+					"Keep 'Login with Passkey' on for enrolled LDAP-only accounts, or ensure they "
+					"can start the app's password-to-passkey flow."
+				),
+			)
+		)
 
-	# Core 2FA is only a passkey factor in second-factor mode (its floor). Off ⇒ a
-	# direct password sign-in that skips the passkey step has no second factor at all.
+	# Core 2FA remains the required defence-in-depth floor. The final login veto
+	# still fails closed for enrolled users if a console edit desynchronizes it.
 	if second:
 		if not core_2fa:
 			rows.append(
@@ -148,12 +175,11 @@ def classify_posture(ctx: dict) -> dict:
 					"high",
 					_("Two Factor Authentication is off."),
 					_(
-						"Passkey as Second Factor relies on core Two Factor Authentication as its "
-						"floor; with it off, a password sign-in that does not use the passkey step "
-						"has no second factor."
+						"Passkey as Second Factor requires core Two Factor Authentication as a "
+						"defence-in-depth floor. The final login veto still blocks enrolled users, "
+						"but this configuration is unsupported."
 					),
 					_("Enable 'Two Factor Authentication' in System Settings."),
-					bypass_label=_("password sign-ins with no second factor"),
 				)
 			)
 		else:
@@ -163,13 +189,12 @@ def classify_posture(ctx: dict) -> dict:
 					"core_2fa_on",
 					"info",
 					_("Two Factor Authentication is on ({0}).").format(method),
-					_("Sign-ins that skip the passkey step fall back to this second factor."),
+					_("This is the required core floor behind the app's final-login veto."),
 					_("No change needed — this is the intended second-factor floor."),
 				)
 			)
 
-	# Email-link login skips the passkey step in either mode.
-	if email_link:
+	if email_link and alternate_is_bypass:
 		rows.append(
 			_row(
 				"email_link",
@@ -178,6 +203,19 @@ def classify_posture(ctx: dict) -> dict:
 				_("A user can sign in through an emailed link without a passkey."),
 				_("Turn off 'Login with Email Link' in System Settings."),
 				bypass_label=_("email-link sign-in"),
+			)
+		)
+	elif email_link:
+		rows.append(
+			_row(
+				"email_link",
+				"medium",
+				_("Login with email link is enabled."),
+				_("Enrolled users cannot finish email-link login without this app's passkey leg."),
+				_(
+					"Keep 'Login with Passkey' on for enrolled email-link-only accounts, or ensure "
+					"they can start the app's password-to-passkey flow."
+				),
 			)
 		)
 

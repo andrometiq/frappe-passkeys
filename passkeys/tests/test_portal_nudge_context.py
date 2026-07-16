@@ -14,7 +14,7 @@ import frappe
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_user
 from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
 
 RP_ID = "example.com"
@@ -36,7 +36,7 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1  # a first-factor mode on ⇒ any-mode gate true
 		settings.passkey_as_second_factor = 0
 		settings.passkey_enrollment_policy = "Nudge"

@@ -1,8 +1,8 @@
 # REST API reference
 
-For integrators with **no JavaScript asset** — a native mobile app, a separate
-single-page app, a server-to-server client. Everything the shipped UI and the
-[headless JS API](custom-ui.md) do goes through these whitelisted endpoints; this
+For integrators with **no JavaScript asset** — a native mobile app or a separate
+single-page app. Every operation performed by the shipped UI and the
+[headless JS API](custom-ui.md) goes through these whitelisted endpoints; this
 page is the raw contract.
 
 If you *can* load a script, prefer [`custom-ui.md`](custom-ui.md) — the headless API
@@ -32,11 +32,15 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   CSRF-exempt but bound to an `HttpOnly` `passkey_binder` cookie the server sets on
   `begin_login` and checks on every `verify_*` — run the whole ceremony in one
   first-party browser/client context so the cookie rides along.
+- **Interactive authenticator required**: these are ceremony transport endpoints, not a
+  server-to-server authentication API. A client must drive a platform, roaming, or cross-device
+  WebAuthn authenticator and preserve the first-party cookie/session context.
 - **Rate limits**: guest ceremonies are IP-limited (core `@rate_limit`); authenticated
   ones are per-user. Both are listed per endpoint; exceeding one returns `429`.
-- **Dormant shell**: on a Frappe that serves passkeys natively, **every** endpoint
-  returns `417 PasskeyServedByCore` — detect it and fall back to core's own passkey
-  API.
+- **Dormant shell**: endpoints return `417 PasskeyServedByCore` only when
+  `frappe.passkey` advertises the exact handover marker
+  `FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Mere module presence blocks
+  fresh installation but does not make an installed app dormant.
 
 ---
 
@@ -138,7 +142,13 @@ Leg 2: verify the step-up assertion, re-authenticate, mint the session. Source:
 - **Success** `200`: the core login envelope (session minted).
 - **Errors**: on a recoverable failure the `401 CeremonyExpired` body **re-arms** —
   it carries a fresh `state_id` + `verification.options` (retry up to 3×); their
-  absence means terminal (fall back to password/OTP).
+  absence means terminal (restart at the app's password form; use OTP only through the offered
+  `fallback_to_otp` flow).
+
+The password leg records a keyed, non-reversible password-hash version and leg 2 compares it again
+before minting the session. Password rotation or user disable during the ceremony is terminal and
+fails closed. For enrolled users, the final login hook also vetoes alternate/core login paths unless
+this app completed the passkey leg or issued the one-time OTP fallback marker.
 
 ### `passkeys.passkey.fallback_to_otp`
 
@@ -148,6 +158,9 @@ Rate limit: **5 / 300 s / IP**. Guest.
 
 - **Args**: `state_id`.
 - **Success** `200`: core's OTP envelope (`verification.method` OTP/SMS/Email).
+  The handoff stores a short-lived marker bound to core's `tmp_id`; the final login hook consumes it
+  once after core accepts the OTP. A direct core OTP flow has no marker and is vetoed for an enrolled
+  second-factor user.
 
 ---
 
@@ -167,7 +180,8 @@ Rate limit: **20 / 3600 s / user**.
   discoverable state is reported.
 - **Errors**: `401 PasskeyConfirmationRequired` when no sudo window is live — the
   body carries `action` (`"passkeys.manage"`), `payload_fingerprint`, and `methods`
-  (⊆ `["passkey","password"]`). Run the [confirmation](#authenticated--action-confirmation)
+  (⊆ `["passkey","password"]`). Run the
+  [confirmation](#authenticated--action-confirmation-passkey-signing)
   to mint a grant, then retry `begin_registration`. Also `ValidationError`
   (`passkey_max_per_user` reached; passkeys not configured).
 
@@ -261,12 +275,19 @@ consume, and that any app's `@passkey_protected` method uses. Source:
 
 Mint UV-required assertion options bound to an action (+ optional payload).
 
-- **Args**: `action` (dotted method path), and **either** `params` (the raw call
+- **Args**: `action` (stable, globally unique action ID), and **either** `params` (the raw call
   args — the server computes the fingerprint) **or** `payload_hash` (a server-issued
   `payload_fingerprint` echoed verbatim — never compute it client-side). The two are
   mutually exclusive.
 - **Success** `200`: `{"message": {"state_id": "…", "options": <RequestOptionsJSON>,
-  "payload_fingerprint": "…", "methods": ["passkey","password"]}}`.
+  "payload_fingerprint": "…", "methods": ["passkey","password"],
+  "action_label": "Release payment", "parameter_summary": [{"label":"Payment","value":"PAY-1"}]}}`.
+  The display fields are optional decorator metadata. `display_params` must be a subset of
+  `bind_params`; undeclared values are never exposed and display metadata does not alter grant
+	  binding.
+	  A protected call publishes this policy to site-scoped Redis before returning its 401, so a
+	  subsequent begin/reauth request may land on another worker. Unknown action IDs fail closed and
+	  do not offer password fallback.
 
 ### `passkeys.confirm.verify_confirmation`
 
@@ -295,6 +316,9 @@ fallback). Rate limit: **5 / 300 s / user**.
 - **`passkeys.passkey.record_nudge`** — folds an enrollment-nudge event
   (`"shown"` / `"declined"` / `"opt_out"`) into per-user cadence state; best-effort
   telemetry, safe to omit. Rate limit: 30 / 3600 s / user.
+- **`passkeys.passkey.record_enforcement`** — records `"defer"` or `"incapable"`. A defer consumes
+  at most one grace login per user/session, atomically across tabs/workers. Rate limit: 30 / 3600 s
+  / user.
 - **`passkeys.passkey.get_app_translations`** (`GET`) — the app's i18n catalog, for
   rendering the shipped copy on v15/v16 pages. Rate limit: 30 / 60 s / IP.
 

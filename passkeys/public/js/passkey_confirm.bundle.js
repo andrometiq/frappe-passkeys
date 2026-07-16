@@ -96,7 +96,13 @@
 	function makeDialogUI() {
 		var dialog = null;
 		var restoreFocus = C.captureFocus(document);
+		var focusRestored = false;
 		var liveRegionSeeded = false;
+		function restoreCapturedFocus() {
+			if (focusRestored) return;
+			focusRestored = true;
+			if (restoreFocus) restoreFocus();
+		}
 
 		function ensureDialog(opts) {
 			if (dialog) return dialog;
@@ -150,10 +156,20 @@
 			});
 		}
 
-		function actionLabel(action) {
-			// action is a dotted method path (e.g. "myapp.release_payment").
-			var tail = String(action || "").split(".").pop() || String(action || "");
-			return tail.replace(/_/g, " ");
+		function summaryHtml(rows) {
+			if (!rows || !rows.length) return "";
+			var out = ['<div class="passkey-confirm-summary" aria-label="' + esc(t("Action details")) + '">'];
+			rows.forEach(function (row) {
+				if (row.label) {
+					out.push('<div class="passkey-confirm-summary-row"><span class="passkey-confirm-summary-label">' +
+						esc(row.label) + '</span><span class="passkey-confirm-summary-value">' +
+						esc(row.value) + '</span></div>');
+				} else {
+					out.push('<div class="passkey-confirm-summary-value">' + esc(row.value) + '</div>');
+				}
+			});
+			out.push("</div>");
+			return out.join("");
 		}
 
 		var controller = {
@@ -161,22 +177,24 @@
 			chooseMethod: function (opts) {
 				return new Promise(function (resolve, reject) {
 					ensureDialog(opts);
-					var actName = esc(actionLabel(opts.action));
+					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
+					var actName = context.labelFromServer ? context.label : t(context.label);
 					// The built-in passkey-management action (delete / add a passkey) gets
 					// plain, honest framing: the user landed here because this sign-in wasn't
 					// strongly verified recently (A4). Other (third-party) actions keep the
 					// action-named lead.
-					var leadHtml = opts.action === "passkeys.manage"
+					var leadHtml = '<p class="passkey-confirm-action"><strong>' + esc(actName) + '</strong></p>' +
+						(opts.action === "passkeys.manage"
 						? '<p class="passkey-confirm-lead">' +
 							esc(t("This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below.")) +
 							'</p>'
 						: '<p class="passkey-confirm-lead">' +
-							esc(t("Confirm")) + ' <strong>' + actName + '</strong> ' +
-							esc(t("with your passkey.")) + '</p>';
+							esc(t("Confirm {0} with your passkey.", [actName])) + '</p>');
 					var lines = [
 						'<div class="passkey-confirm" role="group" aria-label="' +
 							esc(t("Confirm this action with a passkey")) + '">',
 						leadHtml,
+						summaryHtml(context.summary),
 						'<div class="passkey-confirm-actions">',
 						'<button type="button" class="btn btn-primary passkey-confirm-passkey" ' +
 							'autofocus>' + esc(t("Confirm with passkey")) + '</button>',
@@ -209,18 +227,23 @@
 
 			// Prompt for the password (fallback path). Resolve with the string;
 			// reject (user_cancelled) if the user dismisses the dialog.
-			collectPassword: function () {
+			collectPassword: function (opts) {
 				return new Promise(function (resolve, reject) {
 					// The engine can route STRAIGHT to the password leg (caps.passkey
 					// false — a zero-credential user, or the sudo window expired) WITHOUT
 					// ever calling chooseMethod, so the dialog may not exist yet. Create
 					// it here too — mirrors the portal bundle's `if (!modal)` guard — or
 					// setContent()/bodyEl() dereference a null dialog (TypeError crash).
-					ensureDialog();
+					opts = opts || {};
+					ensureDialog(opts);
+					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
+					var actionName = context.labelFromServer ? context.label : t(context.label);
 					var lead = t("Confirm your password to continue.");
 					var html = [
 						'<div class="passkey-confirm" role="group" aria-label="' +
 							esc(t("Confirm with your password")) + '">',
+						'<p class="passkey-confirm-action"><strong>' + esc(actionName) + '</strong></p>',
+						summaryHtml(context.summary),
 						'<label class="passkey-confirm-pwlabel" for="passkey-confirm-pw">' +
 							esc(lead) + '</label>',
 						'<input type="password" id="passkey-confirm-pw" class="form-control ' +
@@ -276,7 +299,14 @@
 
 			done: function (ok) {
 				void ok;
+				var restoreOnHidden = false;
 				try {
+					// Bootstrap performs its own focus work while hiding. Restoring in
+					// hide.bs.modal is too early and gets overwritten by that cleanup.
+					if (dialog && dialog.$wrapper && dialog.$wrapper.one) {
+						restoreOnHidden = true;
+						dialog.$wrapper.one("hidden.bs.modal", restoreCapturedFocus);
+					}
 					if (dialog && dialog.hide) dialog.hide();
 					// Bootstrap 4's modal("hide") silently no-ops (and never retries) when
 					// called during the ~300ms show transition (_isTransitioning), which a
@@ -287,8 +317,8 @@
 							try { dialog.$wrapper.modal("hide"); } catch (e) { /* ignore */ }
 						});
 					}
-				} catch (e) { /* ignore */ }
-				if (restoreFocus) restoreFocus(); // focus returns to invoking control
+				} catch (e) { restoreOnHidden = false; }
+				if (!restoreOnHidden) restoreCapturedFocus();
 			},
 
 			close: function () { controller.done(false); },
@@ -388,7 +418,10 @@
 		var f = (window.frappe = window.frappe || {});
 		f.passkeys = f.passkeys || {};
 		function unavailable() {
-			return Promise.reject({ code: "not_supported", message: "Passkey confirmation is unavailable." });
+			var message = typeof window.__ === "function"
+				? window.__("Passkey confirmation is unavailable.")
+				: "Passkey confirmation is unavailable.";
+			return Promise.reject({ code: "not_supported", message: message });
 		}
 		if (!f.passkeys.confirm) f.passkeys.confirm = unavailable;
 		if (!f.passkeys.call) f.passkeys.call = unavailable;

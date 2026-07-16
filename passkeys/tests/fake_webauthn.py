@@ -13,8 +13,9 @@ with the ``shims/`` on the core merge.
 
 Security posture — the map's musts, each honoured here:
 
-1. **Never callable in production.** Every whitelisted entry point calls
-   :func:`_guard` first (System Manager **and** a developer/test bench), the exact
+1. **Disabled under production defaults.** Every whitelisted entry point calls
+   :func:`_guard` first. Outside the test runner it requires a System Manager on a
+   site with both ``developer_mode`` and ``allow_tests`` enabled, matching
    ``ui_test_helpers._guard``. A fake ceremony that mints a session on a live site
    would be a full auth bypass. The internal ``_*_ceremony`` helpers run only *after*
    a public entry has guarded.
@@ -30,9 +31,9 @@ Security posture — the map's musts, each honoured here:
    ``ui_test_helpers.configure_login``, so an ``http://*.localhost`` origin is
    accepted without threading developer mode through ``Passkey Settings.validate`` —
    while the **ceremony-time** ``expected_origin`` check stays fully intact.
-5. **Deterministic test keys never reach a production store.** The
-   :class:`SoftAuthenticator` is seed-derived (labelled test keys); it is only ever
-   invoked behind :func:`_guard`, so a known key can never register on a live site.
+5. **Deterministic test keys require explicit test-site configuration.** The
+   :class:`SoftAuthenticator` is seed-derived (labelled test keys) and is only ever
+   invoked behind :func:`_guard`.
 """
 
 import frappe
@@ -50,14 +51,18 @@ DEFAULT_ORIGIN = "https://example.com"
 
 
 def _guard() -> None:
-	"""Admin-only, developer/test bench only — never callable in production.
-	Byte-for-byte the ``ui_test_helpers._guard`` contract."""
+	"""Admin-only; require explicit development and test-site flags outside tests."""
 	frappe.only_for("System Manager")
-	if not (frappe.conf.get("developer_mode") or getattr(frappe.flags, "in_test", False)):
-		frappe.throw("passkeys browserless test mode requires a developer/test bench")
+	if getattr(frappe.flags, "in_test", False):
+		return
+	if not (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests"))):
+		frappe.throw(
+			"passkeys browserless test mode requires test mode or both developer_mode and allow_tests",
+			frappe.ValidationError,
+		)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def enable(rp_id: str = DEFAULT_RP_ID, origin: str = DEFAULT_ORIGIN, second_factor: int = 0) -> dict:
 	"""Point Passkey Settings at a browserless test RP + origin and turn login on.
 
@@ -78,7 +83,7 @@ def enable(rp_id: str = DEFAULT_RP_ID, origin: str = DEFAULT_ORIGIN, second_fact
 	return values
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def enroll(
 	user: str | None = None,
 	seed: str = "primary",
@@ -112,7 +117,7 @@ def enroll(
 	return reg
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def round_trip(
 	seed: str | None = None,
 	alg: int = ES256,

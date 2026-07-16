@@ -11,8 +11,8 @@ enforcement, and a test for every behaviour.
   issue per bug or request.
 - **Bugs** need the Frappe version, exact reproduction steps, what you expected, what happened, and a
   screenshot or short screencast where it helps.
-- **Security vulnerabilities must not go in public issues** — follow the disclosure process in
-  [`docs/security.md`](docs/security.md).
+- **Security vulnerabilities must not go in public issues** — follow the private disclosure process
+  in [`SECURITY.md`](SECURITY.md).
 - General "how do I…" questions belong on the [Frappe forum](https://discuss.frappe.io) or Stack
   Overflow (tag `frappe`), not the issue tracker.
 
@@ -26,11 +26,13 @@ cd apps/passkeys
 pre-commit install
 ```
 
-Run the suites before you push — CI runs all three against Frappe v15, v16, and develop:
+Run the suites before you push. Release CI exercises reviewed, pinned Frappe v15, v16, and develop
+baselines; the moving-tip workflow fails visibly on drift but does not expand the supported release
+range or attest a release candidate:
 
 ```bash
 bench --site <site> run-tests --app passkeys      # Python server suite
-node --test 'passkeys/tests/js/*.test.js'          # dependency-free client-logic suite
+node --test passkeys/tests/js/*.test.js            # dependency-free client-logic suite
 # Cypress end-to-end: see .github/workflows/ci.yml for the exact invocation
 ```
 
@@ -107,7 +109,21 @@ that's asked.
 - All tests pass locally (server, JS unit, and Cypress) and `pre-commit` is clean.
 - New behaviour is covered by tests; business logic and validation stay server-side.
 - Update the relevant docs under [`docs/`](docs/) when behaviour changes.
+- For authentication, migration, origin-policy, or lifecycle changes, update
+  [`CHANGELOG.md`](CHANGELOG.md) and verify the [release checklist](docs/release-checklist.md) still
+  covers the changed risk.
 - Link the issue you close with `Closes #123`.
+
+## Releases
+
+Only maintainers publish releases. A green test run is necessary but not sufficient: the candidate
+must satisfy [`docs/release-checklist.md`](docs/release-checklist.md), including a clean worktree,
+candidate-specific pinned CI, lifecycle and uninstall-export coverage, staging validation on the
+deployment topology, recovery rehearsal, changelog review, and private-data/secret scanning.
+
+Do not describe `develop`, an untagged commit, or an upstream-tip compatibility run as production-ready.
+Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid
+test counts and commit hashes that become stale as soon as the tree changes.
 
 ## Code style
 

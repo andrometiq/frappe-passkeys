@@ -27,8 +27,11 @@ cookie cross-site. Authenticated ceremonies bind to the session id instead.
 **Origin and RP-ID pinning, exact-match, fail-closed.** RP ID and origins are
 resolved once at enable time from pinned configuration — never from live `Host`
 or `X-Forwarded-*` headers. Origins are an exact-match allowlist including port;
-the library checks the assertion's origin against that list. The request host is
-re-checked at both begin and complete.
+the library checks the assertion's origin against that list. A compatible `host_name` contributes
+its own exact origin and explicit Passkey Origins add to it; RP ID alone never authorizes
+`https://<rp_id>`, and an empty resolved web-origin set is invalid. iOS must therefore have its
+asserted `https://<rp_id>` origin explicitly present when the site's `host_name` does not contribute
+that exact value. The request host is re-checked at both begin and complete.
 
 **Cross-origin rejection is enforced by the app.** `py_webauthn` 2.8 accepts
 `crossOrigin: true` and never parses `topOrigin`, so the app parses the raw
@@ -57,6 +60,38 @@ core's `login_as` → `post_login` — full login hooks, IP/hour checks, a fresh
 session and CSRF token, and an Activity Log row. The app never spins up a fresh
 login manager mid-flow.
 
+**Second-factor enforcement covers alternate login paths.** When Passkey as Second Factor is on and
+a user has an enabled credential, the final `on_login` hook vetoes password, email-link,
+social/OAuth, LDAP, and other core login completions unless this app has completed the passkey step.
+The only downgrade is an enabled OTP fallback initiated by this app: `fallback_to_otp` issues a
+short-lived, one-time marker bound to core's `tmp_id`, and the hook consumes it only on core's login
+route after core accepts a non-empty OTP. Carrying that `tmp_id` on an email-link or OAuth request
+does not consume or satisfy it. Calling core's OTP path directly creates no marker and remains blocked.
+
+**Administrator exemption is narrow.** Administrator remains break-glass exempt from the per-user
+*Passkey Only Login* veto. Administrator is **not** exempt from the enrolled second-factor rule:
+once an enabled credential is explicitly enrolled while Passkey as Second Factor is active, the
+same alternate-path veto applies. Core's site-wide `disable_user_pass_login` also has no
+Administrator exemption.
+
+**Password rotation is checked at the session boundary.** Every password-to-passkey ceremony stores
+a keyed, non-reversible version of the password hash at leg one and compares it with the current
+version before minting a session. A password change during the ceremony fails closed. The marker
+does not expose the password hash, and the normal passkey leg does not retain the plaintext password.
+Mode enablement and local-password ceremonies fail closed when the site has no `encryption_key`.
+External-auth users without a local password hash retain the supplied password only for the short
+ceremony lifetime because core must re-authenticate it before session minting.
+
+**Password-reset keys rotate a password but do not satisfy a passkey factor.** Frappe core calls
+`login_as` after a successful reset. For an enrolled second-factor user, the app lets the reset
+transaction finish but downgrades that automatic login to Guest; the user must then sign in with the
+new password and passkey (or an explicitly enabled OTP fallback). Passkey-only accounts keep their
+stricter veto.
+
+**Passkey failures share core's consecutive-login tracker.** Once a credential resolves an account,
+invalid assertions feed Frappe's tracker. A locked account cannot bypass that lock with a valid
+passkey, and a successful verified passkey resets the same consecutive-failure state.
+
 **Action-confirmation grants are tightly bound.** A grant from the
 `@passkey_protected` primitive is single-use, ~180 s, and bound to
 `user + session + action + exact payload`. Tokens are returned once and stored
@@ -67,10 +102,38 @@ never computes a hash. The action↔challenge binding replaces the retired
 `txAuthSimple` extension: the signature commits to a challenge that names exactly
 one action and payload.
 
+The decorator publishes its static policy to site-scoped Redis before returning the initial 401, so
+`begin_confirmation` and password re-auth can land on another worker without changing the offered
+methods or display metadata. Unknown actions fail closed without a password fallback; the protected
+method's consumer remains the final method and payload authority.
+
 **The "sudo" re-auth window** (default 600 s) gates the app's own management
 surface (add/delete passkeys). It is seeded by a fresh interactive login or a
 password / passkey re-auth. A "weak" login (email link, social) seeds only the
-restricted first-passkey bootstrap, never general management power.
+restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
+management power.
+
+**Security invariants are transactionally locked.** Authentication locks the user and credential
+before counter/UV updates; registration locks the user, handle, and credential census before cap
+enforcement and insertion; credential deletion and passkey-only toggles share a locked login-floor
+census; and mode-setting changes lock the Single rows before checking passkey-only users. This
+prevents concurrent workers from committing individually valid reads into an invalid combined state.
+
+**Enrollment grace is once per session.** A user/session digest is claimed atomically in Redis, so
+retries or multiple tabs can consume at most one grace defer for that session.
+
+**Uninstall exports fail closed.** Credential export schema v2 is site-bound and authenticated with
+HMAC-SHA256 derived from the site's `encryption_key`, written atomically at mode `0600`. Import
+rejects another site or a bad signature. Its default requires empty passkey tables;
+`allow_existing=True` is an explicit reviewed merge with row-level rejection reporting. Unsigned
+schema-v1 files from pre-v2 app builds are rejected unless an operator reviews their provenance and
+passes `allow_unsigned_legacy=True`; this opt-in does not make the file authenticated.
+
+**Native dormancy requires an explicit contract.** Fresh installation is blocked by any
+`frappe.passkey` module to avoid installing two authorities. An already-installed app no-ops hooks
+and returns `417 PasskeyServedByCore` only when core defines the exact marker
+`FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Module presence alone is not
+accepted as evidence of a complete or safe handover.
 
 **Password-oracle throttling** on the password-taking endpoints the app adds
 beyond core's login surface (the uv-setup step and the confirmation password
@@ -97,6 +160,7 @@ overlap.
 | `verify_second_factor` | 10 / 60 s |
 | `fallback_to_otp` | 5 / 300 s |
 | `get_app_translations` | 30 / 60 s |
+| `assetlinks` / `apple_app_site_association` | 120 / 60 s |
 
 *Authenticated endpoints — per-user app counter, keyed on the session user:*
 
@@ -109,6 +173,7 @@ overlap.
 | `delete_credential` | 10 / hour |
 | `get_signal_data` | 60 / min |
 | `record_nudge` | 30 / hour |
+| `record_enforcement` | 30 / hour |
 | `begin_confirmation` | 30 / 5 min |
 | `verify_confirmation` | 30 / 5 min |
 | `reauth_password` | 5 / 5 min |
@@ -148,8 +213,13 @@ so one user cannot probe another's credentials.
   the passkey itself; the account-recovery story is admin-mediated
   re-enrollment, not a weaker alternate login. Encourage users to enroll **two**
   passkeys.
-- **A same-session password change does not revoke a live sudo window** (≤600 s) —
-  accepted, because the password change itself is a sudo-seeding factor.
+- **Alternate first factors are incompatible with second-factor-only enrollment.** The final veto
+  blocks social/OAuth, LDAP, and email-link completions for an enrolled user because those core
+  paths cannot enter this app's passkey leg. Keep passwordless "Login with Passkey" enabled for
+  enrolled accounts that do not have a usable local password, or retain an operator recovery path.
+- **A same-session password change does not revoke an already-live management sudo window**
+  (≤600 s). Password+passkey login ceremonies are different: they compare the keyed password-hash
+  version before session minting and fail if it changed.
 - **A backup restored to a stale point resurrects revoked credentials** — review
   credential inventories after any restore ([`operations.md`](operations.md)).
 - **Cross-origin / multi-domain serving** (Related Origin Requests) and
@@ -167,7 +237,6 @@ so one user cannot probe another's credentials.
 
 ## Reporting a vulnerability
 
-Please report security issues privately to the maintainers rather than opening a
-public issue, and allow time for a fix before any disclosure. Because this app is
-intended for upstream Frappe, follow the Frappe project's responsible-disclosure
-process for issues that also affect core.
+Follow [`../SECURITY.md`](../SECURITY.md). Do not include vulnerability details in a public issue.
+Issues independently affecting Frappe core should also follow Frappe's own current responsible-
+disclosure process; this app's upstream proposal does not make the projects one security boundary.

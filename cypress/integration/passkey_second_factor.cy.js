@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// Password → passkey second factor. Three
+// Password → passkey second factor. Four
 // journeys against the real committed bundle + a CDP virtual authenticator:
 //   1. password submit → passkey step-up dialog → session (dispatch, not stacked
 //      onto OTP);
@@ -10,9 +10,9 @@
 //   3. a failed leg-2 verify re-arms the UI and a second gesture succeeds WITHOUT
 //      ever re-POSTing an assertion (fresh server re-arm is covered
 //      by passkeys/tests/test_second_factor.py).
+//   4. a non-401 server failure clears the pending state so a fresh gesture works.
 //
-// The second factor is hard-exempt for Administrator, so these run as a
-// dedicated non-admin user registered while a first-factor mode is on, then
+// These run as a dedicated non-admin user registered while a first-factor mode is on, then
 // covered by a core-2FA role once the passkey exists.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
@@ -59,10 +59,30 @@ chromium_only("password → passkey second factor", () => {
 	});
 
 	function submitPassword() {
+		cy.intercept_frappe_method("passkeys.passkey.begin_login", "begin_login");
+		cy.intercept_frappe_method("passkeys.passkey.login_with_password", "login_with_password");
 		cy.visit_login();
+		cy.wait("@begin_login", { timeout: 15000 }).then(({ response }) => {
+			const body = response && response.body;
+			const config = (body && (body.message || body)) || {};
+			expect(config.enabled, "passkey login bundle is enabled").to.eq(true);
+			expect(config.modes && config.modes.second_factor, "second-factor mode reached the browser").to.eq(
+				true
+			);
+		});
+		cy.get("html", { timeout: 15000 }).should(
+			"have.attr",
+			"data-passkeys-second-factor-ready",
+			"true"
+		);
 		cy.get("#login_email").clear().type(SF_USER);
 		cy.get("#login_password").clear().type(SF_PW, { log: false });
-		cy.get(".form-login").first().submit();
+		cy.get(".form-login:visible")
+			.find("button[type='submit']")
+			.then(($button) => $button[0].click());
+		cy.wait("@login_with_password", { timeout: 15000 }).then(({ response }) => {
+			expect(response && response.statusCode, JSON.stringify(response && response.body)).to.eq(200);
+		});
 		cy.get(".passkey-dialog", { timeout: 15000 }).should("be.visible");
 	}
 
@@ -143,5 +163,25 @@ chromium_only("password → passkey second factor", () => {
 			// each verify carried a freshly-minted assertion — never a replay
 			expect(new Set(nonNull).size, "no assertion was re-POSTed").to.eq(nonNull.length);
 		});
+	});
+
+	it("allows a fresh gesture after a non-401 verification failure", () => {
+		let verifyCalls = 0;
+		cy.intercept_frappe_method("passkeys.passkey.verify_second_factor", "verify_sf", (req) => {
+			verifyCalls += 1;
+			if (verifyCalls === 1) {
+				req.reply({ statusCode: 500, body: { exc_type: "InternalServerError" } });
+			}
+		});
+
+		submitPassword();
+		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 500);
+		cy.get(".passkey-dialog .passkey-dialog-error", { timeout: 15000 }).should("not.be.empty");
+		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 200);
+
+		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
+		cy.then(() => expect(verifyCalls).to.eq(2));
 	});
 });

@@ -8,6 +8,9 @@ from frappe.utils import cint
 
 from passkeys import policy, state
 from passkeys.passkey import refuse_if_core_native
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
+	lock_passkey_mode_floor,
+)
 
 
 class PasskeySettings(Document):
@@ -43,7 +46,7 @@ class PasskeySettings(Document):
 
 	def _validate_enablement(self):
 		"""Enabling any mode requires an importable webauthn, a resolved
-		RP ID, and HTTPS origins within the RP ID's scope."""
+		RP ID, HTTPS origins within the RP ID's scope, and a site encryption key."""
 		if not policy.webauthn_available():
 			frappe.throw(
 				_(
@@ -59,6 +62,12 @@ class PasskeySettings(Document):
 			)
 		policy.validate_origins(self, rp_id)
 		policy.validate_app_origins(self)
+		if not frappe.conf.get("encryption_key"):
+			frappe.throw(
+				_(
+					"Cannot enable passkeys: this site has no encryption_key. Create the site encryption key before enabling an authentication mode."
+				)
+			)
 
 	def _validate_second_factor_floor(self):
 		"""The enforcement floor is structural — passkey second factor
@@ -66,7 +75,7 @@ class PasskeySettings(Document):
 		face core's own OTP gate on every branch, with zero hook dependence)."""
 		if not cint(self.passkey_as_second_factor):
 			return
-		if not cint(frappe.db.get_single_value("System Settings", "enable_two_factor_auth")):
+		if not policy.lock_core_2fa_floor():
 			frappe.throw(
 				_(
 					"Passkey as Second Factor requires Two Factor Authentication to be enabled in System Settings — it is the backstop for password logins that bypass the passkey UI."
@@ -83,9 +92,17 @@ class PasskeySettings(Document):
 	def _enforce_passkey_only_login_guard(self):
 		"""Generalized disable-guard: no save may leave zero
 		passkey-capable login modes while any user has passkey_only_login=1."""
+		lock_passkey_mode_floor()
 		if self._any_mode_enabled():
 			return
-		flagged = frappe.get_all("WebAuthn User Handle", filters={"passkey_only_login": 1}, pluck="user")
+		flagged = frappe.db.get_values(
+			"WebAuthn User Handle",
+			{"passkey_only_login": 1},
+			"user",
+			order_by=None,
+			for_update=True,
+			pluck=True,
+		)
 		if flagged:
 			frappe.throw(
 				_(
@@ -100,7 +117,7 @@ class PasskeySettings(Document):
 		):
 			frappe.msgprint(
 				_(
-					"Passkey as Second Factor is a dead combination with 'Disable Username/Password Login': the password leg refuses while username/password login is disabled."
+					"Passkey as Second Factor is unusable for enrolled users while username/password login is disabled: the app's password leg cannot start, and alternate login completions are final-vetoed. Keep Login with Passkey enabled as their usable route."
 				),
 				indicator="orange",
 			)
@@ -166,8 +183,10 @@ def get_resolved_rp_id() -> dict:
 	frappe.only_for("System Manager")
 	state.rate_limit_user("get_resolved_rp_id", 30, 60)  # 30/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
+	rp_id = policy.resolve_rp_id(settings)
 	return {
-		"rp_id": policy.resolve_rp_id(settings),
+		"rp_id": rp_id,
+		"configured_site_origin": policy.resolve_site_origin(rp_id or ""),
 		"host_name_configured": bool((frappe.conf.get("host_name") or "").strip()),
 	}
 

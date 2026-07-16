@@ -17,6 +17,10 @@ chromium_only("passkey management — navbar entry removed", () => {
 		cy.setup_passkey_settings(); // enable a mode so frappe.boot.passkeys exists
 	});
 
+	beforeEach(() => {
+		cy.login(USER, PW());
+	});
+
 	after(() => {
 		cy.clearCookies();
 	});

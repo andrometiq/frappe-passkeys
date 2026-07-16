@@ -40,7 +40,6 @@ chromium_only("passkey login degradation", () => {
 	});
 
 	it("stays usable on a begin_login network failure", () => {
-		cy.call("logout");
 		cy.intercept("POST", "**/passkeys.passkey.begin_login", { forceNetworkError: true }).as("begin_ne");
 		cy.visit_login();
 		cy.wait("@begin_ne").should((interception) => {

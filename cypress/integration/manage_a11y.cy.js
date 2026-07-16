@@ -32,7 +32,13 @@ chromium_only("passkey management — accessibility", () => {
 		cy.register_passkey(USER, PW());
 	});
 
+	beforeEach(() => {
+		cy.login(USER, PW());
+	});
+
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();

@@ -35,7 +35,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
 		settings.passkey_sign_count_hard_fail = 0
@@ -313,7 +313,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._verify(begun2["state_id"], credential2, binder2)
 		self.assertEqual(frappe.session.user, user)
 
-	def test_complete_uv_setup_wrong_password_rejected(self):
+	def test_complete_uv_setup_wrong_password_can_retry_same_setup(self):
 		user = self._user()
 		auth, _ = self._enroll(user, uv=False)
 		begun, binder = self._begin()
@@ -324,6 +324,13 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.complete_uv_setup(setup_id, "wrong-password")
+
+		# A typo does not burn the verified passkey assertion. The password throttle
+		# still caps guesses, and the first correct completion atomically consumes it.
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, user)
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", {"user": user}, "uv_initialized"), 1)
 
 	# ======================================================================
 	# single-use + rate limit
@@ -483,6 +490,39 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 		frappe.db.set_value("User", user, "enabled", 1)  # let the committing sweep delete it
 
+	def test_complete_uv_setup_refuses_disabled_credential(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		frappe.db.set_value("WebAuthn Credential", name, "enabled", 0, update_modified=False)
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+
+	def test_complete_uv_setup_refuses_deleted_credential(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		frappe.delete_doc("WebAuthn Credential", name, ignore_permissions=True)
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, "Guest")
+
 	def test_uv_setup_leg_regressed_count_flags_credential(self):
 		"""SEC-2: the uv-setup login leg is the SOLE advance for its assertion — a
 		sign-count regression on that first UV=1 login must still flag the credential
@@ -534,6 +574,24 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# never regressed to the stashed 5 — the concurrent N2=50 is preserved
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "sign_count"), 50)
 
+	def test_complete_uv_setup_rejects_same_counter_replay(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		# Another path already persisted this assertion's nonzero count.
+		frappe.db.set_value("WebAuthn Credential", name, "sign_count", 5, update_modified=False)
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(frappe.AuthenticationError):
+			passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+
 	def test_complete_uv_setup_refuses_when_password_throttled(self):
 		"""complete_uv_setup is a password oracle the app introduces (the
 		core tracker is off by default), so it consults the per-user password-failure
@@ -583,6 +641,37 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
 		self.assertEqual(int(fresh.login_failed_count or 0), 3)
 		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
+
+	def test_core_login_lock_blocks_an_otherwise_valid_passkey(self):
+		user = self._user()
+		auth, _ = self._enroll(user)
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], sign_count=5)
+
+		with patch(
+			"frappe.auth.get_login_attempt_tracker",
+			side_effect=frappe.SecurityException("locked"),
+		):
+			with self.assertRaisesRegex(frappe.AuthenticationError, "could not be verified"):
+				self._verify(begun["state_id"], credential, binder)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_verified_passkey_clears_consecutive_failure_count(self):
+		from frappe.auth import get_login_attempt_tracker
+
+		user = self._user()
+		auth, _ = self._enroll(user)
+		tracker = get_login_attempt_tracker(user, raise_locked_exception=False)
+		tracker.add_failure_attempt()
+		tracker.add_failure_attempt()
+		self.assertEqual(int(tracker.login_failed_count or 0), 2)
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], sign_count=5)
+		self._verify(begun["state_id"], credential, binder)
+
+		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
+		self.assertEqual(int(fresh.login_failed_count or 0), 0)
 
 	# ======================================================================
 	# passkey_only user x uv-setup repair, no self-veto

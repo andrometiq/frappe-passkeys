@@ -104,17 +104,16 @@ def build_apple_app_site_association(settings) -> dict | None:
 
 def _fingerprints(raw) -> list[str]:
 	"""Normalize the configured SHA-256 fingerprints to uppercase colon-grouped hex
-	(``AB:CD:…``), one per non-empty line, de-duplicated; lines carrying no hex are
-	dropped. A leading keytool-style ``SHA256:`` / ``SHA-256 =`` label is tolerated
-	so a copied ``keytool -list`` line normalizes cleanly (without it the ``A`` in
-	``SHA256`` would be salvaged as hex); paste one fingerprint per line — colons
-	optional."""
+	(``AB:CD:…``), one per non-empty line, de-duplicated. A valid fingerprint is
+	exactly 32 bytes (64 hex characters); malformed or truncated lines are dropped.
+	A leading keytool-style ``SHA256:`` / ``SHA-256 =`` label is tolerated."""
 	out: list[str] = []
 	for line in (raw or "").splitlines():
-		line = re.sub(r"(?i)^\s*sha-?256\s*[:=]?", " ", line)
-		hexits = re.sub(r"[^0-9A-Fa-f]", "", line).upper()
-		if not hexits:
+		line = re.sub(r"(?i)^\s*sha-?256\s*[:=]?", "", line).strip()
+		hexits = line.replace(":", "")
+		if not re.fullmatch(r"[0-9A-Fa-f]{64}", hexits):
 			continue
+		hexits = hexits.upper()
 		grouped = ":".join(hexits[i : i + 2] for i in range(0, len(hexits), 2))
 		if grouped not in out:
 			out.append(grouped)
@@ -124,4 +123,7 @@ def _fingerprints(raw) -> list[str]:
 def _json_response(payload) -> Response:
 	"""A bare JSON document with an explicit ``application/json`` content type and no
 	redirect — exactly what the Android / iOS association checkers require."""
-	return Response(json.dumps(payload, indent=2), content_type="application/json", status=200)
+	response = Response(json.dumps(payload, indent=2), content_type="application/json", status=200)
+	response.headers["Cache-Control"] = "public, max-age=3600"
+	response.headers["X-Content-Type-Options"] = "nosniff"
+	return response

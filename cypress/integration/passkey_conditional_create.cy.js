@@ -43,6 +43,8 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
@@ -50,6 +52,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 
 	beforeEach(() => {
 		// credential_count must be 0 for eligibility; reset the cadence too.
+		cy.login(USER, PW());
 		cy.purge_server_passkeys(USER);
 		cy.clear_virtual_credentials();
 		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 0 });

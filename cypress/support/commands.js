@@ -320,8 +320,7 @@ Cypress.Commands.add("teardown_second_factor", () =>
 	cy.call("passkeys.tests.ui_test_helpers.teardown_second_factor", {})
 );
 
-// A non-admin user with a known password (the passkey second factor is hard-
-// exempt for Administrator).
+// A non-admin user with a known password for isolated authentication specs.
 Cypress.Commands.add("ensure_sf_user", (email, pwd) =>
 	cy.call("passkeys.tests.ui_test_helpers.ensure_second_factor_user", { email, pwd })
 );
