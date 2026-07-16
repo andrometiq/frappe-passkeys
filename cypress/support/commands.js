@@ -176,6 +176,20 @@ Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
 // state such as preferred_language survives.
 Cypress.Commands.add("visit_login", (options = {}) => {
 	return cy.getCookie("preferred_language", { log: false }).then((language) => {
+		// Guarantee a GUEST *server session* before visiting /login. The first test in
+		// a describe inherits the authenticated session its before() hook established
+		// (Cypress test isolation resets state before before(), not between before()
+		// and test 1), and the desk page from before() is still loaded, firing
+		// background authenticated XHRs. Frappe re-issues `Set-Cookie: sid` on every
+		// such response (auth.py init_cookies), so on a slow/loaded CI runner a
+		// straggler response can re-install a still-valid sid in the window between
+		// clearing cookies and the /login GET. /login decides the redirect against the
+		// server session store (login.py: `if session.user != "Guest"`), not cookie
+		// presence, so it then 302s to /desk and the login form never renders — CI-only,
+		// green locally where the desk quiesces instantly. A server-side logout deletes
+		// the session record, so any re-seeded sid is inert and /login always shows the
+		// form: this closes the race categorically. clearCookies below is only tidy-up.
+		cy.request({ url: "/api/method/logout", failOnStatusCode: false, log: false });
 		cy.clearCookies({ log: false });
 		if (language && language.value) {
 			cy.setCookie("preferred_language", language.value, { log: false });
