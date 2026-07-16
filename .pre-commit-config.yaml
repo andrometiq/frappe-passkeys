@@ -4,7 +4,7 @@ fail_fast: false
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # v6.0.0
     hooks:
       - id: trailing-whitespace
         files: "passkeys.*"
@@ -17,7 +17,7 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.10
+    rev: 5ba58aca0bd5bc7c0e1c0fc45af2e88d6a2bde83  # v0.14.10
     hooks:
       - id: ruff
         name: "Run ruff import sorter"
