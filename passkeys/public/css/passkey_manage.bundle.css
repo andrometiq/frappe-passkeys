@@ -224,6 +224,23 @@
 	margin: 0 0 1.5rem;
 }
 
+.passkey-portal-status {
+	margin: 0 0 1rem;
+	padding: 0.65rem 0.8rem;
+	border: 1px solid var(--border-color, #d5dbe0);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--control-bg, #f7f8fa);
+}
+.passkey-portal-status[hidden] { display: none; }
+.passkey-portal-status--success {
+	border-color: var(--green-400, #72c493);
+	color: var(--green-700, #1f7a44);
+}
+.passkey-portal-status--error {
+	border-color: var(--red-400, #e58a8a);
+	color: var(--red-700, #b32d2d);
+}
+
 /* --------------------------------------- passwordless-login-only switch */
 .passkey-only-row {
 	display: flex;

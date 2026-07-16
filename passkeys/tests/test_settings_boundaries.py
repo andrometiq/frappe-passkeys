@@ -33,7 +33,6 @@ from passkeys.api import registration
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_resolved_rp_id
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -101,7 +100,7 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 1
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
@@ -328,7 +327,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
 		settings.passkey_enrollment_policy = "Enforce"
@@ -442,20 +441,31 @@ class ResolvedRpIdEndpointTest(IntegrationTestCase):
 	def test_explicit_field_wins_over_host_name(self):
 		self._set_rp_id("example.com")
 		frappe.conf.host_name = "https://ignored.example.net"
-		self.assertEqual(get_resolved_rp_id()["rp_id"], "example.com")
+		out = get_resolved_rp_id()
+		self.assertEqual(out["rp_id"], "example.com")
+		self.assertIsNone(out["configured_site_origin"])
 
 	def test_falls_back_to_host_name_when_field_blank(self):
 		self._set_rp_id("")
 		frappe.conf.host_name = "https://site.example.org"
 		out = get_resolved_rp_id()
 		self.assertEqual(out["rp_id"], "site.example.org")
+		self.assertEqual(out["configured_site_origin"], "https://site.example.org")
 		self.assertTrue(out["host_name_configured"])
+
+	def test_host_name_origin_is_browser_canonical(self):
+		self._set_rp_id("")
+		frappe.conf.host_name = "HTTPS://SITE.EXAMPLE.ORG:443"
+		out = get_resolved_rp_id()
+		self.assertEqual(out["rp_id"], "site.example.org")
+		self.assertEqual(out["configured_site_origin"], "https://site.example.org")
 
 	def test_none_when_nothing_resolves(self):
 		self._set_rp_id("")
 		frappe.conf.host_name = None
 		out = get_resolved_rp_id()
 		self.assertIsNone(out["rp_id"])
+		self.assertIsNone(out["configured_site_origin"])
 		self.assertFalse(out["host_name_configured"])
 
 

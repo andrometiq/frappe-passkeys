@@ -652,7 +652,60 @@
 			action: body.action || null,
 			payloadFingerprint: body.payload_fingerprint || null,
 			methods: Array.isArray(body.methods) ? body.methods.slice() : [],
+			actionLabel: typeof body.action_label === "string" ? body.action_label : null,
+			parameterSummary: body.parameter_summary !== undefined ? body.parameter_summary : null,
 		};
+	}
+
+	var CONFIRM_ACTION_LABELS = {
+		"passkeys.manage": "Manage passkeys",
+		"passkeys.set_passkey_only_login": "Change passkey-only login",
+	};
+
+	function confirmationActionContext(action, serverLabel, serverSummary) {
+		var fromServer = typeof serverLabel === "string" && !!serverLabel.trim();
+		var label = fromServer ? serverLabel.trim() : (CONFIRM_ACTION_LABELS[action] || humanizeAction(action));
+		return {
+			label: label || "Confirm action",
+			labelFromServer: fromServer,
+			summary: normalizeConfirmationSummary(serverSummary),
+		};
+	}
+
+	function humanizeAction(action) {
+		var tail = String(action || "").split(".").pop().replace(/[_-]+/g, " ").trim();
+		if (!tail) return "";
+		return tail.charAt(0).toUpperCase() + tail.slice(1);
+	}
+
+	// Server summaries are display data, never protocol inputs. Accept only bounded
+	// primitive label/value pairs (or bounded strings); nested objects and markup are
+	// discarded, and each DOM adapter escapes/text-renders the returned values.
+	function normalizeConfirmationSummary(summary) {
+		var rows = [];
+		function primitive(v) {
+			if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+				return String(v).slice(0, 240);
+			}
+			return null;
+		}
+		function add(label, value) {
+			if (rows.length >= 6) return;
+			var v = primitive(value);
+			if (v === null || !v.trim()) return;
+			var l = primitive(label);
+			rows.push({ label: l && l.trim() ? l.slice(0, 80) : null, value: v });
+		}
+		if (Array.isArray(summary)) {
+			summary.forEach(function (item) {
+				if (item && typeof item === "object" && !Array.isArray(item)) {
+					add(item.label || item.name || item.key, item.value !== undefined ? item.value : item.summary);
+				} else add(null, item);
+			});
+		} else if (summary && typeof summary === "object") {
+			Object.keys(summary).forEach(function (key) { add(key, summary[key]); });
+		} else add(null, summary);
+		return rows;
 	}
 
 	// The header a caller attaches to the protected call once it holds a grant.
@@ -711,7 +764,8 @@
 	//   ui: {
 	//     chooseMethod({action, canPasskey, canPassword}) -> Promise<"passkey"|"password">
 	//                                                          (reject to cancel)
-	//     collectPassword()  -> Promise<string>              (reject to cancel)
+	//     collectPassword({action, actionLabel, parameterSummary}) -> Promise<string>
+	//                                                          (reject to cancel)
 	//     announce(msg), busy(bool), done(ok), passwordError(msg), close()
 	//   }
 	//   translate (optional): (str) -> str
@@ -762,6 +816,18 @@
 				var stateId = begin.state_id;
 				var options = begin.options;
 				var fingerprint = begin.payload_fingerprint || input.payloadFingerprint || null;
+				// On call() retries the initial 401 came from the protected action
+				// itself and carries its explicitly safe display metadata. Keep it
+				// across a worker handoff where begin may know only the safe default.
+				var actionLabel = input.actionLabel ||
+					(typeof begin.action_label === "string" ? begin.action_label : null);
+				var parameterSummary = input.parameterSummary !== undefined && input.parameterSummary !== null
+					? input.parameterSummary : begin.parameter_summary;
+				var displayContext = {
+					action: action,
+					actionLabel: actionLabel,
+					parameterSummary: parameterSummary,
+				};
 				// begin's per-user methods are authoritative; fall back to the
 				// 401 policy hint only if begin omitted them.
 				var caps = confirmCapabilities(
@@ -779,14 +845,16 @@
 					.then(function () {
 						if (!caps.passkey) return "password"; // open straight on the password tab
 						return controller.chooseMethod({
-							action: action,
+							action: displayContext.action,
+							actionLabel: displayContext.actionLabel,
+							parameterSummary: displayContext.parameterSummary,
 							canPasskey: caps.passkey,
 							canPassword: caps.password,
 						});
 					})
 					.then(function (method) {
 						if (method === "password") {
-							return passwordLeg(controller, action, fingerprint);
+							return passwordLeg(controller, action, fingerprint, displayContext);
 						}
 						return passkeyLeg(controller, stateId, options);
 					})
@@ -827,10 +895,10 @@
 				});
 		}
 
-		function passwordLeg(controller, action, fingerprint) {
+		function passwordLeg(controller, action, fingerprint, displayContext) {
 			var tries = 0;
 			function attempt() {
-				return controller.collectPassword().then(function (pwd) {
+				return controller.collectPassword(displayContext).then(function (pwd) {
 					tries += 1;
 					var body = { pwd: pwd, action: action };
 					if (fingerprint) body.payload_fingerprint = fingerprint;
@@ -881,6 +949,8 @@
 					action: req.action,
 					payloadFingerprint: req.payloadFingerprint,
 					methods: req.methods,
+					actionLabel: req.actionLabel,
+					parameterSummary: req.parameterSummary,
 				}).then(function (grant) {
 					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
 						if (res2 && res2.ok) return unwrapMessage(res2.body);
@@ -959,6 +1029,8 @@
 		confirmSignature: confirmSignature,
 		extractGrant: extractGrant,
 		confirmCapabilities: confirmCapabilities,
+		confirmationActionContext: confirmationActionContext,
+		normalizeConfirmationSummary: normalizeConfirmationSummary,
 		ConfirmError: ConfirmError,
 		createConfirmEngine: createConfirmEngine,
 	};

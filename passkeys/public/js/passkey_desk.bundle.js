@@ -209,34 +209,7 @@
 	// promise is .catch()'d (Safari 26's never-settling bug can neither resolve nor reject).
 	function fireSignal(data) {
 		var rpId = (window.frappe && frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.rp_id) || location.hostname;
-		var payload = M.signalPayload(data);
-		if (payload && window.PublicKeyCredential && typeof PublicKeyCredential.signalAllAcceptedCredentials === "function") {
-			try {
-				var p = PublicKeyCredential.signalAllAcceptedCredentials({
-					rpId: rpId,
-					userId: payload.userHandle,
-					// F3: an EMPTY allAcceptedCredentialIds is intentional after a genuine
-					// last-passkey delete — the provider then hides ALL of this user's passkeys.
-					// It only reaches here behind res.ok, never on a failed list read.
-					allAcceptedCredentialIds: payload.allAcceptedCredentialIds,
-				});
-				if (p && p.catch) p.catch(function () {}); // Safari 26 never-settles / Firefox absent
-			} catch (e) { /* fire-and-forget */ }
-		}
-		// F2: keep the provider's stored username/display name in sync with the RP so the
-		// account chooser doesn't drift after a full_name/email edit.
-		var details = M.currentUserDetailsPayload(data);
-		if (details && window.PublicKeyCredential && typeof PublicKeyCredential.signalCurrentUserDetails === "function") {
-			try {
-				var q = PublicKeyCredential.signalCurrentUserDetails({
-					rpId: rpId,
-					userId: details.userHandle,
-					name: details.name,
-					displayName: details.displayName,
-				});
-				if (q && q.catch) q.catch(function () {}); // Safari 26 never-settles / Firefox absent
-			} catch (e) { /* fire-and-forget */ }
-		}
+		M.signalCredentialState(window.PublicKeyCredential, data, rpId);
 	}
 	function refreshSignalsInSession() {
 		post(METHODS.getSignalData, {}).then(function (res) {
@@ -275,7 +248,7 @@
 			list.className = "passkey-card-list";
 			list.setAttribute("role", "list");
 			creds.forEach(function (cred) {
-				list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map }), opts));
+				list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map, translate: t }), opts));
 			});
 			container.appendChild(list);
 			container.appendChild(addButtonRow(opts));
@@ -374,6 +347,7 @@
 				d.hide();
 				announce(t("Confirming it's you…"));
 				guardedCall(METHODS.del, { name: vm.name }).then(function () {
+					refreshSignalsInSession();
 					announce(t("Passkey removed."));
 					refresh(opts);
 				}).catch(function (err) {
@@ -399,13 +373,14 @@
 
 	function passkeyOnlyRow(creds, payload, opts) {
 		var enabledCount = 0;
-		creds.forEach(function (c) { if (M.credentialViewModel(c).enabled) enabledCount += 1; });
+		creds.forEach(function (c) { if (M.credentialViewModel(c, { translate: t }).enabled) enabledCount += 1; });
 		var current = isPasskeyOnly(payload);
+		var availability = M.passkeyOnlyAvailability(enabledCount, current);
 
 		var row = el("div", "passkey-only-row");
 		var main = el("div", "passkey-only-main");
 		main.appendChild(el("div", "passkey-only-label", t(M.COPY.passkeyOnlyLabel)));
-		main.appendChild(el("div", "passkey-only-help", t(M.COPY.passkeyOnlyHelp)));
+		main.appendChild(el("div", "passkey-only-help", t(M.COPY[availability.helpKey])));
 		row.appendChild(main);
 
 		var toggle = document.createElement("input");
@@ -415,9 +390,9 @@
 		toggle.setAttribute("role", "switch");
 		toggle.setAttribute("aria-checked", current ? "true" : "false");
 		toggle.setAttribute("aria-label", t(M.COPY.passkeyOnlyLabel));
-		if (enabledCount === 0) {
+		if (availability.disabled) {
 			toggle.disabled = true;
-			toggle.setAttribute("title", t(M.COPY.passkeyOnlyHelp));
+			toggle.setAttribute("title", t(M.COPY.passkeyOnlyNeedsTwo));
 		}
 		toggle.addEventListener("change", function () {
 			var desired = toggle.checked;
@@ -501,7 +476,7 @@
 			list.className = "passkey-card-list";
 			list.setAttribute("role", "list");
 			creds.forEach(function (cred) {
-				list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map }), { readOnly: true }));
+				list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map, translate: t }), { readOnly: true }));
 			});
 			container.appendChild(list);
 			var link = document.createElement("a");
@@ -759,7 +734,21 @@
 
 	// ------------------------------------------------------ enforcement gate
 	function recordEnforcement(event) {
-		post(METHODS.recordEnforcement, { event: event }).catch(function () {}); // server owns grace
+		return post(METHODS.recordEnforcement, { event: event });
+	}
+	var _recordSessionEvent = M.createSessionEventRecorder(getSessionStorage());
+	function recordEnforcementDefer(b, enf) {
+		var user = (window.frappe && frappe.session && frappe.session.user) || "current";
+		var verdict = Object.assign({}, (b && b.enforcement) || {}, {
+			graceRemaining: enf && enf.graceRemaining,
+		});
+		var key = M.enforcementDeferKey(user, verdict);
+		return _recordSessionEvent(key, function () {
+			return recordEnforcement(M.ENFORCE_EVENTS.DEFER).then(function (res) {
+				if (!res || !res.ok) throw new Error("record_enforcement_failed");
+				return res;
+			});
+		}).catch(function () {});
 	}
 	// Report an incapable device at most once per session (avoids a second admin email
 	// when the auto-detected Block+Notify path and the "I can't set one up here" escape
@@ -768,7 +757,7 @@
 	function reportIncapableOnce() {
 		if (_incapableReported) return;
 		_incapableReported = true;
-		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE);
+		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE).catch(function () {});
 	}
 
 	// The post-login ENFORCEMENT interstitial (desk). Blocking dialogs are made static
@@ -790,13 +779,15 @@
 				// Skippable while grace remains — equal-weight, honest remaining count.
 				var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
 				actions.appendChild(linkButton(later, function () {
-					d._acted = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); d.hide();
+					d._acted = true; recordEnforcementDefer(b, enf); d.hide();
 				}));
 			} else {
-				// Grace exhausted (or admin Block) — the incapable escape, never a dead-end.
-				actions.appendChild(linkButton(t(M.COPY.enforceCantSetUp), function () {
+				// Grace exhausted (or admin Block): administrator recovery and sign-out remain
+				// available while passkey setup itself can be retried in place.
+				actions.appendChild(linkButton(t(M.COPY.enforceContactAdmin), function () {
 					onEnforceCantSetUp(b, d, body);
 				}));
+				actions.appendChild(linkButton(t(M.COPY.enforceSignOut), signOut));
 			}
 			body.appendChild(actions);
 		}
@@ -810,7 +801,7 @@
 		// no grace left to spend, so it wires nothing here.
 		if (!enf.blocking && d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () {
-				if (!d._acted) { d._acted = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); }
+				if (!d._acted) { d._acted = true; recordEnforcementDefer(b, enf); }
 			});
 		}
 		d.show();
@@ -840,6 +831,10 @@
 			var notice = el("p", "passkey-nudge-body", t(M.COPY.enforceBlockedNotice));
 			notice.setAttribute("role", "alert");
 			body.appendChild(notice);
+			var actions = el("div", "passkey-nudge-actions");
+			actions.appendChild(primaryButton(t(M.COPY.enforceRetry), function () { enforceCreate(d); }));
+			actions.appendChild(linkButton(t(M.COPY.enforceSignOut), signOut));
+			body.appendChild(actions);
 		} else {
 			d._acted = true;
 			d.hide();
@@ -863,6 +858,14 @@
 
 	// ------------------------------------------------------------ small utils
 	function storageGet(k) { try { return window.localStorage ? localStorage.getItem(k) : null; } catch (e) { return null; } }
+	function getSessionStorage() { try { return window.sessionStorage || null; } catch (e) { return null; } }
+	function signOut() {
+		if (window.frappe && frappe.app && typeof frappe.app.logout === "function") {
+			frappe.app.logout();
+			return;
+		}
+		window.location.href = "/api/method/logout";
+	}
 	function clearUpsellFlag() { try { if (window.localStorage) localStorage.removeItem(M.UPSELL_FLAG_KEY); } catch (e) {} }
 	function announce(msg) { C.announce(document, msg); }
 	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }

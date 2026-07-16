@@ -29,12 +29,15 @@ chromium_only("passkey enrollment nudge — cadence", () => {
 	});
 
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
 	beforeEach(() => {
+		cy.login(USER, PW());
 		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 0 });
 	});
 

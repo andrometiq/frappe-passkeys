@@ -27,16 +27,20 @@ class TestFingerprintNormalization(IntegrationTestCase):
 		self.assertEqual(well_known._fingerprints(raw), [FINGERPRINT])
 
 	def test_lowercase_and_colons_normalize(self):
-		self.assertEqual(well_known._fingerprints("ab:cd:ef:01"), ["AB:CD:EF:01"])
+		self.assertEqual(well_known._fingerprints(FINGERPRINT.lower()), [FINGERPRINT])
 
 	def test_keytool_sha256_label_is_stripped(self):
 		# a copied `keytool -list` line — the leading label must not corrupt the hex.
-		self.assertEqual(well_known._fingerprints("  SHA256: AB:CD:EF:01"), ["AB:CD:EF:01"])
-		self.assertEqual(well_known._fingerprints("SHA-256 = ab:cd"), ["AB:CD"])
+		self.assertEqual(well_known._fingerprints(f"  SHA256: {FINGERPRINT}"), [FINGERPRINT])
+		self.assertEqual(well_known._fingerprints(f"SHA-256 = {FINGERPRINT.lower()}"), [FINGERPRINT])
 
 	def test_blank_and_hexless_lines_dropped_and_deduped(self):
-		raw = "\nAB:CD\n   \nab:cd\n"
-		self.assertEqual(well_known._fingerprints(raw), ["AB:CD"])
+		raw = f"\n{FINGERPRINT}\n   \n{FINGERPRINT.lower()}\n"
+		self.assertEqual(well_known._fingerprints(raw), [FINGERPRINT])
+
+	def test_truncated_or_malformed_fingerprints_are_rejected(self):
+		self.assertEqual(well_known._fingerprints("AB:CD:EF:01"), [])
+		self.assertEqual(well_known._fingerprints(FINGERPRINT.replace("AB", "ZZ", 1)), [])
 
 	def test_empty_input(self):
 		self.assertEqual(well_known._fingerprints(""), [])
@@ -107,6 +111,8 @@ class TestEndpoints(IntegrationTestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.headers["Content-Type"], "application/json")
 		self.assertEqual(json.loads(response.get_data(as_text=True)), expected)
+		self.assertEqual(response.headers["Cache-Control"], "public, max-age=3600")
+		self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
 
 	def test_assetlinks_endpoint_serves_bare_json(self):
 		self._set(passkey_android_package_name=PACKAGE, passkey_android_cert_fingerprints=FINGERPRINT)
@@ -116,6 +122,7 @@ class TestEndpoints(IntegrationTestCase):
 		self.assertIsInstance(body, list)
 		self.assertEqual(body[0]["target"]["package_name"], PACKAGE)
 		self.assertEqual(response.headers["Content-Type"], "application/json")
+		self.assertEqual(response.headers["Cache-Control"], "public, max-age=3600")
 
 	def test_assetlinks_endpoint_404_when_unconfigured(self):
 		self._set(passkey_android_package_name="", passkey_android_cert_fingerprints="")

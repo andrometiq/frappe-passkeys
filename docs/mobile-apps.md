@@ -1,9 +1,9 @@
 # Mobile apps — sharing the site's passkeys (Flutter-first)
 
-A native iOS or Android app can sign in with the **same** passkeys users already
-have on your `passkeys`-protected site — no separate credentials, no second
-enrolment. This guide covers the server setup, the two association files, the
-endpoints an app calls, and a Flutter integration using the Corbado `passkeys`
+A correctly associated native iOS or Android app can use credentials scoped to the site's RP ID.
+Cross-surface reuse must be verified on the target OS and app build; it depends on exact origin,
+association-file, entitlement/package, and signing-certificate configuration. This guide covers the
+server setup, association files, endpoints, and a Flutter integration using the Corbado `passkeys`
 package.
 
 ## How it works
@@ -14,15 +14,16 @@ An app that proves it is associated with that domain can create and assert the
 
 - **iOS** proves association with an **Associated Domains** entitlement plus a
   `/.well-known/apple-app-site-association` file, and presents
-  `origin = https://<RP ID>` in the ceremony — **identical to the web origin**, so
-  the server accepts it with no configuration beyond hosting the file.
+  `origin = https://<RP ID>` in the ceremony. The server accepts it **only when that exact origin is
+  present in the resolved Passkey Origins set**; RP ID does not imply origin trust.
 - **Android** proves association with a `/.well-known/assetlinks.json` Digital Asset
   Links file, and presents `origin = android:apk-key-hash:<hash>` — **not** an
   `https://` origin. That origin must be added to **Trusted App Origins** so the
   server accepts it.
 
-The RP ID must be a registrable domain, not on the Public Suffix List, and it is the
-domain the app associates to — the same host your web passkeys already use.
+The RP ID must be a valid WebAuthn RP host within the domain the app associates to, not a public
+suffix. It may be an exact application host or a deliberately chosen parent scope. Do not widen it
+merely to make mobile association easier.
 
 ## 1. Server setup (Passkey Settings)
 
@@ -33,6 +34,9 @@ Open **Passkey Settings** in Desk. The **Mobile Apps** section holds everything 
 - **Passkey RP ID** — the domain your passkeys are scoped to (e.g. `example.com`), or
   blank to derive from the site's `host_name`. The app must associate to this exact
   host.
+- **Passkey Origins** — ensure the exact web origins are present. A compatible `host_name` contributes
+  its own exact origin, but never synthesizes `https://<RP ID>`. For iOS, add
+  `https://<RP ID>` explicitly when that is the origin the native credential API returns.
 - **Login with Passkey** — enable it (first-factor passwordless login is the flow an
   app typically drives).
 
@@ -64,9 +68,10 @@ const b64url = Buffer.from(hex, "hex").toString("base64")
 > (Play Console → App integrity → App signing), **not** your local upload key.
 > During rollout, include both the upload key and the Play app-signing key.
 
-iOS needs **no** Trusted App Origin — it presents `https://<RP ID>`, already covered
-by **Passkey Origins**. Adding a web URL or an iOS-style entry here is rejected at
-save time; only `android:apk-key-hash:<hash>` is accepted.
+iOS needs **no** Trusted App Origin entry, but its `https://<RP ID>` origin must be explicitly
+trusted under **Passkey Origins** unless the site's compatible `host_name` contributes that exact
+origin. Adding a web URL or an iOS-style entry to **Trusted App Origins** is rejected; only
+`android:apk-key-hash:<hash>` is accepted there.
 
 ### 1.3 Association-file inputs
 
@@ -75,7 +80,7 @@ These four fields generate the two well-known files (section 2):
 | Field | Example | Used for |
 |---|---|---|
 | **Android Package Name** | `com.example.app` | `assetlinks.json` |
-| **Android Signing Certificate SHA-256 Fingerprints** (one per line) | `AB:CD:EF:01:…` (64 hex, colons optional) | `assetlinks.json` |
+| **Android Signing Certificate SHA-256 Fingerprints** (one per line) | Exactly 32 bytes: 64 hex characters, with optional colons | `assetlinks.json` |
 | **iOS Team ID** (App ID Prefix) | `ABCDE12345` | `apple-app-site-association` |
 | **iOS Bundle ID** | `com.example.app` | `apple-app-site-association` |
 
@@ -135,8 +140,9 @@ handle /.well-known/apple-app-site-association {
 }
 ```
 
-These files are public and cacheable; front them with proxy/CDN caching in production
-(the endpoints carry a lenient per-IP rate limit only as a DoS backstop).
+The generated responses set `Cache-Control: public, max-age=3600`: association data may be cached
+for **one hour**. A proxy/CDN may honor that header; do not configure a longer TTL unless your
+certificate-rotation process accounts for it. The endpoint's per-IP limit is only a DoS backstop.
 
 ### 2.2 Static alternative (no app involvement)
 
@@ -245,8 +251,10 @@ calls. Names and shapes are the app's actual whitelisted methods.
 `set_passkey_only_login(enabled)`; `passkeys.passkey.get_signal_data`,
 `record_nudge`; `passkeys.passkey.get_app_translations` (guest GET; login-UI i18n).
 
-Every endpoint returns a typed `PasskeyServedByCore` (HTTP 417) if the site ever
-serves passkeys natively — treat 417 as "stop, this site no longer uses the app".
+Every endpoint returns a typed `PasskeyServedByCore` (HTTP 417) only after core explicitly advertises
+`FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Mere
+`frappe.passkey` module presence blocks a fresh app install but does not make an installed app
+dormant. Treat 417 as an explicit handover signal, not as generic module detection.
 
 ## 5. Flutter walkthrough (Corbado `passkeys`)
 

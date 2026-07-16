@@ -19,16 +19,23 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 		cy.setup_passkey_settings();
 	});
 
+	beforeEach(() => {
+		cy.login(USER, PW());
+	});
+
 	after(() => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
 
-	it("always shows the RP-ID one-way-door warning", () => {
+	it("shows the RP-ID one-way-door warning beside the field", () => {
 		cy.visit("/app/passkey-settings");
 		cy.get(".form-dashboard", { timeout: 20000 }).should("exist");
-		cy.contains("Changing the RP ID invalidates every existing passkey").should("exist");
+		cy.get("[data-fieldname='passkey_rp_id']", { timeout: 20000 })
+			.should("contain.text", "changing the RP ID invalidates every enrolled passkey");
 	});
 
 	it("warns when change notifications are turned off while a mode is on", () => {

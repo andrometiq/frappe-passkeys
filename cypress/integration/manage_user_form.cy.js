@@ -100,6 +100,12 @@ chromium_only("passkey management — User form", () => {
 		});
 
 		it("renames a credential inline (display-only, no sudo prompt)", () => {
+			cy.login(USER, PW());
+			cy.visit_desk(USER);
+			cy.purge_server_passkeys(USER);
+			cy.clear_virtual_credentials();
+			cy.register_passkey(USER, PW());
+			cy.login(USER, PW());
 			visit_user_passkeys();
 			own_passkey_root().find(".passkey-card .passkey-rename", { timeout: 20000 }).first().click();
 			cy.get(".modal-dialog input[data-fieldname='label'], .modal-dialog input")

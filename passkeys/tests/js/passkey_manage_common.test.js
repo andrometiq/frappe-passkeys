@@ -95,6 +95,19 @@ test("accessibleActionName fills the label placeholder", () => {
 	assert.strictEqual(M.accessibleActionName("delete", "My phone"), "Delete passkey My phone");
 });
 
+test("accessibleActionName translates the template before formatting", () => {
+	const translations = {
+		"Rename passkey {0}": "Renommer la cle {0}",
+		"Delete passkey {0}": "Supprimer la cle {0}",
+	};
+	const tr = (key) => translations[key] || key;
+	assert.strictEqual(M.accessibleActionName("rename", "Telephone", tr), "Renommer la cle Telephone");
+	assert.strictEqual(
+		M.credentialViewModel({ label: "Telephone" }, { translate: tr }).a11y.del,
+		"Supprimer la cle Telephone"
+	);
+});
+
 test("credentialViewModel: label falls back to provider then Unknown provider", () => {
 	const vm1 = M.credentialViewModel({ name: "c1", label: "Nick", aaguid: "x", backup_state: 1 }, {});
 	assert.strictEqual(vm1.label, "Nick");
@@ -705,34 +718,92 @@ test("F2: currentUserDetailsPayload returns null with no handle or no name/displ
 });
 
 // ------------------------------------------------------- deriveOrigins (C7)
-// Client mirror of server policy.resolve_origins: the implicit https://<rp_id>
-// origin is ALWAYS included, then the custom lines (deduped, order preserved).
+// RP ID is credential scope, not an origin. The browser mirrors server policy from
+// the exact configured site origin plus explicit passkey_origins only.
 
-test("deriveOrigins: implicit https://<rp_id> origin always leads the list", () => {
-	assert.deepStrictEqual(M.deriveOrigins("", "example.com"), ["https://example.com"]);
-	assert.deepStrictEqual(M.deriveOrigins("   \n\n", "example.com"), ["https://example.com"]);
+test("deriveOrigins: exact configured site origin leads explicit origins", () => {
+	assert.deepStrictEqual(M.deriveOrigins("", "https://site.example.com:8443"), ["https://site.example.com:8443"]);
+	assert.deepStrictEqual(M.deriveOrigins("   \n\n", "https://site.example.com"), ["https://site.example.com"]);
 	assert.deepStrictEqual(
-		M.deriveOrigins("https://app.example.com\nhttps://admin.example.com", "example.com"),
-		["https://example.com", "https://app.example.com", "https://admin.example.com"]
+		M.deriveOrigins("https://app.example.com\nhttps://admin.example.com", "https://site.example.com"),
+		["https://site.example.com", "https://app.example.com", "https://admin.example.com"]
 	);
 });
 
-test("deriveOrigins: dedupes an explicitly-listed implicit origin (no double entry)", () => {
+test("deriveOrigins: dedupes an explicitly-listed configured origin", () => {
 	assert.deepStrictEqual(
-		M.deriveOrigins("https://example.com\nhttps://app.example.com", "example.com"),
+		M.deriveOrigins("https://example.com\nhttps://app.example.com", "https://example.com"),
 		["https://example.com", "https://app.example.com"]
 	);
 });
 
-test("C7: a non-empty origins list without the rp_id origin does NOT show a false host-mismatch", () => {
-	// The settings form used to drop the implicit origin for a non-empty list, so a
-	// healthy site (rp_id == current host) got a bogus level:error mismatch banner.
-	const rpId = "example.com";
-	const origins = M.deriveOrigins("https://app.example.com", rpId); // list omits the bare host
-	const ctx = { currentHost: "example.com", resolvedRpId: rpId, resolvedOrigins: origins };
-	const banners = M.settingsBanners({ login_with_passkey: 1, passkey_notify_on_change: 1 }, ctx);
-	const mismatch = banners.some((b) => b.level === "error" && b.key === M.COPY.hostMismatch);
-	assert.strictEqual(mismatch, false, "implicit https://<rp_id> origin must suppress the false mismatch");
+test("deriveOrigins never turns an RP ID-shaped value into an implicitly trusted HTTPS origin", () => {
+	assert.deepStrictEqual(M.deriveOrigins("https://app.example.com", null), ["https://app.example.com"]);
+	assert.deepStrictEqual(M.deriveOrigins("", null), []);
+});
+
+// ------------------------------------------------ passkey-only + native validation
+
+test("passkeyOnlyAvailability requires two enabled credentials only when enabling", () => {
+	assert.deepStrictEqual(M.passkeyOnlyAvailability(0, false), {
+		enabledCount: 0, disabled: true, helpKey: "passkeyOnlyNeedsTwo",
+	});
+	assert.strictEqual(M.passkeyOnlyAvailability(1, false).disabled, true);
+	assert.strictEqual(M.passkeyOnlyAvailability(2, false).disabled, false);
+	assert.strictEqual(M.passkeyOnlyAvailability(0, true).disabled, false, "disabling must remain available");
+});
+
+test("validateAndroidFingerprints requires exactly 64 hex characters after presentation cleanup", () => {
+	const hex = "ab".repeat(32);
+	const valid = M.validateAndroidFingerprints("SHA-256 = " + hex + "\nsha256:" + hex.match(/../g).join(":"));
+	assert.strictEqual(valid.valid, true);
+	assert.strictEqual(valid.normalized.length, 1, "equivalent lines dedupe");
+	assert.strictEqual(valid.normalized[0], hex.toUpperCase().match(/../g).join(":"));
+
+	for (const malformed of ["ab".repeat(31), "ab".repeat(33), "g".repeat(64), "12:34"] ) {
+		const result = M.validateAndroidFingerprints(malformed);
+		assert.strictEqual(result.valid, false, malformed);
+	}
+});
+
+test("createSessionEventRecorder coalesces retries and clears failed attempts", async () => {
+	const values = new Map();
+	const storage = {
+		getItem: (key) => values.get(key) || null,
+		setItem: (key, value) => values.set(key, value),
+		removeItem: (key) => values.delete(key),
+	};
+	const record = M.createSessionEventRecorder(storage);
+	let calls = 0;
+	const first = record("session:event", async () => { calls += 1; return "ok"; });
+	const second = record("session:event", async () => { calls += 1; return "duplicate"; });
+	assert.strictEqual(await first, "ok");
+	assert.deepStrictEqual(await second, { skipped: true });
+	assert.strictEqual(calls, 1);
+
+	await assert.rejects(record("retryable", async () => { throw new Error("offline"); }), /offline/);
+	assert.strictEqual(await record("retryable", async () => "retried"), "retried");
+});
+
+test("signalCredentialState keeps registration/deletion parity, including an empty accepted list", () => {
+	const calls = [];
+	const PKC = {
+		signalAllAcceptedCredentials: (data) => { calls.push(["accepted", data]); return Promise.resolve(); },
+		signalCurrentUserDetails: (data) => { calls.push(["details", data]); return Promise.resolve(); },
+	};
+	const result = M.signalCredentialState(PKC, {
+		signal: {
+			rp_id: "example.com", user_handle: "handle", credential_ids: [],
+			name: "user@example.com", display_name: "User",
+		},
+	});
+	assert.deepStrictEqual(result, { accepted: true, details: true });
+	assert.deepStrictEqual(calls[0][1], {
+		rpId: "example.com", userId: "handle", allAcceptedCredentialIds: [],
+	});
+	assert.deepStrictEqual(calls[1][1], {
+		rpId: "example.com", userId: "handle", name: "user@example.com", displayName: "User",
+	});
 });
 
 // ------------------------------------------------------------------ C8 (note)

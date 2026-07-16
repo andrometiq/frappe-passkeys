@@ -119,9 +119,12 @@
 			"Your organization requires a passkey to keep signing in. It only takes a " +
 			"moment — use your fingerprint, face, screen lock, or a security key.",
 		enforceRemindLater: "Remind me later ({0} sign-ins left)",
-		enforceCantSetUp: "I can't set one up here",
-		enforceBlockedNotice:
-			"We've let your administrator know. Please contact them to finish signing in.",
+			enforceCantSetUp: "I can't set one up here",
+			enforceBlockedNotice:
+				"We've let your administrator know. Please contact them to finish signing in.",
+			enforceRetry: "Try passkey setup again",
+			enforceSignOut: "Sign out",
+			enforceContactAdmin: "Contact administrator",
 		// admin enforcement-recovery (User-form Passkeys section, System-Manager-only)
 		enforceAdminHeading: "Passkey enrollment enforcement",
 		enforceAdminExempt: "Exempt from passkey enforcement",
@@ -139,9 +142,11 @@
 		enforceAdminFailed: "Couldn't update enforcement for this user — please try again.",
 		// passkey-only switch
 		passkeyOnlyLabel: "Passwordless login only",
-		passkeyOnlyHelp:
-			"Turn off password sign-in for your account. Needs at least two passkeys so a " +
-			"lost device never locks you out.",
+			passkeyOnlyHelp:
+				"Turn off password sign-in for your account. Needs at least two passkeys so a " +
+				"lost device never locks you out.",
+			passkeyOnlyNeedsTwo:
+				"Add at least two enabled passkeys before turning off password sign-in.",
 		// settings banners — keyed; args filled by the matrix
 		rpIdOneWayDoor:
 			"Changing the RP ID invalidates every existing passkey. This cannot be undone.",
@@ -235,9 +240,10 @@
 	}
 
 	// Accessible name for an icon-only card action ("Rename passkey ⟨label⟩").
-	function accessibleActionName(kind, label) {
+	function accessibleActionName(kind, label, translate) {
 		var key = kind === "delete" ? COPY.deleteAction : COPY.renameAction;
-		return format(key, [label || ""]);
+		var tr = typeof translate === "function" ? translate : function (s) { return s; };
+		return format(tr(key), [label || ""]);
 	}
 
 	// A per-credential view-model the card renderers consume. Carries RAW values
@@ -246,7 +252,8 @@
 	function credentialViewModel(cred, opts) {
 		opts = opts || {};
 		cred = cred || {};
-		var label = cred.label || providerFor(cred, opts.aaguidMap) || COPY.unknownProvider;
+		var tr = typeof opts.translate === "function" ? opts.translate : function (s) { return s; };
+		var label = cred.label || providerFor(cred, opts.aaguidMap) || tr(COPY.unknownProvider);
 		var providerName = providerFor(cred, opts.aaguidMap);
 		return {
 			name: cred.name,
@@ -262,8 +269,8 @@
 			created: cred.creation || null,
 			lastUsed: cred.last_used_at || null,
 			a11y: {
-				rename: accessibleActionName("rename", label),
-				del: accessibleActionName("delete", label),
+				rename: accessibleActionName("rename", label, tr),
+				del: accessibleActionName("delete", label, tr),
 			},
 		};
 	}
@@ -621,19 +628,90 @@
 			.filter(function (r) { return !!r; });
 	}
 
-	// Client mirror of server policy.resolve_origins: the implicit
-	// `https://<rp_id>` origin is ALWAYS present, then each non-empty
-	// `passkey_origins` line (exact-string, dedup, order preserved). The settings
-	// form must derive origins THIS way — omitting the implicit origin for a
-	// non-empty list makes a healthy site show a false host-mismatch banner, since
-	// the server never actually drops it.
-	function deriveOrigins(raw, rpId) {
-		var origins = rpId ? ["https://" + rpId] : [];
+	// Client mirror of server policy.resolve_origins. The RP ID is credential scope,
+	// never an origin. Start only with the exact configured site origin supplied by
+	// the server, then append explicit passkey_origins lines (deduped, in order).
+	function deriveOrigins(raw, configuredSiteOrigin) {
+		var origins = configuredSiteOrigin ? [String(configuredSiteOrigin).trim()] : [];
 		String(raw || "").split(/\r?\n/).forEach(function (line) {
 			line = line.trim();
 			if (line && origins.indexOf(line) === -1) origins.push(line);
 		});
 		return origins;
+	}
+
+	// The passkey-only server floor is two ENABLED credentials when turning the flag
+	// on. A user already in passkey-only mode must always be able to turn it off, even
+	// if a credential was disabled out of band.
+	function passkeyOnlyAvailability(enabledCount, current) {
+		enabledCount = cint(enabledCount);
+		var needsTwo = !current && enabledCount < 2;
+		return {
+			enabledCount: enabledCount,
+			disabled: needsTwo,
+			helpKey: needsTwo ? "passkeyOnlyNeedsTwo" : "passkeyOnlyHelp",
+		};
+	}
+
+	// Match well_known._fingerprints exactly: optional SHA256 label and colons are
+	// presentation only; after removing them each non-empty line must be 64 hex chars.
+	function validateAndroidFingerprints(raw) {
+		var invalid = [];
+		var normalized = [];
+		String(raw || "").split(/\r?\n/).forEach(function (original) {
+			var line = original.replace(/^\s*sha-?256\s*[:=]?/i, "").trim();
+			if (!line) return;
+			var hex = line.replace(/:/g, "");
+			if (!/^[0-9a-f]{64}$/i.test(hex)) { invalid.push(original.trim()); return; }
+			hex = hex.toUpperCase();
+			var grouped = [];
+			for (var i = 0; i < hex.length; i += 2) grouped.push(hex.slice(i, i + 2));
+			var value = grouped.join(":");
+			if (normalized.indexOf(value) === -1) normalized.push(value);
+		});
+		return { valid: invalid.length === 0, invalid: invalid, normalized: normalized };
+	}
+
+	// A server grace verdict changes after a successful defer, so remaining-count plus
+	// user is a stable idempotency key for retries/reloads within one browser session.
+	function enforcementDeferKey(user, enforcement) {
+		enforcement = enforcement || {};
+		return "passkey_enforcement_defer:" + encodeURIComponent(String(user || "current")) +
+			":" + encodeURIComponent(String(enforcement.policy || enforcement.effective || "enforce")) +
+			":" + cint(enforcement.graceRemaining !== undefined
+				? enforcement.graceRemaining : enforcement.grace_remaining);
+	}
+
+	// Run one asynchronous event per key. sessionStorage survives page reloads; the
+	// closure covers browsers where storage is unavailable. Failed work clears the key
+	// so a genuine transport/server failure can be retried.
+	function createSessionEventRecorder(storage) {
+		var memory = {};
+		function read(key) {
+			try { return storage && storage.getItem(key); } catch (e) { return null; }
+		}
+		function write(key, value) {
+			try { if (storage) storage.setItem(key, value); } catch (e) { /* storage denied */ }
+		}
+		function clear(key) {
+			delete memory[key];
+			try { if (storage) storage.removeItem(key); } catch (e) { /* storage denied */ }
+		}
+		return function (key, task) {
+			if (memory[key] || read(key)) return Promise.resolve({ skipped: true });
+			memory[key] = true;
+			write(key, "pending");
+			var pending;
+			try { pending = task(); }
+			catch (error) { clear(key); return Promise.reject(error); }
+			return Promise.resolve(pending).then(function (result) {
+				write(key, "done");
+				return result;
+			}, function (error) {
+				clear(key);
+				throw error;
+			});
+		};
 	}
 
 	// Exact-host membership for an origins allowlist (host compare, scheme-tolerant).
@@ -784,6 +862,43 @@
 		return { userHandle: userHandle, name: name || displayName, displayName: displayName || name };
 	}
 
+	// Fire both WebAuthn Signal API updates from one parity-correct seam. Registration
+	// can pass its verify payload; deletion passes get_signal_data. An empty accepted-id
+	// list is intentional after the final credential is removed. The native calls remain
+	// best-effort and are never awaited on a mutation's critical path.
+	function signalCredentialState(PKC, data, defaultRpId) {
+		var source = data && (data.signal || data);
+		var rpId = source && (source.rp_id || source.rpId) || defaultRpId || null;
+		var result = { accepted: false, details: false };
+		if (!PKC || !rpId) return result;
+		var accepted = signalPayload(data);
+		if (accepted && typeof PKC.signalAllAcceptedCredentials === "function") {
+			try {
+				var p = PKC.signalAllAcceptedCredentials({
+					rpId: rpId,
+					userId: accepted.userHandle,
+					allAcceptedCredentialIds: accepted.allAcceptedCredentialIds,
+				});
+				if (p && typeof p.catch === "function") p.catch(function () {});
+				result.accepted = true;
+			} catch (e) { /* unsupported/broken implementation */ }
+		}
+		var details = currentUserDetailsPayload(data);
+		if (details && typeof PKC.signalCurrentUserDetails === "function") {
+			try {
+				var q = PKC.signalCurrentUserDetails({
+					rpId: rpId,
+					userId: details.userHandle,
+					name: details.name,
+					displayName: details.displayName,
+				});
+				if (q && typeof q.catch === "function") q.catch(function () {});
+				result.details = true;
+			} catch (e2) { /* unsupported/broken implementation */ }
+		}
+		return result;
+	}
+
 	return {
 		// wire seam
 		MANAGE_METHODS: MANAGE_METHODS,
@@ -810,14 +925,19 @@
 		enforcementAdminViewModel: enforcementAdminViewModel,
 		upsellDecision: upsellDecision,
 		settingsBanners: settingsBanners,
-		roleNames: roleNames,
-		deriveOrigins: deriveOrigins,
-		originsIncludeHost: originsIncludeHost,
+			roleNames: roleNames,
+			deriveOrigins: deriveOrigins,
+			passkeyOnlyAvailability: passkeyOnlyAvailability,
+			validateAndroidFingerprints: validateAndroidFingerprints,
+			enforcementDeferKey: enforcementDeferKey,
+			createSessionEventRecorder: createSessionEventRecorder,
+			originsIncludeHost: originsIncludeHost,
 		originHost: originHost,
 		posturePanel: posturePanel,
 		postureRowMark: postureRowMark,
 		postureReport: postureReport,
-		signalPayload: signalPayload,
-		currentUserDetailsPayload: currentUserDetailsPayload,
-	};
+			signalPayload: signalPayload,
+			currentUserDetailsPayload: currentUserDetailsPayload,
+			signalCredentialState: signalCredentialState,
+		};
 });

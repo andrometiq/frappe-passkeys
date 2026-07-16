@@ -6,7 +6,8 @@
 #   2. python3.10 -m compileall on the shipped package (passkeys/) — the v15
 #      syntax floor: py3.11+/3.14-only syntax must fail HERE, not in the v15
 #      CI cell. Falls back to `uv run --python 3.10` when python3.10 is absent.
-#   3. (opt-in) one real matrix cell: server tests on your dev bench —
+#   3. Dependency-free JavaScript unit tests on every discovered spec.
+#   4. (opt-in) one real matrix cell: server tests on your dev bench —
 #      export PASSKEYS_DEV_BENCH=/path/to/frappe-bench and
 #      PASSKEYS_DEV_SITE=<site> to enable.
 #
@@ -120,7 +121,21 @@ fi
 # frappe test suite (passkeys.tests.test_engine), run by CI and by the
 # opt-in dev-bench cell below.
 
-# --------------------------- 3. opt-in: server tests on the dev bench
+# ----------------------------------------- 3. dependency-free JavaScript tests
+if command -v node >/dev/null 2>&1; then
+  mapfile -t js_tests < <(find passkeys/tests/js -maxdepth 1 -type f -name '*.test.js' -print | sort)
+  if [ "${#js_tests[@]}" -eq 0 ]; then
+    fail "no JavaScript unit tests discovered"
+  elif node --test "${js_tests[@]}"; then
+    ok "JavaScript unit tests"
+  else
+    fail "JavaScript unit tests failed"
+  fi
+else
+  fail "node is unavailable — cannot run the JavaScript unit tests"
+fi
+
+# --------------------------- 4. opt-in: server tests on the dev bench
 if [ -n "${PASSKEYS_DEV_BENCH:-}" ] && [ -n "${PASSKEYS_DEV_SITE:-}" ]; then
   if (cd "$PASSKEYS_DEV_BENCH" && bench --site "$PASSKEYS_DEV_SITE" run-tests --app passkeys); then
     ok "server tests on dev bench ($PASSKEYS_DEV_SITE)"

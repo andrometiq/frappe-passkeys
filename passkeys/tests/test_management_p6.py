@@ -36,10 +36,8 @@ class NotificationTest(_Base):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
-		settings = frappe.get_doc("Passkey Settings")
-		settings.passkey_notify_on_change = 1
-		settings.passkey_notify_password_fallback = 1
-		settings.save(ignore_permissions=True)
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_fallback", 1)
 		flush_settings_cache()
 		self.sent = []
 		self._orig_sendmail = frappe.sendmail
@@ -86,7 +84,12 @@ class NotificationTest(_Base):
 	def test_flagged_email_sent_once_on_sign_count_regression(self):
 		user = self._user()
 		cred = make_credential(user, sign_count=10, flagged=0)
-		result = types.SimpleNamespace(sign_count_to_store=10, backup_state=False, sign_count_regression=True)
+		result = types.SimpleNamespace(
+			new_sign_count=5,
+			sign_count_to_store=10,
+			backup_state=False,
+			sign_count_regression=True,
+		)
 		passkey._advance_credential(cred.name, result)
 		flagged_mails = [m for m in self.sent if "flag" in m["subject"].lower()]
 		self.assertEqual(len(flagged_mails), 1)

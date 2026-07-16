@@ -37,7 +37,9 @@ Folds into ``frappe/passkey.py`` on the core merge (``frappe.passkey`` server
 namespace, ``frappe.ui.passkey`` JS namespace)."""
 
 import functools
+import hashlib
 import inspect
+import json
 from dataclasses import dataclass, field
 
 import frappe
@@ -50,21 +52,18 @@ from passkeys.passkey import (
 	_advance_credential,
 	_b64url_decode,
 	_enforce_request_host,
+	_lock_enabled_user,
 )
 from passkeys.passkey import (
 	refuse_if_core_native as _refuse_if_core_native,
 )
 
 # ---------------------------------------------------------------------------
-# Per-action policy registry. The @passkey_protected decorator declares
-# an action's fallback policy at import time; the minter endpoints consult the
-# registry so `begin_confirmation`'s `methods` and `reauth_password`'s
-# action-grant path honour the SAME policy the consumer enforces. The registry
-# is a UX/correctness aid — the security boundary is always the consumer
-# (session.consume_action_grant / consume_passkey_grant), which re-derives the
-# payload hash from real kwargs and enforces method binding regardless of what
-# the registry says (a cross-worker import gap can only under-offer a method,
-# never authorize one).
+# Per-action policy registry. A protected call publishes its policy to the
+# site-scoped shared cache before returning the 401 retry contract, so a later
+# begin/reauth request can land on another web worker without changing methods
+# or display metadata. The security boundary remains the consumer, which
+# re-derives the payload hash from real kwargs and enforces method binding.
 # ---------------------------------------------------------------------------
 
 
@@ -76,9 +75,13 @@ class ActionPolicy:
 	bind_params: tuple = field(default_factory=tuple)
 	allow_password_fallback: bool = True
 	allow_sudo_window: bool = False
+	display_label: str | None = None
+	display_params: tuple = field(default_factory=tuple)
 
 
 _ACTION_POLICIES: dict[str, ActionPolicy] = {}
+_ACTION_POLICY_PREFIX = "passkeys:action-policy:"
+_ACTION_POLICY_TTL = 24 * 60 * 60
 
 
 def register_action(policy_: ActionPolicy) -> None:
@@ -87,13 +90,72 @@ def register_action(policy_: ActionPolicy) -> None:
 
 
 def get_action_policy(action: str) -> ActionPolicy:
-	"""The registered policy for ``action``, or a safe default. The default
-	mirrors the decorator defaults (``allow_password_fallback=True``,
-	``allow_sudo_window=False``) so an action confirmed without an import-time
-	:func:`passkey_protected` registration still gets the universal-re-auth
-	behaviour. Actions that must never accept a password are pre-registered below,
-	so the default can never weaken them."""
-	return _ACTION_POLICIES.get(action) or ActionPolicy(action=action)
+	"""Return a local or shared policy, failing closed for an unknown action."""
+	return (
+		_ACTION_POLICIES.get(action)
+		or _read_shared_action_policy(action)
+		or ActionPolicy(action=action, allow_password_fallback=False)
+	)
+
+
+def _action_policy_key(action: str) -> str:
+	return _ACTION_POLICY_PREFIX + hashlib.sha256(action.encode()).hexdigest()
+
+
+def _publish_action_policy(policy_: ActionPolicy) -> None:
+	"""Best-effort cross-worker publication for the immediate retry round-trip."""
+	payload = {
+		"v": 1,
+		"action": policy_.action,
+		"bind_params": list(policy_.bind_params),
+		"allow_password_fallback": policy_.allow_password_fallback,
+		"allow_sudo_window": policy_.allow_sudo_window,
+		"display_label": policy_.display_label,
+		"display_params": [list(item) for item in policy_.display_params],
+	}
+	try:
+		frappe.cache.set(
+			frappe.cache.make_key(_action_policy_key(policy_.action)),
+			json.dumps(payload),
+			ex=_ACTION_POLICY_TTL,
+		)
+	except Exception:
+		frappe.log_error(title="passkeys: action policy cache publication failed")
+
+
+def _read_shared_action_policy(action: str) -> ActionPolicy | None:
+	try:
+		raw = frappe.cache.get(frappe.cache.make_key(_action_policy_key(action)))
+		data = json.loads(raw) if raw is not None else None
+		if not isinstance(data, dict) or data.get("v") != 1 or data.get("action") != action:
+			return None
+		bind_params = data.get("bind_params")
+		display_params = data.get("display_params")
+		if not isinstance(bind_params, list) or not isinstance(display_params, list):
+			return None
+		if not all(isinstance(name, str) for name in bind_params):
+			return None
+		if not all(
+			isinstance(item, list)
+			and len(item) == 2
+			and isinstance(item[0], str)
+			and isinstance(item[1], str)
+			for item in display_params
+		):
+			return None
+		label = data.get("display_label")
+		if label is not None and not isinstance(label, str):
+			return None
+		return ActionPolicy(
+			action=action,
+			bind_params=tuple(bind_params),
+			allow_password_fallback=data.get("allow_password_fallback") is True,
+			allow_sudo_window=data.get("allow_sudo_window") is True,
+			display_label=label,
+			display_params=tuple(tuple(item) for item in display_params),
+		)
+	except Exception:
+		return None
 
 
 # Built-in actions the app's own surfaces confirm. Registered
@@ -105,6 +167,7 @@ register_action(
 		bind_params=(),
 		allow_password_fallback=True,  # first-enrollment / passkey-less users
 		allow_sudo_window=True,  # GitHub-sudo ergonomics for management
+		display_label="Manage passkeys",
 	)
 )
 register_action(
@@ -113,6 +176,8 @@ register_action(
 		bind_params=("enabled",),
 		allow_password_fallback=False,  # a password must never disable "password-not-sufficient"
 		allow_sudo_window=False,
+		display_label="Change passkey-only login",
+		display_params=(("enabled", "Passkey-only login"),),
 	)
 )
 
@@ -128,6 +193,8 @@ def passkey_protected(
 	bind_params: list | tuple | None = None,
 	allow_password_fallback: bool = True,
 	allow_sudo_window: bool = False,
+	display_label: str | None = None,
+	display_params: dict[str, str] | None = None,
 ):
 	"""Require a fresh passkey confirmation before a whitelisted method runs.
 
@@ -159,6 +226,10 @@ def passkey_protected(
 	    confirmation) satisfies the gate without a new gesture (GitHub-sudo
 	    ergonomics; the app's own ``passkeys.manage`` uses this). Default ``False``
 	    — every call needs its own gesture.
+	display_label / display_params:
+	    Optional, translated dialog metadata. ``display_params`` explicitly selects
+	    safe bound parameters and their human labels; undeclared arguments are never
+	    exposed to the client.
 
 	On a missing/invalid grant it raises :class:`PasskeyConfirmationRequired`
 	(HTTP 401) with ``{action, payload_fingerprint, methods}`` on the JSON body;
@@ -166,11 +237,17 @@ def passkey_protected(
 	and retries once with the ``X-Passkey-Grant`` header. The grant is consumed
 	**before** the wrapped function runs — a failed action burns the gesture
 	(one gesture = one action attempt)."""
+	bound_names = tuple(bind_params or ())
+	display_items = tuple((display_params or {}).items())
+	if any(name not in bound_names for name, _label in display_items):
+		raise ValueError("display_params must be a subset of bind_params")
 	policy_ = ActionPolicy(
 		action=action,
-		bind_params=tuple(bind_params or ()),
+		bind_params=bound_names,
 		allow_password_fallback=bool(allow_password_fallback),
 		allow_sudo_window=bool(allow_sudo_window),
+		display_label=display_label,
+		display_params=display_items,
 	)
 	register_action(policy_)
 
@@ -178,6 +255,7 @@ def passkey_protected(
 		@functools.wraps(fn)
 		def wrapper(*args, **kwargs):
 			params = _bound_params(fn, args, kwargs, policy_.bind_params)
+			_publish_action_policy(policy_)
 			_consume_or_raise(policy_, params)
 			return fn(*args, **kwargs)
 
@@ -221,7 +299,13 @@ def _raise_confirmation_required(action: str, params: dict, policy_: ActionPolic
 	the client echoes back verbatim on the confirmation round-trip."""
 	fingerprint = session.payload_hash(params)
 	methods = _confirm_methods(frappe.session.user, policy_)
-	session._raise_confirmation_required(action, methods=methods, payload_fingerprint=fingerprint)
+	session._raise_confirmation_required(
+		action,
+		methods=methods,
+		payload_fingerprint=fingerprint,
+		action_label=_(policy_.display_label) if policy_.display_label else None,
+		parameter_summary=_parameter_summary(policy_, params),
+	)
 
 
 def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
@@ -235,6 +319,21 @@ def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 	if policy_.allow_sudo_window:
 		methods.append("sudo")
 	return methods
+
+
+def _parameter_summary(policy_: ActionPolicy, params: dict) -> list[dict]:
+	"""Return only explicitly declared, display-safe parameter values."""
+	items = []
+	for name, label in policy_.display_params:
+		value = params.get(name)
+		if isinstance(value, bool):
+			value = _("On") if value else _("Off")
+		elif value is None:
+			value = _("Not set")
+		else:
+			value = str(value).replace("\r", " ").replace("\n", " ")[:120]
+		items.append({"label": _(label), "value": value})
+	return items
 
 
 # ===========================================================================
@@ -302,11 +401,16 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 		},
 		ttl=state.CONFIRM_CEREMONY_TTL,
 	)
+	action_policy = get_action_policy(action)
 	return {
 		"state_id": state_id,
 		"options": options,
 		"payload_fingerprint": fingerprint,
-		"methods": _confirm_methods(user, get_action_policy(action)),
+		"methods": _confirm_methods(user, action_policy),
+		"action_label": _(action_policy.display_label) if action_policy.display_label else None,
+		"parameter_summary": _parameter_summary(action_policy, _as_dict(params) or {})
+		if params is not None
+		else [],
 	}
 
 
@@ -372,7 +476,11 @@ def verify_confirmation(state_id: str, credential):
 			)
 
 	# sign-count policy applies (upward-only store + flag/hard-fail).
-	_advance_credential(cred.name, result)
+	_advance_credential(
+		cred.name,
+		result,
+		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
+	)
 	if uv_flip_pending:
 		# the standard password-accompanied uv_initialized flip (the same
 		# idiom as the verified second-factor leg in passkey.py).
@@ -502,11 +610,14 @@ def _resolve_ceremony_credential(record, credential, user):
 	sha = hashlib.sha256(_b64url_decode(cred_id)).hexdigest()
 	if sha not in set(record.get("allow_sha256") or []):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+	if not _lock_enabled_user(user):
+		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",
 		{"credential_id_sha256": sha},
 		["name", "user", "enabled", "public_key", "sign_count", "backup_eligible", "uv_initialized"],
 		as_dict=True,
+		for_update=True,
 	)
 	if not cred or cred.user != user or not cint(cred.enabled):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))

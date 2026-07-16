@@ -13,7 +13,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import install
+from passkeys import install, policy, state
 
 
 def on_login_veto(login_manager=None, **kwargs):
@@ -54,8 +54,8 @@ def on_login_veto(login_manager=None, **kwargs):
 	included) recovers out-of-band: a System Manager clears ``passkey_only_login``
 	on the ``WebAuthn User Handle`` row (subject to the credential-count
 	interlock), or the self-hoster clears that row / disables the app. Administrator
-	is exempt (mirroring core's 2FA Administrator exemption), so the site owner can
-	never be locked out through this veto. Exception-hardened only around the
+	is not exempt after explicitly enrolling a passkey for second-factor use; console
+	recovery remains the break-glass path. Exception-hardened only around the
 	session-state and role reads — a genuine veto MUST propagate to abort the
 	login."""
 	if install.dormant():
@@ -85,8 +85,27 @@ def on_login_veto(login_manager=None, **kwargs):
 	if flags is not None and flags.get("passkey_login"):
 		return
 
-	if not target or target in ("Guest", "Administrator", ""):
-		return  # Administrator exempt (core-2FA parity); Guest/empty are not logins
+	if not target or target in ("Guest", ""):
+		return  # Guest/empty are not logins
+
+	if _must_use_passkey_second_factor(target):
+		if _is_password_reset_completion():
+			# Core rotates the password and then calls login_as(). Let the reset
+			# transaction finish, but downgrade that login_as() to Guest so possession
+			# of an emailed reset key never satisfies the passkey second factor.
+			login_manager.user = "Guest"
+		elif not _consume_allowed_otp_fallback(target):
+			frappe.throw(
+				_(
+					"This account requires a passkey after the password. Please sign in from the passkey login form."
+				),
+				frappe.AuthenticationError,
+			)
+
+	# Preserve the existing passkey-only break-glass exemption. An Administrator
+	# who explicitly enrolled a second-factor credential was handled above.
+	if target == "Administrator":
+		return
 
 	if _is_passkey_only(target):
 		frappe.throw(
@@ -101,15 +120,67 @@ def _is_passkey_only(user: str) -> bool:
 	return bool(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
 
 
+def _must_use_passkey_second_factor(user: str) -> bool:
+	"""Whether a stock password login must be vetoed for this enrolled user."""
+	if not cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor")):
+		return False
+	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
+
+
+def _consume_allowed_otp_fallback(user: str) -> bool:
+	"""Accept only the core OTP completion issued by ``fallback_to_otp``.
+
+	The marker alone is not proof that OTP ran: alternate login endpoints preserve
+	request parameters, so an email-link/OAuth request could otherwise carry a stolen
+	``tmp_id`` into this hook. Core has already verified ``otp`` when this hook runs,
+	but only on its own login route.
+	"""
+	form = getattr(frappe.local, "form_dict", None)
+	request = getattr(frappe.local, "request", None)
+	path = getattr(request, "path", None) if request is not None else None
+	if form is None or not form.get("otp"):
+		return False
+	if path != "/api/method/login" and form.get("cmd") != "login":
+		return False
+	# Core calls confirm_otp_token only while should_run_2fa() is true. Recheck
+	# that policy here before consuming our marker so a concurrent role/settings
+	# change cannot turn a request-shaped `otp` field into proof of verification.
+	from frappe.twofactor import should_run_2fa
+
+	if not should_run_2fa(user):
+		return False
+	tmp_id = form.get("tmp_id")
+	if not tmp_id:
+		return False
+	record = state.consume_otp_fallback(str(tmp_id))
+	return bool(record and record.get("user") == user)
+
+
+def _is_password_reset_completion() -> bool:
+	"""Allow core's reset-key flow to finish for second-factor users.
+
+	``update_password`` verifies the reset key, rotates the password, then calls
+	``login_as``. The caller downgrades that login to Guest: recovery finishes but
+	the reset key never mints an authenticated session. Passkey-only users still
+	reach the later veto and are not exempted.
+	"""
+	request = getattr(frappe.local, "request", None)
+	path = getattr(request, "path", None) if request is not None else None
+	method = "frappe.core.doctype.user.user.update_password"
+	# Reaching login_as from this exact endpoint proves update_password already
+	# validated its key: invalid/expired keys return before the login call. Do not
+	# trust a client-controlled `cmd` or `key` field on any other route.
+	return path == f"/api/method/{method}"
+
+
 def guard_system_settings(doc, method=None):
 	"""System Settings ``validate``: the reverse half of the two-way 2FA floor.
 	The Passkey Settings validator refuses enabling
 	``passkey_as_second_factor`` while core ``enable_two_factor_auth`` is off;
 	this guard refuses the *other* direction — flipping ``enable_two_factor_auth``
-	**1 → 0** while ``passkey_as_second_factor`` is on — which would otherwise
-	silently evaporate the structural backstop (direct-POST users would then walk
-	through ``login()`` with a password alone while the passkey-2FA UI keeps
-	working, and nobody would notice).
+	**1 → 0** while ``passkey_as_second_factor`` is on — which would silently
+	evaporate the required defence-in-depth backstop. The final login veto still
+	fails closed for enrolled users, but the configuration would be unsupported.
 
 	Only the genuine 1→0 transition is blocked: an already-off value staying off
 	cannot make the floor any weaker, and blocking every save on an
@@ -122,7 +193,7 @@ def guard_system_settings(doc, method=None):
 	new_value = cint(doc.enable_two_factor_auth)
 	if new_value:
 		return  # staying on / turning on — nothing to guard
-	old_value = cint(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"))
+	old_value = policy.lock_core_2fa_floor()
 	if not old_value:
 		return  # already off (or a console-created desync) — not a 1→0 flip
 	if not cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor")):
@@ -130,8 +201,8 @@ def guard_system_settings(doc, method=None):
 	frappe.throw(
 		_(
 			"Cannot disable Two Factor Authentication: it is the structural backstop for "
-			"Passkey as Second Factor (direct password logins that bypass the passkey UI "
-			"would otherwise face no second factor). Disable 'Passkey as Second Factor' in "
+			"Passkey as Second Factor. The final login veto remains fail-closed, but the "
+			"required defence-in-depth floor would be lost. Disable 'Passkey as Second Factor' in "
 			"Passkey Settings first."
 		),
 		frappe.ValidationError,

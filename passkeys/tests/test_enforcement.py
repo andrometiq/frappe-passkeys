@@ -37,7 +37,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
 		settings.passkey_enrollment_policy = "Enforce"
@@ -62,6 +62,8 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
 			doc.set(field, self._snapshot.get(field))
+		if (cint(doc.login_with_passkey) or cint(doc.passkey_as_second_factor)) and not doc.passkey_origins:
+			doc.passkey_origins = "https://example.com"
 		doc.set("passkey_enforce_roles", [])
 		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		doc.flags.ignore_permissions = True
@@ -218,8 +220,11 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_record_enforcement_defer_folds_state(self):
 		user = self._user()
 		frappe.set_user(user)
-		result = passkey.record_enforcement("defer")
-		self.assertEqual(result["enforcement_state"]["grace_used"], 1)
+		first = passkey.record_enforcement("defer")
+		second = passkey.record_enforcement("defer")
+		self.assertEqual(first["enforcement_state"]["grace_used"], 1)
+		self.assertEqual(second["enforcement_state"]["grace_used"], 1)
+		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)
 
 	def test_record_enforcement_incapable_returns_state(self):
 		user = self._user()

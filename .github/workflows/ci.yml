@@ -1,14 +1,8 @@
-# CI for frappe-passkeys — 3-cell frappe matrix (version-15 / version-16 / develop).
+# Pinned-input CI for frappe-passkeys.
 #
-# The version pins below are binding:
-#   v15     → Python 3.10 / Node 18 / mariadb:10.6
-#   v16     → Python 3.14 / Node 24 / mariadb:11.8
-#   develop → Python 3.14 / Node 24 / mariadb:11.8
-#
-# The daily upstream-drift cron lives in upstream-drift.yml and calls this workflow
-# via workflow_call (same matrix — frappe branch tips are the moving part).
-# workflow_dispatch's frappe-ref input points every cell at an arbitrary frappe
-# tag/branch, e.g. the v15.107.0 co-installability floor tag.
+# Normal push/PR runs use reviewed Frappe commits and exact runtime versions on
+# GitHub's Ubuntu 24.04 runner image. The upstream-drift workflow deliberately
+# opts into moving branch tips and fails visibly when compatibility drifts.
 
 name: CI
 
@@ -19,15 +13,20 @@ on:
   workflow_dispatch:
     inputs:
       frappe-ref:
-        description: "Ad-hoc frappe ref (branch/tag) to test instead of the matrix ref (e.g. v15.107.0)"
+        description: "Ad-hoc Frappe ref to test instead of each pinned matrix commit"
         required: false
         type: string
   workflow_call:
     inputs:
       frappe-ref:
-        description: "Ad-hoc frappe ref (branch/tag) to test instead of the matrix ref"
+        description: "Ad-hoc Frappe ref to test instead of each pinned matrix commit"
         required: false
         type: string
+      upstream_tips:
+        description: "Resolve each moving Frappe branch tip instead of the pinned baseline"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -39,69 +38,57 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      # All four hook-path modules (auth_hooks, boot, install, shims/login_page)
-      # now exist and are proven import-clean of webauthn (integration verified
-      # the gate locally with webauthn blocked), so the gate is strict: a missing
-      # hook-path module now FAILS instead of warning.
-      IMPORT_GATE_STRICT: "1"
+      # Last verified v15 baseline: the import floor is tested against an exact
+      # commit so a moving branch cannot silently alter this security gate.
+      FRAPPE_GATE_REF: 588e443808206a7bfe87429c5a55e16016ec7840
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.10" # straddle floor: ruff target-version=py310; frappe v15 minimum
+          python-version: "3.10.20"
 
-      - name: Detect pre-commit config
-        id: precommit
+      - name: Require lint and browser entrypoints
         run: |
-          if [ -f .pre-commit-config.yaml ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          test -s .pre-commit-config.yaml
+          test -s pyproject.toml
+          test -s cypress.config.js
+          test -s cypress/support/e2e.js
+          test -s cypress/support/commands.js
+          test -n "$(find cypress/integration -maxdepth 1 -type f -name '*.cy.js' -print -quit)"
 
       - name: pre-commit (ruff, target py310)
-        if: steps.precommit.outputs.exists == 'true'
-        uses: pre-commit/action@v3.0.1
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
-      - name: Ruff fallback (until .pre-commit-config.yaml lands)
-        if: steps.precommit.outputs.exists == 'false'
-        run: |
-          if [ -f pyproject.toml ]; then
-            pipx run ruff check .
-          else
-            echo "::warning::no .pre-commit-config.yaml or pyproject.toml yet — lint skipped (scaffold phase)"
-          fi
-
-      # Hard rule: auth_hooks/boot/install/shims.login_page fire on
-      # every login / page render and must import WITHOUT the webauthn library —
-      # a broken cryptography wheel must never take down logins.
-      - name: Import-graph gate (hook-path modules import without webauthn)
+      - name: Import-graph gate (all hook and dormancy modules)
         run: bash .github/helper/import_gate.sh
 
   server-tests:
     name: Server (frappe ${{ matrix.frappe-branch }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - frappe-branch: version-15
-            python-version: "3.10" # frappe v15: requires-python >=3.10,<3.15
-            node-version: 18
-            mariadb-image: "mariadb:10.6"
+            frappe-ref: 588e443808206a7bfe87429c5a55e16016ec7840
+            python-version: "3.10.20"
+            node-version: "18.20.8"
+            mariadb-image: "mariadb:10.6@sha256:b5e45ee3bbf582fb91e4b9447cc3f020fbab2dbcf22970e482df04d6d8ac4e44"
           - frappe-branch: version-16
-            python-version: "3.14" # frappe v16: requires-python >=3.14,<3.15
-            node-version: 24
-            mariadb-image: "mariadb:11.8"
+            frappe-ref: 9a8daf343db69a0127f470bad8be0af192cd80c8
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+            mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
           - frappe-branch: develop
-            python-version: "3.14"
-            node-version: 24
-            mariadb-image: "mariadb:11.8"
+            frappe-ref: 512208689eda9fa5c3ce069ce73a88f716e28bb7
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+            mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
     services:
       mariadb:
         image: ${{ matrix.mariadb-image }}
@@ -117,39 +104,40 @@ jobs:
           --tmpfs=/var/lib/mysql:rw,noexec,nosuid,size=2g
     steps:
       - name: Clone
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      # Everything under passkeys/ must compile on the v15 cell's Python 3.10
-      # (the straddle floor).
       - name: Validate package syntax on this Python
         run: python -m compileall -q -f passkeys
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Add test site to hosts
-        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+      - name: Add test sites to hosts
+        run: |
+          echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 lifecycle_site" | sudo tee -a /etc/hosts
 
-      - name: Cache pip
-        uses: actions/cache@v4
+      - name: Cache pip downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.frappe-branch }}-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.frappe-branch }}-
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ matrix.frappe-ref }}-${{ hashFiles('pyproject.toml') }}
 
-      - name: Install bench, frappe, site
+      - name: Install bench, Frappe, and clean test site
         run: bash "${GITHUB_WORKSPACE}/.github/helper/install.sh"
         env:
-          FRAPPE_BRANCH: ${{ inputs.frappe-ref || matrix.frappe-branch }}
+          FRAPPE_REF: ${{ inputs['frappe-ref'] || (inputs.upstream_tips && matrix.frappe-branch) || matrix.frappe-ref }}
           BUILD_ASSETS: "no"
+
+      - name: App lifecycle gate on a separate clean site
+        run: bash "${GITHUB_WORKSPACE}/.github/helper/lifecycle_gate.sh"
 
       - name: Run server tests
         working-directory: /home/runner/frappe-bench
@@ -163,24 +151,27 @@ jobs:
 
   ui-tests:
     name: UI (frappe ${{ matrix.frappe-branch }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
         include:
           - frappe-branch: version-15
-            python-version: "3.10"
-            node-version: 18
-            mariadb-image: "mariadb:10.6"
+            frappe-ref: 588e443808206a7bfe87429c5a55e16016ec7840
+            python-version: "3.10.20"
+            node-version: "18.20.8"
+            mariadb-image: "mariadb:10.6@sha256:b5e45ee3bbf582fb91e4b9447cc3f020fbab2dbcf22970e482df04d6d8ac4e44"
           - frappe-branch: version-16
-            python-version: "3.14"
-            node-version: 24
-            mariadb-image: "mariadb:11.8"
+            frappe-ref: 9a8daf343db69a0127f470bad8be0af192cd80c8
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+            mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
           - frappe-branch: develop
-            python-version: "3.14"
-            node-version: 24
-            mariadb-image: "mariadb:11.8"
+            frappe-ref: 512208689eda9fa5c3ce069ce73a88f716e28bb7
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+            mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
     services:
       mariadb:
         image: ${{ matrix.mariadb-image }}
@@ -196,83 +187,94 @@ jobs:
           --tmpfs=/var/lib/mysql:rw,noexec,nosuid,size=2g
     steps:
       - name: Clone
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Add test site to hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
 
-      - name: Cache pip
-        uses: actions/cache@v4
+      - name: Cache pip downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.frappe-branch }}-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.frappe-branch }}-
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ matrix.frappe-ref }}-${{ hashFiles('pyproject.toml') }}
 
-      - name: Cache cypress binary
-        uses: actions/cache@v4
+      - name: Cache Cypress binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/Cypress
-          key: ${{ runner.os }}-cypress
+          key: ${{ runner.os }}-cypress-${{ matrix.frappe-ref }}-${{ hashFiles('cypress.config.js') }}
 
-      - name: Install bench, frappe, site (with assets)
+      - name: Install bench, Frappe, and clean UI site
         run: bash "${GITHUB_WORKSPACE}/.github/helper/install.sh"
         env:
-          FRAPPE_BRANCH: ${{ inputs.frappe-ref || matrix.frappe-branch }}
+          FRAPPE_REF: ${{ inputs['frappe-ref'] || (inputs.upstream_tips && matrix.frappe-branch) || matrix.frappe-ref }}
           BUILD_ASSETS: "yes"
 
-      - name: Site setup for UI tests
+      - name: Site setup for UI tests (CSRF enabled)
         working-directory: /home/runner/frappe-bench
         run: |
-          # Cypress drives a LIVE bench (never frappe.flags.in_test), so mark the
-          # ephemeral CI site a developer/test bench: developer_mode satisfies the
-          # app's UI-test-helper guard, allow_tests mirrors frappe's own UI CI, and
-          # ignore_csrf skips CSRF for the automated cross-origin cy.request calls.
           bench --site test_site set-config developer_mode 1 --parse
           bench --site test_site set-config allow_tests 1 --parse
-          bench --site test_site set-config ignore_csrf 1 --parse
-          # Disable the scheduler on the ephemeral UI-test site: its every-minute job
-          # writes contend with the desk-boot tabSessions write on CI's constrained
-          # tmpfs MariaDB, occasionally deadlocking into a transient HTTP 508.
+          bench --site test_site set-config ignore_csrf 0 --parse
           bench --site test_site scheduler disable
           bench --site test_site execute frappe.utils.install.complete_setup_wizard
           bench --site test_site execute frappe.tests.ui_test_helpers.create_test_user
 
-      - uses: browser-actions/setup-chrome@latest
+      - name: Setup pinned Chrome for Testing
+        id: chrome
+        uses: browser-actions/setup-chrome@e574b4b3a21156ab45dd6b5f67e884fd26eed829 # v2.1.2
+        with:
+          chrome-version: "150.0.7871.124"
 
-      - name: Export browser path
-        run: echo "BROWSER_PATH=$(which chrome)" >> "$GITHUB_ENV"
+      - name: Verify browser and live bench
+        env:
+          BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          test -x "$BROWSER_PATH"
+          "$BROWSER_PATH" --version
+          test "${{ steps.chrome.outputs.chrome-version }}" = "150.0.7871.124"
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error --output /dev/null http://test_site:8000/login; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::bench did not become ready at http://test_site:8000/login"
+          exit 1
 
-      # bench run-ui-tests cds into apps/passkeys and runs the app's own Cypress
-      # suite with the cypress@^13 toolchain frappe auto-installs into apps/frappe
-      # (frappe/commands/testing.py). Until the app ships cypress.config.js the
-      # spec run is skipped — the install/resolver legs above still validated the cell.
+      - name: Require Cypress configuration and setup
+        run: |
+          test -s cypress.config.js
+          test -s cypress/support/e2e.js
+          test -s cypress/support/commands.js
+          test -n "$(find cypress/integration -maxdepth 1 -type f -name '*.cy.js' -print -quit)"
+          node <<'NODE'
+          const config = require("./cypress.config.js");
+          if (config.retries !== 0) throw new Error("Cypress retries must remain disabled");
+          if (config.e2e.testIsolation !== true) throw new Error("Cypress testIsolation must remain enabled");
+          if (typeof config.e2e.setupNodeEvents !== "function") throw new Error("Cypress setupNodeEvents is required");
+          NODE
+
       - name: Run Cypress UI tests
         working-directory: /home/runner/frappe-bench
         env:
-          # The desk user-menu dropdown DOM varies by Frappe version; the navbar specs
-          # gate their menu-navigation tests to develop via this value (upstream S2).
+          BROWSER_PATH: ${{ steps.chrome.outputs.chrome-path }}
           CYPRESS_frappeBranch: ${{ matrix.frappe-branch }}
-        run: |
-          if [ ! -f "${GITHUB_WORKSPACE}/cypress.config.js" ] && [ ! -f "${GITHUB_WORKSPACE}/cypress.config.ts" ]; then
-            echo "::warning::no cypress config at app root yet — UI specs skipped for this cell"
-            exit 0
-          fi
-          bench --site test_site run-ui-tests passkeys --headless --browser "$BROWSER_PATH"
+        run: bench --site test_site run-ui-tests passkeys --headless --browser "$BROWSER_PATH"
 
       - name: Upload Cypress artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cypress-${{ matrix.frappe-branch }}
           path: |
@@ -287,52 +289,79 @@ jobs:
           tail -n 200 /home/runner/frappe-bench/logs/*.log* || true
 
   node-tests:
-    name: Node (JS unit)
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node-version }} (JS unit)
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18.20.8", "24.18.0"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
 
-      # Dependency-free node:test suites (no package.json / jest) covering the client
-      # ceremony + policy logic. The glob is required on node 24 (a bare dir errors).
-      - name: Run JS unit tests
-        run: node --test 'passkeys/tests/js/*.test.js'
+      - name: Validate JS entrypoints and run all unit specs
+        run: |
+          node --check cypress.config.js
+          node --check cypress/support/e2e.js
+          mapfile -t tests < <(find passkeys/tests/js -maxdepth 1 -type f -name '*.test.js' -print | sort)
+          if (( ${#tests[@]} == 0 )); then
+            echo "::error::no Node unit tests discovered"
+            exit 1
+          fi
+          node --test "${tests[@]}"
 
   secrets:
     name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 0 # full history — gitleaks scans every commit, not just the tip
+          fetch-depth: 0
 
-      # Run the gitleaks binary directly. The gitleaks-action requires a paid licence
-      # for organization accounts; the binary is free and reads the repo's .gitleaks.toml.
-      - name: Install gitleaks
+      - name: Install checksum-verified gitleaks 8.30.0
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz \
-            | tar -xz -C /tmp gitleaks
+          curl -fsSLo /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz
+          echo "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e  /tmp/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+
       - name: gitleaks (full history)
         run: gitleaks git --no-banner --redact --log-opts="--all"
 
   success:
-    # Single required check for branch protection ("CI / Success") —
-    # fan-in pattern from frappe/frappe ui-tests.yml.
     name: Success
     needs: [lint, node-tests, server-tests, ui-tests, secrets]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Evaluate results
+      - name: Evaluate results and state scope
         run: |
+          {
+            echo "### CI scope"
+            echo
+            echo "- Lint: `${{ needs.lint.result }}`"
+            echo "- Node: `${{ needs.node-tests.result }}`"
+            echo "- Server: `${{ needs.server-tests.result }}`"
+            echo "- UI: `${{ needs.ui-tests.result }}`"
+            echo "- Secret scan: `${{ needs.secrets.result }}`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ inputs.upstream_tips }}" = "true" ]; then
+            {
+              echo
+              echo "This is a compatibility run against moving upstream refs."
+              echo "Failures remain visible, but the run is not a release attestation and does not attest global/native dormancy."
+              echo "A native-core safety claim requires an explicit capability contract and a dedicated integration run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           test "${{ needs.lint.result }}" = "success"
           test "${{ needs.node-tests.result }}" = "success"
           test "${{ needs.server-tests.result }}" = "success"

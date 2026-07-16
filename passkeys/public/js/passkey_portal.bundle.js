@@ -24,6 +24,7 @@
 	var METHODS = M.MANAGE_METHODS;
 
 	var mountRoot = document.getElementById("passkey-portal-root");
+	var statusRoot = document.getElementById("passkey-portal-status");
 	var isPasskeyPage = !!mountRoot;
 
 	// ------------------------------------------------------------------ transport
@@ -100,39 +101,119 @@
 	// The portal's frappe.passkeys.confirm/call, built from the pure engine + a
 	// portal modal adapter (chooseMethod / collectPassword). Used for the delete
 	// sudo gate.
+	function appendConfirmationContext(body, opts, passwordOnly) {
+		var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
+		var label = context.labelFromServer ? context.label : t(context.label);
+		var action = el("p", "passkey-confirm-action");
+		var strong = el("strong", "", label);
+		action.appendChild(strong);
+		body.appendChild(action);
+		body.appendChild(el("p", "passkey-confirm-lead", opts.action === "passkeys.manage"
+			? t("This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below.")
+			: passwordOnly
+				? t("Confirm {0} to continue.", [label])
+				: t("Confirm {0} with your passkey.", [label])));
+		if (!context.summary.length) return;
+		var summary = el("div", "passkey-confirm-summary");
+		summary.setAttribute("aria-label", t("Action details"));
+		context.summary.forEach(function (row) {
+			var line = el("div", "passkey-confirm-summary-row");
+			if (row.label) line.appendChild(el("span", "passkey-confirm-summary-label", row.label));
+			line.appendChild(el("span", "passkey-confirm-summary-value", row.value));
+			summary.appendChild(line);
+		});
+		body.appendChild(summary);
+	}
+
 	function makeConfirmUI() {
 		var modal = null;
+		var pendingReject = null;
+		var pending = false;
+		var passwordMessage = "";
+
+		function cancelled() {
+			if (!pending) return;
+			pending = false;
+			var reject = pendingReject;
+			pendingReject = null;
+			if (reject) reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
+		}
+		function freshModal() {
+			var made = buildModal({ title: t("Confirm it's you"), onClose: function () {
+				if (modal === made) modal = null;
+				cancelled();
+			} });
+			modal = made;
+			return made;
+		}
+		function beginPending(reject) {
+			pending = true;
+			pendingReject = reject;
+		}
+		function settle(resolve, value) {
+			if (!pending) return;
+			pending = false;
+			pendingReject = null;
+			resolve(value);
+		}
+		function closeSettled() {
+			pending = false;
+			pendingReject = null;
+			if (!modal) return;
+			var current = modal;
+			modal = null;
+			current.close();
+		}
 		return {
 			chooseMethod: function (opts) {
 				return new Promise(function (resolve, reject) {
-					modal = buildModal({ title: t("Confirm it's you"), onClose: function () { if (!modal._settled) reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled."))); } });
-					modal.body.appendChild(el("p", "", t("Confirm to manage your passkeys.")));
-					var pk = primary(t("Confirm with passkey"), function () { resolve("passkey"); });
+					passwordMessage = "";
+					freshModal();
+					beginPending(reject);
+					appendConfirmationContext(modal.body, opts);
+					var pk = primary(t("Confirm with passkey"), function () { settle(resolve, "passkey"); });
 					modal.actions.appendChild(pk);
-					if (opts.canPassword) modal.actions.appendChild(link(t("Use your password instead"), function () { resolve("password"); }));
-					modal.actions.appendChild(link(t("Cancel"), function () { modal._settled = false; modal.close(); }));
+					if (opts.canPassword) modal.actions.appendChild(link(t("Use your password instead"), function () { settle(resolve, "password"); }));
+					modal.actions.appendChild(link(t("Cancel"), function () { if (modal) modal.close(); }));
 					modal.open();
 				});
 			},
-			collectPassword: function () {
-				return new Promise(function (resolve) {
-					if (!modal) modal = buildModal({ title: t("Confirm it's you") });
+			collectPassword: function (opts) {
+				return new Promise(function (resolve, reject) {
+					opts = opts || {};
+					var mustOpen = !modal;
+					if (!modal) freshModal();
+					beginPending(reject);
 					modal.body.innerHTML = "";
+					appendConfirmationContext(modal.body, opts, true);
 					var lbl = el("label", "", t("Confirm your password to continue.")); lbl.setAttribute("for", "passkey-portal-pw");
 					var input = document.createElement("input");
 					input.type = "password"; input.id = "passkey-portal-pw"; input.className = "form-control"; input.autocomplete = "current-password";
 					modal.body.appendChild(lbl); modal.body.appendChild(input);
+					var error = el("div", "passkey-confirm-msg", passwordMessage);
+					error.setAttribute("role", "alert"); error.setAttribute("aria-live", "assertive");
+					modal.body.appendChild(error);
 					modal.actions.innerHTML = "";
-					modal.actions.appendChild(primary(t("Confirm"), function () { var v = input.value; input.value = ""; resolve(v); }));
-					input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var v = input.value; input.value = ""; resolve(v); } });
+					function submit() { var v = input.value; input.value = ""; passwordMessage = ""; settle(resolve, v); }
+					modal.actions.appendChild(primary(t("Confirm"), submit));
+					modal.actions.appendChild(link(t("Cancel"), function () { if (modal) modal.close(); }));
+					input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+					if (mustOpen) modal.open();
 					setTimeout(function () { input.focus(); }, 0);
 				});
 			},
 			announce: function (m) { announce(m); },
 			busy: function () {},
-			passwordError: function (m) { announce(m); },
-			done: function () { if (modal) { modal._settled = true; modal.close(); } },
-			close: function () { if (modal) { modal._settled = true; modal.close(); } },
+			passwordError: function (m) {
+				passwordMessage = m;
+				if (modal) {
+					var box = modal.body.querySelector(".passkey-confirm-msg");
+					if (box) box.textContent = m;
+				}
+				announce(m);
+			},
+			done: closeSettled,
+			close: closeSettled,
 		};
 	}
 	function runGesture(optionsJSON) {
@@ -175,7 +256,7 @@
 			var creds = payload.credentials || [];
 			if (!creds.length) { mountRoot.appendChild(emptyState()); return; }
 			var list = el("ul", "passkey-card-list"); list.setAttribute("role", "list");
-			creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map }))); });
+		creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map, translate: t }))); });
 			mountRoot.appendChild(list);
 			mountRoot.appendChild(addRow());
 			mountRoot.appendChild(passkeyOnlyRow(creds, payload)); // passwordless-login switch
@@ -192,18 +273,19 @@
 	}
 	function passkeyOnlyRow(creds, payload) {
 		var enabledCount = 0;
-		creds.forEach(function (c) { if (M.credentialViewModel(c).enabled) enabledCount += 1; });
+		creds.forEach(function (c) { if (M.credentialViewModel(c, { translate: t }).enabled) enabledCount += 1; });
 		var current = isPasskeyOnly(payload);
+		var availability = M.passkeyOnlyAvailability(enabledCount, current);
 		var row = el("div", "passkey-only-row");
 		var main = el("div", "passkey-only-main");
 		main.appendChild(el("div", "passkey-only-label", t(M.COPY.passkeyOnlyLabel)));
-		main.appendChild(el("div", "passkey-only-help", t(M.COPY.passkeyOnlyHelp)));
+		main.appendChild(el("div", "passkey-only-help", t(M.COPY[availability.helpKey])));
 		row.appendChild(main);
 		var toggle = document.createElement("input");
 		toggle.type = "checkbox"; toggle.className = "passkey-only-toggle"; toggle.checked = current;
 		toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-checked", current ? "true" : "false");
 		toggle.setAttribute("aria-label", t(M.COPY.passkeyOnlyLabel));
-		if (enabledCount === 0) { toggle.disabled = true; toggle.setAttribute("title", t(M.COPY.passkeyOnlyHelp)); }
+		if (availability.disabled) { toggle.disabled = true; toggle.setAttribute("title", t(M.COPY.passkeyOnlyNeedsTwo)); }
 		toggle.addEventListener("change", function () {
 			var desired = toggle.checked;
 			toggle.checked = current; // don't flip until the sudo-gated call confirms
@@ -223,13 +305,13 @@
 			: t("Password login will be allowed for your account again.")));
 		modal.actions.appendChild(primary(desired ? t("Turn on passwordless login") : t("Turn off passwordless login"), function () {
 			modal.close();
-			announce(t("Confirming it's you…"));
+			setPortalStatus(t("Confirming it's you…"), "pending");
 			engine.call(METHODS.setPasskeyOnly, { enabled: !!desired }).then(function () {
-				announce(desired ? t("Passwordless login is on.") : t("Passwordless login is off."));
+				setPortalStatus(desired ? t("Passwordless login is on.") : t("Passwordless login is off."), "success");
 				render();
 			}).catch(function (err) {
-				if (err && err.code === "user_cancelled") { render(); return; }
-				announce((err && err.message) || t("Couldn't change passwordless login."));
+				if (err && err.code === "user_cancelled") { setPortalStatus(""); render(); return; }
+				setPortalStatus((err && err.message) || t("Couldn't change passwordless login."), "error");
 				render();
 			});
 		}));
@@ -283,9 +365,14 @@
 		modal.body.appendChild(el("label", "", t(M.COPY.renamePrompt)));
 		modal.body.appendChild(input);
 		modal.actions.appendChild(primary(t("Save"), function () {
+			modal.close();
+			setPortalStatus(t("Renaming passkey…"), "pending");
 			post(METHODS.rename, { name: vm.name, label: input.value }).then(function (res) {
-				modal.close();
-				if (res && res.ok) { announce(t("Passkey renamed.")); render(); }
+				if (!res || !res.ok) throw new Error(C.serverMessages(res && res.body) || t("Couldn't rename the passkey."));
+				setPortalStatus(t("Passkey renamed."), "success");
+				render();
+			}).catch(function (err) {
+				setPortalStatus((err && err.message) || t("Couldn't rename the passkey."), "error");
 			});
 		}));
 		modal.actions.appendChild(link(t("Cancel"), modal.close));
@@ -298,13 +385,17 @@
 		modal.body.appendChild(el("p", "", M.format(t(M.COPY.deleteConfirmBody), [vm.label])));
 		modal.actions.appendChild(primary(t(M.COPY.deleteConfirmCta), function () {
 			modal.close();
-			announce(t("Confirming it's you…"));
-			// sudo-gated: engine.call catches the 401 contract + runs the confirm modal.
-			engine.call(METHODS.del, { name: vm.name }).then(function () {
-				announce(t("Passkey removed.")); render();
+			setPortalStatus(t("Confirming it's you…"), "pending");
+			var H = window.frappe && window.frappe.passkeys && window.frappe.passkeys.headless;
+			if (!H || typeof H.removeCredential !== "function") {
+				setPortalStatus(t("Couldn't remove the passkey."), "error");
+				return;
+			}
+			H.removeCredential(vm.name).then(function () {
+				setPortalStatus(t("Passkey removed."), "success"); render();
 			}).catch(function (err) {
-				if (err && err.code === "user_cancelled") return;
-				announce((err && (err.message)) || t("Couldn't remove the passkey."));
+				if (err && err.code === "user_cancelled") { setPortalStatus(""); return; }
+				setPortalStatus((err && err.message) || t("Couldn't remove the passkey."), "error");
 			});
 		}));
 		modal.actions.appendChild(link(t("Cancel"), modal.close));
@@ -320,15 +411,15 @@
 		opts = opts || {};
 		function done(ok) { if (typeof opts.onResult === "function") opts.onResult(ok); }
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
-			announce(t("This browser can't create passkeys.")); done(false); return;
+			setPortalStatus(t("This browser can't create passkeys."), "error"); done(false); return;
 		}
 		var H = window.frappe && window.frappe.passkeys && window.frappe.passkeys.headless;
-		if (!H) { announce(t(M.COPY.addFailed)); done(false); return; }
-		announce(t("Follow your device's prompt to add a passkey…"));
+		if (!H) { setPortalStatus(t(M.COPY.addFailed), "error"); done(false); return; }
+		setPortalStatus(t("Follow your device's prompt to add a passkey…"), "pending");
 		H.register({ flow: "explicit" }).then(function () {
-			announce(t("Passkey added.")); render(); done(true);
+			setPortalStatus(t("Passkey added."), "success"); render(); done(true);
 		}, function (err) {
-			announce(t(err && err.code === "already_registered" ? M.COPY.alreadyRegistered : M.COPY.addFailed));
+			setPortalStatus(t(err && err.code === "already_registered" ? M.COPY.alreadyRegistered : M.COPY.addFailed), "error");
 			done(false);
 		});
 	}
@@ -357,13 +448,27 @@
 	}
 
 	function recordEnforcement(event) {
-		post(METHODS.recordEnforcement, { event: event }).catch(function () {}); // server owns grace
+		return post(METHODS.recordEnforcement, { event: event });
+	}
+	var _recordSessionEvent = M.createSessionEventRecorder(getSessionStorage());
+	function recordEnforcementDefer(b, enf) {
+		var user = (window.frappe && window.frappe.session && window.frappe.session.user) || "current";
+		var verdict = Object.assign({}, (b && b.enforcement) || {}, {
+			graceRemaining: enf && enf.graceRemaining,
+		});
+		var key = M.enforcementDeferKey(user, verdict);
+		return _recordSessionEvent(key, function () {
+			return recordEnforcement(M.ENFORCE_EVENTS.DEFER).then(function (res) {
+				if (!res || !res.ok) throw new Error("record_enforcement_failed");
+				return res;
+			});
+		}).catch(function () {});
 	}
 	var _incapableReported = false;
 	function reportIncapableOnce() {
 		if (_incapableReported) return;
 		_incapableReported = true;
-		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE);
+		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE).catch(function () {});
 	}
 
 	// The post-login ENFORCEMENT interstitial (portal). Blocking ⇒ a static modal
@@ -379,7 +484,7 @@
 			// the route no click handler covers. A blocking gate is static (Esc suppressed) with
 			// no grace left to spend, so it records nothing.
 			onClose: function () {
-				if (!enf.blocking && !modal._settled) { modal._settled = true; recordEnforcement(M.ENFORCE_EVENTS.DEFER); }
+				if (!enf.blocking && !modal._settled) { modal._settled = true; recordEnforcementDefer(b, enf); }
 			},
 		});
 		modal.body.appendChild(el("p", "", t(M.COPY.enforceBody)));
@@ -387,10 +492,11 @@
 		if (!enf.blocking) {
 			var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
 			modal.actions.appendChild(link(later, function () {
-				recordEnforcement(M.ENFORCE_EVENTS.DEFER); modal._settled = true; modal.close();
+				recordEnforcementDefer(b, enf); modal._settled = true; modal.close();
 			}));
 		} else {
-			modal.actions.appendChild(link(t(M.COPY.enforceCantSetUp), function () { onEnforceCantSetUp(b, modal); }));
+			modal.actions.appendChild(link(t(M.COPY.enforceContactAdmin), function () { onEnforceCantSetUp(b, modal); }));
+			modal.actions.appendChild(link(t(M.COPY.enforceSignOut), signOut));
 		}
 		modal.open();
 	}
@@ -413,6 +519,8 @@
 			notice.setAttribute("role", "alert");
 			modal.body.appendChild(notice);
 			modal.actions.innerHTML = "";
+			modal.actions.appendChild(primary(t(M.COPY.enforceRetry), function () { enforceCreate(modal); }));
+			modal.actions.appendChild(link(t(M.COPY.enforceSignOut), signOut));
 		} else {
 			modal._settled = true;
 			modal.close();
@@ -450,6 +558,29 @@
 
 	// --------------------------------------------------------------- utils
 	function announce(msg) { C.announce(document, msg); }
+	function getSessionStorage() { try { return window.sessionStorage || null; } catch (e) { return null; } }
+	function signOut() { window.location.href = "/api/method/logout"; }
+	function setPortalStatus(msg, kind) {
+		if (!statusRoot && mountRoot) {
+			statusRoot = el("div", "passkey-portal-status");
+			statusRoot.id = "passkey-portal-status";
+			statusRoot.setAttribute("aria-live", "polite");
+			if (mountRoot.parentNode && typeof mountRoot.parentNode.insertBefore === "function") {
+				mountRoot.parentNode.insertBefore(statusRoot, mountRoot);
+			}
+		}
+		if (!statusRoot) { if (msg) announce(msg); return; }
+		if (!msg) {
+			statusRoot.hidden = true;
+			statusRoot.className = "passkey-portal-status";
+			statusRoot.textContent = "";
+			return;
+		}
+		statusRoot.hidden = false;
+		statusRoot.className = "passkey-portal-status passkey-portal-status--" + (kind || "pending");
+		statusRoot.setAttribute("role", kind === "error" ? "alert" : "status");
+		statusRoot.textContent = msg;
+	}
 	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
 	function primary(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-primary btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
 	function link(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-link btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
@@ -469,6 +600,6 @@
 	// enforcement interstitial + modal builder so `node --test` can pin the defer-on-Esc
 	// contract without a bench. No-op in the browser — `module` is undefined there.
 	if (typeof module === "object" && module.exports) {
-		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal };
+		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal, makeConfirmUI: makeConfirmUI, setPortalStatus: setPortalStatus };
 	}
 })();

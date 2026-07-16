@@ -5,7 +5,7 @@
 # durability tweaks. Shared by the server-tests and
 # ui-tests jobs; parameterized via environment:
 #
-#   FRAPPE_BRANCH  frappe branch/tag to clone (default: develop)
+#   FRAPPE_REF     exact frappe commit, tag, or branch to fetch (default: develop)
 #   BUILD_ASSETS   "yes" → run `bench build` in the background (UI-test leg);
 #                  anything else skips assets (server-test leg)
 #
@@ -13,7 +13,7 @@
 # the frappe app; package/app name: passkeys). Expects a MariaDB service
 # container on 127.0.0.1:3306 with root password "root".
 
-set -e
+set -euo pipefail
 
 cd ~ || exit
 
@@ -24,15 +24,29 @@ sudo apt-get -qq -y install libcups2-dev redis-server mariadb-client libmariadb-
 # wkhtmltopdf deliberately skipped: no PDF/print tests in this app
 echo "::endgroup::"
 
-# bench setup requirements / bench build need yarn
-command -v yarn >/dev/null 2>&1 || sudo npm install -g yarn
+# bench setup requirements / bench build need Yarn Classic. Keep the bootstrap
+# deterministic instead of accepting the runner image's version or npm's moving
+# ``latest`` tag.
+if ! command -v yarn >/dev/null 2>&1 || [ "$(yarn --version)" != "1.22.22" ]; then
+	sudo npm install -g yarn@1.22.22
+fi
 
-pip install frappe-bench
+python -m pip install "frappe-bench==5.31.0"
 
-frappe_branch="${FRAPPE_BRANCH:-develop}"
+frappe_ref="${FRAPPE_REF:-develop}"
 
-echo "::group::bench init (frappe ${frappe_branch})"
-git clone https://github.com/frappe/frappe --branch "$frappe_branch" --depth 1
+echo "::group::resolve frappe (${frappe_ref})"
+test ! -e ~/frappe
+git init --quiet ~/frappe
+git -C ~/frappe remote add origin https://github.com/frappe/frappe.git
+git -C ~/frappe fetch --quiet --depth 1 origin "$frappe_ref"
+git -C ~/frappe checkout --quiet --detach FETCH_HEAD
+frappe_sha="$(git -C ~/frappe rev-parse HEAD)"
+echo "Resolved frappe ${frappe_ref} -> ${frappe_sha}"
+echo "::endgroup::"
+
+echo "::group::bench init (frappe ${frappe_sha})"
+test ! -e ~/frappe-bench
 bench init --skip-assets --frappe-path ~/frappe --python "$(which python)" frappe-bench
 echo "::endgroup::"
 
@@ -60,6 +74,8 @@ if [ "${BUILD_ASSETS:-no}" = "yes" ]; then
 fi
 
 bench start &>> ~/frappe-bench/bench_start.log &
+bench_pid=$!
+echo "$bench_pid" > ~/frappe-bench/bench_start.pid
 
 echo "::group::new-site + install-app"
 # --mariadb-user-host-login-scope=% : the site DB user must accept connections
@@ -82,5 +98,21 @@ if [ -n "${build_pid:-}" ]; then
     echo "Asset build failed:"
     cat ~/frappe-bench/build_assets.log
     exit 1
-  fi
+	fi
 fi
+
+if ! kill -0 "$bench_pid" 2>/dev/null; then
+	echo "Bench exited during setup:"
+	cat ~/frappe-bench/bench_start.log
+	exit 1
+fi
+
+{
+	echo "### Runtime provenance"
+	echo
+	echo "- Frappe ref: \`${frappe_ref}\`"
+	echo "- Frappe commit: \`${frappe_sha}\`"
+	echo "- Python: \`$(python --version 2>&1)\`"
+	echo "- Node: \`$(node --version)\`"
+	echo "- Bench: \`$(bench --version)\`"
+} >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

@@ -35,15 +35,15 @@ function makePost(script) {
 function makeUI(opts) {
 	opts = opts || {};
 	const events = [];
-	return function () {
+	function factory() {
 		return {
 			chooseMethod(info) {
 				events.push(["choose", info]);
 				if (opts.cancel) return Promise.reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, "x"));
 				return Promise.resolve(opts.method || "passkey");
 			},
-			collectPassword() {
-				events.push(["password"]);
+			collectPassword(info) {
+				events.push(["password", info]);
 				if (opts.cancelPassword) return Promise.reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, "x"));
 				const pw = Array.isArray(opts.passwords) ? opts.passwords.shift() : opts.password;
 				return Promise.resolve(pw || "hunter2");
@@ -55,7 +55,9 @@ function makeUI(opts) {
 			close() { events.push(["close"]); },
 			_events: events,
 		};
-	};
+	}
+	factory.events = events;
+	return factory;
 }
 
 const REQ_OPTIONS = { challenge: "abc", rpId: "example.com", userVerification: "required", allowCredentials: [] };
@@ -66,7 +68,10 @@ const ASSERTION = { id: "cred1", type: "public-key", response: {} };
 test("parseConfirmationRequired matches exc_type ONLY", () => {
 	const body = { exc_type: "PasskeyConfirmationRequired", action: "a.b", payload_fingerprint: "ff", methods: ["passkey", "password"] };
 	const got = C.parseConfirmationRequired(body);
-	assert.deepStrictEqual(got, { action: "a.b", payloadFingerprint: "ff", methods: ["passkey", "password"] });
+	assert.deepStrictEqual(got, {
+		action: "a.b", payloadFingerprint: "ff", methods: ["passkey", "password"],
+		actionLabel: null, parameterSummary: null,
+	});
 	assert.strictEqual(C.parseConfirmationRequired({ exc_type: "SomethingElse" }), null);
 	assert.strictEqual(C.parseConfirmationRequired({ action: "a.b" }), null); // no exc_type
 	assert.strictEqual(C.parseConfirmationRequired(null), null);
@@ -97,6 +102,23 @@ test("extractGrant reads the message-wrapped {grant}", () => {
 	assert.strictEqual(C.extractGrant({ message: { grant: "g1" } }), "g1");
 	assert.strictEqual(C.extractGrant({ grant: "g2" }), "g2");
 	assert.strictEqual(C.extractGrant({ message: {} }), null);
+});
+
+test("confirmationActionContext humanizes actions and bounds safe server summaries", () => {
+	assert.deepStrictEqual(C.confirmationActionContext("passkeys.manage", null, null), {
+		label: "Manage passkeys", labelFromServer: false, summary: [],
+	});
+	const context = C.confirmationActionContext("custom.release_payment", "Release payment", {
+		Payment: "PAY-1",
+		Nested: { secret: "drop" },
+		Markup: "<img src=x onerror=alert(1)>",
+	});
+	assert.strictEqual(context.label, "Release payment");
+	assert.strictEqual(context.labelFromServer, true);
+	assert.deepStrictEqual(context.summary, [
+		{ label: "Payment", value: "PAY-1" },
+		{ label: "Markup", value: "<img src=x onerror=alert(1)>" },
+	]);
 });
 
 // ------------------------------------------------------- engine flow tests
@@ -143,6 +165,32 @@ test("call(): 401 -> echo payload_fingerprint VERBATIM -> confirm -> retry with 
 	assert.deepStrictEqual(retry.headers, { "X-Passkey-Grant": "GRANT-2" });
 });
 
+test("call(): protected-action display metadata survives an empty begin response", async () => {
+	const post = makePost({
+		"myapp.api.release_payment": [
+			{ ok: false, status: 401, body: {
+				exc_type: "PasskeyConfirmationRequired", action: "myapp.release_payment",
+				payload_fingerprint: "SERVER-FP", methods: ["passkey"],
+				action_label: "Release payment", parameter_summary: [{ label: "Payment", value: "PAY-7" }],
+			} },
+			{ ok: true, status: 200, body: { message: "done" } },
+		],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: {
+			state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "SERVER-FP",
+			methods: ["passkey"], action_label: null, parameter_summary: [],
+		} } }],
+		"passkeys.confirm.verify_confirmation": [{ ok: true, status: 200, body: { message: { grant: "G" } } }],
+	});
+	const ui = makeUI({ method: "passkey" });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui });
+	await engine.call("myapp.api.release_payment", { payment_id: "PAY-7" });
+	assert.deepStrictEqual(ui.events.find((event) => event[0] === "choose")[1], {
+		action: "myapp.release_payment", actionLabel: "Release payment",
+		parameterSummary: [{ label: "Payment", value: "PAY-7" }],
+		canPasskey: true, canPassword: false,
+	});
+});
+
 test("call(): non-401 success passes through unwrapped, no confirmation", async () => {
 	const post = makePost({ "myapp.ping": [{ ok: true, status: 200, body: { message: { ok: 1 } } }] });
 	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error("should not run")), ui: makeUI() });
@@ -167,15 +215,22 @@ test("call(): retry that still 401s rejects confirmation_failed (single retry)",
 
 test("password fallback leg mints a grant via reauth_password (action-bound)", async () => {
 	const post = makePost({
-		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp9", methods: ["password"] } } }],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: {
+			state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp9", methods: ["password"],
+			action_label: "Release payment", parameter_summary: { Payment: "PAY-1" },
+		} } }],
 		"passkeys.confirm.reauth_password": [{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } }],
 	});
-	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error("no gesture")), ui: makeUI({ method: "password", password: "s3cret" }) });
+	const ui = makeUI({ method: "password", password: "s3cret" });
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error("no gesture")), ui });
 	const grant = await engine.confirm("myapp.pay", { id: 1 });
 	assert.strictEqual(grant, "PW-GRANT");
 	const rc = post.calls.find((c) => c.method === "passkeys.confirm.reauth_password");
 	// reauth carries action + fingerprint so the server can mint an ACTION grant (not a bare sudo seed)
 	assert.deepStrictEqual(rc.body, { pwd: "s3cret", action: "myapp.pay", payload_fingerprint: "fp9" });
+	assert.deepStrictEqual(ui.events.find((event) => event[0] === "password")[1], {
+		action: "myapp.pay", actionLabel: "Release payment", parameterSummary: { Payment: "PAY-1" },
+	});
 });
 
 test("password fallback: wrong password retries in-dialog, then succeeds", async () => {

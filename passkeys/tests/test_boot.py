@@ -23,7 +23,7 @@ class BootInfoTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
 		settings.passkey_enrollment_policy = "Nudge"
@@ -115,6 +115,24 @@ class BootInfoTest(IntegrationTestCase):
 		info = frappe._dict()
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertIsNone(info.get("passkeys"))
+
+	def test_system_manager_context_includes_only_compatible_site_origin(self):
+		previous = frappe.conf.get("host_name")
+		self.addCleanup(setattr, frappe.conf, "host_name", previous)
+		frappe.set_user("Administrator")
+
+		frappe.conf.host_name = "https://admin.example.com"
+		info = frappe._dict()
+		boot.extend_bootinfo(bootinfo=info)
+		self.assertEqual(
+			info.passkeys["settings_context"]["configured_site_origin"],
+			"https://admin.example.com",
+		)
+
+		frappe.conf.host_name = "https://outside.example.net"
+		info = frappe._dict()
+		boot.extend_bootinfo(bootinfo=info)
+		self.assertIsNone(info.passkeys["settings_context"]["configured_site_origin"])
 
 	def test_post_login_method_reflects_the_sudo_window(self):
 		user = self._user()

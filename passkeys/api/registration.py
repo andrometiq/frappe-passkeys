@@ -16,6 +16,7 @@ import secrets
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 from passkeys import aaguid, policy, state
 from passkeys.passkey import (
@@ -26,6 +27,7 @@ from passkeys.passkey import (
 )
 
 MANAGE_ACTION = "passkeys.manage"
+REGISTRATION_INSERT_SAVEPOINT = "passkey_registration_insert"
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +55,7 @@ def begin_registration(flow: str = "explicit"):
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)
-	_require_sudo_for_registration(settings, user, flow)
+	authorization = _require_sudo_for_registration(settings, user, flow)
 
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
@@ -83,6 +85,7 @@ def begin_registration(flow: str = "explicit"):
 			"v": 1,
 			"type": "register",
 			"flow": flow,
+			"authorization": authorization,
 			"user": user,
 			"sid": frappe.session.sid,
 			"challenge_b64": challenge_b64,
@@ -163,15 +166,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 			"rp_id": record["rp_id"],  # descriptive only — verification never reads it
 		}
 	)
-	try:
-		doc.insert(ignore_permissions=True)
-	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
-		# Global uniqueness fails closed under worker races AND cross-account
-		# hijack (this authenticator is already registered somewhere).
-		frappe.db.rollback()
-		raise frappe.AuthenticationError(_("This passkey is already registered."))
-
-	handle = _get_or_create_handle(record["user"])
+	handle = _insert_verified_credential(doc, settings, flow, record.get("authorization"))
 	# out-of-band "passkey added" notice (label, time, IP) + Activity Log —
 	# the compensating control for registration hijack. Exception-hardened inside.
 	from passkeys import notifications
@@ -184,7 +179,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 		"label": doc.label,
 		"signal": {
 			"user_handle": handle.handle,
-			"credential_ids": [c.credential_id for c in _user_credentials(record["user"])],
+			"credential_ids": _enabled_credential_ids(record["user"]),
 			# name/display_name let the client fire signalCurrentUserDetails alongside
 			# signalAllAcceptedCredentials (F2), so a freshly-enrolled passkey's provider label
 			# matches the RP from the start.
@@ -206,7 +201,7 @@ def _require_any_login_mode(settings) -> None:
 		raise frappe.AuthenticationError(_("Passkeys are not enabled."))
 
 
-def _require_sudo_for_registration(settings, user: str, flow: str) -> None:
+def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 	window = state.get_sudo_window(frappe.session.sid)
 	if not window or window.get("user") != user:
 		_raise_confirmation_required()
@@ -216,13 +211,19 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> None:
 		# The silent upgrade rides the just-typed password's freshness.
 		if seeded_by != "password":
 			_raise_confirmation_required()
-		return
+		return seeded_by
 
 	# explicit add
 	if seeded_by == "weak":
-		# Restricted bootstrap: a weak (email-link / social)
-		# login may enroll ONLY a first credential, only when the knob allows.
-		if _enabled_credential_count(user) > 0 or not settings.passkey_allow_first_enrollment_on_weak_login:
+		# Restricted bootstrap: a weak (email-link / social) login may enroll
+		# only a first-factor credential. In second-factor-only mode that login
+		# would be vetoed on its next use while the user has no password/passkey
+		# first factor, creating a self-lockout.
+		if (
+			not settings.login_with_passkey
+			or _enabled_credential_count(user) > 0
+			or not settings.passkey_allow_first_enrollment_on_weak_login
+		):
 			_raise_confirmation_required()
 		# risk event: the weak-login bootstrap scope was used.
 		from passkeys import notifications
@@ -232,9 +233,9 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> None:
 			user,
 			f"first-enrollment bootstrap via weak login by {user}",
 		)
-		return
+		return seeded_by
 	if seeded_by in ("password", "passkey", "reauth"):
-		return
+		return seeded_by
 	_raise_confirmation_required()
 
 
@@ -272,14 +273,85 @@ def _enabled_credential_count(user: str) -> int:
 	return frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
 
 
+def _enabled_credential_ids(user: str) -> list[str]:
+	return frappe.get_all(
+		"WebAuthn Credential",
+		filters={"user": user, "enabled": 1},
+		pluck="credential_id",
+		order_by="creation asc",
+	)
+
+
 def _get_or_create_handle(user: str):
-	name = frappe.db.get_value("WebAuthn User Handle", {"user": user})
-	if name:
-		return frappe.get_doc("WebAuthn User Handle", name)
+	"""Return the user's handle with the global User -> Handle lock order."""
+	_lock_user(user)
+	return _get_or_create_handle_after_user_lock(user)
+
+
+def _lock_user(user: str) -> None:
+	if not frappe.db.get_value("User", user, "name", for_update=True):
+		raise frappe.AuthenticationError(_("Passkey registration could not be verified."))
+
+
+def _get_or_create_handle_after_user_lock(user: str):
+	row = frappe.db.get_value(
+		"WebAuthn User Handle",
+		{"user": user},
+		["name", "handle"],
+		as_dict=True,
+		for_update=True,
+	)
+	if row:
+		return row
 	handle = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode()
 	doc = frappe.get_doc({"doctype": "WebAuthn User Handle", "user": user, "handle": handle})
 	doc.insert(ignore_permissions=True)
 	return doc
+
+
+def _locking_user_credentials(user: str) -> list:
+	"""Read the current credential census under locks, bypassing RR snapshots."""
+	return frappe.db.get_values(
+		"WebAuthn Credential",
+		{"user": user},
+		["name", "credential_id", "transports", "enabled"],
+		as_dict=True,
+		order_by="creation asc",
+		for_update=True,
+	)
+
+
+def _insert_verified_credential(doc, settings, flow: str, authorization: str | None = None):
+	"""Atomically enforce authorization, the per-user cap, and persistence."""
+	_lock_user(doc.user)
+	handle = _get_or_create_handle_after_user_lock(doc.user)
+	credentials = _locking_user_credentials(doc.user)
+	if authorization == "weak":
+		# Several ceremonies can begin while the census is zero. Recheck the
+		# restricted bootstrap under the same User lock used for insertion so only
+		# one weak-login ceremony can create the first enabled credential.
+		if (
+			flow != "explicit"
+			or not cint(settings.login_with_passkey)
+			or not cint(settings.passkey_allow_first_enrollment_on_weak_login)
+			or any(cint(row.enabled) for row in credentials)
+		):
+			_raise_confirmation_required()
+	_enforce_max_per_user(settings, credentials, flow)
+
+	frappe.db.savepoint(REGISTRATION_INSERT_SAVEPOINT)
+	try:
+		doc.insert(ignore_permissions=True)
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		# Global uniqueness fails closed under worker races AND cross-account
+		# hijack. Roll back only this insert; callers may have unrelated work in
+		# the surrounding request transaction.
+		frappe.db.rollback(save_point=REGISTRATION_INSERT_SAVEPOINT)
+		frappe.db.release_savepoint(REGISTRATION_INSERT_SAVEPOINT)
+		raise frappe.AuthenticationError(_("This passkey is already registered."))
+	else:
+		frappe.db.release_savepoint(REGISTRATION_INSERT_SAVEPOINT)
+	return handle
 
 
 def _default_label(result) -> str:

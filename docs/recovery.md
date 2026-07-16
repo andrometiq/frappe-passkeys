@@ -6,11 +6,11 @@ bypass the app's validation guards, which is exactly what you need when a guard
 is what is standing between you and access. Always finish a console block with
 `frappe.db.commit()`.
 
-**The one invariant that saves you:** Administrator is exempt from the
-passkey-only login rule and from the passkey second factor, so **Administrator
-password login always works** — unless you turned on the site-wide
-`disable_user_pass_login` override (see Scenario D). Start every recovery by
-logging in as Administrator if you can.
+**Administrator is a limited break-glass path:** Administrator is exempt from the per-user
+passkey-only login rule. Administrator is not exempt from site-wide `disable_user_pass_login`, and
+an Administrator who explicitly enrolled an enabled credential while Passkey as Second Factor is
+active is protected like any other enrolled user. Try Administrator when those conditions do not
+apply; otherwise use the console path from the start.
 
 ---
 
@@ -56,6 +56,10 @@ Options, cheapest first:
    re-enroll a passkey, then turn it back off.
 2. Or use core's own two-factor recovery for that user (reset their OTP / 2FA per
    your normal Frappe 2FA process), then have them re-enroll.
+
+Core OTP must be entered through this app's `fallback_to_otp` handoff. That flow creates the
+short-lived, one-time marker the final login hook requires; sending OTP directly through another
+core path does not bypass the enrolled-user passkey requirement.
 
 ---
 
@@ -130,5 +134,7 @@ If you need passkeys gone and nothing above applies, uninstall the app
 (`bench --site <site> uninstall-app passkeys`). Uninstall is guarded against the
 two lockout cases above — it refuses while a passkey-only user exists or while
 site-wide password login is disabled with no other method — so clear those first
-using the scenarios above. Note that uninstall **destroys every stored
-credential**; see [`install.md`](install.md).
+using the scenarios above. Before dropping the tables, uninstall writes a site-bound,
+HMAC-SHA256-authenticated version-2 export atomically at mode `0600`; retain its printed path and the
+matching site `encryption_key`. Default restore requires empty passkey tables. See
+[`install.md`](install.md#credential-export-on-uninstall).

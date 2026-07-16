@@ -2,7 +2,7 @@
 	<img src=".github/logo.png" width="80" height="80" alt="Passkeys for Frappe" />
 	<h1>Passkeys for Frappe</h1>
 
-**Passwordless, phishing-resistant WebAuthn authentication for Frappe — built to merge into core**
+**Passwordless, phishing-resistant WebAuthn authentication for Frappe**
 </div>
 
 <div align="center">
@@ -40,9 +40,11 @@ action confirmation is a developer primitive that stays available for any app to
 - **Action confirmation** — `@passkey_protected` puts a fresh, single-use passkey confirmation on any
   sensitive whitelisted method, bound to the exact action and payload before it runs.
 
-- **Native by design** — integration only through sanctioned hooks and whitelisted endpoints. When a
-  future Frappe serves passkeys natively, the app detects it, refuses fresh installs, and no-ops so it
-  uninstalls cleanly.
+- **Native-handover aware** — integration uses sanctioned hooks and whitelisted endpoints. Fresh
+  installation is blocked when `frappe.passkey` exists. An already-installed app becomes dormant
+  only when core explicitly advertises
+  `FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`; module presence alone is not
+  treated as a safe handover.
 
 - **Secure by default** — every mode ships off; user verification and sign-count clone-detection are
   enforced, per-user and per-IP rate limits guard every ceremony, and a passkey-only account can never
@@ -65,25 +67,31 @@ one-way-door warning on the Relying Party ID.
 
 ## Installation
 
+> **Project status: pre-release.** This repository has no tagged stable release. The current branches
+> are release candidates under active hardening, not a blanket production-readiness claim. Validate
+> the exact candidate on staging and complete the [release checklist](docs/release-checklist.md)
+> before deploying it to an authentication-critical site.
+
 ```bash
 # Pick the branch that matches your Frappe version: version-15, version-16, or develop
 bench get-app --branch version-16 https://github.com/Andrometiq/frappe-passkeys
 bench --site <site> install-app passkeys
 ```
 
-Installing is **not** enabling — every login mode ships off. Open **Passkey Settings**, review the
-resolved Relying Party ID (changing it later invalidates every enrolled passkey), then enable the
-modes you want.
+Installing is **not** enabling — every login mode ships off. Before enabling one, set a compatible
+site `host_name` and/or explicit Passkey Origins, review the resolved Relying Party ID and exact
+origin set, and verify that the set is non-empty. The RP ID is credential scope, not proof that
+`https://<rp_id>` serves this site; changing the RP ID later invalidates every enrolled passkey.
 
 ### Supported versions
 
 | Frappe | Supported | Notes |
 | --- | --- | --- |
 | **v15** | v15.107.0 and newer | The `webauthn` library needs `cryptography>=46` **and** `pyOpenSSL>=26`, which v15 ships together only from v15.107.0. A `before_install` guard aborts on anything older with a clear message. |
-| **v16** | Yes | Ships the required `cryptography` / `pyOpenSSL` pins. |
-| **develop** | Yes | Tracked continuously. |
+| **v16** | Candidate branch | Use `version-16`; release CI tests a pinned Frappe baseline. Re-run the candidate against the exact Frappe patch level you deploy. |
+| **develop** | Integration target | Pre-release Frappe integration only. Daily moving-tip runs fail visibly on drift but are compatibility signals, not release attestations. |
 
-Python `>=3.10` is required. See [`docs/install.md`](docs/install.md) for the full matrix and
+Python `>=3.10,<3.15` is required. See [`docs/install.md`](docs/install.md) for the full matrix and
 reverse-proxy / RP-ID / origin requirements.
 
 ## Documentation
@@ -104,23 +112,31 @@ reverse-proxy / RP-ID / origin requirements.
   `bench console` commands.
 - [**Security**](docs/security.md) — the security model in operator terms: what the app enforces, what
   it trusts, residual risks, and disclosure.
-- [**Upstream**](docs/upstream/) — the plan and patches to move this into `frappe/frappe`.
+- [**Release checklist**](docs/release-checklist.md) — required candidate, staging, recovery, and
+  deployment checks.
+- [**Security policy**](SECURITY.md) — supported security-reporting scope and private disclosure.
+- [**Changelog**](CHANGELOG.md) — release-facing changes; all current work remains unreleased.
+- [**Upstream proposal**](docs/upstream/) — a design and validation checklist for possible core
+  adoption. It does not claim that current Frappe core is compatible.
 
 ## Development
 
 Install the app and `pre-commit install`, then run the suites before you push — the exact commands
 (server, JS unit, and Cypress) live in [`CONTRIBUTING.md`](CONTRIBUTING.md#development-setup).
 
-The app carries a full server suite, a dependency-free JavaScript suite, and a Cypress end-to-end
-suite; CI runs all three against Frappe v15, v16, and develop.
+The app carries server, dependency-free JavaScript, and Cypress end-to-end suites. Release CI runs
+them against reviewed, pinned Frappe v15, v16, and develop baselines. A separate moving-tip workflow
+fails visibly on compatibility drift but is not a release attestation; neither workflow replaces
+staging validation for the exact deployment candidate.
 
 ## Upstream intent
 
-This app is a delivery vehicle for a native Frappe implementation. The layout mirrors the intended
-core destination file-for-file, and [`docs/upstream/`](docs/upstream/) carries the two-stage merge
-plan and the concrete patches. On a Frappe that serves passkeys natively, the app detects this,
-refuses fresh installs, and every endpoint returns a typed "served by core" response so it can be
-uninstalled cleanly.
+This app is intended to inform a future native Frappe implementation.
+[`docs/upstream/`](docs/upstream/) is a proposal that must be rebased, reviewed, and validated
+against the core revision used for any PR. Current core compatibility is not assumed. Fresh installs
+are blocked by `frappe.passkey` module presence, but automatic dormancy requires core's exact,
+explicit handover capability marker; without it, an installed app remains active rather than
+silently yielding to a partial implementation.
 
 ## Contributing
 

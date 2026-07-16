@@ -157,6 +157,11 @@
 			},
 			manageAction: (M && M.MANAGE_ACTION) || "passkeys.manage",
 			loginMethods: api.LOGIN_METHODS,
+			signalCredentialState: function (data) {
+				if (!M || typeof M.signalCredentialState !== "function") return;
+				var boot = win.frappe && win.frappe.boot && win.frappe.boot.passkeys;
+				M.signalCredentialState(win.PublicKeyCredential, data, boot && boot.rp_id);
+			},
 			translate: C.t,
 		});
 
@@ -172,9 +177,8 @@
 	"use strict";
 
 	// Server whitelist method paths for the first-factor login ceremony. MUST
-	// mirror passkeys/passkey.py. The richer
-	// second-factor / uv-setup endpoints are the shipped login bundle's job; the
-	// headless login() drives the first-factor discoverable ceremony only.
+	// mirror passkeys/passkey.py. Headless clients can finish UV initialization, while
+	// the richer second-factor ceremony remains the shipped login bundle's job.
 	var LOGIN_METHODS = {
 		begin_login: "passkeys.passkey.begin_login",
 		verify_login: "passkeys.passkey.verify_login",
@@ -218,6 +222,7 @@
 		var capabilities = deps.capabilities;
 		var getConfirm = deps.getConfirm || function () { return null; };
 		var getCall = deps.getCall || function () { return null; };
+		var signalCredentialState = deps.signalCredentialState || function () {};
 		var LM = deps.loginMethods || LOGIN_METHODS;
 		// manageMethods may be an object OR a lazy getter (browser default), so a
 		// management call resolves the live MANAGE_METHODS even if the manage-common
@@ -323,6 +328,31 @@
 			});
 		}
 
+		// Complete the one-time UV-initialization repair returned by verifyLogin as
+		// `{kind:"uv_setup_required", setupId}`. Embedded clients collect the password
+		// in their own UI and finish the same guest flow as the shipped login dialog.
+		// Like verifyLogin, server and transport failures resolve structurally.
+		function completeUvSetup(setupId, password) {
+			return post(LM.complete_uv_setup, { setup_id: setupId, pwd: password }, {}).then(function (res) {
+				if (res && res.ok) {
+					var body = res.body || {};
+					return { ok: true, redirect: body.home_page || body.redirect_to || null, raw: body };
+				}
+				var b = (res && res.body) || {};
+				var kind = C.mapServerExcType(b.exc_type);
+				return {
+					ok: false,
+					reason: "server",
+					kind: kind,
+					status: res ? res.status : 0,
+					message: C.serverMessages(b) || null,
+					statusState: C.loginStatusForServerKind(kind),
+				};
+			}, function () {
+				return { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" };
+			});
+		}
+
 		// ------------------------------------------------------ registration
 		// Add a passkey (explicit flow by default). Runs the sudo dance: begin; on
 		// the 401 confirmation contract run frappe.passkeys.confirm(passkeys.manage)
@@ -345,7 +375,9 @@
 						if (opts.label) body.label = opts.label;
 						return post(MM().verifyRegistration, body, {}).then(function (res) {
 							if (!res || !res.ok) throw mapVerifyError(res);
-							return unwrap(res.body) || {};
+							var data = unwrap(res.body) || {};
+							try { signalCredentialState(data); } catch (e) { /* best effort */ }
+							return data;
 						});
 					});
 			});
@@ -410,7 +442,22 @@
 				return Promise.reject(err("confirmation_unavailable",
 					"Removing a passkey needs a confirmation engine. See docs/custom-ui.md."));
 			}
-			return call(MM().del, { name: name });
+			return call(MM().del, { name: name }).then(function (result) {
+				if (result && result.signal) {
+					try { signalCredentialState(result); } catch (e) { /* best effort */ }
+					return result;
+				}
+				// The current delete response is mutation-only. Fetch authoritative enabled
+				// credential state after success so an empty final list is signalled too.
+				var method = MM().getSignalData;
+				if (!method) return result;
+				return post(method, {}, {}).then(function (res) {
+					if (res && res.ok) {
+						try { signalCredentialState(unwrap(res.body) || {}); } catch (e) { /* best effort */ }
+					}
+					return result;
+				}, function () { return result; });
+			});
 		}
 
 		// Toggle the caller's passwordless-only (passkey-only) login. Gated on a
@@ -452,6 +499,7 @@
 			beginLogin: beginLogin,
 			verifyLogin: verifyLogin,
 			login: login,
+			completeUvSetup: completeUvSetup,
 			register: register,
 			listCredentials: listCredentials,
 			renameCredential: renameCredential,

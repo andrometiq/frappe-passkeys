@@ -122,6 +122,34 @@ test("verifyLogin(): a transport failure resolves reason:'network' (never reject
 	assert.deepStrictEqual(r, { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" });
 });
 
+test("completeUvSetup(): posts the setup id/password and resolves the login result", async () => {
+	const post = makePost({
+		[LM.complete_uv_setup]: [{ ok: true, status: 200, body: { home_page: "/app" } }],
+	});
+	const h = H.createHeadless(base({ post }));
+	assert.deepStrictEqual(await h.completeUvSetup("uvs-1", "secret"), {
+		ok: true, redirect: "/app", raw: { home_page: "/app" },
+	});
+	assert.deepStrictEqual(post.calls[0], {
+		method: LM.complete_uv_setup, body: { setup_id: "uvs-1", pwd: "secret" }, headers: {},
+	});
+});
+
+test("completeUvSetup(): server and transport failures stay structured", async () => {
+	const refused = H.createHeadless(base({
+		post: makePost({ [LM.complete_uv_setup]: [{ ok: false, status: 401, body: { exc_type: "CeremonyExpired" } }] }),
+	}));
+	const serverResult = await refused.completeUvSetup("expired", "secret");
+	assert.strictEqual(serverResult.ok, false);
+	assert.strictEqual(serverResult.kind, "ceremony_expired");
+	assert.strictEqual(serverResult.reason, "server");
+
+	const offline = H.createHeadless(base({
+		post: makePost({ [LM.complete_uv_setup]: [new Error("offline")] }),
+	}));
+	assert.strictEqual((await offline.completeUvSetup("uvs-1", "secret")).reason, "network");
+});
+
 // ------------------------------------------------------- registration tests
 
 test("register(): begin -> create -> verify -> data; wire calls exact", async () => {
@@ -137,6 +165,22 @@ test("register(): begin -> create -> verify -> data; wire calls exact", async ()
 	assert.strictEqual(createOpts, CREATE_OPTIONS);
 	// verify posted the stringified attestation + state id, and NO label (none passed)
 	assert.deepStrictEqual(post.calls[1], { method: MM.verifyRegistration, body: { state_id: "r1", credential: JSON.stringify(ATTESTATION) }, headers: {} });
+});
+
+test("register(): signals authoritative credential state after successful verification", async () => {
+	const signal = { rp_id: "example.com", user_handle: "h", credential_ids: ["new1"] };
+	const seen = [];
+	const post = makePost({
+		[MM.beginRegistration]: [{ ok: true, status: 200, body: { message: { state_id: "r1", options: CREATE_OPTIONS } } }],
+		[MM.verifyRegistration]: [{ ok: true, status: 200, body: { message: { name: "WC-1", signal } } }],
+	});
+	const h = H.createHeadless(base({
+		post,
+		createCredential: () => Promise.resolve(ATTESTATION),
+		signalCredentialState: (data) => seen.push(data),
+	}));
+	await h.register();
+	assert.deepStrictEqual(seen, [{ name: "WC-1", signal }]);
 });
 
 test("register({label}): forwards the label to verify_registration", async () => {
@@ -225,6 +269,19 @@ test("removeCredential(): routes through frappe.passkeys.call (sudo-gated)", asy
 	const r = await h.removeCredential("WC-1");
 	assert.deepStrictEqual(r, { deleted: "WC-1" });
 	assert.deepStrictEqual(callArgs, [[MM.del, { name: "WC-1" }]]);
+});
+
+test("removeCredential(): refreshes and signals authoritative state after deletion", async () => {
+	const signal = { rp_id: "example.com", user_handle: "h", credential_ids: [] };
+	const seen = [];
+	const post = makePost({ [MM.getSignalData]: [{ ok: true, status: 200, body: { message: signal } }] });
+	const h = H.createHeadless(base({
+		post,
+		getCall: () => () => Promise.resolve({ deleted: "WC-1" }),
+		signalCredentialState: (data) => seen.push(data),
+	}));
+	assert.deepStrictEqual(await h.removeCredential("WC-1"), { deleted: "WC-1" });
+	assert.deepStrictEqual(seen, [signal]);
 });
 
 test("removeCredential(): no confirm engine -> confirmation_unavailable", async () => {

@@ -48,6 +48,20 @@ function findButton(root, pred) {
 	for (const c of root.children) { const f = findButton(c, pred); if (f) return f; }
 	return null;
 }
+function findNode(root, pred) {
+	if (!root) return null;
+	if (pred(root)) return root;
+	for (const c of root.children) { const f = findNode(c, pred); if (f) return f; }
+	return null;
+}
+function findLastNode(root, pred) {
+	if (!root) return null;
+	for (let i = root.children.length - 1; i >= 0; i -= 1) {
+		const f = findLastNode(root.children[i], pred);
+		if (f) return f;
+	}
+	return pred(root) ? root : null;
+}
 function makeDoc() {
 	const keydown = [];
 	const doc = {
@@ -84,6 +98,7 @@ global.document = makeDoc(); // require-time document (mountRoot probe → null)
 
 const mod = require("../../public/js/passkey_portal.bundle.js");
 assert.strictEqual(typeof mod.showEnforceModal, "function", "node test seam must export showEnforceModal");
+assert.strictEqual(typeof mod.makeConfirmUI, "function", "node test seam must export makeConfirmUI");
 
 test("portal enforce: Esc on a non-blocking gate records exactly one defer", () => {
 	fetchLog.length = 0;
@@ -116,4 +131,34 @@ test("portal enforce: a blocking (static) gate cannot be Esc-dismissed and recor
 	mod.showEnforceModal({ enforcement: { incapable_policy: "degrade" } }, { blocking: true, graceRemaining: 0 });
 	pressEscape();
 	assert.strictEqual(deferCount(), 0, "a static blocking gate suppresses Esc and records no defer");
+});
+
+test("portal confirm: direct password route opens and Esc rejects instead of hanging", async () => {
+	global.document = makeDoc();
+	const ui = mod.makeConfirmUI();
+	const pending = ui.collectPassword({ action: "myapp.pay", actionLabel: "Pay invoice" });
+	assert.strictEqual(global.document.body.children.length, 1, "password-only route must open its modal");
+	const overlay = global.document.body.children[0];
+	assert.ok(findNode(overlay, (n) => n.id === "passkey-portal-pw"), "password input is visible");
+	pressEscape();
+	await assert.rejects(pending, (err) => err.code === C.CONFIRM_CODES.USER_CANCELLED);
+});
+
+test("portal confirm: password error remains visible on the retry prompt", async () => {
+	global.document = makeDoc();
+	const ui = mod.makeConfirmUI();
+	const first = ui.collectPassword({ action: "myapp.pay", actionLabel: "Pay invoice" });
+	let overlay = global.document.body.children[0];
+	const input = findNode(overlay, (n) => n.id === "passkey-portal-pw");
+	input.value = "wrong";
+	findButton(overlay, (b) => (b.className || "").includes("btn-primary")).click();
+	assert.strictEqual(await first, "wrong");
+
+	ui.passwordError("That password wasn't right. Try again.");
+	const retry = ui.collectPassword({ action: "myapp.pay", actionLabel: "Pay invoice" });
+	overlay = global.document.body.children[0];
+	const error = findLastNode(overlay, (n) => (n.className || "").includes("passkey-confirm-msg"));
+	assert.strictEqual(error.textContent, "That password wasn't right. Try again.");
+	pressEscape();
+	await assert.rejects(retry, (err) => err.code === C.CONFIRM_CODES.USER_CANCELLED);
 });

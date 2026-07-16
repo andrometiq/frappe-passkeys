@@ -35,7 +35,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._snap = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = ORIGIN
 		settings.passkey_sign_count_hard_fail = 0
 		# A login mode must be on for `_enroll`'s begin_registration (gates
 		# registration on any-mode-on); confirm.* itself is mode-independent,
@@ -357,6 +357,79 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			session.payload_hash({"order": "ORD-9"}),
 		)
 		self.assertEqual(frappe.local.response.get("action"), "myapp.ship")
+
+	def test_decorator_exposes_only_explicit_safe_display_metadata(self):
+		user = self._user()
+		frappe.set_user(user)
+
+		@confirm.passkey_protected(
+			action="myapp.refund",
+			bind_params=["payment_id", "internal_note"],
+			display_label="Refund payment",
+			display_params={"payment_id": "Payment"},
+		)
+		def refund(payment_id=None, internal_note=None):
+			return payment_id, internal_note
+
+		self._request("/api/method/myapp.refund")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			refund(payment_id="PAY-7", internal_note="never expose this")
+		self.assertEqual(frappe.local.response.get("action_label"), "Refund payment")
+		self.assertEqual(
+			frappe.local.response.get("parameter_summary"),
+			[{"label": "Payment", "value": "PAY-7"}],
+		)
+		self.assertNotIn("never expose this", json.dumps(frappe.local.response))
+
+	def test_action_policy_survives_a_cross_worker_round_trip(self):
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		action = f"myapp.refund.{frappe.generate_hash(length=8)}"
+		key = frappe.cache.make_key(confirm._action_policy_key(action))
+		self.addCleanup(frappe.cache.delete, key)
+		self.addCleanup(confirm._ACTION_POLICIES.pop, action, None)
+
+		@confirm.passkey_protected(
+			action=action,
+			bind_params=["payment_id"],
+			allow_password_fallback=True,
+			display_label="Refund payment",
+			display_params={"payment_id": "Payment"},
+		)
+		def refund(payment_id=None):
+			return payment_id
+
+		self._request("/api/method/myapp.refund")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			refund(payment_id="PAY-9")
+		fingerprint = frappe.local.response["payload_fingerprint"]
+
+		# Simulate the ceremony landing on a worker that never imported the endpoint.
+		confirm._ACTION_POLICIES.pop(action, None)
+		begun = self._begin(action, payload_hash=fingerprint)
+		self.assertIn("password", begun["methods"])
+		self.assertEqual(begun["action_label"], "Refund payment")
+		token = self._reauth(PWD, action=action, payload_fingerprint=fingerprint)["grant"]
+
+		self._request("/api/method/myapp.refund", grant_header=token)
+		self.assertEqual(refund(payment_id="PAY-9"), "PAY-9")
+
+	def test_unknown_action_policy_fails_closed_without_password_fallback(self):
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		action = f"unknown.action.{frappe.generate_hash(length=8)}"
+		begun = self._begin(action, params={})
+		self.assertNotIn("password", begun["methods"])
+		with self.assertRaises(frappe.AuthenticationError):
+			self._reauth(PWD, action=action, payload_fingerprint=begun["payload_fingerprint"])
+
+	def test_display_params_must_be_bound_params(self):
+		with self.assertRaises(ValueError):
+			confirm.passkey_protected(
+				action="myapp.invalid-display",
+				bind_params=["payment_id"],
+				display_params={"secret": "Secret"},
+			)
 
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()
