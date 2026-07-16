@@ -12,7 +12,7 @@ import frappe
 
 from passkeys import confirm, notifications, passkey, state
 from passkeys.api import credentials
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 PWD = "Secret_passw0rd_9x!"
@@ -119,6 +119,7 @@ class AdminInterlockTest(_Base):
 
 	def setUp(self):
 		super().setUp()
+		arrange_mode_floor(self)  # mode floor for the flagged handles this interlock battery creates
 		self.sent = []
 		self._orig_sendmail = frappe.sendmail
 		frappe.sendmail = lambda **kw: self.sent.append(kw)

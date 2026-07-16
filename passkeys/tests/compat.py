@@ -5,13 +5,14 @@
 `FrappeTestCase` on v15 — without it the v15 CI leg fails at import."""
 
 import frappe
+from frappe.utils import cint
 
 try:
 	from frappe.tests import IntegrationTestCase
 except ImportError:  # v15
 	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
 
-__all__ = ["IntegrationTestCase", "WebAuthnAssertMixin", "flush_settings_cache"]
+__all__ = ["IntegrationTestCase", "WebAuthnAssertMixin", "arrange_mode_floor", "flush_settings_cache"]
 
 
 class WebAuthnAssertMixin:
@@ -38,3 +39,20 @@ def flush_settings_cache():
 	"""
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 	frappe.cache.delete_value("document_cache::Passkey Settings::Passkey Settings")
+
+
+def arrange_mode_floor(testcase):
+	"""Satisfy the passkey-mode floor so a test may create ``passkey_only_login=1``.
+
+	``WebAuthn User Handle`` refuses ``passkey_only_login`` unless a global passkey
+	login mode is enabled (``lock_passkey_mode_floor``). A fresh site has both modes
+	off, so a test that mints a flagged handle (or toggles ``set_passkey_only_login``)
+	without arranging the floor throws. Snapshot ``login_with_passkey``, enable it,
+	flush the settings cache, and register LIFO cleanup that restores the captured
+	value first and flushes second — the same idiom as the arranged modules
+	(``test_passkey_only_veto`` / ``test_lockout_race`` / ``test_passkey``)."""
+	original = frappe.db.get_single_value("Passkey Settings", "login_with_passkey")
+	testcase.addCleanup(flush_settings_cache)
+	testcase.addCleanup(frappe.db.set_single_value, "Passkey Settings", "login_with_passkey", cint(original))
+	frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+	flush_settings_cache()
