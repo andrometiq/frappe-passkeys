@@ -34,6 +34,18 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
+		# The round-trip tests delete the sole credential of a password-capable user; a
+		# disable_user_pass_login=1 left by an earlier module — committed, or merely cached
+		# on frappe.local.system_settings (which the runner's rollback does not clear) —
+		# would trip the last-credential guard here. Arrange AND cache-bust a clean
+		# login-policy baseline so the test never depends on leaked global state.
+		self._ss_disable = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		self._set_disable_user_pass_login(0)
+
+	def _set_disable_user_pass_login(self, value):
+		frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
+		frappe.clear_document_cache("System Settings", "System Settings")
+		frappe.local.system_settings = None  # bust the request-local singles cache
 
 	def tearDown(self):
 		# round_trip / verify_login mint a session via login_as, which COMMITS mid-test —
@@ -51,6 +63,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
 			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+		self._set_disable_user_pass_login(self._ss_disable)
 		frappe.db.commit()
 
 	# ---- the deliverable: a full round-trip through the real verify paths ----
