@@ -177,11 +177,23 @@ overlap.
 | `begin_confirmation` | 30 / 5 min |
 | `verify_confirmation` | 30 / 5 min |
 | `reauth_password` | 5 / 5 min |
+| `get_resolved_rp_id` | 30 / min |
+| `get_security_posture` | 30 / min |
+| `get_user_enforcement_admin` | 60 / min |
+| `set_user_exemption` | 30 / hour |
+| `reset_enforcement_grace` | 30 / hour |
 
 The action-confirmation endpoints (`begin_confirmation` / `verify_confirmation` /
 `reauth_password`) require an authenticated caller, so they sit in the per-user
 class — the `reauth_password` 5 / 5 min ceiling is a second, coarse backstop on
 top of the per-user password-oracle lock above.
+
+The last five rows are the Passkey Settings / enforcement-admin endpoints. They
+carry the per-user counter **and** an additional `System Manager` role gate (the
+settings and enforcement-admin surfaces are admin-only). Four are read-only;
+`set_user_exemption` is the exception — it *mutates authorization state*, granting
+or revoking a user's exemption from passkey-enrollment enforcement (via the
+dedicated exempt role), which is why it carries the tighter 30 / hour ceiling.
 
 **No account enumeration.** First-factor login is discoverable-only — it takes no
 identifier, so the begin response leaks nothing about which accounts have
@@ -217,6 +229,18 @@ so one user cannot probe another's credentials.
   blocks social/OAuth, LDAP, and email-link completions for an enrolled user because those core
   paths cannot enter this app's passkey leg. Keep passwordless "Login with Passkey" enabled for
   enrolled accounts that do not have a usable local password, or retain an operator recovery path.
+- **First-passkey enrollment can ride a weak first factor (bootstrap).** With
+  `passkey_allow_first_enrollment_on_weak_login` on (default), a session established
+  through a weak first factor — an email login link or social/OAuth sign-in — may
+  enroll the account's **first** passkey without a stronger re-auth. This solves the
+  chicken-and-egg where a passwordless account has nothing stronger to authorize its
+  first credential. The carve-out is deliberately narrow: it applies only while
+  first-factor "Login with Passkey" is on, only to a user with **zero** enabled
+  credentials (every later add still needs a passkey- or password-seeded sudo
+  window), and every use records a `passkeys:weak_login_enrollment` risk event
+  ([`operations.md`](operations.md)). Turn off
+  `passkey_allow_first_enrollment_on_weak_login` to require a stronger factor for the
+  first enrollment too.
 - **A same-session password change does not revoke an already-live management sudo window**
   (≤600 s). Password+passkey login ceremonies are different: they compare the keyed password-hash
   version before session minting and fail if it changed.
