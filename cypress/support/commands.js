@@ -147,6 +147,34 @@ Cypress.Commands.add("call", (method, args) =>
 		.then((res) => res.body)
 );
 
+// End the current SERVER session. The logout endpoint is POST-only and, for an
+// authenticated session, needs that session's CSRF token — a bare GET is refused
+// (403) and silently leaves the session alive. Guest sessions carry no CSRF token,
+// so the same POST is a harmless no-op there. Retry a transient 5xx — CI's
+// constrained MariaDB occasionally 508s on the session-row delete — so the session
+// is reliably invalidated. failOnStatusCode is off so an already-guest no-op or a
+// post-retry blip never fails the caller.
+Cypress.Commands.add("server_logout", (attempt = 0) =>
+	csrf_for_call().then((csrf_token) => {
+		const headers = { Accept: "application/json" };
+		if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
+		return cy
+			.request({
+				url: "/api/method/logout",
+				method: "POST",
+				headers,
+				failOnStatusCode: false,
+				log: false,
+			})
+			.then((res) => {
+				if (res.status >= 500 && attempt < 2) {
+					return cy.wait(250, { log: false }).then(() => cy.server_logout(attempt + 1));
+				}
+				return res;
+			});
+	})
+);
+
 // ---------------------------------------------------------------------------
 // App helpers
 // ---------------------------------------------------------------------------
@@ -186,10 +214,11 @@ Cypress.Commands.add("visit_login", (options = {}) => {
 		// clearing cookies and the /login GET. /login decides the redirect against the
 		// server session store (login.py: `if session.user != "Guest"`), not cookie
 		// presence, so it then 302s to /desk and the login form never renders — CI-only,
-		// green locally where the desk quiesces instantly. A server-side logout deletes
-		// the session record, so any re-seeded sid is inert and /login always shows the
-		// form: this closes the race categorically. clearCookies below is only tidy-up.
-		cy.request({ url: "/api/method/logout", failOnStatusCode: false, log: false });
+		// green locally where the desk quiesces instantly. Deleting the session record
+		// (server_logout — a POST with the session CSRF token) makes any re-seeded sid
+		// inert, so /login always shows the form: this closes the race categorically.
+		// clearCookies below is only tidy-up.
+		cy.server_logout();
 		cy.clearCookies({ log: false });
 		if (language && language.value) {
 			cy.setCookie("preferred_language", language.value, { log: false });
