@@ -280,7 +280,7 @@
   },
   {
    "default": "1",
-   "description": "Email the user when a passkey is added, removed or flagged. This is the compensating control for registration hijack — leave it on outside mail-less development sites.",
+   "description": "Email the user when a passkey is added, removed, disabled or flagged. This is the compensating control for registration hijack — leave it on outside mail-less development sites.",
    "fieldname": "passkey_notify_on_change",
    "fieldtype": "Check",
    "label": "Notify on Passkey Changes"
@@ -302,7 +302,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-07-05 00:00:00.000000",
+ "modified": "2026-07-16 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",
