@@ -346,11 +346,11 @@ jobs:
           {
             echo "### CI scope"
             echo
-            echo "- Lint: `${{ needs.lint.result }}`"
-            echo "- Node: `${{ needs.node-tests.result }}`"
-            echo "- Server: `${{ needs.server-tests.result }}`"
-            echo "- UI: `${{ needs.ui-tests.result }}`"
-            echo "- Secret scan: `${{ needs.secrets.result }}`"
+            echo "- Lint: \`${{ needs.lint.result }}\`"
+            echo "- Node: \`${{ needs.node-tests.result }}\`"
+            echo "- Server: \`${{ needs.server-tests.result }}\`"
+            echo "- UI: \`${{ needs.ui-tests.result }}\`"
+            echo "- Secret scan: \`${{ needs.secrets.result }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ inputs.upstream_tips }}" = "true" ]; then
