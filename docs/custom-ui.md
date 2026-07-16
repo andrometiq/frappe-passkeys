@@ -237,13 +237,37 @@ frappe.passkeys.call = frappe.passkeys.call || engine.call;
 
 ### Action confirmation for your own methods
 
-The same engine gates any of *your* whitelisted methods. Decorate the server method
-with `@passkey_protected("myapp.release_payment")` and call it with:
+The same engine gates any of *your* whitelisted methods. The optional `display_label` and
+`display_params` decorator arguments provide translated, human-readable confirmation context:
+
+```python
+@frappe.whitelist(methods=["POST"])
+@passkey_protected(
+    action="myapp.release_payment",
+    bind_params=["payment_id", "amount"],
+    display_label="Release payment",
+    display_params={"payment_id": "Payment", "amount": "Amount"},
+    allow_password_fallback=False,
+)
+def release_payment(payment_id, amount):
+    ...
+```
+
+`display_params` must be a subset of `bind_params`; undeclared arguments are never returned to the
+client. The server emits `action_label` and `parameter_summary`, translating labels and rendering
+booleans/nulls as safe display values. These fields are presentation only: the grant remains bound
+to the canonical server-side payload fingerprint. Call the method with:
 
 ```js
-await frappe.passkeys.call("myapp.api.release_payment", { payment_id });
-// or resolve a grant yourself:  const grant = await frappe.passkeys.confirm("myapp.release_payment", { payment_id });
+await frappe.passkeys.call("myapp.api.release_payment", { payment_id, amount });
+// or resolve a grant yourself:
+const grant = await frappe.passkeys.confirm("myapp.release_payment", { payment_id, amount });
 ```
+
+Prefer `call()` for decorated third-party methods. Its initial 401 publishes the action policy to
+site-scoped Redis, so the confirmation and password-fallback requests behave identically if they
+land on another worker. A direct `confirm()` is appropriate when the action policy is eagerly loaded
+on every worker; an unknown action deliberately fails closed without a password fallback.
 
 ---
 

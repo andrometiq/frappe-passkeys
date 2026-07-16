@@ -1,79 +1,29 @@
-# Patch 02 — passkeys as a surviving login method in `validate_user_pass_login`
+# Proposal 02: count native passkeys as a surviving login method
 
-**Target:** `frappe/core/doctype/system_settings/system_settings.py`
-**Base:** `develop` @ `9b48af62aff88522638e38b1f4738e79ce0902fd`
-**PR:** **Stage 2 only.** The diff reads `self.login_with_passkey`, a System Settings field that
-does not exist until Stage 2 adds it. Frappe's model layer has **no `__getattr__` fallback**
-(verified: zero `__getattr__` in `frappe/model/` on develop; `load_from_db` only sets attributes
-for columns in the DocType meta), so `self.login_with_passkey` on a pre-Stage-2 System Settings
-doc raises `AttributeError`. If this patch rode **Stage 1** — before the field exists — every
-System Settings save with `disable_user_pass_login = 1` and no other method enabled would crash
-on exactly the lockout-guard path it is meant to protect. It must land **with Stage 2**, not
-"whichever lands first."
-**Size:** +1 / −1 code line (+1 message string).
+> Design sketch only. It must be rebased onto current System Settings validation and may land only
+> with a native passkey field and runtime that have been implemented and tested.
 
-## What it does
+## Goal
 
-`disable_user_pass_login` turns off username/password login. Its validator refuses to enable the
-flag unless at least one *other* login method is active — otherwise the site locks everyone out.
-Today that allowlist is Social Login **or** LDAP **or** email-link only
-(`validate_user_pass_login`, `frappe/core/doctype/system_settings/system_settings.py:182-194`):
+When site-wide username/password login is disabled, core should accept native passkey first-factor
+login as a surviving method. It must still reject a configuration with no working login method.
 
-```python
-	def validate_user_pass_login(self):
-		if not self.disable_user_pass_login:
-			return
+## Proposed change
 
-		social_login_enabled = frappe.db.exists("Social Login Key", {"enable_social_login": 1})
-		ldap_enabled = frappe.db.get_single_value("LDAP Settings", "enabled")
+Extend the current surviving-method predicate to include the final native passkey-login setting. Do
+not reference a field before its DocType schema exists, and do not infer runtime readiness from a
+truthy database value alone.
 
-		if not (social_login_enabled or ldap_enabled or self.login_with_email_link):
-			frappe.throw(
-				_(
-					"Please enable atleast one Social Login Key or LDAP or Login With Email Link before disabling username/password based login."
-				)
-			)
-```
+## Checklist
 
-Passkey first-factor login runs through `login_as` (not `LoginManager.login()`), so it already
-survives `disable_user_pass_login` at runtime (the flag only gates `login()`,
-`frappe/auth.py:150-151`). But the **validator** doesn't know that, so a passkey-only site can't
-set the flag without also lighting up an unrelated method (email-link) purely as a formality.
+- [ ] Identify the current validator and every login path affected by `disable_user_pass_login`.
+- [ ] Add the native field and validator in the same reviewed change or sequence that guarantees
+      schema availability.
+- [ ] Verify passkey login actually survives the core password-disable gate at the target ref.
+- [ ] Preserve Administrator behavior: site-wide password disable has no implicit break-glass
+      exemption, so recovery requires a tested passkey or console path.
+- [ ] Keep per-user credential floors and passkey-mode settings locks; this site-wide predicate is
+      not a replacement for them.
+- [ ] Test each surviving method alone, combinations, all methods off, migration, and rollback.
 
-## The diff
-
-```diff
--		if not (social_login_enabled or ldap_enabled or self.login_with_email_link):
-+		if not (
-+			social_login_enabled
-+			or ldap_enabled
-+			or self.login_with_email_link
-+			or self.login_with_passkey
-+		):
- 			frappe.throw(
- 				_(
--					"Please enable atleast one Social Login Key or LDAP or Login With Email Link before disabling username/password based login."
-+					"Please enable atleast one Social Login Key or LDAP or Login With Email Link or Passkey login before disabling username/password based login."
- 				)
- 			)
-```
-
-`self.login_with_passkey` is the System Settings `Check` field added by the Stage-2 passkey PR
-(the app's `Passkey Settings.login_with_passkey`, fieldname chosen up-front to be the future
-core name — see `mapping.md`). This one line is the entire "passwordless-only site" story on the
-core side.
-
-## Correctness note
-
-The guard is a floor against *site-wide* lockout, not per-user. The passkey app additionally
-enforces a **per-user** floor: it refuses `passkey_only_login=1` for a user with zero enabled
-credentials, and the Passkey Settings validator refuses any save that would leave no
-passkey-capable login mode enabled while any user is `passkey_only_login=1`
-(`passkeys/passkeys/doctype/passkey_settings/…` + `passkeys/api/credentials.py`). Those per-user
-guards move into core with Stage 2; this patch is only the site-flag allowlist.
-
-## Branch notes (v15 / v16)
-
-Identical function, identical logic; only line numbers drift: `validate_user_pass_login` at v16
-`:175`, v15 `:171` (the `social_login_enabled or ldap_enabled or self.login_with_email_link`
-condition at v16 `:182`, v15 `:178`). develop-only PR; noted for completeness.
+No current-core compatibility is claimed until these checks pass at a recorded commit.

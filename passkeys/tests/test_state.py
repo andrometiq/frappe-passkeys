@@ -23,6 +23,13 @@ def raw_connection() -> redis.Redis:
 
 
 class TestStateStore(IntegrationTestCase):
+	def test_enforcement_defer_claim_is_once_per_user_session(self):
+		user = f"state-{frappe.generate_hash()}@example.com"
+		sid = frappe.generate_hash()
+		self.assertTrue(state.claim_enforcement_defer(user, sid))
+		self.assertFalse(state.claim_enforcement_defer(user, sid))
+		self.assertTrue(state.claim_enforcement_defer(user, frappe.generate_hash()))
+
 	def test_store_and_consume_round_trip(self):
 		record = {"v": 1, "type": "login", "challenge_b64": "abc", "origins": ["https://x.example"]}
 		state_id = state.store_ceremony(record)

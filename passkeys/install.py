@@ -6,8 +6,13 @@
 Hook-path import discipline: this module MUST NOT import the
 ``webauthn`` library, directly or transitively."""
 
+import hashlib
+import hmac
+import importlib
 import importlib.util
 import json
+import os
+import tempfile
 
 import frappe
 from frappe import _
@@ -26,7 +31,7 @@ NAVBAR_ITEM_ACTION = "frappe.passkeys.manage.openManagerDialog()"
 def before_install():
 	"""The abort-capable gate: a raise here leaves zero site state, while an
 	`after_install` raise would leave a half-installed, registered app."""
-	if is_core_native():
+	if core_module_present() or is_core_native():
 		frappe.throw(
 			_(
 				"This Frappe installation serves passkeys natively (frappe.passkey). The passkeys app is an upgrade vehicle for sites that predate the native implementation — it cannot be freshly installed on top of it."
@@ -38,7 +43,7 @@ def before_install():
 def after_install():
 	_ensure_settings_defaults()
 	ensure_enforcement_defaults()
-	sync_registry_fixture()
+	cleanup_legacy_registry_property_setter()
 	sync_standard_navbar_items()
 	sync_user_form_section()
 
@@ -47,40 +52,57 @@ def before_uninstall():
 	"""Blocking lockout guard; then export the credential tables (the uninstall is
 	about to drop them, so this makes removal non-destructive) before deleting the
 	app's DefaultValue rows (not module-linked — nothing else ever cleans them) and
-	the registry Property Setter, so a reinstall is a true fresh start."""
+	legacy UI customizations, so a reinstall is a true fresh start."""
 	_block_uninstall_lockout()
 	_export_credentials_on_uninstall()
 	frappe.db.delete("DefaultValue", {"parent": DEFAULTS_PARENT})
-	_remove_registry_property_setter()
+	cleanup_legacy_registry_property_setter()
 	_remove_navbar_item()
 	_remove_user_form_section()
 
 
 _CORE_NATIVE: bool | None = None
+CORE_HANDOVER_CAPABILITY = "frappe-passkeys-app-handover-v1"
 
 # Cache key for the one-time dormant-shell advisory. Same cache-flag idiom
 # as passkey._observe_2fa_floor_desync's once-daily observer.
 _DORMANT_ADVISORY_KEY = "passkeys:dormant_uninstall_advisory"
 
 
+def core_module_present() -> bool:
+	"""Whether this Frappe tree contains any native passkey module."""
+	return importlib.util.find_spec("frappe.passkey") is not None
+
+
 def is_core_native() -> bool:
-	"""Stage-2 detection: core owns passkeys when `frappe.passkey` exists.
+	"""Whether core explicitly implements the complete app-handover contract.
 
 	Cached once per process ("checked once per process, cached") — every
 	dormant-shell guard queries this switch on every hook + endpoint, so after the
-	first ``find_spec`` (which walks the import system) it must be O(1). The result
-	is immutable for the life of the process: a running site cannot grow/lose
-	``frappe.passkey`` without a restart."""
+	first capability check it must be O(1). Mere module presence is insufficient:
+	a partial native implementation must never silence the installed app globally.
+	The native module opts in with ``FRAPPE_PASSKEYS_APP_HANDOVER`` equal to
+	:data:`CORE_HANDOVER_CAPABILITY`."""
 	global _CORE_NATIVE
 	if _CORE_NATIVE is None:
-		_CORE_NATIVE = importlib.util.find_spec("frappe.passkey") is not None
+		if not core_module_present():
+			_CORE_NATIVE = False
+		else:
+			try:
+				module = importlib.import_module("frappe.passkey")
+			except Exception:
+				_CORE_NATIVE = False
+			else:
+				_CORE_NATIVE = (
+					getattr(module, "FRAPPE_PASSKEYS_APP_HANDOVER", None) == CORE_HANDOVER_CAPABILITY
+				)
 	return _CORE_NATIVE
 
 
 def dormant() -> bool:
 	"""The runtime dormant-shell switch shared by every hook and endpoint guard:
-	``True`` iff core serves passkeys natively, emitting the one-time uninstall
-	advisory on the first engagement.
+	``True`` iff core advertises the complete handover capability, emitting the
+	one-time uninstall advisory on the first engagement.
 
 	Kept distinct from :func:`is_core_native` (the pure predicate) because
 	``before_install`` uses that predicate to REFUSE a fresh install — a context
@@ -190,21 +212,11 @@ def ensure_enforcement_defaults():
 
 
 # ---------------------------------------------------------------------------
-# registry Property Setter (programmatic — NOT a fixtures/ fixture)
+# Legacy registry Property Setter cleanup
 # ---------------------------------------------------------------------------
-# frappe's installer runs sync_fixtures unconditionally, so a fixtures-machinery
-# Property Setter would land on v15/v16, where two_factor_method is a closed
-# dispatch and a dangling "Passkey" option breaks 2FA login site-wide.
-
-
-def sync_registry_fixture():
-	"""after_install + after_migrate: create the `Passkey` two_factor_method
-	option iff the Stage-1 registry exists and core is not passkey-native;
-	remove it explicitly otherwise (downgrade/revert stays clean)."""
-	if two_factor_registry_available() and not is_core_native():
-		_create_registry_property_setter()
-	else:
-		_remove_registry_property_setter()
+# An earlier development build could create a "Passkey" option in the closed
+# two_factor_method Select. No released Frappe branch exposes the proposed provider
+# registry, so migrations retain only the idempotent cleanup needed by affected sites.
 
 
 def _remove_navbar_item():
@@ -233,14 +245,6 @@ def sync_standard_navbar_items():
 	sync_standard_items()
 
 
-def two_factor_registry_available() -> bool:
-	"""Stage-1 registry detection: keyed to a core symbol introduced by
-	the upstream pluggable-2FA PR — the exact ``frappe.twofactor`` attribute is
-	pinned when that PR is authored (build phase 4). Never ``get_hooks`` (the
-	app's own static entry would self-poison it) and never version strings."""
-	return False
-
-
 def _registry_property_setter_filters() -> dict:
 	return {
 		"doc_type": "System Settings",
@@ -250,31 +254,8 @@ def _registry_property_setter_filters() -> dict:
 	}
 
 
-def _create_registry_property_setter():
-	if frappe.db.exists("Property Setter", _registry_property_setter_filters()):
-		return
-	field = frappe.get_meta("System Settings").get_field("two_factor_method")
-	options = [option for option in (field.options or "").split("\n") if option]
-	if "Passkey" not in options:
-		options.append("Passkey")
-	frappe.get_doc(
-		{
-			"doctype": "Property Setter",
-			"doctype_or_field": "DocField",
-			"doc_type": "System Settings",
-			"field_name": "two_factor_method",
-			"property": "options",
-			"property_type": "Text",
-			"value": "\n".join(options),
-			# module set so core's uninstaller also cleans it — a moduleless
-			# row survives uninstall forever
-			"module": "Passkeys",
-		}
-	).insert(ignore_permissions=True)
-	frappe.clear_cache(doctype="System Settings")
-
-
-def _remove_registry_property_setter():
+def cleanup_legacy_registry_property_setter():
+	"""Remove the obsolete development-build customization, if present."""
 	names = frappe.get_all("Property Setter", filters=_registry_property_setter_filters(), pluck="name")
 	for name in names:
 		frappe.delete_doc("Property Setter", name, ignore_permissions=True, force=True)
@@ -288,10 +269,9 @@ def _remove_registry_property_setter():
 # The section is placed DETERMINISTICALLY, right after the User form's password
 # ("Change Password") / security area, via a Custom Field Section Break + an HTML
 # wrapper — replacing the old dashboard section that appended at the END of the form
-# in a non-deterministic spot. Programmatic (not a fixtures/ fixture) for the same two
-# reasons as the registry Property Setter: it is gated on is_core_native() (a dormant /
-# native site drops it, where a fixture would resync unconditionally), and the lifecycle
-# mirrors that setter — install adds, after_migrate syncs, before_uninstall removes.
+# in a non-deterministic spot. Programmatic (not a fixtures/ fixture) because it is
+# gated on is_core_native(): a dormant/native site drops it, where a fixture would
+# resync unconditionally. Install adds, after_migrate syncs, before_uninstall removes.
 # The client glue (user_passkeys.js) renders into the HTML wrapper and collapses the
 # (empty) section when no passkey mode is active, so it never shows an empty header.
 
@@ -314,7 +294,7 @@ _USER_FORM_ANCHOR_CANDIDATES = (
 def sync_user_form_section():
 	"""after_install + after_migrate: create the User-form "Passkeys" section Custom
 	Fields iff core is not passkey-native; remove them otherwise (a dormant / native site
-	stays schema-clean). Mirrors :func:`sync_registry_fixture`."""
+	stays schema-clean)."""
 	if is_core_native():
 		_remove_user_form_section()
 	else:
@@ -354,7 +334,7 @@ def _create_user_form_section():
 					# up on the next migrate.
 					"collapsible": 1,
 					# module set so core's uninstaller also cleans it (mirrors the
-					# registry Property Setter); before_uninstall removes it explicitly too.
+					# module ownership); before_uninstall removes it explicitly too.
 					"module": "Passkeys",
 				},
 				{
@@ -388,15 +368,16 @@ def _remove_user_form_section():
 # ---------------------------------------------------------------------------
 # A standard `uninstall-app` drops the WebAuthn Credential + WebAuthn User Handle
 # tables, so every enrolled passkey would otherwise be lost. before_uninstall first
-# serialises both tables — public-key material and metadata only; neither table
-# stores a server-side secret — to one JSON file in the site's private files and
-# prints its path. `import_credentials` restores the rows on a reinstall, idempotently
-# keyed on credential_id_sha256. When Frappe core ships native passkeys this same
+# serialises both tables to one site-bound, HMAC-authenticated JSON file in the
+# site's private files and prints its path. `import_credentials` restores the rows
+# on an empty reinstall (an explicit override is required to merge with live data).
+# When Frappe core ships native passkeys this same
 # export is the migration seed; the exact field mapping is written once core's schema
 # exists (see docs/install.md).
 
 CREDENTIAL_EXPORT_SCHEMA = "frappe-passkeys/credential-export"
-CREDENTIAL_EXPORT_VERSION = 1
+CREDENTIAL_EXPORT_VERSION = 2
+CREDENTIAL_EXPORT_SIGNATURE_ALG = "HMAC-SHA256"
 
 
 def _exportable_fieldnames(doctype: str) -> list[str]:
@@ -413,9 +394,9 @@ def export_credentials(path: str | None = None) -> str | None:
 	"""Serialise every WebAuthn Credential + WebAuthn User Handle row to one JSON file
 	and return its path (``None`` when there is nothing to export).
 
-	Only public-key material and metadata are written; neither table stores a
-	server-side secret, so the file is safe to keep alongside a site backup. ``path``
-	defaults to a timestamped file in the site's private files."""
+	The payload is bound to this site and authenticated with its encryption key,
+	then written atomically with mode 0600. ``path`` defaults to a timestamped file
+	in the site's private files."""
 	credentials = frappe.get_all(
 		"WebAuthn Credential",
 		fields=_exportable_fieldnames("WebAuthn Credential"),
@@ -442,8 +423,11 @@ def export_credentials(path: str | None = None) -> str | None:
 		"credentials": credentials,
 		"user_handles": handles,
 	}
-	with open(path, "w", encoding="utf-8") as fh:
-		fh.write(frappe.as_json(payload, indent=2))
+	payload["signature"] = {
+		"alg": CREDENTIAL_EXPORT_SIGNATURE_ALG,
+		"value": _export_signature(payload),
+	}
+	_write_private_json_atomic(path, payload)
 	return path
 
 
@@ -459,13 +443,17 @@ def _export_credentials_on_uninstall() -> None:
 	print(f'passkeys:   from passkeys.install import import_credentials; import_credentials("{path}")')
 
 
-def import_credentials(path: str) -> dict:
+def import_credentials(
+	path: str, *, allow_existing: bool = False, allow_unsigned_legacy: bool = False
+) -> dict:
 	"""Restore rows written by :func:`export_credentials` after a reinstall.
 
-	Idempotent and safe to re-run: a credential whose ``credential_id_sha256`` (or a
-	user handle whose ``user``) already exists is skipped. Credentials are restored
-	before handles so a ``passkey_only_login`` handle clears its enabled-credential
-	floor. Returns a created / skipped / rejected summary.
+	By default the destination must contain no passkey rows. ``allow_existing=True``
+	enables an operator-reviewed merge where matching credentials/handles are skipped.
+	Exports from app version 1 were unsigned; they are refused unless the operator has
+	reviewed the file and explicitly passes ``allow_unsigned_legacy=True``.
+	Credentials are restored before handles so a ``passkey_only_login`` handle clears
+	its enabled-credential floor. Returns a created / skipped / rejected summary.
 
 	Console-only by design (never whitelisted) — but a *crafted* export file must not be
 	able to bind a public key to an account of the attacker's choosing, so every row is
@@ -483,8 +471,17 @@ def import_credentials(path: str) -> dict:
 	the valid remainder is still imported."""
 	with open(path, encoding="utf-8") as fh:
 		data = json.load(fh)
-	if data.get("schema") != CREDENTIAL_EXPORT_SCHEMA:
-		frappe.throw(_("{0} is not a passkeys credential export.").format(path))
+	_validate_export(data, path, allow_unsigned_legacy=allow_unsigned_legacy)
+	if data.get("version") == 1:
+		print(f"passkeys: WARNING: importing explicitly approved unsigned legacy export -> {path}")
+	if not allow_existing and (
+		frappe.db.count("WebAuthn Credential") or frappe.db.count("WebAuthn User Handle")
+	):
+		frappe.throw(
+			_(
+				"Refusing to merge a credential export into live passkey data. Import into an empty installation, or pass allow_existing=True after reviewing conflicts."
+			)
+		)
 
 	summary = {
 		"credentials_created": 0,
@@ -534,8 +531,14 @@ def import_credentials(path: str) -> dict:
 		if user not in handle_users and not frappe.db.exists("WebAuthn User Handle", {"user": user}):
 			_reject("credentials", user, "no matching WebAuthn User Handle")
 			continue
-		if frappe.db.exists("WebAuthn Credential", {"credential_id_sha256": row.get("credential_id_sha256")}):
-			summary["credentials_skipped"] += 1
+		existing_name = frappe.db.get_value(
+			"WebAuthn Credential", {"credential_id_sha256": row.get("credential_id_sha256")}, "name"
+		)
+		if existing_name:
+			if _existing_row_matches("WebAuthn Credential", existing_name, row):
+				summary["credentials_skipped"] += 1
+			else:
+				_reject("credentials", user, "existing credential conflicts with export")
 			continue
 		_restore_row("WebAuthn Credential", row)
 		summary["credentials_created"] += 1
@@ -548,8 +551,12 @@ def import_credentials(path: str) -> dict:
 		if user in mismatched_users:
 			_reject("handles", user, "user handle mismatch")
 			continue
-		if frappe.db.exists("WebAuthn User Handle", {"user": user}):
-			summary["handles_skipped"] += 1
+		existing_name = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "name")
+		if existing_name:
+			if _existing_row_matches("WebAuthn User Handle", existing_name, row):
+				summary["handles_skipped"] += 1
+			else:
+				_reject("handles", user, "existing user handle conflicts with export")
 			continue
 		_restore_row("WebAuthn User Handle", row)
 		summary["handles_created"] += 1
@@ -564,6 +571,76 @@ def import_credentials(path: str) -> dict:
 	return summary
 
 
+def _export_signature(payload: dict) -> str:
+	unsigned = {key: value for key, value in payload.items() if key != "signature"}
+	# Normalize Frappe datetime/value types first, then produce a deterministic
+	# byte representation for HMAC verification.
+	normalized = json.loads(frappe.as_json(unsigned))
+	message = json.dumps(normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+	return hmac.new(_export_signing_key(), message, hashlib.sha256).hexdigest()
+
+
+def _export_signing_key() -> bytes:
+	key = frappe.conf.get("encryption_key")
+	if not key:
+		frappe.throw(_("This site has no encryption_key; a credential export cannot be authenticated."))
+	return b"frappe-passkeys:credential-export:v2\x00" + str(key).encode()
+
+
+def _validate_export(data, path: str, *, allow_unsigned_legacy: bool = False) -> None:
+	if not isinstance(data, dict) or data.get("schema") != CREDENTIAL_EXPORT_SCHEMA:
+		frappe.throw(_("{0} is not a passkeys credential export.").format(path))
+	version = data.get("version")
+	if version == 1 and not allow_unsigned_legacy:
+		frappe.throw(
+			_(
+				"{0} is an unsigned legacy passkeys export. Review its contents and site provenance, then pass allow_unsigned_legacy=True to import it explicitly."
+			).format(path)
+		)
+	if version not in (1, CREDENTIAL_EXPORT_VERSION):
+		frappe.throw(_("{0} uses an unsupported passkeys export version.").format(path))
+	if data.get("site") != frappe.local.site:
+		frappe.throw(_("{0} belongs to a different site.").format(path))
+	if version == CREDENTIAL_EXPORT_VERSION:
+		signature = data.get("signature")
+		if not isinstance(signature, dict) or signature.get("alg") != CREDENTIAL_EXPORT_SIGNATURE_ALG:
+			frappe.throw(_("{0} has no supported export signature.").format(path))
+		expected = _export_signature(data)
+		if not hmac.compare_digest(str(signature.get("value") or ""), expected):
+			frappe.throw(_("{0} failed credential-export integrity verification.").format(path))
+	credentials = data.get("credentials")
+	handles = data.get("user_handles")
+	counts = data.get("counts")
+	if not isinstance(credentials, list) or not isinstance(handles, list) or not isinstance(counts, dict):
+		frappe.throw(_("{0} has an invalid credential-export structure.").format(path))
+	if counts.get("credentials") != len(credentials) or counts.get("user_handles") != len(handles):
+		frappe.throw(_("{0} has inconsistent credential-export counts.").format(path))
+
+
+def _write_private_json_atomic(path: str, payload: dict) -> None:
+	"""Write mode-0600 JSON and atomically replace the requested destination."""
+	directory = os.path.dirname(os.path.abspath(path))
+	os.makedirs(directory, mode=0o700, exist_ok=True)
+	fd, temporary = tempfile.mkstemp(prefix=".passkeys-export-", suffix=".tmp", dir=directory)
+	try:
+		os.fchmod(fd, 0o600)
+		with os.fdopen(fd, "w", encoding="utf-8") as fh:
+			fd = -1
+			fh.write(frappe.as_json(payload, indent=2))
+			fh.flush()
+			os.fsync(fh.fileno())
+		os.replace(temporary, path)
+		os.chmod(path, 0o600)
+	except Exception:
+		if fd >= 0:
+			os.close(fd)
+		try:
+			os.unlink(temporary)
+		except FileNotFoundError:
+			pass
+		raise
+
+
 def _restore_row(doctype: str, row: dict) -> None:
 	doc = frappe.new_doc(doctype)
 	allowed = set(_exportable_fieldnames(doctype))
@@ -572,3 +649,19 @@ def _restore_row(doctype: str, row: dict) -> None:
 			doc.set(field, value)
 	doc.flags.ignore_permissions = True
 	doc.insert()
+
+
+def _existing_row_matches(doctype: str, name: str, exported: dict) -> bool:
+	"""Return whether an idempotent merge target is byte-for-byte equivalent.
+
+	Skipping by identifier alone can silently retain a weaker sign counter, a
+	different public key, or a cleared passkey-only flag. Normalize through
+	Frappe's JSON encoder so database datetime/value objects compare to the loaded
+	export representation without weakening field coverage.
+	"""
+	fields = _exportable_fieldnames(doctype)
+	existing = frappe.db.get_value(doctype, name, fields, as_dict=True)
+	if not existing:
+		return False
+	expected = {field: exported.get(field) for field in fields}
+	return json.loads(frappe.as_json(existing)) == json.loads(frappe.as_json(expected))

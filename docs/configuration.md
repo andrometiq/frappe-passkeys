@@ -5,8 +5,8 @@ Everything is configured from the **Passkey Settings** single DocType
 security consequence of changing it, then the way the settings interact with each
 other and with core's Two Factor Authentication.
 
-The fieldnames below are the stored fieldnames; they are the same names the
-feature will use as System Settings fields once it merges into Frappe core.
+The fieldnames below are the app's stored fieldnames. The upstream documents propose
+reusing them in System Settings, but no current-core compatibility or merge is assumed.
 
 ## Login Modes
 
@@ -14,18 +14,24 @@ feature will use as System Settings fields once it merges into Frappe core.
 |---|---|---|
 | **Login with Passkey** (`login_with_passkey`) | Off | Master switch for passwordless first-factor login and all of its login-page UI. Turning it **on** puts the passkey button and conditional-UI autofill on the login page and activates `begin_login` / `verify_login`. Turning it **off** removes the UI and refuses those ceremonies (existing credential rows are kept). It cannot be turned off if that would leave no passkey-capable mode enabled while any user is *Passkey Only Login* (see the matrix below). |
 | **Passkey as Second Factor** (`passkey_as_second_factor`) | Off | Adds a passkey step-up after a correct password. **Requires core Two Factor Authentication to stay on** — enabling this is refused if System Settings → *Enable Two Factor Authentication* is off (see "Two-factor floor" below). Off by default. |
-| **Allow OTP Fallback for Passkey Second Factor** (`passkey_2fa_allow_otp_fallback`) | On | When on, a user doing the passkey second factor can choose "use a one-time code instead" and complete with core's OTP. Turning it **off** removes the downgrade path for passkey holders — a lost authenticator then needs admin recovery. This is enforced server-side, not just in the UI: `fallback_to_otp` re-checks the live setting and refuses when off, so a tampered client cannot force the weaker path. |
+| **Allow OTP Fallback for Passkey Second Factor** (`passkey_2fa_allow_otp_fallback`) | On | When on, a user doing the passkey second factor can choose "use a one-time code instead" and complete with core's OTP. Turning it **off** removes the downgrade path for passkey holders — a lost authenticator then needs admin recovery. This is enforced server-side, not just in the UI: `fallback_to_otp` re-checks the live setting, and final session minting re-checks that core 2FA still covers the user before consuming the one-time marker. |
 
 ## Relying Party
+
+Enabling either authentication mode also requires the site's `encryption_key`. The save is refused
+when it is absent: second-factor ceremonies bind password-hash versions with that key, and lifecycle
+exports use it for integrity. Back the key up separately before enrolling production users.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
 | **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". **This is a one-way door.** Changing it after any passkey is enrolled **invalidates every enrolled passkey** — all users must re-enroll. Widen to a parent domain only as a deliberate action; the Desk shows a typed confirm dialog restating the consequence. |
-| **Passkey Origins** (`passkey_origins`) | *blank ⇒ `https://<rp_id>`* | The exact-match origin allowlist, one per line, explicit ports allowed. Each entry's host must equal the RP ID or be a subdomain of it, and must be HTTPS (`http://localhost` is allowed only under `developer_mode`). An out-of-scope or non-HTTPS entry is refused at save time, because such an origin would pass every server check and then fail permanently in the browser. |
+| **Passkey Origins** (`passkey_origins`) | *blank ⇒ no additional origins* | Exact web origins, one per line; explicit ports are allowed. The exact origin from `host_name` is included automatically only when its host equals the RP ID or is a subdomain of it. The RP ID never implies trust in `https://<rp_id>`. Enabling a login mode is refused when the resolved web-origin set is empty. Each origin must be HTTPS (`http://localhost` is allowed only under `developer_mode`) and within RP-ID scope. |
 
-The read-only **Resolved Configuration** panel shows the RP ID and origins the
-server actually resolved, plus the invalidation warning and — if the current
-request host does not match — a red mismatch banner.
+For example, `host_name = https://login.example.com` and RP ID `example.com` trusts
+`https://login.example.com`; it does **not** also trust `https://example.com`. Add the apex origin
+explicitly only if the site or an iOS app genuinely uses it. The read-only **Resolved
+Configuration** panel shows the exact server-resolved set, plus the invalidation warning and a
+host-mismatch banner when the current request host is outside that set.
 
 ## Mobile Apps
 
@@ -44,7 +50,7 @@ in [`mobile-apps.md`](mobile-apps.md). Leave them blank for a web-only site.
 | **Hard-fail on Sign Count Regression** (`passkey_sign_count_hard_fail`) | Off | Controls what happens when an authenticator presents a signature counter *lower* than the stored value (a possible clone signal). Off (default): the sign-in proceeds but the credential is flagged and its owner is emailed. On: such an assertion is rejected. A counter that is *equal and non-zero* (a replay) is always rejected regardless of this knob. |
 | **Maximum Passkeys per User** (`passkey_max_per_user`) | 10 | Per-user credential cap; registration is refused once a user reaches it. Lowering it does not delete existing rows. |
 | **Re-authentication Window (Seconds)** (`passkey_reauth_window`) | 600 | Lifetime of the "sudo" window — how long after a fresh login (or a password / passkey re-auth) the management surface lets a user add or delete passkeys without confirming again. Longer is more convenient and less strict; shorter re-prompts sooner. Does not affect action-confirmation grants, which are always single-use and short-lived. |
-| **Allow First Enrollment on Weak Login** (`passkey_allow_first_enrollment_on_weak_login`) | On | Lets a user who signed in with a "weak" method (email link or social/OAuth) enroll their **first** passkey, within a short window after that login. Off: social-only accounts with no password can never enroll a passkey. It only ever authorizes a *first* credential; subsequent adds always need a full sudo window. |
+| **Allow First Enrollment on Weak Login** (`passkey_allow_first_enrollment_on_weak_login`) | On | When **Login with Passkey** is also on, lets a user who signed in with a "weak" method (email link or social/OAuth) enroll their **first** passkey within a short window. It is refused on second-factor-only sites because the same weak login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
 
 ## Enrollment
 
@@ -73,7 +79,7 @@ capable-but-stuck users — and administrators — from being dead-ended.
 | **Enforcement Scope** (`passkey_enforce_scope`) | All Users | Whether enforcement applies to everyone (*All Users*) or only to users holding one of the selected roles (*Selected Roles*). |
 | **Enforce for Roles** (`passkey_enforce_roles`) | *empty* | Only shown when scope is *Selected Roles*. A user is in scope for enforcement if they hold **any** of these roles. |
 | **Exempt Roles** (`passkey_enforce_exempt_roles`) | System Manager *(seeded)* | Users holding **any** of these roles are always exempt — the break-glass hatch. `System Manager` is seeded automatically (on install and on upgrade) so an administrator can never lock themselves out the moment enforcement is turned on. |
-| **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers a brand-new user's first session; `0` blocks immediately. |
+| **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. A defer can consume at most one grace login per session, even if the endpoint is retried or multiple tabs render the prompt. `0` blocks immediately. |
 | **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
 | **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
@@ -127,8 +133,8 @@ Authentication turned on. The app guards this pairing from **both** sides:
 - **Enabling passkey 2FA** requires System Settings → *Enable Two Factor
   Authentication* to already be on. Saving Passkey Settings with
   `passkey_as_second_factor` on while core 2FA is off is refused. The reason:
-  users who post their credentials directly (bypassing the passkey UI) must still
-  meet a second factor — core's own OTP is that backstop on every branch.
+  the app relies on core's 2FA machinery as a structural floor in addition to its
+  own login veto.
   If core 2FA is on but *no role* has two-factor enabled, the save proceeds with
   an orange warning (the backstop then covers nobody — enable it for role `All`).
 
@@ -143,19 +149,33 @@ two desynced (`passkey_as_second_factor=1` while core 2FA is off). The first-leg
 endpoint detects this at runtime and writes a once-daily error-log entry naming
 the fix; see [`operations.md`](operations.md).
 
+For a user with an enabled passkey, the second-factor requirement is enforced at the final login
+hook, not only by the app's login-page JavaScript. Password, email-link, social/OAuth, LDAP, and
+other core login paths are vetoed unless this app completed the passkey step or explicitly handed
+the user to core OTP via `fallback_to_otp`. That OTP handoff creates a short-lived, one-time marker
+bound to core's `tmp_id`; a direct call to core OTP without that marker remains blocked. The rule
+also applies to **Administrator after Administrator has explicitly enrolled an enabled passkey**.
+
+Every password-to-passkey ceremony captures a keyed, non-reversible version of the current password
+hash at the password leg and compares it again immediately before session minting. A password
+rotation during the ceremony therefore fails closed without retaining the password for the normal
+passkey-only leg. The password itself is retained only where an allowed OTP fallback, or an external
+authentication account without a local hash marker, requires core to re-authenticate.
+
 ## Settings interaction matrix (operator terms)
 
 | Situation | What happens |
 |---|---|
 | Both login modes off (freshly installed) | Legal "paused" state. Login and second-factor ceremonies refuse, all UI removes itself, credential rows are preserved, and the action-confirmation primitive still works. |
-| Only "Passkey as Second Factor" on ("2FA-only" site) | Legal. The passwordless login button does not appear, but registration and management stay available so users can enroll, and the second-factor endpoints are live. |
+| Only "Passkey as Second Factor" on ("2FA-only" site) | Legal for users who can start the app's local password flow. The passwordless login button does not appear. An enrolled social-, LDAP-, or email-link-only account cannot complete those alternate paths because the final veto requires this app's passkey/OTP handoff; keep "Login with Passkey" on for such accounts. |
 | Enable passkey 2FA while core 2FA is off | Refused at save. Turn on Two Factor Authentication first. |
 | Turn core Two Factor Authentication off while passkey 2FA is on | Refused at save. Turn off "Passkey as Second Factor" first. |
 | Turn off the last passkey-capable mode while a Passkey-Only user exists | Refused at save, with the flagged users listed. Keep a passkey login mode on, or clear "Passkey Only Login" on those users first. This holds whether the last mode is "Login with Passkey" or "Passkey as Second Factor". |
 | A Passkey-Only user does the password→passkey second-factor flow | Allowed — that path is a passkey login, so it satisfies the account's passkey-only rule. |
+| An enrolled second-factor user uses password, email link, social/OAuth, LDAP, or another core login path | The final login is vetoed unless this app completed passkey verification or issued and then consumed the one-time OTP fallback marker. This includes an enrolled Administrator. |
 | A Passkey-Only user with Login With Email Link on | The email-link path is closed for that user; only their passkey gets them in. |
 | OTP fallback off and a passkey holder loses their authenticator | No self-service downgrade — admin recovery only (see [`recovery.md`](recovery.md)). |
-| "Passkey as Second Factor" on together with "Disable Username/Password Login" (core) | A dead combination — the password leg has nothing to run against. The save proceeds with an orange warning (LDAP/social may still feed core 2FA). |
+| "Passkey as Second Factor" on together with "Disable Username/Password Login" (core) | A dead combination for enrolled users — the app's password leg has nothing to run against, and alternate login completions are final-vetoed. Keep "Login with Passkey" on as their usable route or do not enable this combination. The save proceeds with an orange warning. |
 | Change notifications off while a login mode is on | The save proceeds with an orange warning: this weakens the main defence against registration hijack. |
 
 ## Per-user "Passkey Only Login"
@@ -172,7 +192,19 @@ self-hoster override in [`operations.md`](operations.md).
   enough".)
 - Enabling it requires **at least two enabled passkeys**, so a single lost device
   never locks the account out.
-- **Administrator is exempt** from this restriction, mirroring core's 2FA
-  exemption — the site owner can always get in with a password. This is the
-  standing recovery invariant; see [`security.md`](security.md) and
-  [`recovery.md`](recovery.md).
+- **Administrator is exempt only from this per-user passkey-only login veto.** That preserves the
+  password break-glass path for an Administrator who has not opted into the passkey second factor.
+  Once Administrator explicitly enrolls an enabled credential while *Passkey as Second Factor* is
+  active, alternate/core login paths are protected exactly like any other enrolled user's. The
+  site-wide `disable_user_pass_login` flag also has no Administrator exemption. See
+  [`security.md`](security.md) and [`recovery.md`](recovery.md).
+
+## Transactional race protection
+
+Security-sensitive read/modify/write paths take database locks in a consistent order. Credential
+assertion bookkeeping re-locks the credential before advancing counters; UV setup locks the user and
+credential; registration locks the user, handle, and credential census before applying the per-user
+cap and insert; passkey-only credential deletion/toggling locks the shared login floor; and Passkey
+Settings mode changes lock the Single rows before checking flagged users. These locks make concurrent
+verification, registration, deletion, flag changes, and settings saves serialize instead of each
+committing from a stale snapshot.

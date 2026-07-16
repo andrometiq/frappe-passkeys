@@ -23,7 +23,10 @@ from passkeys import aaguid, session, state
 # module scope (the crypto engine is imported lazily inside its ceremony bodies),
 # so this management module stays webauthn-free at import time.
 from passkeys.passkey import refuse_if_core_native
-from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
+	lock_login_floor,
+	lock_passkey_mode_floor,
+)
 
 CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 
@@ -168,6 +171,20 @@ def set_passkey_only_login(enabled):
 			session.SET_PASSKEY_ONLY_ACTION,
 			methods=["passkey"],
 			payload_fingerprint=session.payload_hash(payload),
+			action_label=_("Change passkey-only login"),
+			parameter_summary=[
+				{"label": _("Passkey-only login"), "value": _("On") if enabled_int else _("Off")}
+			],
+		)
+
+	# The site-mode lock always comes before the per-user handle/credential lock.
+	# A concurrent settings save that disables both modes then either observes this
+	# flag or makes this enable fail after it wakes.
+	mode_enabled = lock_passkey_mode_floor()
+	if enabled_int and not mode_enabled:
+		frappe.throw(
+			_("Enable a passkey login mode before turning on passkey-only login."),
+			frappe.ValidationError,
 		)
 
 	# Hold the invariant lock before checking the enable floor: the census must

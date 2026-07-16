@@ -34,12 +34,14 @@ lost. Sudo windows and grants simply have to be re-earned.
 ## Changing the RP ID or moving domains
 
 **Changing the Relying Party ID invalidates every enrolled passkey.** It is a
-one-way door. Plan a fleet-wide re-enrollment before you do it. During the
-cutover the Administrator password login is your guaranteed way back in (see the
-last-door invariant below).
+one-way door. Plan a fleet-wide re-enrollment before you do it. Administrator's password is a
+break-glass path only while site-wide password login remains enabled and Administrator is not an
+enrolled passkey-second-factor user; rehearse console recovery before the cutover.
 
 - **Real domain migration** (the site's public host changes): update `host_name`
-  in site config (and Passkey RP ID / Passkey Origins if set explicitly) to the
+  in site config and review Passkey RP ID / Passkey Origins. The RP ID does not imply
+  `https://<rp_id>`; ensure the compatible `host_name` plus explicit origins resolve to the exact,
+  non-empty set you will serve. Move
   new host, accept that all existing passkeys are now invalid, and have users
   re-enroll. The Passkey Settings change dialog restates the consequence.
 
@@ -85,8 +87,8 @@ last-door invariant below).
   action — it fails closed.
 
 - **Revocation.** Users revoke their own passkeys from the management surface
-  (Desk User form, the navbar "My Passkeys" dialog, or the `/passkeys` portal
-  page). A delete requires a live sudo window (a fresh confirmation or password
+  (the Desk User form or the `/passkeys` portal page). A delete requires a live
+  sudo window (a fresh confirmation or password
   re-auth) and refuses to remove a user's last passkey when that would lock them
   out. System Managers can revoke any user's credential from the WebAuthn
   Credential DocType — **prefer disabling (set `enabled=0`) over deleting** so the
@@ -115,10 +117,17 @@ Structured error/log entries worth alerting on:
   or a clone). Diagnose with the host-change playbook above.
 - `passkeys: 2FA floor desync` — logged once per day when
   `passkey_as_second_factor` is on but core Two Factor Authentication has been
-  turned off out-of-band. The direct-POST second-factor backstop is gone;
-  re-enable Two Factor Authentication or turn off "Passkey as Second Factor".
+  turned off out-of-band. The final login veto still blocks enrolled users, but
+  the required defence-in-depth backstop is gone; re-enable Two Factor
+  Authentication or turn off "Passkey as Second Factor".
 - Grant issued / consumed lines (logger `passkeys`) — the audit trail for the
   action-confirmation primitive.
+
+For enrolled second-factor users, alternate/core login completions are expected to fail unless this
+app completed the passkey or its `fallback_to_otp` flow issued the one-time marker consumed after
+core OTP succeeds. A direct core OTP completion without that marker is not a supported bypass. A
+password rotation between the password and passkey legs also fails by design because the ceremony's
+keyed, non-reversible password-hash version no longer matches.
 
 ## The self-hoster password-disable override (advanced, at your own risk)
 
@@ -183,9 +192,9 @@ the two-factor floor guard. That is intentional: console access is site-admin
 authority, out of the threat model. It is also what makes every lockout in
 [`recovery.md`](recovery.md) survivable.
 
-**The last-door invariant:** Administrator is exempt from the passkey-only login
-veto and from the passkey second-factor leg, so **Administrator password login
-always works** — no combination of passkey settings can brick the site's last
-door. The one exception is the site-wide `disable_user_pass_login` override
-above, which is why that override requires Administrator to hold a working passkey
-first.
+**Administrator break-glass boundary:** Administrator is exempt from the per-user passkey-only
+login veto only. If Administrator explicitly enrolls an enabled credential while Passkey as Second
+Factor is active, alternate/core login paths require the app's passkey or one-time OTP fallback like
+any other enrolled user. The site-wide `disable_user_pass_login` flag also has no Administrator
+exemption. Keep tested console access outside the login path; do not treat an Administrator password
+as an unconditional recovery guarantee.

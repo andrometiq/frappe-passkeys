@@ -2,16 +2,22 @@
 name = "passkeys"
 authors = [{ name = "Frappe Passkeys Contributors" }]
 description = "Passkey (WebAuthn) authentication for Frappe"
-requires-python = ">=3.10"
+# Keep interpreter support aligned with the tested Frappe v15-v17 window. A
+# Python 3.15 roll-forward requires an explicit matrix update first.
+requires-python = ">=3.10,<3.15"
 readme = "README.md"
 license = { file = "LICENSE" }
 dynamic = ["version"]
 dependencies = [
-    "webauthn>=2.8.0,<3",
+	# Auth-critical runtime dependency: 2.8.0 is the version validated across
+	# all three Frappe cells; 3.x conflicts with their cryptography stack. Upgrade
+	# only together with the resolver and ceremony test matrices.
+	"webauthn==2.8.0",
 ]
 
 [build-system]
-requires = ["flit_core >=3.4,<4"]
+# PEP 517 runs outside the project environment, so pin the build backend too.
+requires = ["flit_core==3.12.0"]
 build-backend = "flit_core.buildapi"
 
 [tool.bench.frappe-dependencies]

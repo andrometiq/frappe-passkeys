@@ -9,14 +9,15 @@ register → login → delete without a browser), that verification is genuinely
 the guard + the enable-time HTTPS relaxation behave exactly as the security musts
 require."""
 
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import frappe
 from frappe.auth import CookieManager
 from frappe.utils import set_request
 
-from passkeys import passkey, state
-from passkeys.tests import fake_webauthn
+from passkeys import engine, passkey, state
+from passkeys.tests import fake_webauthn, ui_test_helpers
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
@@ -124,7 +125,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		)
 
 		_request(binder=binder)
-		with self.assertRaises(Exception):
+		with self.assertRaises(engine.AuthenticationVerificationFailed):
 			passkey.verify_login(begun["state_id"], assertion)
 		# no session was minted — verification genuinely gated the login
 		self.assertEqual(frappe.session.user, "Guest")
@@ -152,7 +153,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		self.assertTrue(report["session_matches"])
 		self.assertTrue(report["credential_gone"])
 
-	# ---- the guard (must #1): never callable in production -------------------
+	# ---- explicit test-site guard --------------------------------------------
 
 	def test_guard_refuses_a_non_system_manager(self):
 		user = make_user()
@@ -160,24 +161,81 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		frappe.set_user(user)
 		self.addCleanup(frappe.set_user, "Administrator")
 		# v15's frappe.only_for is a no-op while flags.in_test is set (v16+ dropped
-		# that short-circuit); clear it so the real System Manager gate is exercised.
-		# only_for runs before the dev-bench check, so PermissionError still fires
-		# first on a site without developer_mode.
-		saved_in_test = getattr(frappe.flags, "in_test", False)
-		frappe.flags.in_test = False
-		try:
-			with self.assertRaises(frappe.PermissionError):
-				fake_webauthn.enable()
-		finally:
-			frappe.flags.in_test = saved_in_test
+		# that short-circuit), so exercise the role gate outside test mode with both
+		# site flags otherwise valid.
+		with self._outside_test_mode(developer_mode=1, allow_tests=1):
+			for guard in (fake_webauthn._guard, ui_test_helpers._guard):
+				with self.subTest(module=guard.__module__):
+					with self.assertRaises(frappe.PermissionError):
+						guard()
 
-	def test_guard_refuses_off_a_developer_or_test_bench(self):
-		# System Manager, but neither developer_mode nor in_test → hard refuse.
+	def test_guards_reject_when_both_site_flags_are_disabled(self):
+		with self._outside_test_mode(developer_mode=0, allow_tests=0):
+			for guard in (fake_webauthn._guard, ui_test_helpers._guard):
+				with self.subTest(module=guard.__module__):
+					with self.assertRaisesRegex(
+						frappe.ValidationError, "both developer_mode and allow_tests"
+					):
+						guard()
+
+	def test_guards_reject_developer_mode_without_allow_tests(self):
+		with self._outside_test_mode(developer_mode=1, allow_tests=0):
+			for guard in (fake_webauthn._guard, ui_test_helpers._guard):
+				with self.subTest(module=guard.__module__):
+					with self.assertRaisesRegex(
+						frappe.ValidationError, "both developer_mode and allow_tests"
+					):
+						guard()
+
+	def test_guards_reject_allow_tests_without_developer_mode(self):
+		with self._outside_test_mode(developer_mode=0, allow_tests=1):
+			for guard in (fake_webauthn._guard, ui_test_helpers._guard):
+				with self.subTest(module=guard.__module__):
+					with self.assertRaisesRegex(
+						frappe.ValidationError, "both developer_mode and allow_tests"
+					):
+						guard()
+
+	def test_guards_accept_developer_mode_with_allow_tests(self):
+		with self._outside_test_mode(developer_mode=1, allow_tests=1):
+			fake_webauthn._guard()
+			ui_test_helpers._guard()
+
+	def test_all_test_helper_whitelists_are_post_only(self):
+		helpers = {
+			fn
+			for module in (fake_webauthn, ui_test_helpers)
+			for fn in vars(module).values()
+			if callable(fn) and fn in frappe.whitelisted
+		}
+		self.assertEqual(len(helpers), 22)
+		for helper in helpers:
+			with self.subTest(helper=f"{helper.__module__}.{helper.__name__}"):
+				self.assertEqual(frappe.allowed_http_methods_for_whitelisted_func[helper], ["POST"])
+
+	def test_confirmation_probes_run_test_guard_before_confirmation(self):
+		probes = (
+			ui_test_helpers.confirm_probe,
+			ui_test_helpers.confirm_probe_passkey_only,
+			ui_test_helpers.confirm_probe_failing,
+		)
+		with self._outside_test_mode(developer_mode=1, allow_tests=0):
+			for probe in probes:
+				with self.subTest(probe=probe.__name__):
+					with self.assertRaisesRegex(
+						frappe.ValidationError, "both developer_mode and allow_tests"
+					):
+						probe(token="guard-first")
+
+	@contextmanager
+	def _outside_test_mode(self, *, developer_mode: int, allow_tests: int):
 		saved_in_test = getattr(frappe.flags, "in_test", False)
 		frappe.flags.in_test = False
 		try:
-			with patch.dict(frappe.conf, {"developer_mode": 0}):
-				with self.assertRaises(frappe.ValidationError):
-					fake_webauthn.enable()
+			with patch.dict(
+				frappe.conf,
+				{"developer_mode": developer_mode, "allow_tests": allow_tests},
+			):
+				yield
 		finally:
 			frappe.flags.in_test = saved_in_test

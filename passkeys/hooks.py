@@ -70,9 +70,9 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 
 # Migration
 # ---------
-# Programmatic registry Property Setter — never a fixtures/ fixture.
+# Remove an obsolete development-build Property Setter, then sync live UI fields.
 after_migrate = [
-	"passkeys.install.sync_registry_fixture",
+	"passkeys.install.cleanup_legacy_registry_property_setter",
 	"passkeys.install.sync_standard_navbar_items",
 	"passkeys.install.sync_user_form_section",
 ]

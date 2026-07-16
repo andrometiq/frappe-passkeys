@@ -43,6 +43,10 @@ chromium_only("passkey management — portal /passkeys", () => {
 	});
 
 	it("renders a card once a credential exists", () => {
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
+		cy.purge_server_passkeys(USER);
+		cy.clear_virtual_credentials();
 		cy.register_passkey(USER, PW());
 		cy.login(USER, PW());
 		cy.visit("/passkeys");

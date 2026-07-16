@@ -29,6 +29,13 @@ class _LM:
 class PasskeyOnlyVetoTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		self._mode_snapshot = (
+			frappe.db.get_single_value("Passkey Settings", "login_with_passkey"),
+			frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor"),
+		)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
+		flush_settings_cache()
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.addCleanup(self._clear_flags)
 
@@ -47,6 +54,11 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"})
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
 			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", self._mode_snapshot[0] or 0)
+		frappe.db.set_single_value(
+			"Passkey Settings", "passkey_as_second_factor", self._mode_snapshot[1] or 0
+		)
+		flush_settings_cache()
 		frappe.db.commit()  # must survive past the (per-class) rollback
 
 	def _clear_flags(self):

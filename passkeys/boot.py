@@ -6,8 +6,8 @@ Folds into ``frappe/passkey.py`` on the core merge.
 
 **Hook-path import discipline:** ``extend_bootinfo`` fires on **every**
 Desk boot, so this module MUST NOT import ``webauthn`` (directly or
-transitively). It imports only ``frappe`` and :mod:`passkeys.install` (the
-``CORE_NATIVE`` switch + the ``__passkeys`` Defaults parent), both webauthn-free.
+transitively). It imports only ``frappe`` plus the lightweight
+:mod:`passkeys.install` and :mod:`passkeys.policy` modules, all webauthn-free.
 
 Nudge state is stored **exactly the twofactor way**: site-wide
 ``DefaultValue`` rows with a user-prefixed key under a dedicated parent —
@@ -21,6 +21,7 @@ import json
 import frappe
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
+from passkeys import policy
 from passkeys.install import DEFAULTS_PARENT, dormant
 
 # record_nudge event vocabulary.
@@ -126,12 +127,14 @@ def _save_enforcement_state(user: str, state: dict) -> None:
 
 def record_enforcement_event(user: str, event: str) -> dict:
 	"""Fold a ``record_enforcement`` event into the user's grace state. ``defer``
-	("Remind me later") spends one grace login — a network-retried ``defer``
-	double-counts (accepted bounded drift; it only ever makes enforcement arrive
-	*sooner*, never lets a user linger past the cap). ``incapable`` records no counter
-	(the endpoint handles the admin advisory). Returns the new state."""
+	("Remind me later") spends one grace login. The endpoint claims a per-session
+	idempotency key first; the User lock here serializes distinct sessions updating
+	the same DefaultValue row. ``incapable`` records no counter (the endpoint handles
+	the admin advisory). Returns the new state."""
 	if event not in ENFORCE_EVENTS:
 		frappe.throw(frappe._("Unknown enforcement event."), frappe.ValidationError)
+	if event == "defer":
+		frappe.db.get_value("User", user, "name", for_update=True)
 	state = get_enforcement_state(user)
 	if event == "defer":
 		state["grace_used"] = cint(state.get("grace_used")) + 1
@@ -349,6 +352,7 @@ def _settings_context(user: str, settings=None) -> dict:
 	return {
 		"core_two_factor_auth": bool(cint(frappe.get_system_settings("enable_two_factor_auth"))),
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),
+		"configured_site_origin": policy.resolve_site_origin(policy.resolve_rp_id(settings) or ""),
 		"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
 		"would_be_blocked_count": _would_be_blocked_count(settings),
 	}

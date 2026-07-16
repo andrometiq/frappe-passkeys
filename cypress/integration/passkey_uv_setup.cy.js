@@ -8,19 +8,22 @@
 // session, and every later login is purely passwordless.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
-const USER = "Administrator";
-const PW = () => Cypress.env("adminPassword") || "admin";
+const USER = `passkey-uv-ui-${Date.now()}@example.com`;
+const PW = "Secret_passw0rd_Uv9!";
+const ADMIN_PW = () => Cypress.env("adminPassword") || "admin";
 
 chromium_only("passkey uv-setup step-up", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
-		cy.login(USER, PW());
-		cy.visit_desk(USER);
+		cy.login("Administrator", ADMIN_PW());
+		cy.visit_desk("Administrator");
 		cy.setup_passkey_settings();
+		cy.ensure_sf_user(USER, PW);
 		cy.purge_server_passkeys(USER);
-		cy.register_passkey(USER, PW());
-		cy.login(USER, PW());
-		cy.visit_desk(USER);
+		cy.register_passkey(USER, PW, { surface: "portal" });
+		cy.assert_logged_user(USER);
+		cy.login("Administrator", ADMIN_PW());
+		cy.visit_desk("Administrator");
 		cy.call("passkeys.tests.ui_test_helpers.make_uv_uninitialized", { user: USER });
 		cy.clear_password_failures(USER);
 		// This spec runs late in the suite; the shared CI runner IP has been hitting
@@ -31,8 +34,9 @@ chromium_only("passkey uv-setup step-up", () => {
 	});
 
 	after(() => {
-		cy.login(USER, PW());
+		cy.login("Administrator", ADMIN_PW());
 		cy.purge_server_passkeys(USER);
+		cy.delete_test_user(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();
 	});
@@ -44,15 +48,24 @@ chromium_only("passkey uv-setup step-up", () => {
 
 		// UVSetupRequired → the step-up dialog with a password field appears
 		cy.get(".passkey-dialog").should("have.attr", "role", "dialog");
-		cy.get("#passkey-uv-pwd").should("be.visible").type(PW());
-		cy.intercept_frappe_method("passkeys.passkey.complete_uv_setup", "complete_uv_setup");
+		cy.get("#passkey-uv-pwd")
+			.should("be.visible")
+			.type(PW, { log: false })
+			.should("have.value", PW);
+		cy.intercept_frappe_method("passkeys.passkey.complete_uv_setup", "complete_uv_setup", (_req, body) => {
+			expect(body.pwd, "password submitted by the UV dialog").to.equal(PW);
+		});
 		cy.get(".passkey-dialog .btn-primary").click();
 
 		// session minted for the repaired credential
-		cy.wait("@complete_uv_setup", { timeout: 20000 })
-			.its("response.statusCode")
-			.should("be.within", 200, 299);
-		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
+		cy.wait("@complete_uv_setup", { timeout: 20000 }).then(({ response }) => {
+			const detail = JSON.stringify(response && response.body);
+			expect(response && response.statusCode, `complete_uv_setup response: ${detail}`).to.be.within(
+				200,
+				299
+			);
+		});
+		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk|me)/);
 		cy.assert_logged_user(USER);
 
 		// and the flip is durable — a fresh passwordless login now needs no password
@@ -62,7 +75,7 @@ chromium_only("passkey uv-setup step-up", () => {
 		cy.visit_login_without_conditional();
 		cy.get("#passkey-login-btn").click();
 		cy.wait("@verify_login", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
-		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
+		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk|me)/);
 		cy.assert_logged_user(USER);
 	});
 });

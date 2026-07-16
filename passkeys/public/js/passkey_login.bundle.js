@@ -471,6 +471,7 @@
 			}
 		};
 		document.addEventListener("submit", state.sfInterceptor, true); // capture phase
+		document.documentElement.setAttribute("data-passkeys-second-factor-ready", "true");
 	}
 
 	function removeSecondFactorInterception() {
@@ -478,6 +479,7 @@
 			document.removeEventListener("submit", state.sfInterceptor, true);
 			state.sfInterceptor = null;
 		}
+		document.documentElement.removeAttribute("data-passkeys-second-factor-ready");
 	}
 
 	function loginWithPassword(usr, pwd) {
@@ -504,7 +506,64 @@
 		var tmpId = env.tmp_id;
 		var options = verification.options;
 		var fallbackOtp = verification.fallback && verification.fallback.otp;
+		if (!secondFactorWebAuthnAvailable()) {
+			showSecondFactorUnavailable(tmpId, fallbackOtp);
+			return;
+		}
 		runSecondFactorCeremony(tmpId, options, fallbackOtp);
+	}
+
+	function secondFactorWebAuthnAvailable() {
+		return !!(window.PublicKeyCredential && navigator.credentials &&
+			typeof navigator.credentials.get === "function");
+	}
+
+	// Unsupported WebAuthn is a terminal routing decision, not a ceremony error. If the
+	// server authorized OTP fallback, make that the primary action immediately. Otherwise
+	// show an explicit recovery state with a route back to the login form.
+	function showSecondFactorUnavailable(stateId, fallbackOtp) {
+		var restore = C.captureFocus(document);
+		var canUseOtp = fallbackOtp === true || fallbackOtp === 1;
+		var dlg = buildDialog({
+			titleText: canUseOtp ? t("Use a verification code") : t("Passkey verification unavailable"),
+			bodyHtml: '<p class="passkey-dialog-error" role="alert">' + escapeHtml(canUseOtp
+				? t("Passkeys aren't supported on this device. Use a verification code to finish signing in.")
+				: t("Passkeys aren't supported on this device, and no verification-code fallback is available. Contact your administrator or return to sign in.")) + '</p>',
+			primaryText: canUseOtp ? t("Use a verification code") : t("Back to sign in"),
+			onPrimary: canUseOtp
+				? function (root, close) { requestOtpFallback(stateId, root, close); }
+				: function (root, close) {
+					void root;
+					close();
+					if (window.location && typeof window.location.reload === "function") window.location.reload();
+				},
+			onClose: restore,
+		});
+		openDialog(dlg);
+		announce(canUseOtp
+			? t("Passkeys aren't supported on this device. Use a verification code to finish signing in.")
+			: t("Passkey verification is unavailable. Contact your administrator or return to sign in."));
+	}
+
+	function requestOtpFallback(stateId, root, close) {
+		if (root._passkeyOtpPending) return;
+		root._passkeyOtpPending = true;
+		var claimed = false;
+		setDialogError(root, t("Opening verification-code sign-in..."));
+		var call = frappeCall(API.fallback_to_otp, { state_id: stateId },
+			composedHandlers({
+				on401: function (d) { claimed = true; close(); coreDelegate401(d); },
+				// Core's 200 handler paints the OTP/SMS/Email form.
+				onSuccess: function () { claimed = true; close(); },
+			})
+		);
+		function finish() {
+			if (claimed) return;
+			root._passkeyOtpPending = false;
+			setDialogError(root, t("Couldn't open verification-code sign-in. Return to sign in or contact your administrator."));
+			announce(t("Couldn't open verification-code sign-in. Return to sign in or contact your administrator."));
+		}
+		if (call && typeof call.then === "function") call.then(finish, finish);
 	}
 
 	function runSecondFactorCeremony(stateId, options, fallbackOtp) {
@@ -512,7 +571,7 @@
 		var publicKey;
 		try {
 			publicKey = C.parseRequestOptionsFromJSON(options, window.PublicKeyCredential);
-		} catch (e) { announce(t("Couldn't start passkey verification — try again or sign in another way.")); restore(); return; }
+		} catch (e) { restore(); showSecondFactorUnavailable(stateId, fallbackOtp); return; }
 
 		var dlg = buildDialog({
 			titleText: t("Confirm it's you"),
@@ -521,16 +580,29 @@
 				'<p class="passkey-dialog-error" role="alert"></p>',
 			primaryText: t("Use a passkey"),
 			secondaryText: fallbackOtp ? t("Use a verification code instead") : null,
-			onPrimary: function (root, close, ctxState) {
+				onPrimary: function (root, close, ctxState) {
+					if (ctxState.ceremonyPending) return;
+					ctxState.ceremonyPending = true;
+					var handled = false;
 				announce(t("Waiting for your passkey."));
-				navigator.credentials.get({ publicKey: publicKey })
+				Promise.resolve()
+					.then(function () {
+						if (!secondFactorWebAuthnAvailable()) {
+							var unsupported = new Error("WebAuthn unavailable");
+							unsupported.name = "NotSupportedError";
+							throw unsupported;
+						}
+						return navigator.credentials.get({ publicKey: publicKey });
+					})
 					.then(function (cred) {
 						var assertion = C.authAssertionToJSON(cred);
-						frappeCall(API.verify_second_factor,
-							{ state_id: ctxState.stateId, credential: JSON.stringify(assertion) },
-							composedHandlers({
-								on401: function (d) {
-									var k = C.mapServerExcType(d && d.exc_type);
+							var call = frappeCall(API.verify_second_factor,
+								{ state_id: ctxState.stateId, credential: JSON.stringify(assertion) },
+								composedHandlers({
+										on401: function (d) {
+											handled = true;
+											ctxState.ceremonyPending = false;
+										var k = C.mapServerExcType(d && d.exc_type);
 									if (k === "ceremony_expired") {
 										// server re-armed: fresh state in the 401 body
 										var fresh = reArmedFrom(d);
@@ -547,25 +619,43 @@
 										setDialogError(root, t("That passkey couldn't be verified — try again."));
 									}
 								},
-								onSuccess: function () { rememberHint(); close(); /* base 200 redirects */ },
+										on429: function () {
+											handled = true;
+											ctxState.ceremonyPending = false;
+											setDialogError(root, t("Too many attempts. Wait a moment, then try again."));
+										},
+										onSuccess: function () { handled = true; rememberHint(); close(); /* base 200 redirects */ },
+									})
+								);
+								if (call && typeof call.then === "function") {
+									return call.then(function () {
+										if (handled) return;
+										ctxState.ceremonyPending = false;
+										setDialogError(root, t("That passkey couldn't be verified — try again."));
+									}, function (err) {
+										if (handled) return;
+										ctxState.ceremonyPending = false;
+										setDialogError(root, t("That passkey couldn't be verified — try again."));
+										announce(t("That passkey couldn't be verified — try again."));
+										void err;
+									});
+								}
+								ctxState.ceremonyPending = false;
 							})
-						);
-					})
 					.catch(function (err) {
+						ctxState.ceremonyPending = false;
 						var m = C.mapDomException(err);
+						if (m.code === "not_supported") {
+							close();
+							showSecondFactorUnavailable(ctxState.stateId, fallbackOtp);
+							return;
+						}
 						setDialogError(root, t(m.messageKey));
 						announce(t(m.messageKey));
 					});
 			},
 			onSecondary: fallbackOtp ? function (root, close, ctxState) {
-				// "Use a verification code instead" -> fallback_to_otp -> core OTP UI natively
-				frappeCall(API.fallback_to_otp, { state_id: ctxState.stateId },
-					composedHandlers({
-						on401: function (d) { close(); coreDelegate401(d); },
-						// core's 200 handler paints the OTP form (verification.method OTP/SMS/Email)
-						onSuccess: function () { close(); },
-					})
-				);
+				requestOtpFallback(ctxState.stateId, root, close);
 			} : null,
 			onClose: restore,
 			ctxState: { stateId: stateId },
@@ -657,6 +747,7 @@
 		merged[429] = function (xhr) {
 			// degrade rules: show core's throttle copy, never crash
 			if (base[429]) base[429](xhr, (xhr && xhr.responseJSON) || {});
+			if (app.on429) app.on429((xhr && xhr.responseJSON) || {});
 		};
 
 		return merged;
@@ -770,8 +861,14 @@
 	function openDialog(dlg) {
 		(document.body || document.documentElement).appendChild(dlg.overlay);
 		document.addEventListener("keydown", dlg.onKey, true);
-		// initial focus on the primary action unless the caller focuses an input
-		setTimeout(function () { if (dlg.primary) dlg.primary.focus(); }, 0);
+		// Initial focus belongs on the primary action unless a caller has already
+		// placed it on a more useful control (the UV-repair password input does so
+		// immediately after openDialog). Do not let this deferred callback steal
+		// focus after the first typed character.
+		setTimeout(function () {
+			if (dlg.root.contains(document.activeElement)) return;
+			if (dlg.primary) dlg.primary.focus();
+		}, 0);
 	}
 
 	function setDialogError(root, msg) {
@@ -894,6 +991,8 @@
 		module.exports = {
 			state: state, runVerify: runVerify, applyLoginStatus: applyLoginStatus,
 			armSlowTimer: armSlowTimer, clearSlowTimer: clearSlowTimer, API: API,
+			secondFactorWebAuthnAvailable: secondFactorWebAuthnAvailable,
+			showSecondFactorUnavailable: showSecondFactorUnavailable,
 		};
 	}
 })();

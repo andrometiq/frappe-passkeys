@@ -1,11 +1,15 @@
-# Daily upstream-drift canary (a scheduled trigger split into its own workflow
-# so ci.yml stays purely PR/push-scoped).
+# Daily, non-release upstream compatibility signal.
 #
 # Frappe's branch tips move under us while this repo is idle — develop HEAD
 # especially, but version-15/version-16 pick up dependency-pin bumps too
 # (the cryptography/pyOpenSSL landmine). Running the full
 # 3-cell matrix daily catches that drift the morning it happens instead of
-# on the next unrelated PR.
+# on the next unrelated PR. Failures remain visible so notifications work, but
+# this separate scheduled workflow is deliberately not a release attestation: a
+# branch-tip pass is scoped to the exercised matrix and does not prove that a
+# future native passkey implementation satisfies the app's dormant-shell
+# assumptions. That requires an explicit capability contract and a dedicated
+# integration run against the implementing commit.
 #
 # Cron between hrms/payments (00:00 UTC) and insights (02:00 UTC) — same
 # rationale, off-peak runners.
@@ -26,5 +30,7 @@ concurrency:
 
 jobs:
   ci:
-    name: Daily matrix vs frappe branch tips
+    name: Matrix vs Frappe branch tips (no release/native attestation)
     uses: ./.github/workflows/ci.yml
+    with:
+      upstream_tips: true

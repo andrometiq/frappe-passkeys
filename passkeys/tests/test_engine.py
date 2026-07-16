@@ -222,20 +222,44 @@ class TestAppOrigins(IntegrationTestCase):
 		)
 		self.assertEqual(
 			policy.resolve_expected_origins(settings, "example.com"),
-			["https://example.com", "https://app.example.com", VALID_APP_ORIGIN],
+			["https://app.example.com", VALID_APP_ORIGIN],
 		)
 
-	def test_resolve_expected_origins_web_only_without_app_origins(self):
+	def test_rp_id_apex_is_not_implicitly_trusted_as_an_origin(self):
 		self.assertEqual(
 			policy.resolve_expected_origins(frappe._dict({}), "example.com"),
-			["https://example.com"],
+			[],
 		)
 
 	def test_resolve_origins_never_sees_app_origins(self):
 		# The web resolver feeds validate_origins + the request-host pre-check + the
 		# settings mirror; an app origin must never leak into it.
-		settings = frappe._dict({"passkey_origins": "", "passkey_app_origins": VALID_APP_ORIGIN})
-		self.assertEqual(policy.resolve_origins(settings, "example.com"), ["https://example.com"])
+		settings = frappe._dict(
+			{"passkey_origins": "https://login.example.com", "passkey_app_origins": VALID_APP_ORIGIN}
+		)
+		self.assertEqual(policy.resolve_origins(settings, "example.com"), ["https://login.example.com"])
+
+	def test_web_origins_are_browser_canonicalized_and_deduplicated(self):
+		settings = frappe._dict(
+			{
+				"passkey_origins": (
+					"HTTPS://LOGIN.EXAMPLE.COM:443\nhttps://login.example.com\nhttps://login.example.com:8443"
+				)
+			}
+		)
+		self.assertEqual(
+			policy.resolve_origins(settings, "example.com"),
+			["https://login.example.com", "https://login.example.com:8443"],
+		)
+
+	def test_default_http_port_is_removed(self):
+		self.assertEqual(policy.canonical_web_origin("http://LOCALHOST:80"), "http://localhost")
+
+	def test_malformed_web_origin_is_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			policy.validate_origins(
+				frappe._dict({"passkey_origins": "https://example.com/path"}), "example.com"
+			)
 
 	def test_validate_app_origins_accepts_valid_and_empty(self):
 		policy.validate_app_origins(frappe._dict({"passkey_app_origins": VALID_APP_ORIGIN}))

@@ -20,6 +20,37 @@
 	font-weight: 600;
 }
 
+.passkey-confirm-action {
+	margin: 0;
+	font-size: var(--text-md, 0.95rem);
+}
+
+.passkey-confirm-summary {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid var(--border-color, #e2e6ea);
+	border-radius: var(--border-radius-md, 6px);
+	background: var(--control-bg, #f7f8fa);
+	font-size: var(--text-sm, 0.85rem);
+}
+
+.passkey-confirm-summary-row {
+	display: grid;
+	grid-template-columns: minmax(6rem, 0.8fr) minmax(0, 1.2fr);
+	gap: 0.75rem;
+}
+
+.passkey-confirm-summary-label {
+	font-weight: 600;
+}
+
+.passkey-confirm-summary-value {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
 .passkey-confirm-actions {
 	display: flex;
 	flex-wrap: wrap;

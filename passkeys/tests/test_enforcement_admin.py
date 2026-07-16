@@ -39,7 +39,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
-		settings.passkey_origins = ""
+		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
 		settings.passkey_enrollment_policy = "Enforce"
@@ -65,8 +65,13 @@ class EnforcementAdminTest(IntegrationTestCase):
 			doc.set(field, self._snapshot.get(field))
 		doc.set("passkey_enforce_roles", [])
 		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
-		doc.flags.ignore_permissions = True
-		doc.save()
+		# Restore the exact pre-test snapshot without re-validating it. A UI test may
+		# have installed an HTTP-only development origin that is valid only through
+		# its guarded helper; cleanup must not become order-dependent on that state.
+		doc.set_parent_in_children()
+		doc.set_name_in_children()
+		doc.update_single(doc.get_valid_dict())
+		doc.update_children()
 		self._purge_exempt_role()
 		flush_settings_cache()
 		frappe.db.commit()

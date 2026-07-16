@@ -1,12 +1,12 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""P1 battery: install/uninstall guards — the version floor,
-the fresh-install-onto-native-core refusal, the uninstall lockout guards and
-cleanup, and the registry Property Setter lifecycle."""
+"""P1 battery: install/uninstall guards, lifecycle cleanup, and exports."""
 
 import json
 import os
+import stat
+import types
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +14,7 @@ import frappe
 from frappe.utils import cint
 
 from passkeys import install
+from passkeys.patches.v17_0 import fold_nudge_flag_into_enrollment_policy as fold_nudge_patch
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -44,8 +45,113 @@ class TestInstallGuards(IntegrationTestCase):
 		with patch("passkeys.install.is_core_native", return_value=True):
 			self.assertRaises(frappe.ValidationError, install.before_install)
 
+	def test_fresh_install_refuses_partial_native_module_without_handover_marker(self):
+		with (
+			patch("passkeys.install.core_module_present", return_value=True),
+			patch("passkeys.install.is_core_native", return_value=False),
+		):
+			self.assertRaises(frappe.ValidationError, install.before_install)
+
 	def test_before_install_passes_on_this_bench(self):
 		install.before_install()  # must not raise
+
+
+class TestFoldNudgeMigration(unittest.TestCase):
+	def _execute(self, *, current=None, legacy=None, defaults=None):
+		defaults = defaults or {}
+
+		def get_value(_doctype, filters, _field, **_kwargs):
+			field = filters["field"]
+			if field == "passkey_enrollment_nudge":
+				return legacy
+			return defaults.get(field)
+
+		with (
+			patch.object(fold_nudge_patch.install, "is_core_native", return_value=False),
+			patch.object(fold_nudge_patch.install, "ensure_enforcement_defaults") as ensure,
+			patch.object(fold_nudge_patch.frappe.db, "get_single_value", return_value=current),
+			patch.object(fold_nudge_patch.frappe.db, "get_value", side_effect=get_value),
+			patch.object(fold_nudge_patch.frappe.db, "set_single_value") as set_single,
+			patch.object(fold_nudge_patch.frappe.db, "delete") as delete,
+		):
+			fold_nudge_patch.execute()
+		return set_single, delete, ensure
+
+	def test_legacy_zero_and_one_map_to_off_and_nudge(self):
+		for legacy, expected in (("0", "Off"), ("1", "Nudge")):
+			with self.subTest(legacy=legacy):
+				set_single, _delete, _ensure = self._execute(current=None, legacy=legacy)
+				set_single.assert_any_call("Passkey Settings", "passkey_enrollment_policy", expected)
+
+	def test_preselected_policy_is_never_overwritten(self):
+		set_single, delete, _ensure = self._execute(current="Enforce", legacy="1")
+		policy_writes = [
+			call for call in set_single.call_args_list if call.args[1] == "passkey_enrollment_policy"
+		]
+		self.assertEqual(policy_writes, [])
+		delete.assert_called_once_with(
+			"Singles", {"doctype": "Passkey Settings", "field": "passkey_enrollment_nudge"}
+		)
+
+	def test_rerun_with_persisted_values_is_idempotent(self):
+		set_single, delete, ensure = self._execute(
+			current="Nudge", defaults=fold_nudge_patch._ENFORCEMENT_DEFAULTS
+		)
+		set_single.assert_not_called()
+		delete.assert_called_once()
+		ensure.assert_called_once_with()
+
+
+class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
+	def test_real_legacy_singles_row_is_folded_and_removed(self):
+		frappe.db.delete(
+			"Singles",
+			{
+				"doctype": "Passkey Settings",
+				"field": ["in", ["passkey_enrollment_nudge", "passkey_enrollment_policy"]],
+			},
+		)
+		frappe.db.sql(
+			"""insert into `tabSingles` (`doctype`, `field`, `value`)
+			values (%s, %s, %s)""",
+			("Passkey Settings", "passkey_enrollment_nudge", "1"),
+		)
+
+		with (
+			patch.object(fold_nudge_patch.install, "is_core_native", return_value=False),
+			patch.object(fold_nudge_patch.install, "ensure_enforcement_defaults"),
+		):
+			fold_nudge_patch.execute()
+
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy"), "Nudge")
+		self.assertFalse(
+			frappe.db.exists(
+				"Singles",
+				{"doctype": "Passkey Settings", "field": "passkey_enrollment_nudge"},
+			)
+		)
+
+
+class TestCoreHandoverCapability(unittest.TestCase):
+	def tearDown(self):
+		install._CORE_NATIVE = None
+
+	def test_module_presence_without_contract_does_not_make_app_dormant(self):
+		install._CORE_NATIVE = None
+		with (
+			patch("passkeys.install.core_module_present", return_value=True),
+			patch("passkeys.install.importlib.import_module", return_value=types.SimpleNamespace()),
+		):
+			self.assertFalse(install.is_core_native())
+
+	def test_exact_handover_contract_makes_app_dormant(self):
+		install._CORE_NATIVE = None
+		module = types.SimpleNamespace(FRAPPE_PASSKEYS_APP_HANDOVER=install.CORE_HANDOVER_CAPABILITY)
+		with (
+			patch("passkeys.install.core_module_present", return_value=True),
+			patch("passkeys.install.importlib.import_module", return_value=module),
+		):
+			self.assertTrue(install.is_core_native())
 
 
 class TestUninstallGuards(IntegrationTestCase):
@@ -160,7 +266,7 @@ class TestNavbarCleanup(IntegrationTestCase):
 class TestCredentialExportImport(IntegrationTestCase):
 	"""L1: an uninstall exports the credential tables (which it is about to drop) so
 	removal is non-destructive, and a documented console helper restores them
-	idempotently on reinstall — keyed on ``credential_id_sha256``."""
+	idempotently on reinstall while refusing identifier-matched data conflicts."""
 
 	def _make_user(self) -> str:
 		user = make_user()
@@ -194,6 +300,9 @@ class TestCredentialExportImport(IntegrationTestCase):
 		user = self._make_user()
 		cred = make_credential(user, sign_count=7, label="Yubikey 5")
 		make_handle(user)
+		other_user = self._make_user()
+		other_cred = make_credential(other_user)
+		make_handle(other_user)
 
 		path = install.export_credentials(self._export_path())
 		self.assertTrue(os.path.exists(path))
@@ -202,11 +311,12 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.assertEqual(data["schema"], install.CREDENTIAL_EXPORT_SCHEMA)
 		self.assertIn(cred.credential_id_sha256, [c["credential_id_sha256"] for c in data["credentials"]])
 
-		# drop the rows (simulate the uninstall-then-reinstall gap), then restore
+		# Remove only this test user's rows. A shared integration site must never
+		# lose unrelated credentials merely to simulate an empty reinstall.
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertGreaterEqual(summary["credentials_created"], 1)
 		self.assertGreaterEqual(summary["handles_created"], 1)
 		restored = frappe.db.get_value(
@@ -217,6 +327,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		)
 		self.assertEqual(cint(restored.sign_count), 7)  # the counter is restored, never reset
 		self.assertEqual(restored.label, "Yubikey 5")
+		self.assertTrue(frappe.db.exists("WebAuthn Credential", other_cred.name))
 
 	def test_import_is_idempotent(self):
 		user = self._make_user()
@@ -225,11 +336,43 @@ class TestCredentialExportImport(IntegrationTestCase):
 
 		path = install.export_credentials(self._export_path())
 		# the rows are still present → a re-import creates nothing and skips them
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertEqual(summary["credentials_created"], 0)
 		self.assertEqual(summary["handles_created"], 0)
 		self.assertGreaterEqual(summary["credentials_skipped"], 1)
 		self.assertGreaterEqual(summary["handles_skipped"], 1)
+
+	def test_allow_existing_rejects_weaker_existing_credential(self):
+		user = self._make_user()
+		cred = make_credential(user, sign_count=100)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+		frappe.db.set_value("WebAuthn Credential", cred.name, "sign_count", 1, update_modified=False)
+
+		summary = install.import_credentials(path, allow_existing=True)
+
+		self.assertIn(
+			f"credentials: user={user!r}: existing credential conflicts with export",
+			summary["rejected"],
+		)
+		self.assertEqual(cint(frappe.db.get_value("WebAuthn Credential", cred.name, "sign_count")), 1)
+
+	def test_allow_existing_rejects_cleared_passkey_only_flag(self):
+		user = self._make_user()
+		make_credential(user)
+		handle = make_handle(user, passkey_only_login=1)
+		path = install.export_credentials(self._export_path())
+		frappe.db.set_value("WebAuthn User Handle", handle.name, "passkey_only_login", 0)
+
+		summary = install.import_credentials(path, allow_existing=True)
+
+		self.assertIn(
+			f"handles: user={user!r}: existing user handle conflicts with export",
+			summary["rejected"],
+		)
+		self.assertEqual(
+			cint(frappe.db.get_value("WebAuthn User Handle", handle.name, "passkey_only_login")), 0
+		)
 
 	def test_restores_passkey_only_handle(self):
 		# credentials are restored before handles, so a passkey_only_login handle
@@ -242,7 +385,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 
-		install.import_credentials(path)
+		install.import_credentials(path, allow_existing=True)
 		self.assertEqual(
 			cint(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")), 1
 		)
@@ -255,6 +398,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
 		self.assertIn(os.path.join("private", "files"), path)
 		self.assertTrue(path.endswith(".json"))
+		self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
 
 	def test_import_rejects_a_foreign_file(self):
 		path = self._export_path()
@@ -262,9 +406,72 @@ class TestCredentialExportImport(IntegrationTestCase):
 			fh.write('{"schema": "not-a-passkeys-export"}')
 		self.assertRaises(frappe.ValidationError, install.import_credentials, path)
 
-	def _dump(self, data: dict, path: str) -> None:
+	def test_unsigned_legacy_export_requires_explicit_operator_opt_in(self):
+		user = self._make_user()
+		cred = make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+		with open(path) as fh:
+			data = json.load(fh)
+		data["version"] = 1
+		data.pop("signature")
 		with open(path, "w") as fh:
 			fh.write(frappe.as_json(data))
+
+		frappe.db.delete("WebAuthn Credential", {"user": user})
+		frappe.db.delete("WebAuthn User Handle", {"user": user})
+		with self.assertRaises(frappe.ValidationError):
+			install.import_credentials(path, allow_existing=True)
+		summary = install.import_credentials(path, allow_existing=True, allow_unsigned_legacy=True)
+		self.assertEqual(summary["credentials_created"], 1)
+		self.assertTrue(
+			frappe.db.exists("WebAuthn Credential", {"credential_id_sha256": cred.credential_id_sha256})
+		)
+
+	def _dump(self, data: dict, path: str) -> None:
+		data["counts"] = {
+			"credentials": len(data.get("credentials", [])),
+			"user_handles": len(data.get("user_handles", [])),
+		}
+		data["signature"] = {
+			"alg": install.CREDENTIAL_EXPORT_SIGNATURE_ALG,
+			"value": install._export_signature(data),
+		}
+		with open(path, "w") as fh:
+			fh.write(frappe.as_json(data))
+
+	def test_import_rejects_unsigned_tampering(self):
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+		with open(path) as fh:
+			data = json.load(fh)
+		data["credentials"][0]["user"] = "Administrator"
+		with open(path, "w") as fh:
+			fh.write(frappe.as_json(data))
+		with self.assertRaises(frappe.ValidationError):
+			install.import_credentials(path, allow_existing=True)
+
+	def test_import_rejects_a_signed_export_from_another_site(self):
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+		with open(path) as fh:
+			data = json.load(fh)
+		data["site"] = "other.localhost"
+		self._dump(data, path)
+		with self.assertRaises(frappe.ValidationError):
+			install.import_credentials(path, allow_existing=True)
+
+	def test_import_refuses_live_data_merge_by_default(self):
+		user = self._make_user()
+		make_credential(user)
+		make_handle(user)
+		path = install.export_credentials(self._export_path())
+		with self.assertRaises(frappe.ValidationError):
+			install.import_credentials(path)
 
 	def test_import_rejects_rows_for_a_nonexistent_user(self):
 		# A crafted export cannot bind a public key to an account that does not exist.
@@ -283,7 +490,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertEqual(summary["credentials_created"], 0)
 		self.assertEqual(summary["handles_created"], 0)
 		self.assertGreaterEqual(summary["credentials_rejected"], 1)
@@ -301,7 +508,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertEqual(summary["credentials_created"], 0)
 		self.assertGreaterEqual(summary["credentials_rejected"], 1)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
@@ -323,7 +530,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		# drop the exported credential so a rejection means nothing new is bound to victim
 		frappe.db.delete("WebAuthn Credential", {"user": victim})
 
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertEqual(summary["credentials_created"], 0)
 		self.assertGreaterEqual(summary["credentials_rejected"], 1)
 		self.assertGreaterEqual(summary["handles_rejected"], 1)
@@ -357,7 +564,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		frappe.db.delete("WebAuthn Credential", {"user": good})
 		frappe.db.delete("WebAuthn User Handle", {"user": good})
 
-		summary = install.import_credentials(path)
+		summary = install.import_credentials(path, allow_existing=True)
 		self.assertGreaterEqual(summary["credentials_created"], 1)
 		self.assertGreaterEqual(summary["handles_created"], 1)
 		self.assertGreaterEqual(summary["credentials_rejected"], 1)
@@ -366,51 +573,41 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": ghost}))
 
 
-class TestRegistryPropertySetter(IntegrationTestCase):
-	"""Programmatic, module-tagged, guard-keyed — never a fixtures/ fixture."""
+class TestLegacyRegistryPropertySetterCleanup(IntegrationTestCase):
+	"""An obsolete development-build customization is removed, never created."""
 
 	def _setter_exists(self):
 		return frappe.db.exists("Property Setter", install._registry_property_setter_filters())
 
 	def tearDown(self):
-		install._remove_registry_property_setter()
+		install.cleanup_legacy_registry_property_setter()
 		super().tearDown()
 
-	def test_absent_by_default(self):
-		# no released branch has the Stage-1 registry symbol
-		self.assertFalse(install.two_factor_registry_available())
-		install.sync_registry_fixture()
-		self.assertFalse(self._setter_exists())
-
-	def test_created_when_registry_present_and_removed_when_gone(self):
-		with patch("passkeys.install.two_factor_registry_available", return_value=True):
-			install.sync_registry_fixture()
-
-		name = self._setter_exists()
-		self.assertTrue(name)
-		row = frappe.db.get_value("Property Setter", name, ["value", "module"], as_dict=True)
-		self.assertIn("Passkey", row.value.split("\n"))
-		self.assertEqual(row.module, "Passkeys")
-
-		# guard false again (downgrade/revert) → removed
-		install.sync_registry_fixture()
-		self.assertFalse(self._setter_exists())
-
-	def test_never_created_when_core_native(self):
-		with (
-			patch("passkeys.install.two_factor_registry_available", return_value=True),
-			patch("passkeys.install.is_core_native", return_value=True),
-		):
-			install.sync_registry_fixture()
+	def test_cleanup_is_idempotent(self):
+		field = frappe.get_meta("System Settings").get_field("two_factor_method")
+		frappe.get_doc(
+			{
+				"doctype": "Property Setter",
+				"doctype_or_field": "DocField",
+				"doc_type": "System Settings",
+				"field_name": "two_factor_method",
+				"property": "options",
+				"property_type": "Text",
+				"value": f"{field.options}\nPasskey",
+				"module": "Passkeys",
+			}
+		).insert(ignore_permissions=True)
+		self.assertTrue(self._setter_exists())
+		install.cleanup_legacy_registry_property_setter()
+		install.cleanup_legacy_registry_property_setter()
 		self.assertFalse(self._setter_exists())
 
 
 class TestUserFormSection(IntegrationTestCase):
 	"""The User-form "Passkeys" section is placed DETERMINISTICALLY via programmatic
 	Custom Fields (Section Break + HTML wrapper) right after the password / security
-	area — not a dashboard section appended at the end. Lifecycle mirrors the registry
-	Property Setter: install adds, after_migrate syncs (dropped when core-native),
-	before_uninstall removes."""
+	area — not a dashboard section appended at the end. Install adds, after_migrate
+	syncs (dropped when core-native), and before_uninstall removes."""
 
 	def tearDown(self):
 		install._remove_user_form_section()

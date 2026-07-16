@@ -345,7 +345,14 @@ def _grant_token() -> str | None:
 	return form.get(GRANT_KWARG) if form is not None else None
 
 
-def _raise_confirmation_required(action: str, *, methods: list[str], payload_fingerprint=None) -> None:
+def _raise_confirmation_required(
+	action: str,
+	*,
+	methods: list[str],
+	payload_fingerprint=None,
+	action_label: str | None = None,
+	parameter_summary: list[dict] | None = None,
+) -> None:
 	"""Emit the typed-error wire contract: structured keys ride
 	``frappe.local.response`` (survive into the JSON error body); clients match
 	on ``exc_type`` only."""
@@ -354,4 +361,8 @@ def _raise_confirmation_required(action: str, *, methods: list[str], payload_fin
 	frappe.local.response["action"] = action
 	frappe.local.response["payload_fingerprint"] = payload_fingerprint
 	frappe.local.response["methods"] = methods
+	if action_label:
+		frappe.local.response["action_label"] = action_label
+	if parameter_summary:
+		frappe.local.response["parameter_summary"] = parameter_summary
 	raise PasskeyConfirmationRequired(frappe._("Confirm it's you to manage passkeys."))

@@ -26,15 +26,19 @@ CEREMONY_TTL = 300
 CONFIRM_CEREMONY_TTL = 180
 UV_SETUP_TTL = 180
 GRANT_TTL = 180
+OTP_FALLBACK_TTL = CEREMONY_TTL
 PASSWORD_FAILURE_TTL = 900
 PASSWORD_FAILURE_LIMIT = 5
+ENFORCEMENT_DEFER_TTL = 30 * 24 * 60 * 60
 
 CEREMONY_PREFIX = "passkeys:ceremony:"
 SUDO_PREFIX = "passkeys:sudo:"
 GRANT_PREFIX = "passkeys:grant:"
 UV_SETUP_PREFIX = "passkeys:uvsetup:"
+OTP_FALLBACK_PREFIX = "passkeys:otp-fallback:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
 RATE_LIMIT_PREFIX = "passkeys:ratelimit:"
+ENFORCEMENT_DEFER_PREFIX = "passkeys:enforcement-defer:"
 
 # Guest-ceremony browser binder. Ephemeral cookie; the ceremony record
 # stores only sha256(value). Max-Age = 2x ceremony TTL (sliding), so a slow
@@ -75,6 +79,30 @@ def store_uv_setup(record: dict, ttl: int = UV_SETUP_TTL) -> str:
 
 def consume_uv_setup(setup_id: str) -> dict | None:
 	return _consume_json(UV_SETUP_PREFIX + setup_id)
+
+
+def get_uv_setup(setup_id: str) -> dict | None:
+	"""Read a UV setup without consuming it.
+
+	Wrong password attempts remain retryable (subject to the password throttle);
+	the record is atomically consumed only after a correct password.
+	"""
+	raw = frappe.cache.get(_make_key(UV_SETUP_PREFIX + setup_id))
+	return json.loads(raw) if raw is not None else None
+
+
+def store_otp_fallback(tmp_id: str, record: dict, ttl: int = OTP_FALLBACK_TTL) -> None:
+	"""Authorize exactly one core-OTP completion initiated by this app.
+
+	Core's public login endpoint can otherwise complete OTP directly and bypass the
+	passkey second-factor route. The marker is keyed by core's own ``tmp_id`` and is
+	consumed by the final ``on_login`` hook only after core has accepted the OTP.
+	"""
+	_put_json(OTP_FALLBACK_PREFIX + tmp_id, record, ttl)
+
+
+def consume_otp_fallback(tmp_id: str) -> dict | None:
+	return _consume_json(OTP_FALLBACK_PREFIX + tmp_id)
 
 
 def store_grant(token_hash: str, record: dict, ttl: int = GRANT_TTL) -> None:
@@ -139,6 +167,19 @@ def is_password_throttled(user: str) -> bool:
 
 def clear_password_failures(user: str) -> None:
 	clear_counter(PASSWORD_FAILURE_PREFIX + user)
+
+
+def claim_enforcement_defer(user: str, sid: str) -> bool:
+	"""Return true once per user/session, atomically across workers."""
+	digest = hashlib.sha256(f"{user}\x00{sid}".encode()).hexdigest()
+	return bool(
+		frappe.cache.set(
+			_make_key(ENFORCEMENT_DEFER_PREFIX + digest),
+			b"1",
+			ex=ENFORCEMENT_DEFER_TTL,
+			nx=True,
+		)
+	)
 
 
 def rate_limit_user(name: str, limit: int, ttl: int) -> None:

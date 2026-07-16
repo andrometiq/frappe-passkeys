@@ -7,6 +7,22 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 
+def lock_passkey_mode_floor() -> bool:
+	"""Lock the Single DocType rows shared by mode-off saves and flag enables.
+
+	The lock lives until the surrounding transaction commits or rolls back. Both
+	writers take it before any handle/credential lock, preventing the two valid
+	pre-state reads from committing an invalid modes-off + passkey-only state.
+	"""
+	rows = frappe.db.sql(
+		"SELECT `field`, `value` FROM `tabSingles` WHERE `doctype` = %s FOR UPDATE",  # nosemgrep
+		("Passkey Settings",),
+		as_dict=True,
+	)
+	values = {row.field: row.value for row in rows}
+	return bool(cint(values.get("login_with_passkey")) or cint(values.get("passkey_as_second_factor")))
+
+
 def lock_login_floor(user: str) -> tuple[int, list[str]]:
 	"""Serialize every writer of the lockout invariant — ``passkey_only_login = 1
 	⇒ ≥1 enabled credential`` — and return both of its sides, freshly read under
@@ -61,6 +77,8 @@ class WebAuthnUserHandle(Document):
 			return
 		if not self.is_new() and cint(self._previous_values().passkey_only_login):
 			return
+		if not lock_passkey_mode_floor():
+			frappe.throw(_("Passkey-only login requires at least one passkey login mode to be enabled."))
 		if not lock_login_floor(self.user)[1]:
 			frappe.throw(
 				_("Passkey-only login requires at least one enabled passkey for user {0}.").format(self.user)
