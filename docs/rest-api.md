@@ -66,7 +66,7 @@ Source: `passkeys/passkey.py:begin_login`. Rate limit: **30 / 60 s / IP**. Guest
       "modes": { "first_factor": true, "second_factor": false },
       "state_id": "<opaque>",
       "options": { "challenge": "<b64url>", "rpId": "example.com",
-                   "userVerification": "preferred", "allowCredentials": [], "timeout": 60000 }
+                   "userVerification": "preferred", "allowCredentials": [], "timeout": 300000 }
     }
   }
   ```
