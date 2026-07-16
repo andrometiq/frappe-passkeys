@@ -214,12 +214,20 @@ passkeys:   from passkeys.install import import_credentials; import_credentials(
 ```bash
 bench --site <site> install-app passkeys
 bench --site <site> console
+>>> import frappe
+>>> # If the export contains passkey-only users, enable a passkey login mode FIRST —
+>>> # otherwise the restore refuses (those users would be locked out) and, if the site
+>>> # had none enabled, no passkey login could work post-restore anyway:
+>>> frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+>>> frappe.db.commit()
 >>> from passkeys.install import import_credentials
 >>> import_credentials("sites/<site>/private/files/passkeys-credentials-<timestamp>.json")
 {'credentials_created': 4, 'credentials_skipped': 0, 'handles_created': 3, 'handles_skipped': 0}
 ```
 
-By default, `import_credentials` requires **both passkey tables to be empty**. This makes an
+The enable-a-mode step is only required when the export carries *Passkey Only Login* users; for a
+plain restore it is harmless (re-enabling the mode you were already running). By default,
+`import_credentials` requires **both passkey tables to be empty**. This makes an
 accidental import into a live credential set fail before merging anything. `allow_existing=True` is
 an explicit, operator-reviewed merge mode, not an idempotency convenience: inspect handle ownership
 and credential conflicts before using it. Matching rows are skipped, inconsistent or disabled-user
