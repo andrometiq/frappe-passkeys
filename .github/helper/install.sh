@@ -89,6 +89,13 @@ bench new-site test_site \
 
 bench --site test_site set-config allow_tests 1 --parse
 bench --site test_site set-config host_name "http://test_site:8000"
+# Passkeys now require a site encryption_key to enable a login mode (export
+# signing / password-version HMAC). Minimal new-site environments do not create
+# one until an encrypted feature is first used, so set it explicitly — the same
+# deployment prerequisite the lifecycle gate makes explicit.
+encryption_key="$(~/frappe-bench/env/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+bench --site test_site set-config encryption_key "$encryption_key"
+unset encryption_key
 
 bench --site test_site install-app passkeys
 echo "::endgroup::"
