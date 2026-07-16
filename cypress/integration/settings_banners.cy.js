@@ -35,7 +35,7 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 		cy.visit("/app/passkey-settings");
 		cy.get(".form-dashboard", { timeout: 20000 }).should("exist");
 		cy.get("[data-fieldname='passkey_rp_id']", { timeout: 20000 })
-			.should("contain.text", "changing the RP ID invalidates every enrolled passkey");
+			.should("contain.text", "Changing the RP ID invalidates every existing passkey");
 	});
 
 	it("warns when change notifications are turned off while a mode is on", () => {
