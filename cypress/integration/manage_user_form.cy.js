@@ -54,6 +54,7 @@ chromium_only("passkey management — User form", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.setup_passkey_settings();
+			cy.clear_user_rate_limits(USER); // start from a clean per-user rate-limit budget
 			cy.purge_server_passkeys(USER);
 		});
 
@@ -128,6 +129,7 @@ chromium_only("passkey management — User form", () => {
 		beforeEach(() => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
+			cy.clear_user_rate_limits(USER); // each test starts from a clean per-user rate-limit budget
 			cy.purge_server_passkeys(USER);
 			cy.clear_virtual_credentials();
 			cy.register_passkey(USER, PW());

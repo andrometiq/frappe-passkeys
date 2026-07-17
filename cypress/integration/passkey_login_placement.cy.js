@@ -15,6 +15,7 @@ chromium_only("passkey login DOM contract", () => {
 	before(() => {
 		cy.login(USER, PW());
 		cy.setup_passkey_settings();
+		cy.clear_guest_ceremony_rate_limit(); // clean IP ceremony budget for this spec
 	});
 
 	after(() => cy.clearCookies());

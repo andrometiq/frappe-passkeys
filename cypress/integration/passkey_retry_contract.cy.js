@@ -18,6 +18,7 @@ chromium_only("passkey login retry contract", () => {
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
+		cy.clear_guest_ceremony_rate_limit(); // clean IP ceremony budget for this spec
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
 	});

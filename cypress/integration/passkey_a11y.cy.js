@@ -16,6 +16,7 @@ chromium_only("passkey login accessibility", () => {
 		cy.enable_virtual_authenticator();
 		cy.login(USER, PW());
 		cy.setup_passkey_settings();
+		cy.clear_guest_ceremony_rate_limit(); // clean IP ceremony budget for this spec
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
 		// Register leaves the user authenticated; log out so the guest /login page

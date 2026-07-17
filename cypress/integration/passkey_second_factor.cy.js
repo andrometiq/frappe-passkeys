@@ -42,6 +42,7 @@ chromium_only("password → passkey second factor", () => {
 		cy.visit_desk("Administrator");
 		cy.setup_second_factor({ first_factor: false, otp_fallback: true });
 		cy.enroll_user_2fa(SF_USER);
+		cy.clear_guest_ceremony_rate_limit(); // clean IP ceremony budget for this spec (still admin)
 		cy.call("logout");
 	});
 
