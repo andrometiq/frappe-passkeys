@@ -175,6 +175,45 @@ Cypress.Commands.add("server_logout", (attempt = 0) =>
 	})
 );
 
+// Wipe EVERY server-side session (tabSessions row + redis cache entry) on the
+// test site — the server half of test isolation. Cypress testIsolation clears
+// only the CLIENT jar; stacked cy.login calls (register_passkey's re-login)
+// orphan server sessions no client-side logout can end, and /login redirects
+// on the SERVER store, so one re-presented stale sid sends a login-page spec
+// to the desk (the passkey_a11y CI failure). After the wipe every such sid is
+// inert no matter which jar layer or straggler response re-presents it. The
+// helper is flag-gated server-side (passkeys_deterministic_test_cookies, or
+// developer_mode + allow_tests): on an unflagged site this fails LOUDLY here
+// rather than letting specs flake downstream. Retries transient 5xx like
+// server_logout above — the wipe touches tabSessions harder than the single-row
+// delete that already 508s on CI's constrained MariaDB — while a non-5xx
+// failure (e.g. the missing-flag 417) still fails immediately and by name.
+Cypress.Commands.add("clear_all_test_sessions", (attempt = 0) =>
+	csrf_for_call().then((csrf_token) => {
+		const headers = { Accept: "application/json" };
+		if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
+		return cy
+			.request({
+				url: "/api/method/passkeys.tests.ui_test_helpers.clear_all_test_sessions",
+				method: "POST",
+				headers,
+				failOnStatusCode: false,
+				log: false,
+			})
+			.then((res) => {
+				if (res.status >= 500 && attempt < 2) {
+					return cy
+						.wait(250, { log: false })
+						.then(() => cy.clear_all_test_sessions(attempt + 1));
+				}
+				expect(res.status, "clear_all_test_sessions status").to.eq(200);
+				const message = res.body && res.body.message;
+				expect(message && message.remaining, "server sessions remaining after wipe").to.eq(0);
+				return message;
+			});
+	})
+);
+
 // ---------------------------------------------------------------------------
 // App helpers
 // ---------------------------------------------------------------------------
@@ -204,30 +243,38 @@ Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
 // state such as preferred_language survives.
 Cypress.Commands.add("visit_login", (options = {}) => {
 	return cy.getCookie("preferred_language", { log: false }).then((language) => {
-		// Guarantee a GUEST *server session* before visiting /login. The first test in
-		// a describe inherits the authenticated session its before() hook established
-		// (Cypress test isolation resets state before before(), not between before()
-		// and test 1), and the desk page from before() is still loaded, firing
-		// background authenticated XHRs. Frappe re-issues `Set-Cookie: sid` on every
-		// such response (auth.py init_cookies), so on a slow/loaded CI runner a
-		// straggler response can re-install a still-valid sid in the window between
-		// clearing cookies and the /login GET. /login decides the redirect against the
-		// server session store (login.py: `if session.user != "Guest"`), not cookie
-		// presence, so it then 302s to /desk and the login form never renders — CI-only,
-		// green locally where the desk quiesces instantly. Deleting the session record
-		// (server_logout — a POST with the session CSRF token) makes any re-seeded sid
-		// inert, so /login always shows the form. On flagged test sites the
-		// passkeys_deterministic_test_cookies hook (passkeys/cookie_determinism.py)
-		// additionally strips stale re-seeds server-side — including sids of OTHER
-		// still-valid sessions this logout cannot end (see sid_reseed_race.cy.js);
-		// server_logout stays as the belt-and-braces layer for unflagged sites.
-		// clearCookies below is only tidy-up.
+		// Guarantee a GUEST *server session* before visiting /login. /login decides
+		// its redirect against the SERVER session store (login.py: `if session.user
+		// != "Guest"`), not cookie presence, while Cypress test isolation clears only
+		// the CLIENT jar. Three layers, each covering a hole the others cannot:
+		//   1. server_logout — ends the CURRENT session with its CSRF token; also the
+		//      only layer that works on sites without the deterministic-test flag.
+		//   2. clear_all_test_sessions — wipes EVERY server session (DB row + redis
+		//      cache), including sessions ORPHANED by stacked cy.login calls
+		//      (register_passkey's re-login) that no client-side logout can reach.
+		//      Whatever sid a lazily-synced jar layer or straggler response then
+		//      re-presents is dead, which makes the /desk-resurrect class
+		//      (passkey_a11y on CI) structurally impossible rather than unlikely.
+		//   3. the passkeys_deterministic_test_cookies after_request hook
+		//      (passkeys/cookie_determinism.py) — strips in-flight stale sid
+		//      re-seeds, covering the cookie-level race window (both directions;
+		//      see sid_reseed_race.cy.js).
+		// The trailing location assertion turns any residual leak into an immediate,
+		// named failure at this choke point instead of a cryptic missing-element
+		// timeout in whichever spec runs next.
 		cy.server_logout();
 		cy.clearCookies({ log: false });
+		cy.clear_all_test_sessions();
 		if (language && language.value) {
 			cy.setCookie("preferred_language", language.value, { log: false });
 		}
-		return cy.visit("/login", options);
+		cy.visit("/login", options);
+		return cy.location("pathname", { log: false }).should((pathname) => {
+			expect(
+				pathname,
+				"visit_login must land on the guest login form — a stale server session leaked (see clear_all_test_sessions)"
+			).to.eq("/login");
+		});
 	});
 });
 
