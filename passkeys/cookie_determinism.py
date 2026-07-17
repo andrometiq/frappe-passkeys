@@ -46,12 +46,16 @@ On the every-request hook path: imports only the stdlib and ``frappe``.
 from urllib.parse import unquote
 
 import frappe
+from frappe.utils import cint
 
 
 def strip_stale_sid_reseed(response=None, request=None) -> None:
 	"""``after_request`` hook: drop pending stale sid re-seeds on test sites."""
 	conf = getattr(frappe.local, "conf", None)
-	if not conf or not conf.get("passkeys_deterministic_test_cookies"):
+	# cint, not bare truthiness: `set-config <flag> 0` without --parse stores the
+	# STRING "0", and a truthy read would leave the hook (and the test helpers
+	# gated on the same flag) enabled while the operator believes it is off.
+	if not conf or not cint(conf.get("passkeys_deterministic_test_cookies")):
 		return
 	cookies = getattr(getattr(frappe.local, "cookie_manager", None), "cookies", None)
 	if not cookies or "sid" not in cookies:

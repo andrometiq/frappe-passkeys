@@ -4,10 +4,12 @@
 """Whitelisted helpers the Cypress login specs (`cypress/integration/*.cy.js`)
 call via ``cy.call`` to set up + tear down server state on the shared UI-test
 site. Mirrors ``frappe/tests/ui_test_helpers.py``: POST-only and admin-only,
-with explicit test-site configuration required outside the test runner. The one
-exception is ``slow_guest_echo`` (guest + GET), needed to pin the sid re-seed
-race; it is kept safe by flag-gating + a capped no-op body (see its docstring
-and ``test_all_test_helper_whitelists_are_post_only``).
+with explicit test-site configuration required outside the test runner. Two
+documented exceptions are guest-callable: ``slow_guest_echo`` (guest + GET),
+needed to pin the sid re-seed race, and ``clear_all_test_sessions`` (guest +
+POST), the server half of test isolation — both kept safe by flag-gating +
+bodies that expose nothing (see their docstrings and
+``test_all_test_helper_whitelists_are_post_only``).
 
 These are the app's **test scaffolding only** — they fold away with the
 ``shims/`` on the core merge. They set Passkey Settings values **directly**
@@ -431,6 +433,61 @@ def confirm_probe_failing(token=None):
 	frappe.throw("intentional post-consume failure (A-F20 probe)", frappe.ValidationError)
 
 
+def _require_deterministic_test_site(caller: str) -> None:
+	"""Shared gate for the guest-callable helpers: require the deterministic-cookie
+	site flag OR a developer_mode+allow_tests site. ``_guard``'s ``only_for`` is
+	useless here — the callers are deliberately Guest — and the looser half exists
+	so a control run can exercise the raw races with the hook off. ``cint`` on
+	every read — `set-config <flag> 0` without --parse stores the STRING "0",
+	and a bare-truthy read would keep these guest endpoints enabled while the
+	operator believes the flag is off (mirrors ``cookie_determinism.py``)."""
+	if not (
+		cint(frappe.conf.get("passkeys_deterministic_test_cookies"))
+		or (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests")))
+	):
+		frappe.throw(
+			f"{caller} requires the passkeys_deterministic_test_cookies site flag",
+			frappe.ValidationError,
+		)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def clear_all_test_sessions() -> dict:
+	"""Delete EVERY server-side session — ``tabSessions`` row AND redis cache
+	entry — so the next /login visit is deterministically Guest.
+
+	/login decides its redirect against the SERVER session store
+	(``frappe/www/login.py``: ``if frappe.session.user != "Guest"``), while
+	Cypress test isolation clears only the CLIENT jar. Stacked ``cy.login``
+	calls (e.g. ``register_passkey``'s re-login) orphan server sessions that no
+	client-side logout can end; if any layer of the lazily-synced cookie jar
+	then re-presents such a sid, /login 302s to the desk and a login-page spec
+	fails (the ``passkey_a11y`` CI signature). ``visit_login`` calls this after
+	clearing cookies, which kills the whole class at the substrate: a dead sid
+	is inert no matter which jar layer or straggler response re-presents it.
+
+	Guest-callable (the second documented ``allow_guest`` helper after
+	:func:`slow_guest_echo`; POST-only, so the whitelist guardrail still holds):
+	the caller has just cleared its cookies, so ``only_for`` would see Guest.
+	Safety = the same flag gate as ``slow_guest_echo`` plus a body that can only
+	log users out. Uses core's ``delete_session`` (DB row + cache entry +
+	commit) because session resolution reads the CACHE first
+	(``frappe/sessions.py``) — both stores must go. The final
+	``set_user("Guest")`` keeps this request's own teardown
+	(``Session.update`` via ``request.after_response``) from re-seeding the
+	wiped store out of its in-memory session copy on the cache-miss path
+	(``_update_in_cache`` forces a write-back even for a fresh session)."""
+	_require_deterministic_test_site("clear_all_test_sessions")
+	from frappe.sessions import delete_session
+
+	sids = frappe.qb.from_("Sessions").select("sid").run(pluck=True)
+	for sid in sids:
+		delete_session(sid, reason="Cleared for UI test isolation")
+	frappe.set_user("Guest")
+	remaining = len(frappe.qb.from_("Sessions").select("sid").run(pluck=True))
+	return {"cleared": len(sids), "remaining": remaining}
+
+
 @frappe.whitelist(allow_guest=True)
 def slow_guest_echo(delay: float = 1.5) -> dict:
 	"""A deliberately slow no-op, used by ``sid_reseed_race.cy.js`` to make the
@@ -445,13 +502,6 @@ def slow_guest_echo(delay: float = 1.5) -> dict:
 	looser half exists so a control run can reproduce the race with the hook
 	off; the sleep is capped so even a misconfigured site is not a useful
 	stall primitive."""
-	if not (
-		frappe.conf.get("passkeys_deterministic_test_cookies")
-		or (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests")))
-	):
-		frappe.throw(
-			"slow_guest_echo requires the passkeys_deterministic_test_cookies site flag",
-			frappe.ValidationError,
-		)
+	_require_deterministic_test_site("slow_guest_echo")
 	time.sleep(min(float(delay), 5.0))
 	return {"ok": 1, "user": frappe.session.user}

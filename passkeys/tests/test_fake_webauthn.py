@@ -221,10 +221,14 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		# precisely a late-arriving cross-auth-state response. It is safe despite
 		# that: flag-gated (see test_slow_guest_echo_is_flag_gated), a capped
 		# no-op with no side effects, exposing nothing beyond the caller's own
-		# session user. EVERY other test helper must stay POST-only + admin-only.
-		# This asserts that invariant structurally (the set of non-POST-only
-		# helpers is exactly the documented exceptions) so it neither rots on a
-		# magic count nor silently admits a new guest/GET helper.
+		# session user. clear_all_test_sessions is also guest-callable (the
+		# caller has just cleared its cookies) but stays POST-only, so it is NOT
+		# an exception here; its safety is the same flag gate + a body that can
+		# only log users out. EVERY other test helper must stay POST-only +
+		# admin-only. This asserts that invariant structurally (the set of
+		# non-POST-only helpers is exactly the documented exceptions) so it
+		# neither rots on a magic count nor silently admits a new guest/GET
+		# helper.
 		documented_exceptions = {ui_test_helpers.slow_guest_echo}
 		helpers = {
 			fn
@@ -240,6 +244,21 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 			documented_exceptions,
 			"a test helper is not POST-only and is not a documented exception",
 		)
+		# Pin the GUEST axis too — it is the more dangerous one. Exactly two
+		# helpers may be guest-callable: slow_guest_echo (the race pin) and
+		# clear_all_test_sessions (the server half of test isolation; its
+		# caller has just cleared its cookies). Any new allow_guest helper must
+		# be documented here or this fails.
+		documented_guest_exceptions = {
+			ui_test_helpers.slow_guest_echo,
+			ui_test_helpers.clear_all_test_sessions,
+		}
+		guest_helpers = {fn for fn in helpers if fn in frappe.guest_methods}
+		self.assertEqual(
+			guest_helpers,
+			documented_guest_exceptions,
+			"a test helper is guest-callable and is not a documented exception",
+		)
 
 	def test_slow_guest_echo_is_flag_gated(self):
 		# The one guest-callable helper must be inert on any site that lacks the
@@ -251,6 +270,43 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		):
 			with self.assertRaisesRegex(frappe.ValidationError, "passkeys_deterministic_test_cookies"):
 				ui_test_helpers.slow_guest_echo(delay=0)
+
+	def test_clear_all_test_sessions_is_flag_gated(self):
+		# The session-wipe helper is guest-callable; off a flagged test site it
+		# must refuse, so a production site can never be mass-logged-out by a
+		# guest POST. The STRING "0" case is load-bearing: `set-config <flag> 0`
+		# without --parse stores a string, and a bare-truthy gate would keep the
+		# endpoint enabled while the operator believes the flag is off.
+		for off in (0, "0"):
+			with self.subTest(flag=off):
+				with patch.dict(
+					frappe.conf,
+					{"passkeys_deterministic_test_cookies": off, "developer_mode": off, "allow_tests": off},
+				):
+					with self.assertRaisesRegex(
+						frappe.ValidationError, "passkeys_deterministic_test_cookies"
+					):
+						ui_test_helpers.clear_all_test_sessions()
+
+	def test_clear_all_test_sessions_wipes_db_and_cache(self):
+		# A live server session must be dead in BOTH stores after the wipe —
+		# resolution reads the cache first (frappe/sessions.py), so a cache
+		# survivor would keep authenticating /login visits.
+		sid = frappe.generate_hash()
+		Sessions = frappe.qb.DocType("Sessions")
+		(
+			frappe.qb.into(Sessions)
+			.columns(Sessions.sid, Sessions.user, Sessions.sessiondata, Sessions.lastupdate, Sessions.status)
+			.insert((sid, "Administrator", "{}", frappe.utils.now(), "Active"))
+		).run()
+		frappe.cache.hset("session", sid, {"user": "Administrator", "data": {"user": "Administrator"}})
+		self.addCleanup(frappe.set_user, "Administrator")
+		self.addCleanup(frappe.cache.hdel, "session", sid)
+		with patch.dict(frappe.conf, {"passkeys_deterministic_test_cookies": 1}):
+			out = ui_test_helpers.clear_all_test_sessions()
+		self.assertEqual(out["remaining"], 0)
+		self.assertIsNone(frappe.cache.hget("session", sid))
+		self.assertFalse(frappe.qb.from_(Sessions).select(Sessions.sid).where(Sessions.sid == sid).run())
 
 	def test_confirmation_probes_run_test_guard_before_confirmation(self):
 		probes = (
