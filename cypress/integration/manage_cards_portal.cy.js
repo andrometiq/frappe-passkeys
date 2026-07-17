@@ -17,6 +17,7 @@ chromium_only("passkey management — portal /passkeys", () => {
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
+		cy.clear_user_rate_limits(USER); // start from a clean per-user rate-limit budget
 		cy.purge_server_passkeys(USER);
 	});
 

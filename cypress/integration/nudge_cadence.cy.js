@@ -38,6 +38,10 @@ chromium_only("passkey enrollment nudge — cadence", () => {
 
 	beforeEach(() => {
 		cy.login(USER, PW());
+		// Each test fires record_nudge (shown/declined/opt_out); across a full
+		// suite + reruns the 30/hr/user budget fills and record_nudge 429s. Start
+		// each test from a clean per-user budget.
+		cy.clear_user_rate_limits(USER);
 		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 0 });
 	});
 
@@ -77,8 +81,10 @@ chromium_only("passkey enrollment nudge — cadence", () => {
 		});
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
-		// give the boot nudge check time to run and NOT open a dialog
-		cy.wait(1500);
+		// Wait for the boot nudge DECISION to complete (deterministic signal set
+		// whichever way it decides — passkey_desk.bundle.js markNudgeEvaluated),
+		// then assert it chose NOT to open the dialog. No arbitrary settle timer.
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
 		cy.get(".modal-dialog .modal-title:contains('Sign in faster next time')").should("not.exist");
 	});
 
@@ -86,7 +92,7 @@ chromium_only("passkey enrollment nudge — cadence", () => {
 		cy.call(SEED_NUDGE, { declines: 3, last_shown: null, opt_out: 0 });
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
-		cy.wait(1500);
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
 		cy.get(".modal-dialog .modal-title:contains('Sign in faster next time')").should("not.exist");
 	});
 });

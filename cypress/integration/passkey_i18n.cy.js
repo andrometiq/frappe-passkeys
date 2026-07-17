@@ -18,6 +18,7 @@ chromium_only("passkey guest i18n", () => {
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
+		cy.clear_guest_ceremony_rate_limit(); // clean IP ceremony budget for this spec
 		// Guest language resolves from the preferred_language cookie.
 		cy.call("logout");
 	});
