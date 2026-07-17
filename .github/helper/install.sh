@@ -98,7 +98,10 @@ bench --site test_site set-config passkeys_deterministic_test_cookies 1 --parse
 # one until an encrypted feature is first used, so set it explicitly — the same
 # deployment prerequisite the lifecycle gate makes explicit.
 encryption_key="$(~/frappe-bench/env/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-bench --site test_site set-config encryption_key "$encryption_key"
+# `--` ends click option parsing: Fernet keys are urlsafe base64, so ~1/64 of
+# them start with `-` and would otherwise be parsed as an option cluster
+# ("Error: No such option: -R"), randomly failing the run.
+bench --site test_site set-config encryption_key -- "$encryption_key"
 unset encryption_key
 
 bench --site test_site install-app passkeys
