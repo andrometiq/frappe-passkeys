@@ -89,6 +89,10 @@ bench new-site test_site \
 
 bench --site test_site set-config allow_tests 1 --parse
 bench --site test_site set-config host_name "http://test_site:8000"
+# Deterministic sid cookies for the Cypress suite: drop stale Set-Cookie sid
+# re-seeds so straggler responses cannot rewrite the browser's auth state
+# mid-test (the CI-only login/session races). See passkeys/cookie_determinism.py.
+bench --site test_site set-config passkeys_deterministic_test_cookies 1 --parse
 # Passkeys now require a site encryption_key to enable a login mode (export
 # signing / password-version HMAC). Minimal new-site environments do not create
 # one until an encrypted feature is first used, so set it explicitly — the same
