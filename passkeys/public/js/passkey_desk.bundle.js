@@ -632,6 +632,16 @@
 	// ============================================================ nudges
 	function boot() { return (window.frappe && frappe.boot && frappe.boot.passkeys) || null; }
 
+	function markNudgeEvaluated() {
+		// Deterministic "the boot enforcement/upsell/nudge decision has run" signal,
+		// set whatever the outcome (shown or not). Mirrors data-passkeys-second-factor-ready
+		// (passkey_login.bundle.js): lets specs anchor prove-absence assertions on the
+		// decision point instead of an arbitrary settle timer. Inert in production.
+		try {
+			document.documentElement.setAttribute("data-passkeys-nudge-evaluated", "true");
+		} catch (e) {}
+	}
+
 	function maybeNudge() {
 		var b = boot();
 		if (!b) return; // no bootinfo contract yet ⇒ safe no-op (server dependency)
@@ -661,7 +671,7 @@
 			var d = M.nudgeDecision(b, clientCaps, Date.now());
 			if (d.allowConditionalCreate) { conditionalCreate(); return; }
 			if (d.showNudge) showNudgeDialog(b, false);
-		}).catch(function () {});
+		}).then(markNudgeEvaluated, markNudgeEvaluated);
 	}
 
 	// getClientCapabilities().conditionalCreate — the only reliable signal for the
@@ -910,12 +920,32 @@
 	if (!window.frappe.ui.passkey.manage) window.frappe.ui.passkey.manage = manage;
 
 	// ------------------------------------------------------------- desk boot
+	// The nudge is a frappe.ui.Dialog, so it becomes `cur_dialog`. Frappe's route
+	// transition (frappe/views/container.js change_to) hides `cur_dialog` on every
+	// page render unless it is keep_open — and `frappe.after_ajax(onReady)` can
+	// fire BEFORE the landing route's initial render on a slow/loaded boot. A nudge
+	// opened in that window is torn straight back down by the render, and its
+	// hide.bs.modal handler records a decline the user never made (observed as a
+	// flaky "nudge never appeared" — the modal shows then the page render hides it).
+	// So defer the nudge until the landing page has rendered: show now if the
+	// container already holds a page, else on the next page-change. Real user
+	// navigation still closes it (that IS a decline); only the boot render is dodged.
+	function nudgeAfterInitialRender() {
+		if (window.frappe && frappe.container && frappe.container.page) {
+			maybeNudge();
+		} else if (window.jQuery) {
+			jQuery(document).one("page-change", function () { maybeNudge(); });
+		} else {
+			maybeNudge();
+		}
+	}
+
 	function onReady() {
 		var b = boot();
 		// Management surfaces gate on ANY passkey mode: both modes off
 		// (or a dormant/uninstalled app ⇒ no bootinfo) ⇒ the UI removes itself.
 		if (!b || b.enabled === false) return;
-		maybeNudge();
+		nudgeAfterInitialRender();
 		refreshSignalsInSession();
 	}
 	if (window.frappe && frappe.router && frappe.after_ajax) frappe.after_ajax(onReady);
