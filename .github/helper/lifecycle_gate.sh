@@ -21,7 +21,10 @@ bench --site "$site" set-config allow_tests 1 --parse
 # minimal new-site environments do not create one until an encrypted feature is
 # first used, so make this deployment prerequisite explicit in the lifecycle gate.
 encryption_key="$("$bench_dir/env/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-bench --site "$site" set-config encryption_key "$encryption_key"
+# `--` ends click option parsing: Fernet keys are urlsafe base64, so ~1/64 of
+# them start with `-` and would otherwise be parsed as an option cluster
+# ("Error: No such option: -R"), randomly failing the run.
+bench --site "$site" set-config encryption_key -- "$encryption_key"
 unset encryption_key
 echo "::endgroup::"
 
