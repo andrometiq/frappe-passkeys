@@ -4,7 +4,10 @@
 """Whitelisted helpers the Cypress login specs (`cypress/integration/*.cy.js`)
 call via ``cy.call`` to set up + tear down server state on the shared UI-test
 site. Mirrors ``frappe/tests/ui_test_helpers.py``: POST-only and admin-only,
-with explicit test-site configuration required outside the test runner.
+with explicit test-site configuration required outside the test runner. The one
+exception is ``slow_guest_echo`` (guest + GET), needed to pin the sid re-seed
+race; it is kept safe by flag-gating + a capped no-op body (see its docstring
+and ``test_all_test_helper_whitelists_are_post_only``).
 
 These are the app's **test scaffolding only** — they fold away with the
 ``shims/`` on the core merge. They set Passkey Settings values **directly**
@@ -17,6 +20,7 @@ DocType validator. ``webauthn`` is never imported here (hook-path
 discipline is not at stake, but the parity is cheap)."""
 
 import functools
+import time
 
 import frappe
 from frappe.utils import cint
@@ -379,3 +383,29 @@ def confirm_probe_failing(token=None):
 	gesture is burned even when the wrapped action fails: a retry needs a
 	fresh ceremony."""
 	frappe.throw("intentional post-consume failure (A-F20 probe)", frappe.ValidationError)
+
+
+@frappe.whitelist(allow_guest=True)
+def slow_guest_echo(delay: float = 1.5) -> dict:
+	"""A deliberately slow no-op, used by ``sid_reseed_race.cy.js`` to make the
+	straggler-response sid races deterministic (see ``cookie_determinism.py``).
+
+	Deliberately breaks this module's POST-only + admin-only convention: the
+	race being pinned is precisely "a request sent under a previous auth state
+	responds late", so the spec must fire it as Guest (and as a plain GET —
+	an authenticated test-jar POST would be rejected for a missing CSRF token
+	before reaching the handler). Instead of :func:`_guard` it is gated on the
+	deterministic-cookie site flag OR a developer_mode+allow_tests site — the
+	looser half exists so a control run can reproduce the race with the hook
+	off; the sleep is capped so even a misconfigured site is not a useful
+	stall primitive."""
+	if not (
+		frappe.conf.get("passkeys_deterministic_test_cookies")
+		or (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests")))
+	):
+		frappe.throw(
+			"slow_guest_echo requires the passkeys_deterministic_test_cookies site flag",
+			frappe.ValidationError,
+		)
+	time.sleep(min(float(delay), 5.0))
+	return {"ok": 1, "user": frappe.session.user}

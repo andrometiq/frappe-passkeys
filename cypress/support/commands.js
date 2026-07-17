@@ -216,7 +216,11 @@ Cypress.Commands.add("visit_login", (options = {}) => {
 		// presence, so it then 302s to /desk and the login form never renders — CI-only,
 		// green locally where the desk quiesces instantly. Deleting the session record
 		// (server_logout — a POST with the session CSRF token) makes any re-seeded sid
-		// inert, so /login always shows the form: this closes the race categorically.
+		// inert, so /login always shows the form. On flagged test sites the
+		// passkeys_deterministic_test_cookies hook (passkeys/cookie_determinism.py)
+		// additionally strips stale re-seeds server-side — including sids of OTHER
+		// still-valid sessions this logout cannot end (see sid_reseed_race.cy.js);
+		// server_logout stays as the belt-and-braces layer for unflagged sites.
 		// clearCookies below is only tidy-up.
 		cy.server_logout();
 		cy.clearCookies({ log: false });
