@@ -122,6 +122,13 @@ on_login = ["passkeys.auth_hooks.on_login_veto"]
 on_session_creation = ["passkeys.session.seed_sudo_window"]
 on_logout = ["passkeys.session.clear_sudo_window"]
 
+# UI-test determinism: on sites with the passkeys_deterministic_test_cookies
+# flag, drop stale sid cookie re-seeds before they flush, so the browser's
+# auth state changes only on genuine login/logout transitions (kills the
+# straggler-response sid races the Cypress suite hit on loaded CI runners).
+# No-op (one dict lookup) on production sites. See cookie_determinism.py.
+after_request = ["passkeys.cookie_determinism.strip_stale_sid_reseed"]
+
 # Document Events
 # ---------------
 doc_events = {

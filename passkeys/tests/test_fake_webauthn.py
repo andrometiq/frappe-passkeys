@@ -215,16 +215,42 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 			ui_test_helpers._guard()
 
 	def test_all_test_helper_whitelists_are_post_only(self):
+		# slow_guest_echo is the ONE deliberate exception: sid_reseed_race.cy.js
+		# must fire it as a Guest AND as a GET — an authenticated POST straggler
+		# is CSRF-rejected before it reaches the handler, and the race it pins is
+		# precisely a late-arriving cross-auth-state response. It is safe despite
+		# that: flag-gated (see test_slow_guest_echo_is_flag_gated), a capped
+		# no-op with no side effects, exposing nothing beyond the caller's own
+		# session user. EVERY other test helper must stay POST-only + admin-only.
+		# This asserts that invariant structurally (the set of non-POST-only
+		# helpers is exactly the documented exceptions) so it neither rots on a
+		# magic count nor silently admits a new guest/GET helper.
+		documented_exceptions = {ui_test_helpers.slow_guest_echo}
 		helpers = {
 			fn
 			for module in (fake_webauthn, ui_test_helpers)
 			for fn in vars(module).values()
 			if callable(fn) and fn in frappe.whitelisted
 		}
-		self.assertEqual(len(helpers), 22)
-		for helper in helpers:
-			with self.subTest(helper=f"{helper.__module__}.{helper.__name__}"):
-				self.assertEqual(frappe.allowed_http_methods_for_whitelisted_func[helper], ["POST"])
+		non_post_only = {
+			fn for fn in helpers if frappe.allowed_http_methods_for_whitelisted_func[fn] != ["POST"]
+		}
+		self.assertEqual(
+			non_post_only,
+			documented_exceptions,
+			"a test helper is not POST-only and is not a documented exception",
+		)
+
+	def test_slow_guest_echo_is_flag_gated(self):
+		# The one guest-callable helper must be inert on any site that lacks the
+		# deterministic-cookie flag (and lacks developer_mode+allow_tests), so it
+		# can never be a guest-reachable stall primitive off the test bench.
+		with patch.dict(
+			frappe.conf,
+			{"passkeys_deterministic_test_cookies": 0, "developer_mode": 0, "allow_tests": 0},
+		):
+			with self.assertRaisesRegex(frappe.ValidationError, "passkeys_deterministic_test_cookies"):
+				ui_test_helpers.slow_guest_echo(delay=0)
 
 	def test_confirmation_probes_run_test_guard_before_confirmation(self):
 		probes = (
