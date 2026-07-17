@@ -347,6 +347,28 @@ Cypress.Commands.add("clear_registration_rate_limit", (user) =>
 	cy.call("passkeys.tests.ui_test_helpers.clear_registration_rate_limit", { user })
 );
 
+// Reset EVERY app-owned per-user throttle for a user (delete/rename/list, the
+// confirm + reauth ceremonies, record_nudge, enforcement admin, …). Specs hit
+// these repeatedly through the real API, so across a full suite + reruns the
+// shared per-user budget fills and a late call 429s (a card never disappears, a
+// nudge-record assertion times out). A spec's before()/beforeEach starts from a
+// clean budget, immune to whichever endpoint the accumulation happens to trip.
+// See ui_test_helpers.clear_user_rate_limits.
+Cypress.Commands.add("clear_user_rate_limits", (user) =>
+	cy.call("passkeys.tests.ui_test_helpers.clear_user_rate_limits", { user })
+);
+
+// Reset frappe's IP-keyed guest-ceremony throttles (begin_login 30/min,
+// verify_login 10/min, get_app_translations 30/min). Every login spec visits
+// /login from the shared runner IP, and our CI runs the whole suite in ONE pass
+// on one IP — so across the contiguous login specs the 60s window can fill and a
+// ceremony 429s ("You hit the rate limit"). Each login spec clears in before()
+// so it starts from a clean IP budget. Must run while authed (the helper is
+// System-Manager-gated); call it after the setup login.
+Cypress.Commands.add("clear_guest_ceremony_rate_limit", () =>
+	cy.call("passkeys.tests.ui_test_helpers.clear_guest_ceremony_rate_limit")
+);
+
 Cypress.Commands.add("clear_password_failures", (user) =>
 	cy.call("passkeys.tests.ui_test_helpers.clear_password_failures", { user })
 );

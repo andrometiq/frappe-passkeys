@@ -39,8 +39,11 @@ chromium_only("passkey management — navbar entry removed", () => {
 
 	it("does not DOM-inject the legacy #passkey-navbar-item fallback", () => {
 		cy.visit_desk(USER);
-		// give the desk bundle's boot hook time to run; the element must never appear
-		cy.wait(1500, { log: false });
+		// Anchor on the desk bundle's boot hook having run to completion
+		// (deterministic signal set at the end of its decision — passkey_desk.bundle.js
+		// markNudgeEvaluated) instead of an arbitrary settle timer, then assert the
+		// legacy element was never injected.
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
 		cy.get("body").find("#passkey-navbar-item").should("have.length", 0);
 	});
 });

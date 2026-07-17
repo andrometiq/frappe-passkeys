@@ -28,6 +28,7 @@ chromium_only("passkey management — accessibility", () => {
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
+		cy.clear_user_rate_limits(USER); // start from a clean per-user rate-limit budget
 		cy.purge_server_passkeys(USER);
 		cy.register_passkey(USER, PW());
 	});
@@ -72,6 +73,13 @@ chromium_only("passkey management — accessibility", () => {
 	// independent, so it runs on every Frappe branch.
 	it("the manager dialog (opened programmatically, e.g. from a CTA) is Esc-dismissable", () => {
 		cy.visit_desk(USER);
+		// Wait for the desk's initial route render to settle before opening the
+		// dialog. visit_desk only waits for `frappe` to exist, not for the landing
+		// render — and frappe.container.change_to hides the open dialog on that
+		// render (frappe/views/container.js), so a dialog opened in that window is
+		// torn straight down (cur_dialog → null). The nudge-evaluated signal is set
+		// after the boot decision, which runs post-render (passkey_desk.bundle.js).
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
 		cy.window().then((win) => win.frappe.passkeys.manage.openManagerDialog());
 		cy.get(".modal-dialog", { timeout: 20000 }).should("be.visible");
 		cy.get(".modal-dialog .modal-title").should("contain.text", "My Passkeys");

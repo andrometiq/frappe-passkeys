@@ -209,6 +209,52 @@ def clear_registration_rate_limit(user: str) -> dict:
 	return {"ok": 1}
 
 
+# Every app endpoint that self-limits per session user via state.rate_limit_user.
+# Kept in sync with the rate_limit_user call sites (grep the tree); clearing the
+# whole set in test setup makes UI specs immune to per-user budget exhaustion no
+# matter which endpoint a suite+rerun happens to fill.
+_USER_RATE_LIMITED_ENDPOINTS = (
+	"begin_registration",
+	"verify_registration",
+	"list_credentials",
+	"rename_credential",
+	"delete_credential",
+	"get_user_enforcement_admin",
+	"set_user_exemption",
+	"reset_enforcement_grace",
+	"begin_confirmation",
+	"verify_confirmation",
+	"reauth_password",
+	"get_signal_data",
+	"record_nudge",
+	"record_enforcement",
+	"get_resolved_rp_id",
+	"get_security_posture",
+)
+
+
+@frappe.whitelist(methods=["POST"])
+def clear_user_rate_limits(user: str) -> dict:
+	"""Reset every app-owned per-user throttle for ``user`` (see
+	``_USER_RATE_LIMITED_ENDPOINTS``).
+
+	App endpoints self-limit per session user (e.g. ``delete_credential`` 10/hr,
+	``record_nudge`` 30/hr, ``reauth_password`` 5/5min — the counters live in
+	``state.rate_limit_user``). A single suite run fires each a handful of times for
+	Administrator; across a full suite AND same-hour reruns the shared per-user
+	budget fills, and a late call 429s — a card never disappears, a nudge-record
+	assertion times out. Clearing the whole set in a spec's ``before()``/
+	``beforeEach`` makes it immune regardless of which endpoint the accumulation
+	happens to trip. The production limits stay covered in server tests; this only
+	keeps repeated same-user UI runs from depending on Redis TTL expiry."""
+	_guard()
+	from passkeys import state
+
+	for method in _USER_RATE_LIMITED_ENDPOINTS:
+		state.clear_counter(f"{state.RATE_LIMIT_PREFIX}{method}:{user}")
+	return {"ok": 1}
+
+
 @frappe.whitelist(methods=["POST"])
 def clear_password_failures(user: str) -> dict:
 	"""Clear the app-owned password-oracle throttle for ``user``.
