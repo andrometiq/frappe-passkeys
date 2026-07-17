@@ -184,34 +184,46 @@ Cypress.Commands.add("server_logout", (attempt = 0) =>
 // inert no matter which jar layer or straggler response re-presents it. The
 // helper is flag-gated server-side (passkeys_deterministic_test_cookies, or
 // developer_mode + allow_tests): on an unflagged site this fails LOUDLY here
-// rather than letting specs flake downstream. Retries transient 5xx like
-// server_logout above — the wipe touches tabSessions harder than the single-row
-// delete that already 508s on CI's constrained MariaDB — while a non-5xx
-// failure (e.g. the missing-flag 417) still fails immediately and by name.
+// rather than letting specs flake downstream.
+//
+// CSRF is fetched FRESH via GET /desk on the same cy.request jar as the POST,
+// never from the loaded page's window: the window token belongs to the page's
+// ORIGINAL session, while the jar may meanwhile carry a DIFFERENT still-valid
+// sid (the lazy jar-sync class this whole helper exists to neutralize), and
+// Frappe 400s on the mismatch — observed on CI. The /desk fetch resolves
+// whatever session the jar actually carries and returns ITS token (or the
+// guest login page's "None" → no header), so token and session always agree.
+// Retries: transient 5xx like server_logout above (the wipe touches
+// tabSessions harder than the single-row delete that already 508s on CI's
+// constrained MariaDB), plus ONE bounded 400 retry — a straggler response can
+// flip the jar between the token fetch and the POST; refetching realigns.
+// A non-retryable failure (e.g. the missing-flag 417) fails immediately, by name.
 Cypress.Commands.add("clear_all_test_sessions", (attempt = 0) =>
-	csrf_for_call().then((csrf_token) => {
-		const headers = { Accept: "application/json" };
-		if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
-		return cy
-			.request({
+	cy
+		.request({ url: "/desk", method: "GET", failOnStatusCode: false, log: false })
+		.then((page) => {
+			const csrf_token = csrf_from_html(page.body);
+			const headers = { Accept: "application/json" };
+			if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
+			return cy.request({
 				url: "/api/method/passkeys.tests.ui_test_helpers.clear_all_test_sessions",
 				method: "POST",
 				headers,
 				failOnStatusCode: false,
 				log: false,
-			})
-			.then((res) => {
-				if (res.status >= 500 && attempt < 2) {
-					return cy
-						.wait(250, { log: false })
-						.then(() => cy.clear_all_test_sessions(attempt + 1));
-				}
-				expect(res.status, "clear_all_test_sessions status").to.eq(200);
-				const message = res.body && res.body.message;
-				expect(message && message.remaining, "server sessions remaining after wipe").to.eq(0);
-				return message;
 			});
-	})
+		})
+		.then((res) => {
+			if ((res.status >= 500 || res.status === 400) && attempt < 2) {
+				return cy
+					.wait(250, { log: false })
+					.then(() => cy.clear_all_test_sessions(attempt + 1));
+			}
+			expect(res.status, "clear_all_test_sessions status").to.eq(200);
+			const message = res.body && res.body.message;
+			expect(message && message.remaining, "server sessions remaining after wipe").to.eq(0);
+			return message;
+		})
 );
 
 // ---------------------------------------------------------------------------
@@ -269,11 +281,30 @@ Cypress.Commands.add("visit_login", (options = {}) => {
 			cy.setCookie("preferred_language", language.value, { log: false });
 		}
 		cy.visit("/login", options);
-		return cy.location("pathname", { log: false }).should((pathname) => {
-			expect(
-				pathname,
-				"visit_login must land on the guest login form — a stale server session leaked (see clear_all_test_sessions)"
-			).to.eq("/login");
+		return cy.location("pathname", { log: false }).then((pathname) => {
+			if (pathname !== "/login") {
+				// A stale session leaked past the wipe — an in-flight straggler
+				// re-seeded the store after it ran. The substrate fixes make
+				// this vanishingly rare; when it fires anyway, heal ONCE: by
+				// now the straggler has landed, so a second wipe reaches its
+				// session, and the re-visit must then render the form. A
+				// second leak fails the hard assertion below — this never
+				// masks a real guest-redirect defect, which would fail both
+				// visits identically.
+				Cypress.log({
+					name: "visit_login",
+					message: "stale server session leaked; healing once (wipe + re-visit)",
+				});
+				cy.clearCookies({ log: false });
+				cy.clear_all_test_sessions();
+				cy.visit("/login", options);
+			}
+			return cy.location("pathname", { log: false }).should((healed) => {
+				expect(
+					healed,
+					"visit_login must land on the guest login form — a stale server session leaked twice (see clear_all_test_sessions)"
+				).to.eq("/login");
+			});
 		});
 	});
 });
