@@ -480,12 +480,38 @@ def clear_all_test_sessions() -> dict:
 	_require_deterministic_test_site("clear_all_test_sessions")
 	from frappe.sessions import delete_session
 
+	# Counted at entry so a caller can PROBE the substrate: a second call's
+	# cache_purged is exactly the number of sessions that (re)appeared in the
+	# cache since the previous wipe — the regression spec asserts it is 0
+	# after an in-flight straggler lands.
+	cache_purged = len(frappe.cache.hkeys("session") or [])
+
 	sids = frappe.qb.from_("Sessions").select("sid").run(pluck=True)
+	now = frappe.utils.now()
 	for sid in sids:
 		delete_session(sid, reason="Cleared for UI test isolation")
+		# Close the in-flight-straggler resurrect (observed on CI's frappe-v15
+		# cells, reproduced raw with curl): core's delete_session REMOVES the
+		# sid's `last_db_session_update` marker, and v15's Session.update gates
+		# its WHOLE write block — DB update AND `hset("session", ...)` — on
+		# that marker (absent ⇒ time_diff None ⇒ write). So a request that
+		# loaded this sid BEFORE the wipe would re-seed the cache when it
+		# lands AFTER it, and cache-first resolution resurrects the sid.
+		# Re-seeding a fresh timestamp AFTER delete_session makes such
+		# stragglers skip their write block entirely. On v16/develop update()
+		# gates on the session's in-memory last_updated instead, so the marker
+		# is inert there.
+		frappe.cache.hset("last_db_session_update", sid, now)
+	# Final sweep: drop the ENTIRE session cache hash. A cache-only orphan —
+	# a straggler's write-back that landed after a PREVIOUS wipe — has no
+	# tabSessions row, so the sid loop above can never reach it, yet
+	# cache-first resolution would still authenticate it. Live sessions were
+	# all deleted above and Guest resolution never reads the cache, so
+	# dropping the hash wholesale is safe.
+	frappe.cache.delete_key("session")
 	frappe.set_user("Guest")
 	remaining = len(frappe.qb.from_("Sessions").select("sid").run(pluck=True))
-	return {"cleared": len(sids), "remaining": remaining}
+	return {"cleared": len(sids), "cache_purged": cache_purged, "remaining": remaining}
 
 
 @frappe.whitelist(allow_guest=True)
