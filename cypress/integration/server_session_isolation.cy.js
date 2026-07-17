@@ -128,3 +128,38 @@ describe("server session isolation", () => {
 		cy.get("#login_email").should("be.visible");
 	});
 });
+
+describe("cy.call CSRF freshness", () => {
+	before(() => {
+		cy.login(USER, PW());
+		cy.call("passkeys.tests.ui_test_helpers.clear_guest_ceremony_rate_limit");
+	});
+
+	after(() => {
+		cy.clearCookies();
+	});
+
+	it("heals a stale cached CSRF token instead of 400ing (the manage_cards_portal flake)", () => {
+		// Deterministic repro of the intermittent CI CSRFTokenError: cy.login mints a
+		// fresh jar session WITHOUT reloading the page, so the desk-cached
+		// window.frappe.csrf_token lags the jar's session and Frappe 400s the POST.
+		// manage_cards_portal's after() hook (login -> visit_desk -> purge) hits this
+		// ~1 run in 4. We load the desk like that hook does, then POISON the cached
+		// token so the mismatch fires on EVERY run; cy.call must re-fetch a
+		// jar-matching token and succeed. Without the fresh-CSRF retry this 400s.
+		cy.login(USER, PW());
+		cy.visit_desk(USER);
+		cy.window({ log: false }).then((win) => {
+			expect(win.frappe && win.frappe.csrf_token, "desk exposes a real csrf token to poison").to.be
+				.a("string")
+				.and.not.eq("stale-poisoned-token");
+			win.frappe.csrf_token = "stale-poisoned-token";
+			if (win.frappe.boot) win.frappe.boot.csrf_token = "stale-poisoned-token";
+		});
+		cy.call("passkeys.tests.ui_test_helpers.purge_passkeys", { user: USER }).then((body) => {
+			expect(body.message, "purge succeeded despite the poisoned cached token").to.have.property(
+				"deleted"
+			);
+		});
+	});
+});

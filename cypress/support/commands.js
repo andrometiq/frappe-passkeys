@@ -132,19 +132,48 @@ const csrf_for_call = () =>
 			.then((page) => csrf_from_html(page.body));
 	});
 
+// A cached window.frappe.csrf_token can lag the jar's session: cy.login (and any
+// server-side session change) mints a new sid in the cy.request jar WITHOUT reloading
+// the page, so window.frappe.csrf_token still holds the prior session's token and
+// Frappe 400s the POST on the mismatch (the intermittent manage_cards_portal after()
+// CSRFTokenError seen on CI). csrf_fresh re-reads the token from /desk on the SAME jar,
+// so it matches the jar's CURRENT session deterministically; cy.call retries once on a
+// CSRF reject (or a transient 5xx), killing the mismatch class for every call site.
+const csrf_fresh = () =>
+	cy
+		.request({ url: "/desk", method: "GET", failOnStatusCode: false, log: false })
+		.then((page) => csrf_from_html(page.body));
+
+const post_method = (method, args, csrf_token) => {
+	const headers = { Accept: "application/json" };
+	if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
+	return cy.request({
+		url: `/api/method/${method}`,
+		method: "POST",
+		body: args,
+		headers,
+		failOnStatusCode: false,
+	});
+};
+
+const is_csrf_reject = (res) => String(JSON.stringify(res.body || "")).indexOf("CSRFToken") !== -1;
+
 Cypress.Commands.add("call", (method, args) =>
 	csrf_for_call()
-		.then((csrf_token) => {
-			const headers = { Accept: "application/json" };
-			if (csrf_token) headers["X-Frappe-CSRF-Token"] = csrf_token;
-			return cy.request({
-				url: `/api/method/${method}`,
-				method: "POST",
-				body: args,
-				headers,
-			});
+		.then((token) => post_method(method, args, token))
+		.then((res) => {
+			if (!is_csrf_reject(res) && res.status < 500) {
+				expect(res.status, `cy.call(${method})`).to.be.within(200, 299);
+				return res.body;
+			}
+			// Stale window token or transient 5xx: fetch a jar-matching token fresh and retry once.
+			return csrf_fresh()
+				.then((fresh) => post_method(method, args, fresh))
+				.then((res2) => {
+					expect(res2.status, `cy.call(${method}) after fresh-CSRF retry`).to.be.within(200, 299);
+					return res2.body;
+				});
 		})
-		.then((res) => res.body)
 );
 
 // End the current SERVER session. The logout endpoint is POST-only and, for an
