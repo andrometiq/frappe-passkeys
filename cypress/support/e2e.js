@@ -7,15 +7,19 @@
 require("./commands");
 
 // Frappe aborts some in-flight page requests during login/logout navigation by
-// rejecting their promise with the literal value `undefined`. Cypress wraps that
-// non-Error reason in this exact synthetic error. Ignore only that framework
-// teardown signal; every attributable application exception still fails the run.
+// rejecting their promise with a NON-Error value: the literal `undefined`, or an
+// event/object whose toString is `[object Object]` / `[object Event]`. Cypress wraps
+// that non-attributable reason in a synthetic "An unknown error has occurred: <reason>"
+// error — the exact reason token varies with what Frappe rejected with (seen as both
+// `undefined` and `[object Object]` across CI). Ignore only that framework teardown
+// signal, matched by its non-attributable reason forms; every attributable
+// application exception (a real message, a passkeys Error/DOMException) still fails.
 Cypress.on("uncaught:exception", (error) => {
 	const message = String((error && error.message) || "");
 	const stack = String((error && error.stack) || "");
 	if (
 		error &&
-		message.includes("An unknown error has occurred: undefined")
+		/An unknown error has occurred: (undefined|null|\[object [A-Za-z]+\])/.test(message)
 	) {
 		return false;
 	}
