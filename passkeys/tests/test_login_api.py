@@ -20,7 +20,12 @@ from frappe.utils.password import update_password
 from passkeys import passkey, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, UnknownCredential, UVSetupRequired
-from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	WebAuthnAssertMixin,
+	arrange_clean_login_policy,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
 
@@ -32,6 +37,9 @@ PWD = "Secret_passw0rd_9x!"
 class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		# A leaked global disable_user_pass_login=1 would trip the last-credential guard
+		# on the arrangement deletes/disables below (test order varies by Frappe branch).
+		arrange_clean_login_policy(self)
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
