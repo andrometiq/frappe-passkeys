@@ -1,5 +1,12 @@
-# gitleaks allowlist — deliberate, non-secret material only.
-# Everything here is public or intentionally fake; nothing below is a credential.
+# gitleaks configuration.
+#
+# `[extend] useDefault = true` is REQUIRED: a config that defines only an
+# [allowlist] REPLACES gitleaks' built-in ruleset, so `gitleaks git` runs with
+# zero detection rules and reports "no leaks found" on everything — a silently
+# vacuous secret scan. Extending keeps every default rule active; the allowlist
+# below only suppresses deliberate, non-secret material.
+[extend]
+useDefault = true
 
 [allowlist]
 description = "Vendored public data, deliberately-fake test vectors, and research notes"
@@ -10,4 +17,15 @@ paths = [
   # The 35-vector WebAuthn fixture pack: deliberately-generated fake keys,
   # signatures, and credential blobs for negative-path tests. Never real secrets.
   '''passkeys/tests/vectors/.*''',
+  # History-only throwaway spike (removed from the tree) that generated the fixture
+  # pack: fake RSA test keys (generator.py is marked "intentionally public,
+  # test-only") plus the fake WebAuthn assertion vectors it produced.
+  '''spikes/webauthn-fixtures/.*''',
+  # History-only research notes (removed from the tree): prose that trips
+  # generic-api-key on high-entropy tokens in tables and quotes. No secrets.
+  '''research/02-passkey-advanced-ux\.md''',
+  '''research/raw/passkeys-synced-model\.md''',
+  # Mobile-association docs: example Android apk-key-hash / SHA-256 signing-cert
+  # fingerprints. These are public identifiers, not secrets.
+  '''docs/mobile-apps\.md''',
 ]
