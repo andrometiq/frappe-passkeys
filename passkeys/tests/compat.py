@@ -12,7 +12,13 @@ try:
 except ImportError:  # v15
 	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
 
-__all__ = ["IntegrationTestCase", "WebAuthnAssertMixin", "arrange_mode_floor", "flush_settings_cache"]
+__all__ = [
+	"IntegrationTestCase",
+	"WebAuthnAssertMixin",
+	"arrange_clean_login_policy",
+	"arrange_mode_floor",
+	"flush_settings_cache",
+]
 
 
 class WebAuthnAssertMixin:
@@ -56,3 +62,33 @@ def arrange_mode_floor(testcase):
 	testcase.addCleanup(frappe.db.set_single_value, "Passkey Settings", "login_with_passkey", cint(original))
 	frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
 	flush_settings_cache()
+
+
+def arrange_clean_login_policy(testcase):
+	"""Pin ``disable_user_pass_login=0`` for a test that removes or disables a user's
+	last enabled credential.
+
+	The last-login-method guard (``_guard_last_login_method``) refuses dropping the
+	final enabled credential of a user while site-wide ``disable_user_pass_login`` is
+	on. An earlier module can leave that setting on — committed past the runner's
+	per-test rollback, or merely cached on ``frappe.local.system_settings`` (which the
+	rollback does not clear, and which ``flush_settings_cache`` does not touch). A test
+	that deletes a credential as arrangement, without pinning the setting, then trips
+	the guard under whatever test order the active Frappe branch happens to pick — the
+	upstream-drift failure this closes. Snapshot the current value, force it off AND
+	bust both caches, and register LIFO cleanup that restores the captured value and
+	commits (login ceremonies commit mid-test, so a plain rollback would not restore
+	it) — the same idiom as ``arrange_mode_floor`` and ``FakeWebAuthnTestModeTest``."""
+	original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+
+	def _set(value):
+		frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
+		frappe.clear_document_cache("System Settings", "System Settings")
+		frappe.local.system_settings = None  # bust the request-local singles cache
+
+	def _restore():
+		_set(cint(original))
+		frappe.db.commit()  # survive the runner's per-test rollback (login_as commits mid-test)
+
+	testcase.addCleanup(_restore)
+	_set(0)
