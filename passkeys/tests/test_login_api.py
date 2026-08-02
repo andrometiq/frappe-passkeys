@@ -75,7 +75,10 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			"passkey_origins",
 			"passkey_sign_count_hard_fail",
 		):
-			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
+			# Faithful restore — never `or 0`: that writes a literal "0" into the text
+			# rp_id/origins fields, which the committing cleanup then leaks into the shared
+			# single (a later save reads origin "0" and throws). Mirrors FakeWebAuthnTestModeTest.
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
 		flush_settings_cache()
 
 	# -- fixtures -----------------------------------------------------------
