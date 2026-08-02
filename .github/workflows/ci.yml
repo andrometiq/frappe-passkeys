@@ -70,6 +70,11 @@ jobs:
     name: Server (frappe ${{ matrix.frappe-branch }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # Frappe's unreleased `develop` tip breaks itself (whitelist/CSRF churn we cannot
+    # fix). In the daily upstream-drift run only, let the develop-tip leg fail visibly
+    # without failing the workflow, so churn we do not own stops paging. The released
+    # version-15/version-16 tips stay hard gates; normal pinned push/PR CI is unaffected.
+    continue-on-error: ${{ inputs.upstream_tips && matrix.frappe-branch == 'develop' }}
     strategy:
       fail-fast: false
       matrix:
@@ -153,6 +158,10 @@ jobs:
     name: UI (frappe ${{ matrix.frappe-branch }})
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    # See server-tests: the develop-tip leg is non-gating in the drift run only, so
+    # Frappe's unreleased whitelist/CSRF churn stops paging. version-15/version-16 tips
+    # stay hard gates; pinned push/PR CI is unaffected.
+    continue-on-error: ${{ inputs.upstream_tips && matrix.frappe-branch == 'develop' }}
     strategy:
       fail-fast: false
       matrix:
