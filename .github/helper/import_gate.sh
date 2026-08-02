@@ -54,6 +54,7 @@ if importlib.util.find_spec("webauthn") is not None:
 HOOK_KEYS = {
     "after_install",
     "after_migrate",
+    "after_request",
     "before_install",
     "before_uninstall",
     "doc_events",
