@@ -190,10 +190,12 @@ top of the per-user password-oracle lock above.
 
 The last five rows are the Passkey Settings / enforcement-admin endpoints. They
 carry the per-user counter **and** an additional `System Manager` role gate (the
-settings and enforcement-admin surfaces are admin-only). Four are read-only;
-`set_user_exemption` is the exception — it *mutates authorization state*, granting
-or revoking a user's exemption from passkey-enrollment enforcement (via the
-dedicated exempt role), which is why it carries the tighter 30 / hour ceiling.
+settings and enforcement-admin surfaces are admin-only). Three are read-only;
+`set_user_exemption` and `reset_enforcement_grace` are the exceptions — both
+*mutate authorization state* (the first grants or revokes a user's exemption from
+passkey-enrollment enforcement via the dedicated exempt role; the second clears a
+user's enforcement grace-login state), which is why both carry the tighter
+30 / hour ceiling.
 
 **No account enumeration.** First-factor login is discoverable-only — it takes no
 identifier, so the begin response leaks nothing about which accounts have
