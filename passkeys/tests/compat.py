@@ -76,9 +76,10 @@ def arrange_clean_login_policy(testcase):
 	that deletes a credential as arrangement, without pinning the setting, then trips
 	the guard under whatever test order the active Frappe branch happens to pick — the
 	upstream-drift failure this closes. Snapshot the current value, force it off AND
-	bust both caches, and register LIFO cleanup that restores the captured value and
-	commits (login ceremonies commit mid-test, so a plain rollback would not restore
-	it) — the same idiom as ``arrange_mode_floor`` and ``FakeWebAuthnTestModeTest``."""
+	bust both caches, and register a cache-busting restore — the same no-commit idiom as
+	``arrange_mode_floor``. Do NOT commit here: a committing cleanup would persist any
+	other pending write in the test (e.g. a sibling ``or 0`` restore) past the rollback
+	and leak it into later modules."""
 	original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 
 	def _set(value):
@@ -86,9 +87,5 @@ def arrange_clean_login_policy(testcase):
 		frappe.clear_document_cache("System Settings", "System Settings")
 		frappe.local.system_settings = None  # bust the request-local singles cache
 
-	def _restore():
-		_set(cint(original))
-		frappe.db.commit()  # survive the runner's per-test rollback (login_as commits mid-test)
-
-	testcase.addCleanup(_restore)
+	testcase.addCleanup(_set, cint(original))
 	_set(0)
