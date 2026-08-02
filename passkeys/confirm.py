@@ -602,8 +602,6 @@ def _resolve_payload_hash(params, payload_hash) -> str:
 
 
 def _resolve_ceremony_credential(record, credential, user):
-	import hashlib
-
 	cred_id = credential.get("id") or credential.get("rawId")
 	if not cred_id:
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
@@ -647,8 +645,6 @@ def _require_action(action) -> str:
 
 
 def _transports(raw) -> list:
-	import json
-
 	try:
 		return json.loads(raw or "[]")
 	except (TypeError, ValueError):
@@ -656,8 +652,6 @@ def _transports(raw) -> list:
 
 
 def _as_dict(value):
-	import json
-
 	if value is None:
 		return None
 	return json.loads(value) if isinstance(value, str) else value
