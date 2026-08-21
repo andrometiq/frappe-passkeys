@@ -16,6 +16,7 @@ import redis
 from frappe.auth import CookieManager
 from frappe.utils import set_request
 from frappe.utils.password import update_password
+from werkzeug.wrappers import Response
 
 from passkeys import passkey, session, state
 from passkeys.api import registration
@@ -207,6 +208,32 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(
 			frappe.local.cookie_manager.cookies[state.BINDER_COOKIE]["max_age"], state.BINDER_MAX_AGE
 		)
+		opts = frappe.local.cookie_manager.cookies[state.BINDER_COOKIE]
+		self.assertTrue(opts["secure"])
+		response = Response()
+		frappe.local.cookie_manager.flush_cookies(response)
+		header = next(
+			value for value in response.headers.getlist("Set-Cookie") if state.BINDER_COOKIE in value
+		)
+		self.assertIn("Secure", header)
+		self.assertIn("Path=/", header)
+		self.assertNotIn("Domain=", header)
+
+	def test_binder_max_age_covers_full_second_factor_rearm_chain(self):
+		_begun, binder = self._begin()
+		final_state_start = (state.SECOND_FACTOR_MAX_ATTEMPTS - 1) * state.CEREMONY_TTL
+		self.assertGreaterEqual(state.BINDER_MAX_AGE - final_state_start, state.CEREMONY_TTL)
+
+		self._request("/api/method/passkeys.passkey.verify_second_factor", binder=binder)
+		self.assertTrue(state.binder_matches(state.binder_hash(binder)))
+
+	def test_legacy_binder_cookie_is_ignored(self):
+		set_request(
+			method="POST",
+			path="/api/method/passkeys.passkey.verify_login",
+			headers=[("Cookie", "passkey_binder=legacy")],
+		)
+		self.assertIsNone(state.read_binder_cookie())
 
 	def test_absent_binder_fails_closed(self):
 		user = self._user()
@@ -332,14 +359,20 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(UVSetupRequired):
 			self._verify(begun["state_id"], credential, binder)
 		setup_id = frappe.local.response.get("setup_id")
+		self.addCleanup(state.clear_password_failures, user)
 		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.complete_uv_setup(setup_id, "wrong-password")
+		self.assertEqual(
+			state.get_counter(state.PASSWORD_FAILURE_PREFIX + user),
+			1,
+		)
 
 		# A typo does not burn the verified passkey assertion. The password throttle
 		# still caps guesses, and the first correct completion atomically consumes it.
 		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
 		passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(state.get_counter(state.PASSWORD_FAILURE_PREFIX + user), 0)
 		self.assertEqual(frappe.session.user, user)
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", {"user": user}, "uv_initialized"), 1)
 
@@ -654,6 +687,31 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")  # no session minted
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
+	def test_complete_uv_setup_allows_limit_then_throttles_limit_plus_one(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		self.addCleanup(state.clear_password_failures, user)
+		for _ in range(state.PASSWORD_FAILURE_LIMIT - 1):
+			state.claim_password_attempt(user)
+
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaisesRegex(frappe.AuthenticationError, "password didn't match"):
+			passkey.complete_uv_setup(setup_id, "wrong-password")
+		self.assertEqual(
+			state.get_counter(state.PASSWORD_FAILURE_PREFIX + user),
+			state.PASSWORD_FAILURE_LIMIT,
+		)
+
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaisesRegex(frappe.AuthenticationError, "Too many attempts"):
+			passkey.complete_uv_setup(setup_id, PWD)
+
 	def test_complete_uv_setup_core_login_lock_precedes_password_check(self):
 		user = self._user()
 		auth, _ = self._enroll(user, uv=False)
@@ -671,7 +729,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 				"frappe.auth.get_login_attempt_tracker",
 				side_effect=frappe.SecurityException("locked"),
 			) as tracker,
-			patch("passkeys.state.record_password_failure") as record_password_failure,
+			patch("passkeys.state.claim_password_attempt") as claim_password_attempt,
 			patch("passkeys.passkey._track_verify_failure") as track_verify_failure,
 		):
 			for password in (PWD, "wrong-password"):
@@ -681,7 +739,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 				messages.append(str(ctx.exception))
 
 			self.assertEqual(tracker.call_count, 2)
-			record_password_failure.assert_not_called()
+			claim_password_attempt.assert_not_called()
 			track_verify_failure.assert_not_called()
 
 		self.assertEqual(messages, ["Passkey could not be verified."] * 2)

@@ -567,8 +567,13 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_reauth_wrong_password_refused_and_tracked(self):
 		user = self._user(with_password=True)
 		frappe.set_user(user)
+		self.addCleanup(state.clear_password_failures, user)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._reauth("wrong-password")
+		self.assertEqual(state.get_counter(state.PASSWORD_FAILURE_PREFIX + user), 1)
+
+		self._reauth(PWD)
+		self.assertEqual(state.get_counter(state.PASSWORD_FAILURE_PREFIX + user), 0)
 
 	def test_reauth_refuses_password_grant_for_passkey_only_action(self):
 		# reauth_password will not mint a password grant for an action whose
@@ -731,3 +736,20 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError) as ctx:
 			self._reauth(PWD)  # the CORRECT password — still refused because throttled
 		self.assertIn("Too many attempts", str(ctx.exception))
+
+	def test_reauth_password_allows_limit_then_throttles_limit_plus_one(self):
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		self.addCleanup(state.clear_password_failures, user)
+		for _ in range(state.PASSWORD_FAILURE_LIMIT - 1):
+			state.claim_password_attempt(user)
+
+		with self.assertRaisesRegex(frappe.AuthenticationError, "password didn't match"):
+			self._reauth("wrong-password")
+		self.assertEqual(
+			state.get_counter(state.PASSWORD_FAILURE_PREFIX + user),
+			state.PASSWORD_FAILURE_LIMIT,
+		)
+
+		with self.assertRaisesRegex(frappe.AuthenticationError, "Too many attempts"):
+			self._reauth(PWD)

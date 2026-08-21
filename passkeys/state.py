@@ -29,6 +29,7 @@ GRANT_TTL = 180
 OTP_FALLBACK_TTL = CEREMONY_TTL
 PASSWORD_FAILURE_TTL = 900
 PASSWORD_FAILURE_LIMIT = 5
+SECOND_FACTOR_MAX_ATTEMPTS = 3
 ENFORCEMENT_DEFER_TTL = 30 * 24 * 60 * 60
 
 CEREMONY_PREFIX = "passkeys:ceremony:"
@@ -41,10 +42,10 @@ RATE_LIMIT_PREFIX = "passkeys:ratelimit:"
 ENFORCEMENT_DEFER_PREFIX = "passkeys:enforcement-defer:"
 
 # Guest-ceremony browser binder. Ephemeral cookie; the ceremony record
-# stores only sha256(value). Max-Age = 2x ceremony TTL (sliding), so a slow
-# hybrid-QR ceremony begun minutes after page load never outlives the cookie.
-BINDER_COOKIE = "passkey_binder"
-BINDER_MAX_AGE = 2 * CEREMONY_TTL  # 600 s
+# stores only sha256(value). Cover the initial second-factor state plus every
+# re-armed state before the terminal attempt.
+BINDER_COOKIE = "__Host-passkey_binder"
+BINDER_MAX_AGE = SECOND_FACTOR_MAX_ATTEMPTS * CEREMONY_TTL
 
 
 def new_id() -> str:
@@ -161,6 +162,10 @@ def record_password_failure(user: str) -> int:
 	return bump_counter(PASSWORD_FAILURE_PREFIX + user, PASSWORD_FAILURE_TTL)
 
 
+def claim_password_attempt(user: str) -> int:
+	return bump_counter(PASSWORD_FAILURE_PREFIX + user, PASSWORD_FAILURE_TTL)
+
+
 def is_password_throttled(user: str) -> bool:
 	return get_counter(PASSWORD_FAILURE_PREFIX + user) >= PASSWORD_FAILURE_LIMIT
 
@@ -202,7 +207,7 @@ def rate_limit_user(name: str, limit: int, ttl: int) -> None:
 
 
 def read_binder_cookie() -> str | None:
-	"""The `passkey_binder` value carried on the current request, or ``None``."""
+	"""The binder value carried on the current request, or ``None``."""
 	request = getattr(frappe.local, "request", None)
 	if request is None:
 		return None
@@ -222,6 +227,8 @@ def set_binder_cookie() -> str | None:
 	if manager is None:
 		return None
 	value = read_binder_cookie() or frappe.generate_hash()
+	# Backport: re-verify v16/develop CookieManager still injects Path=/ and no
+	# Domain; both are required by the __Host- prefix.
 	manager.set_cookie(
 		BINDER_COOKIE,
 		value,

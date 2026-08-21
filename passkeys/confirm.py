@@ -537,13 +537,13 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
 		)
 
-	# app-owned per-user password-oracle throttle.
-	if state.is_password_throttled(user):
+	# Claim atomically before checking the password: the limit-th attempt passes;
+	# the next is refused without touching the oracle.
+	if state.claim_password_attempt(user) > state.PASSWORD_FAILURE_LIMIT:
 		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
 	try:
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
-		state.record_password_failure(user)
 		raise frappe.AuthenticationError(_("That password didn't match — try again."))
 	state.clear_password_failures(user)
 

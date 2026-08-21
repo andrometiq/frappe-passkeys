@@ -120,13 +120,11 @@ def resolve_site_origin(rp_id: str) -> str | None:
 	return configured if host == rp_id or host.endswith("." + rp_id) else None
 
 
-def validate_origins(settings, rp_id: str) -> None:
-	"""Enable-time, fail-closed: HTTPS only (``http://localhost`` under
-	developer mode), and every origin host within the RP ID's registrable
-	scope — an out-of-scope origin passes every server check and then dies
-	client-side with a browser SecurityError, forever."""
-	origins = resolve_origins(settings, rp_id)
-	if not origins:
+def validate_origins(settings, rp_id: str | None) -> None:
+	"""Save-time shape/HTTPS validation, plus RP scope when one resolves."""
+	configured = [line.strip() for line in (settings.get("passkey_origins") or "").splitlines()]
+	origins = resolve_origins(settings, rp_id) if rp_id else [origin for origin in configured if origin]
+	if rp_id and not origins:
 		frappe.throw(
 			_(
 				"Configure at least one exact passkey origin or set this site's host_name within the RP ID scope."
@@ -147,7 +145,7 @@ def validate_origins(settings, rp_id: str) -> None:
 						"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
 					).format(origin)
 				)
-		if host != rp_id and not host.endswith("." + rp_id):
+		if rp_id and host != rp_id and not host.endswith("." + rp_id):
 			frappe.throw(
 				_(
 					"Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
@@ -195,7 +193,7 @@ _APK_KEY_HASH_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 def app_origins(settings) -> list[str]:
 	"""The configured Trusted App Origins (``passkey_app_origins``), one per line,
 	trimmed and de-duplicated. Pure read — shape validation is
-	:func:`validate_app_origins` (enable time), never here."""
+	:func:`validate_app_origins` (settings save), never here."""
 	origins: list[str] = []
 	for line in (settings.get("passkey_app_origins") or "").splitlines():
 		line = line.strip()
@@ -218,7 +216,7 @@ def resolve_expected_origins(settings, rp_id: str) -> list[str]:
 
 
 def validate_app_origins(settings) -> None:
-	"""Enable-time, fail-closed shape check for the Trusted App Origins. Each line
+	"""Save-time, fail-closed shape check for the Trusted App Origins. Each line
 	must be ``android:apk-key-hash:<hash>`` where ``<hash>`` is the unpadded
 	base64url SHA-256 (43 chars) of the app's signing certificate. iOS needs no
 	Trusted App Origin entry, but its asserted ``https://<rp_id>`` must be configured

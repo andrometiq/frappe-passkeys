@@ -29,7 +29,7 @@ from passkeys import install, policy, session, state
 # Attempt cap for the failed-passkey second-factor retry: a leg-2
 # verify failure re-arms a fresh state up to this many attempts, then falls back
 # to the password form. Core-OTP parity (a wrong token doesn't destroy tmp_id).
-SECOND_FACTOR_MAX_ATTEMPTS = 3
+SECOND_FACTOR_MAX_ATTEMPTS = state.SECOND_FACTOR_MAX_ATTEMPTS
 
 # Typed-error wire contract: every typed error is an exception class —
 # frappe's `report_error` emits the class name as `exc_type`, which is the wire
@@ -313,9 +313,9 @@ def complete_uv_setup(setup_id: str, pwd: str):
 
 	user = record["user"]
 	_require_login_attempt_allowed(user)
-	# app-owned per-user password-oracle throttle (the core tracker is off by
-	# default; this endpoint is a password oracle the app introduces)
-	if state.is_password_throttled(user):
+	# Claim atomically before checking the password: the limit-th attempt passes;
+	# the next is refused without touching the oracle.
+	if state.claim_password_attempt(user) > state.PASSWORD_FAILURE_LIMIT:
 		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -325,7 +325,6 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	try:
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
-		state.record_password_failure(user)
 		_track_verify_failure(user)  # a wrong-password step-up feeds the tracker too
 		raise frappe.AuthenticationError(_("That password didn't match — try again."))
 	state.clear_password_failures(user)

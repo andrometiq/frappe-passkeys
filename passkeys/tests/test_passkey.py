@@ -196,6 +196,9 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		self._two_factor_auth = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
+		self._disable_user_pass_login = frappe.db.get_single_value(
+			"System Settings", "disable_user_pass_login"
+		)
 		self._conf_host_name = frappe.local.conf.get("host_name")
 		self._conf_developer_mode = frappe.local.conf.get("developer_mode")
 		self._conf_encryption_key = frappe.local.conf.get("encryption_key")
@@ -205,12 +208,18 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 
 		for field in ("login_with_passkey", "passkey_as_second_factor"):
 			frappe.db.set_single_value("Passkey Settings", field, cint(self._snapshot.get(field)))
-		for field in ("passkey_rp_id", "passkey_origins"):
+		for field in ("passkey_rp_id", "passkey_origins", "passkey_app_origins"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or "")
+		frappe.db.set_single_value(
+			"Passkey Settings", "passkey_reauth_window", self._snapshot.get("passkey_reauth_window")
+		)
 		frappe.local.conf["host_name"] = self._conf_host_name
 		frappe.local.conf["developer_mode"] = self._conf_developer_mode
 		frappe.local.conf["encryption_key"] = self._conf_encryption_key
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", cint(self._two_factor_auth))
+		frappe.db.set_single_value(
+			"System Settings", "disable_user_pass_login", cint(self._disable_user_pass_login)
+		)
 		super().tearDown()
 
 	def _settings(self, **values):
@@ -267,6 +276,33 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 				)
 				with self.assertRaises(frappe.ValidationError):
 					doc.save()
+
+	def test_invalid_origins_are_rejected_with_both_modes_off(self):
+		frappe.local.conf["host_name"] = None
+		for values in (
+			{"passkey_origins": "https://example.com/path", "passkey_app_origins": ""},
+			{"passkey_origins": "", "passkey_app_origins": "android:apk-key-hash:bad"},
+		):
+			with self.subTest(values=values):
+				doc = self._settings(
+					login_with_passkey=0,
+					passkey_as_second_factor=0,
+					passkey_rp_id="",
+					**values,
+				)
+				with self.assertRaises(frappe.ValidationError):
+					doc.save()
+
+	def test_valid_origins_save_with_both_modes_off_and_no_rp_id(self):
+		frappe.local.conf["host_name"] = None
+		doc = self._settings(
+			login_with_passkey=0,
+			passkey_as_second_factor=0,
+			passkey_rp_id="",
+			passkey_origins="https://example.com",
+			passkey_app_origins=f"android:apk-key-hash:{'A' * 43}",
+		)
+		doc.save()
 
 	def test_localhost_origin_only_under_developer_mode(self):
 		frappe.local.conf["developer_mode"] = 0
@@ -327,6 +363,26 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 			passkey_origins="https://example.com",
 		)
 		doc.save()
+
+	def test_negative_reauth_window_is_rejected(self):
+		doc = self._settings(
+			login_with_passkey=0,
+			passkey_as_second_factor=0,
+			passkey_origins="",
+			passkey_app_origins="",
+			passkey_reauth_window=-1,
+		)
+		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_second_factor_only_is_rejected_when_password_login_is_disabled(self):
+		frappe.db.set_single_value("System Settings", "disable_user_pass_login", 1)
+		doc = self._settings(
+			login_with_passkey=0,
+			passkey_as_second_factor=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://example.com",
+		)
+		self.assertRaises(frappe.ValidationError, doc.save)
 
 	def test_disable_guard_protects_passkey_only_users(self):
 		"""Generalized guard: a save leaving no passkey-capable
