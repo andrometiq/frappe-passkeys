@@ -120,7 +120,9 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 			"passkey_origins",
 			"passkey_sign_count_hard_fail",
 		):
-			frappe.db.set_single_value("Passkey Settings", field, self._settings_snap.get(field) or 0)
+			# Text singles must not be restored as the truthy string "0".
+			default = "" if field in {"passkey_rp_id", "passkey_origins"} else 0
+			frappe.db.set_single_value("Passkey Settings", field, self._settings_snap.get(field) or default)
 		self._sync_settings()
 
 	# -- fixtures -----------------------------------------------------------
@@ -650,6 +652,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
 
 		good = self._assert(auth, resp["verification"]["options"], sign_count=8)
+		frappe.cache.delete_keys(f"rl::{self._ip}")  # shared empty-cmd rl key in the test harness
 		self._leg2(state_id, good, binder)
 		self.assertEqual(frappe.session.user, user)
 

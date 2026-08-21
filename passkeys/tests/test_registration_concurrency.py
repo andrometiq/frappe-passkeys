@@ -128,7 +128,7 @@ class RegistrationCapRaceTest(IntegrationTestCase):
 				)
 				frappe.db.commit()
 				outcomes.put(("success", doc.name))
-			except registration.PasskeyConfirmationRequired:
+			except frappe.AuthenticationError:
 				frappe.db.rollback()
 				outcomes.put(("reauth", None))
 			except frappe.ValidationError:
