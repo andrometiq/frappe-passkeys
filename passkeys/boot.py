@@ -84,7 +84,7 @@ def record_nudge_event(user: str, event: str) -> dict:
 	return state
 
 
-def _policy_effective(settings) -> str:
+def policy_effective(settings) -> str:
 	"""Resolve the ``passkey_enrollment_policy`` Select to an effective rung —
 	``off`` | ``nudge`` | ``enforce`` — evaluating ``Enforce After Date`` against the
 	server clock on every call (an at/past date ⇒ ``enforce``, before ⇒ ``nudge``; a
@@ -171,7 +171,7 @@ def _cadence_ok(settings, state: dict) -> bool:
 	∧ cooldown elapsed. The **credential-count** gate is applied by the caller — the
 	enrollment nudge requires 0 credentials, the post-hybrid upsell does not (the user
 	just signed in, so they hold ≥1)."""
-	if _policy_effective(settings) != "nudge":
+	if policy_effective(settings) != "nudge":
 		return False
 	if cint(state.get("opt_out")):
 		return False
@@ -245,7 +245,7 @@ def build_enforcement(user: str, settings, credential_count: int) -> dict:
 	has zero passkeys and has exhausted their grace logins. ``incapable_policy``
 	(``degrade``/``block_notify``) + ``allow_hybrid`` are the §capability hinge the
 	client honors on a device that genuinely cannot create a passkey."""
-	effective = _policy_effective(settings)
+	effective = policy_effective(settings)
 	mode_on = bool(cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
 	incapable_policy = (
 		"block_notify" if settings.passkey_enforce_incapable == "Block + Notify Admin" else "degrade"
@@ -360,25 +360,17 @@ def _settings_context(user: str, settings) -> dict:
 
 def _would_be_blocked_count(settings) -> int:
 	"""Report-only preview (System-Manager surface only): how many in-scope users have
-	no enabled passkey yet — the blast radius of flipping to ``Enforce``. Three bulk
-	reads + in-memory role math (never a per-user query); best-effort — any error ⇒ 0
-	so the preview can never break the settings form or a boot."""
+	no enabled passkey yet — the blast radius of flipping to ``Enforce``. Uses the
+	same role/scope evaluator as runtime enforcement, including automatic roles and
+	Administrator. Best-effort — any error ⇒ 0 so the preview can never break the
+	settings form or a boot."""
 	try:
-		exempt_roles = {row.role for row in (settings.passkey_enforce_exempt_roles or [])}
-		target_roles = {row.role for row in (settings.passkey_enforce_roles or [])}
-		selected = settings.passkey_enforce_scope == "Selected Roles"
-		roles_by_user: dict[str, set] = {}
-		for row in frappe.get_all("Has Role", filters={"parenttype": "User"}, fields=["parent", "role"]):
-			roles_by_user.setdefault(row.parent, set()).add(row.role)
 		enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
 		count = 0
 		for u in frappe.get_all("User", filters={"enabled": 1}, pluck="name"):
-			if u in ("Administrator", "Guest"):
+			if u == "Guest":
 				continue
-			roles = roles_by_user.get(u, set())
-			if roles & exempt_roles:
-				continue
-			if selected and not (roles & target_roles):
+			if not _user_in_enforce_scope(u, settings):
 				continue
 			if u in enrolled:
 				continue

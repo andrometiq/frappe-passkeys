@@ -73,7 +73,7 @@ def refuse_if_core_native() -> None:
 
 
 def cascade_delete_user_artifacts(doc, method=None):
-	"""User on_trash: drop the user's credential and handle rows.
+	"""User on_trash: drop the user's credential, handle, and Defaults rows.
 
 	Dormant no-op when core serves passkeys natively: core owns the cascade
 	then, so a parallel app cascade would be the "double on_trash" coupling.
@@ -83,6 +83,8 @@ def cascade_delete_user_artifacts(doc, method=None):
 		return
 	for doctype in ("WebAuthn Credential", "WebAuthn User Handle"):
 		frappe.db.delete(doctype, {"user": doc.name})
+	for suffix in ("passkey_nudge", "passkey_enforce", "passkey_incapable_notified"):
+		frappe.defaults.clear_default(f"{doc.name}_{suffix}", parent=install.DEFAULTS_PARENT)
 
 
 # ===========================================================================

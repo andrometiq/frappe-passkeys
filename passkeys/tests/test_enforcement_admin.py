@@ -148,12 +148,25 @@ class EnforcementAdminTest(IntegrationTestCase):
 		rows = [r for r in self._settings().passkey_enforce_exempt_roles if r.role == EXEMPT_ROLE]
 		self.assertEqual(len(rows), 1)
 
-	def test_exempt_coerces_string_flag(self):
+	def test_exempt_accepts_documented_boolean_forms(self):
 		user = self._user()
-		enforcement_admin.set_user_exemption(user, "true")
-		self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
-		enforcement_admin.set_user_exemption(user, "false")
-		self.assertNotIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+		for value in (True, 1, "1", "true", "yes", "on"):
+			with self.subTest(value=value):
+				enforcement_admin.set_user_exemption(user, value)
+				self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+		for value in (False, 0, "0", "false", "no", "off"):
+			with self.subTest(value=value):
+				enforcement_admin.set_user_exemption(user, value)
+				self.assertNotIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+
+	def test_malformed_exemption_value_does_not_revoke(self):
+		user = self._user()
+		enforcement_admin.set_user_exemption(user, True)
+		for value in (None, "", "maybe", 2, 0.0, [], {}):
+			with self.subTest(value=value):
+				with self.assertRaises(frappe.ValidationError):
+					enforcement_admin.set_user_exemption(user, value)
+				self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
 
 	# ---- grace reset ----------------------------------------------------
 

@@ -91,6 +91,18 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		# ...while the reusable sudo window still holds (store invariants)
 		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
 
+	def test_guest_verify_does_not_burn_authenticated_users_ceremony(self):
+		user = self._user()
+		begun, credential, _auth = self._register(user, seed="guest-does-not-burn")
+
+		frappe.set_user("Guest")
+		with self.assertRaises(frappe.AuthenticationError):
+			registration.verify_registration(begun["state_id"], credential)
+
+		frappe.set_user(user)
+		result = registration.verify_registration(begun["state_id"], credential)
+		self.assertTrue(result["name"])
+
 	def test_malformed_credential_envelope_is_rejected_before_consume(self):
 		user = self._user()
 		begun, good, _auth = self._register(user, seed="malformed-envelope")
@@ -212,6 +224,22 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 
+	def test_registration_begin_gates_cint_string_settings(self):
+		with self.assertRaises(frappe.AuthenticationError):
+			registration._require_any_login_mode(
+				frappe._dict(login_with_passkey="0", passkey_as_second_factor="0")
+			)
+
+		user = self._user()
+		frappe.set_user(user)
+		self._seed_sudo(user, seeded_by="weak")
+		settings = frappe._dict(
+			login_with_passkey="1",
+			passkey_allow_first_enrollment_on_weak_login="0",
+		)
+		with self.assertRaises(PasskeyConfirmationRequired):
+			registration._require_sudo_for_registration(settings, user, "explicit")
+
 	def test_conditional_create_requires_password_seeded_window(self):
 		user = self._user()
 		frappe.set_user(user)
@@ -267,6 +295,37 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self._seed_sudo(user, seeded_by="weak")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
+
+	def test_weak_bootstrap_race_after_consume_is_terminal(self):
+		user = self._user()
+		frappe.set_user(user)
+		self.addCleanup(flush_settings_cache)
+		self.addCleanup(
+			frappe.db.set_single_value,
+			"Passkey Settings",
+			"passkey_allow_first_enrollment_on_weak_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+		)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		flush_settings_cache()
+
+		self._seed_sudo(user, seeded_by="weak")
+		begun = registration.begin_registration(flow="explicit")
+		auth = SoftAuthenticator(seed="weak-bootstrap-race")
+		credential = auth.registration(
+			challenge_b64=begun["options"]["challenge"],
+			rp_id=RP_ID,
+			origin=ORIGIN,
+			credprops_rk=True,
+		)
+		make_credential(user)
+
+		with self.assertRaises(frappe.AuthenticationError) as ctx:
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertNotIsInstance(ctx.exception, PasskeyConfirmationRequired)
+		self.assertIn("begin again", str(ctx.exception))
+		with self.assertRaises(CeremonyExpired):
+			registration.verify_registration(begun["state_id"], credential)
 
 	def test_weak_login_bootstrap_refused_when_knob_off(self):
 		"""Even a first enrollment is refused from a weak window when
