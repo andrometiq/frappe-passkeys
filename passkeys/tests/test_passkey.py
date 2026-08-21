@@ -105,6 +105,28 @@ class TestWebAuthnCredential(PasskeyTestCase):
 		credential.backup_eligible = 1
 		self.assertRaises(frappe.ValidationError, credential.save)
 
+	def test_credential_identity_is_immutable_but_runtime_updates_still_work(self):
+		credential = make_credential(self.make_user(), label="Original", sign_count=3)
+		for field, value in (
+			("user", self.make_user()),
+			("credential_id", "tampered-credential-id"),
+			("credential_id_sha256", "0" * 64),
+			("public_key", "tampered-public-key"),
+		):
+			with self.subTest(field=field):
+				credential.reload()
+				setattr(credential, field, value)
+				with self.assertRaises(frappe.ValidationError):
+					credential.save()
+
+		credential.reload()
+		credential.label = "Renamed"
+		credential.save()
+		self.assertEqual(frappe.db.get_value(credential.doctype, credential.name, "label"), "Renamed")
+
+		frappe.db.set_value(credential.doctype, credential.name, "sign_count", 9, update_modified=False)
+		self.assertEqual(frappe.db.get_value(credential.doctype, credential.name, "sign_count"), 9)
+
 	def test_sign_count_never_regresses(self):
 		credential = make_credential(self.make_user(), sign_count=10)
 		credential.sign_count = 5
