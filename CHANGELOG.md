@@ -48,5 +48,8 @@ release.
   rejecting duplicate nonzero counter replays.
 - Credential import refuses unsigned files by default, modified or cross-site v2 files,
   structurally inconsistent rows, and unreviewed live-data merges.
+- Minimum supported Frappe is a per-major-line floor (v15 ≥ 15.108.0, v16 ≥ 16.18.3) that excludes
+  releases exposed to CVE-2026-47194 (host-header poisoning of magic/passwordless login links);
+  enforced by the `before_install` version check.
 
 [Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/develop...HEAD

@@ -271,6 +271,19 @@ so one user cannot probe another's credentials.
   by it. Enforce drives adoption; it is the login modes (passkey first-factor /
   second-factor) that decide what actually authenticates a session.
 
+- **The Frappe version floor is enforced at install time only.** The app requires Frappe
+  ≥15.108.0 / ≥16.18.3 (closing CVE-2026-47194, host-header poisoning of magic/passwordless login
+  links) and refuses a fresh install below it, but the check does not re-run on `bench update` /
+  `migrate`. The app's final login veto already covers enrolled users on the modes it protects; the
+  residual exposure is the broader login surface (e.g. email-link login for non-enrolled users), so
+  keep the deployment's Frappe patched operationally, not only at first install.
+- **Attacker-reachable transitive parsers float without a lockfile.** Client attestation is CBOR-
+  decoded (`cbor2`) and attestation certificate chains are ASN.1-parsed (`pyasn1`); both arrive
+  transitively via `webauthn` and the repo pins only `webauthn==2.8.0`. A fresh resolve is patched
+  (`cbor2>=5.9.0`, `pyasn1>=0.6.4`), but a stale bench may carry an older, vulnerable version — run
+  `bench setup requirements` and confirm those minimums on the deployment bench. The app's own
+  `cryptography` posture inherits Frappe's pin (currently `~=50`); re-check it when Frappe's moves.
+
 ## Reporting a vulnerability
 
 Follow [`../SECURITY.md`](../SECURITY.md). Do not include vulnerability details in a public issue.
