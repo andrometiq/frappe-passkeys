@@ -18,7 +18,12 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now, now_datetime
 
-FRAPPE_VERSION_FLOOR = (15, 107, 0)
+# Minimum safe Frappe per major line. 15.108.0 / 16.18.3 close CVE-2026-47194
+# (host-header poisoning of magic/passwordless login links → account takeover) and
+# subsume the crypto floor the webauthn library needs (cryptography>=46, pyOpenSSL>=26),
+# which those lines first shipped. The check runs at install time only (before_install).
+FRAPPE_VERSION_FLOORS = {15: (15, 108, 0), 16: (16, 18, 3)}
+FRAPPE_VERSION_FLOOR_DEFAULT = (15, 108, 0)  # develop / newer majors (17.x is already post-fix)
 DEFAULTS_PARENT = "__passkeys"
 
 # The legacy "My Passkeys" avatar-menu item we used to sync into Navbar Settings.
@@ -142,12 +147,14 @@ def _advise_dormant_once() -> None:
 
 def check_frappe_version(current: str | None = None):
 	current = current or frappe.__version__
-	if _version_tuple(current) < FRAPPE_VERSION_FLOOR:
-		floor = ".".join(str(part) for part in FRAPPE_VERSION_FLOOR)
+	parsed = _version_tuple(current)
+	floor = FRAPPE_VERSION_FLOORS.get(parsed[0], FRAPPE_VERSION_FLOOR_DEFAULT)
+	if parsed < floor:
+		floor_str = ".".join(str(part) for part in floor)
 		frappe.throw(
 			_(
-				"The passkeys app requires Frappe {0} or newer (found {1}): the webauthn library needs cryptography>=46.0.0 and pyOpenSSL>=26.0.0, which older releases do not ship."
-			).format(floor, current)
+				"The passkeys app requires Frappe {0} or newer on this line (found {1}): older releases are exposed to CVE-2026-47194 (host-header poisoning of login links) and lack cryptography>=46.0.0 / pyOpenSSL>=26.0.0."
+			).format(floor_str, current)
 		)
 
 
