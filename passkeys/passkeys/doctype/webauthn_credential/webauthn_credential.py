@@ -60,13 +60,27 @@ class WebAuthnCredential(Document):
 			return
 		before = self.get_doc_before_save()
 		if not before:
-			before = frappe._dict(
-				zip(
-					("backup_eligible", "sign_count"),
-					frappe.db.get_value(self.doctype, self.name, ["backup_eligible", "sign_count"]),
-					strict=False,
-				)
+			before = frappe.db.get_value(
+				self.doctype,
+				self.name,
+				[
+					"user",
+					"credential_id",
+					"credential_id_sha256",
+					"public_key",
+					"backup_eligible",
+					"sign_count",
+				],
+				as_dict=True,
 			)
+		if self.user != before.user:
+			frappe.throw(_("The user of a WebAuthn Credential can never change."))
+		if self.credential_id != before.credential_id:
+			frappe.throw(_("A WebAuthn credential ID is immutable."))
+		if self.credential_id_sha256 != before.credential_id_sha256:
+			frappe.throw(_("A WebAuthn credential ID digest is immutable."))
+		if self.public_key != before.public_key:
+			frappe.throw(_("A WebAuthn credential public key is immutable."))
 		if cint(self.backup_eligible) != cint(before.backup_eligible):
 			frappe.throw(_("Backup eligibility is set at registration and can never change."))
 		if cint(self.sign_count) < cint(before.sign_count):
