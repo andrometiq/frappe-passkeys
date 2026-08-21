@@ -55,7 +55,7 @@ class MaxPerUserCapUnitTest(IntegrationTestCase):
 		return [frappe._dict({"credential_id": f"cred-{i}"}) for i in range(n)]
 
 	def _enforce(self, cap, n):
-		registration._enforce_max_per_user(self._settings(cap), self._creds(n), "explicit")
+		registration._enforce_max_per_user(self._settings(cap), self._creds(n))
 
 	def test_below_cap_allowed(self):
 		self._enforce(cap=3, n=2)  # cap-1 — no raise

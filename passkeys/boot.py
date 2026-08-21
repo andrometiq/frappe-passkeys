@@ -308,8 +308,6 @@ def build_passkeys_boot(user: str) -> dict:
 	    user count is not shipped to every Desk boot).
 	  * ``rp_id``              — the resolved RP ID for ``signalAllAcceptedCredentials``.
 	"""
-	from passkeys import policy  # webauthn-free (frappe-only); safe on the boot path
-
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first = bool(cint(settings.login_with_passkey))
 	second = bool(cint(settings.passkey_as_second_factor))
@@ -338,7 +336,7 @@ def build_passkeys_boot(user: str) -> dict:
 	}
 
 
-def _settings_context(user: str, settings=None) -> dict:
+def _settings_context(user: str, settings) -> dict:
 	"""Cross-flag banner context (``core_two_factor_auth`` /
 	``disable_user_pass_login`` / ``passkey_only_user_count``) plus the report-only
 	enforcement preview (``would_be_blocked_count``). Only the Passkey Settings form
@@ -347,8 +345,6 @@ def _settings_context(user: str, settings=None) -> dict:
 	every Desk load). ``settings.js`` falls back gracefully when the fields are absent."""
 	if "System Manager" not in frappe.get_roles(user):
 		return {}
-	if settings is None:
-		settings = frappe.get_cached_doc("Passkey Settings")
 	return {
 		"core_two_factor_auth": bool(cint(frappe.get_system_settings("enable_two_factor_auth"))),
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),

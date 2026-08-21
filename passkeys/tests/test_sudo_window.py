@@ -179,6 +179,8 @@ class SudoWindowTest(IntegrationTestCase):
 		params = {"enabled": True}
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, params)
 		self.assertTrue(session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, params))
+		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
+		self.assertIn("passkeys:grant_consumed", contents)
 		# single-use: a replay of the same token finds nothing
 		self.assertFalse(session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, params))
 
