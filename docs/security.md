@@ -77,10 +77,11 @@ Administrator exemption.
 **Password rotation is checked at the session boundary.** Every password-to-passkey ceremony stores
 a keyed, non-reversible version of the password hash at leg one and compares it with the current
 version before minting a session. A password change during the ceremony fails closed. The marker
-does not expose the password hash, and the normal passkey leg does not retain the plaintext password.
-Mode enablement and local-password ceremonies fail closed when the site has no `encryption_key`.
-External-auth users without a local password hash retain the supplied password only for the short
-ceremony lifetime because core must re-authenticate it before session minting.
+does not expose the password hash. The plaintext password rides the Redis ceremony record (TTL 300 s)
+on the second-factor leg only when `passkey_2fa_allow_otp_fallback=1` (the default) and the user is
+OTP-capable, matching core's `cache_2fa_data`, or for an external-auth user without a local password
+hash because core must re-authenticate it before session minting. Mode enablement and local-password
+ceremonies fail closed when the site has no `encryption_key`.
 
 **Password-reset keys rotate a password but do not satisfy a passkey factor.** Frappe core calls
 `login_as` after a successful reset. For an enrolled second-factor user, the app lets the reset

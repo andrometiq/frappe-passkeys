@@ -78,7 +78,8 @@ The app is layered, not an object graph. Respect the layers:
 
 1. **Wire** — `passkey.py`, `api/*`, `confirm.py`, `well_known.py`, `enforcement_admin.py`.
    Whitelisted, method-scoped (`POST` for actions; `GET` only for the guest-readable association
-   files; `allow_guest` only where a guest ceremony needs it), typed errors out. Parse, authorize,
+   files and the translations catalog; `allow_guest` only where a guest ceremony needs it), typed
+   errors out. Parse, authorize,
    rate-limit, delegate — no crypto orchestration inline.
 2. **Domain** — `engine` (verify), `policy` (RP/origin), `state` (single-use store), `posture`
    (verdict), `confirm` / `session` (grants + sudo window), `install` (guards). New behavior lives
@@ -105,7 +106,10 @@ spaces. These rules apply to any change here:
   complexity low. Keep files in a workable band (roughly 100–500 lines); when a folder grows, group
   related files into a subfolder instead of adding more same-prefix modules. The wire modules that
   fold into `frappe/passkey.py` on the core merge (`passkey.py`, `confirm.py`, `install.py`) run
-  long by design — don't split them to satisfy the band, and don't let them grow further either.
+  long by design — don't split them to satisfy the band, and don't let them grow further either. The
+  frozen client bundles (`passkey_common.bundle.js`, `passkey_login.bundle.js`,
+  `passkey_desk.bundle.js`, `passkey_manage_common.bundle.js`) are cohesive, load-order-bearing
+  components that run long by design; don't split them, and don't let them grow further.
 - Avoid abbreviations. Use the standard library and existing repo helpers before new logic. Reuse
   existing patterns; write as little new code as the change needs; delete or simplify before adding.
 - Keep comments and docstrings terse — explain only what the code doesn't already say. No banner
