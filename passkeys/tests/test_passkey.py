@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import frappe
 
+from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -184,11 +185,21 @@ class TestWebAuthnUserHandle(PasskeyTestCase):
 		user = self.make_user()
 		make_credential(user)
 		make_handle(user)
+		default_keys = (
+			f"{user}_passkey_nudge",
+			f"{user}_passkey_enforce",
+			f"{user}_passkey_incapable_notified",
+		)
+		for key in default_keys:
+			frappe.db.set_default(key, "sentinel", parent=DEFAULTS_PARENT)
+			self.assertEqual(frappe.db.get_default(key, parent=DEFAULTS_PARENT), "sentinel")
 
 		frappe.delete_doc("User", user, force=1, ignore_permissions=True)
 
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
 		self.assertFalse(frappe.db.exists("WebAuthn User Handle", {"user": user}))
+		for key in default_keys:
+			self.assertIsNone(frappe.db.get_default(key, parent=DEFAULTS_PARENT))
 
 
 class TestPasskeySettingsValidation(PasskeyTestCase):

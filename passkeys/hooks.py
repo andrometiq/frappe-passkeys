@@ -109,9 +109,10 @@ extend_bootinfo = ["passkeys.boot.extend_bootinfo"]
 # passkey_only_login veto: fires BEFORE make_session inside
 # post_login on all three branches — a raising hook aborts the login before any
 # session exists. Blocks password / email-link / social first-factor login for a
-# flagged user; passkey legs (which set frappe.local.flags.passkey_login) and
-# impersonation (non-Guest session at hook time) pass. On the every-login hook
-# path, so auth_hooks.py imports no webauthn.
+# flagged user and enforces passkey-as-second-factor for enrolled users. Passkey
+# legs pass; otherwise only same-user re-auth or a request dispatched to core's
+# exact impersonate method is exempt. On the every-login hook path, so
+# auth_hooks.py imports no webauthn.
 on_login = ["passkeys.auth_hooks.on_login_veto"]
 
 # Sudo-window seed at fresh login: fires after make_session inside

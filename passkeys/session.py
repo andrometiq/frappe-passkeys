@@ -8,7 +8,8 @@ merge.
 **Hook-path import discipline:** this module sits on the
 ``on_session_creation`` / ``on_logout`` hook chains — which fire on *every*
 login/logout of *every* user — so it MUST NOT import ``webauthn`` (directly or
-transitively). It imports only ``frappe`` and :mod:`passkeys.state`.
+transitively). It imports only ``frappe``, :mod:`passkeys.state`, and the
+webauthn-free :mod:`passkeys.install` dormancy switch.
 
 Placement note: the sudo seed + check live here in ``session.py`` (not
 ``auth_hooks.py``) to keep this hook-path file import-clean. ``hooks.py`` points
@@ -55,8 +56,6 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 		if not user or user in ("Guest", ""):
 			return
 		method = _classify_login_method()
-		if method is None:
-			return
 		settings = frappe.get_cached_doc("Passkey Settings")
 		ttl = cint(settings.passkey_reauth_window) or 600
 		state.set_sudo_window(
@@ -103,7 +102,7 @@ def clear_sudo_window(login_manager=None, **kwargs) -> None:
 		frappe.log_error(title="passkeys: sudo-window clear failed")
 
 
-def _classify_login_method() -> str | None:
+def _classify_login_method() -> str:
 	"""Best-available classification at ``on_session_creation`` time:
 
 	* ``passkey`` — the app's own passwordless / passkey-2FA / uv-setup legs set
@@ -317,7 +316,7 @@ def consume_action_grant(
 
 
 def _audit_grant(event: str, action: str, user: str, method: str) -> None:
-	""" "every issuance/consumption writes an Activity Log row". Routes through
+	"""Every issuance/consumption writes an Activity Log row. Routes through
 	``notifications._activity_log`` (the audit-row writer) so the trail is a real
 	queryable Activity Log entry, and keeps the structured logger breadcrumb (the
 	non-blocking-telemetry idiom used across the app). Lazy import keeps this

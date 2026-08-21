@@ -35,11 +35,18 @@ _ENFORCING_POLICIES = ("Enforce", "Enforce After Date")
 
 
 def _coerce_bool(value) -> bool:
-	"""Whitelisted args arrive JSON-decoded (a JS ``true`` → Python ``True``), but coerce
-	defensively so a ``"true"``/``"1"`` string form also works."""
+	"""Accept JSON booleans and documented boolean form values only."""
+	if isinstance(value, bool):
+		return value
+	if type(value) is int and value in (0, 1):
+		return bool(value)
 	if isinstance(value, str):
-		return value.strip().lower() in ("1", "true", "yes", "on")
-	return bool(value)
+		normalized = value.strip().lower()
+		if normalized in ("1", "true", "yes", "on"):
+			return True
+		if normalized in ("0", "false", "no", "off"):
+			return False
+	frappe.throw(_("Exempt must be true or false."), frappe.ValidationError)
 
 
 def _require_user(user: str) -> str:
