@@ -32,7 +32,7 @@ def on_login_veto(login_manager=None, **kwargs):
 	``complete_uv_setup`` repair), so a flagged user still gets in via a
 	passkey.
 
-	**Impersonation exemption** — by session state, not a marker: core's
+	**Impersonation exemption** — by dispatch identity, not a marker: core's
 	``impersonate()`` calls ``login_as`` and only *afterwards* ``set_impersonated``,
 	so no impersonation marker exists at ``on_login`` time and ``LoginManager``
 	carries none of the impersonation args. A non-Guest ``frappe.session.user`` is
@@ -43,9 +43,10 @@ def on_login_veto(login_manager=None, **kwargs):
 	may be an attacker's own throwaway session while ``login_manager.user`` is the
 	victim, and a bare non-Guest exemption would hand over any ``passkey_only``
 	account for the price of one email login key. Exempt only what is genuinely
-	distinguishable: same-user re-auth (target == session user), or a session
-	holding System Manager — the role core's SM-gated ``impersonate()`` requires.
-	Every other cross-user, non-flagged login is policed.
+	distinguishable: same-user re-auth (target == session user), or a request that
+	DISPATCHED to core's exact ``impersonate`` method (RPC path plus client
+	``cmd`` consistency) after its own Administrator gate has passed. Every other
+	cross-user, non-flagged login is policed.
 
 	**No lockout** — two layers. (1) The Passkey Settings disable-guard
 	refuses any settings save that would leave no passkey-capable login mode while
@@ -56,17 +57,17 @@ def on_login_veto(login_manager=None, **kwargs):
 	interlock), or the self-hoster clears that row / disables the app. Administrator
 	is not exempt after explicitly enrolling a passkey for second-factor use; console
 	recovery remains the break-glass path. Exception-hardened only around the
-	session-state and role reads — a genuine veto MUST propagate to abort the
+	session-state read — a genuine veto MUST propagate to abort the
 	login."""
 	if install.dormant():
 		return  # dormant-shell: core owns the veto — silent no-op, never a throw
 	target = getattr(login_manager, "user", None) if login_manager is not None else None
 
 	# Impersonation / already-authenticated re-login: a non-Guest session at hook
-	# time is exempt ONLY for same-user re-auth or a System-Manager holder (the
-	# SM-gated impersonate() caller) — resume-based paths reach here with
-	# frappe.session.user = the cookie holder (docstring above), so a bare
-	# non-Guest exemption would let any logged-in session bypass the veto.
+	# time is exempt ONLY for same-user re-auth or a request DISPATCHED to core's
+	# exact impersonation method (RPC path plus client cmd consistency).
+	# Resume-based paths reach here with frappe.session.user = the cookie holder
+	# (docstring above), so a bare non-Guest exemption would bypass the veto.
 	try:
 		current = frappe.session.user
 	except Exception:
@@ -74,11 +75,8 @@ def on_login_veto(login_manager=None, **kwargs):
 	if current and current not in ("Guest", ""):
 		if target and target == current:
 			return  # same-user re-auth is never a first-factor login to police
-		try:
-			if "System Manager" in frappe.get_roles(current):
-				return
-		except Exception:
-			pass  # fail closed — the veto below must still be evaluated
+		if _request_is_core_method("frappe.core.doctype.user.user.impersonate"):
+			return
 
 	# Our own passkey legs flag themselves before login_as — those always pass.
 	flags = getattr(frappe.local, "flags", None)
@@ -157,20 +155,45 @@ def _consume_allowed_otp_fallback(user: str) -> bool:
 
 
 def _is_password_reset_completion() -> bool:
-	"""Allow core's reset-key flow to finish for second-factor users.
+	"""Allow core's reset-key flow to finish for second-factor users only when
+	the request DISPATCHED to (not merely path-shaped like) ``update_password``.
 
 	``update_password`` verifies the reset key, rotates the password, then calls
 	``login_as``. The caller downgrades that login to Guest: recovery finishes but
 	the reset key never mints an authenticated session. Passkey-only users still
 	reach the later veto and are not exempted.
 	"""
+	# Reaching login_as after dispatch to update_password proves it already validated
+	# its key: invalid/expired keys return before the login call. Do not trust a
+	# merely matching path or a client-controlled `cmd`/`key` on another dispatch.
+	return _request_is_core_method("frappe.core.doctype.user.user.update_password")
+
+
+def _request_is_core_method(method_dotted_path: str) -> bool:
+	"""True only when this request actually DISPATCHED to core's
+	``method_dotted_path`` — the path matches a core RPC route AND no client
+	``cmd`` diverted the dispatcher elsewhere. Frappe runs a truthy
+	``form_dict.cmd`` (``frappe/app.py``) BEFORE any ``/api`` route, so
+	``request.path`` alone is spoofable. ``not cmd or cmd == method`` is exactly
+	the dispatcher's own branch condition read back here: a ``cmd`` that satisfies
+	this guard is the same string ``execute_cmd`` dispatches on, so it provably ran
+	that method (and, for impersonate, its ``only_for('Administrator')`` gate).
+	Exact string compare, no normalization — fail-closed and dispatch-exact.
+	(A site that remaps this dotted path via ``override_whitelisted_methods`` is a
+	pre-existing server-config trust, out of scope; it applies to the reset path too.)"""
 	request = getattr(frappe.local, "request", None)
 	path = getattr(request, "path", None) if request is not None else None
-	method = "frappe.core.doctype.user.user.update_password"
-	# Reaching login_as from this exact endpoint proves update_password already
-	# validated its key: invalid/expired keys return before the login call. Do not
-	# trust a client-controlled `cmd` or `key` field on any other route.
-	return path == f"/api/method/{method}"
+	if not isinstance(path, str):
+		return False
+	if path.rstrip("/") not in (
+		f"/api/method/{method_dotted_path}",
+		f"/api/v1/method/{method_dotted_path}",
+		f"/api/v2/method/{method_dotted_path}",
+	):
+		return False
+	form = getattr(frappe.local, "form_dict", None)
+	cmd = form.get("cmd") if form is not None else None
+	return not cmd or cmd == method_dotted_path
 
 
 def guard_system_settings(doc, method=None):
