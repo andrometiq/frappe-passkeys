@@ -618,6 +618,29 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._leg2(fresh_sid, good, binder)
 		self.assertEqual(frappe.session.user, user)
 
+	def test_malformed_credential_payload_is_rejected_before_consume(self):
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+		state_id = resp["tmp_id"]
+		cases = (
+			("encoded null", "null"),
+			("encoded list", "[]"),
+			("decoded list", []),
+			("decoded null", None),
+			("invalid JSON", "{"),
+		)
+
+		for label, malformed in cases:
+			with self.subTest(label=label):
+				with self.assertRaises(frappe.AuthenticationError) as ctx:
+					self._leg2(state_id, malformed, binder)
+				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
+
+		good = self._assert(auth, resp["verification"]["options"], sign_count=8)
+		self._leg2(state_id, good, binder)
+		self.assertEqual(frappe.session.user, user)
+
 	# ======================================================================
 	# the app's plain-password arm seeds a "password" sudo window
 	# ======================================================================

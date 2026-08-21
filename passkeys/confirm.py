@@ -51,8 +51,10 @@ from passkeys.passkey import (
 	CeremonyExpired,
 	_advance_credential,
 	_b64url_decode,
+	_enabled_credentials,
 	_enforce_request_host,
 	_lock_enabled_user,
+	_require_credential_dict,
 )
 from passkeys.passkey import (
 	refuse_if_core_native as _refuse_if_core_native,
@@ -431,7 +433,7 @@ def verify_confirmation(state_id: str, credential):
 
 	from passkeys import engine
 
-	credential = _as_dict(credential)
+	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
 
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
@@ -620,16 +622,6 @@ def _resolve_ceremony_credential(record, credential, user):
 	if not cred or cred.user != user or not cint(cred.enabled):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	return cred
-
-
-def _enabled_credentials(user: str) -> list:
-	"""The user's enabled credentials (id + sha + transports) — the confirmation
-	ceremony's ``allowCredentials`` and the ``passkey``-method availability signal."""
-	return frappe.get_all(
-		"WebAuthn Credential",
-		filters={"user": user, "enabled": 1},
-		fields=["credential_id", "credential_id_sha256", "transports"],
-	)
 
 
 def _has_enabled_passkey(user: str) -> bool:
