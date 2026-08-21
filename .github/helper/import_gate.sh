@@ -91,7 +91,21 @@ if not hook_targets:
     print("::error::import gate found no hook targets in passkeys/hooks.py")
     sys.exit(1)
 
-modules = {"passkeys.hooks"}
+patches_path = Path("passkeys/patches.txt")
+if not patches_path.is_file():
+    print("::error::import gate: passkeys/patches.txt is missing")
+    sys.exit(1)
+patch_modules = []
+for raw_line in patches_path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith(("[", "#", "execute:")):
+        continue
+    patch_modules.append(line)
+if not patch_modules:
+    print("::error::import gate found no patch modules in passkeys/patches.txt")
+    sys.exit(1)
+
+modules = {"passkeys.hooks", *patch_modules}
 target_attributes = []
 for target in hook_targets:
     module_name, separator, attribute = target.rpartition(".")
@@ -140,5 +154,8 @@ for name, err in failed:
 if failed:
     sys.exit(1)
 
-print(f"import gate OK: {len(hook_targets)} hook targets; {len(modules)} hook/dormancy modules")
+print(
+    f"import gate OK: {len(hook_targets)} hook targets; "
+    f"{len(patch_modules)} patch modules; {len(modules)} gated modules"
+)
 PY
