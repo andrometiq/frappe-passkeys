@@ -89,7 +89,9 @@ class CoreTwoFactorFloorRaceTest(IntegrationTestCase):
 		super().tearDown()
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", cint(self.core_snapshot))
 		for field in ("passkey_as_second_factor", "passkey_rp_id", "passkey_origins"):
-			frappe.db.set_single_value("Passkey Settings", field, self.passkey_snapshot.get(field) or 0)
+			# Text singles must not be restored as the truthy string "0".
+			default = "" if field in {"passkey_rp_id", "passkey_origins"} else 0
+			frappe.db.set_single_value("Passkey Settings", field, self.passkey_snapshot.get(field) or default)
 		frappe.db.commit()
 
 	def test_forward_and_reverse_saves_serialize_on_core_flag(self):

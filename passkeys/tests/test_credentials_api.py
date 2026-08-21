@@ -98,7 +98,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		cred = make_credential(user, label="Original")
 		frappe.set_user(user)
-		with self.assertRaises(frappe.ValidationError):
+		with self.assertRaises(frappe.exceptions.FrappeTypeError):
 			credentials.rename_credential(cred.name, {"name": "Laptop"})
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", cred.name, "label"), "Original")
 

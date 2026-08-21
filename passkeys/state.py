@@ -44,7 +44,7 @@ ENFORCEMENT_DEFER_PREFIX = "passkeys:enforcement-defer:"
 # Guest-ceremony browser binder. Ephemeral cookie; the ceremony record
 # stores only sha256(value). Cover the initial second-factor state plus every
 # re-armed state before the terminal attempt.
-BINDER_COOKIE = "__Host-passkey_binder"
+BINDER_COOKIE = "passkey_binder"
 BINDER_MAX_AGE = SECOND_FACTOR_MAX_ATTEMPTS * CEREMONY_TTL
 
 
@@ -229,8 +229,6 @@ def set_binder_cookie() -> str | None:
 	if manager is None:
 		return None
 	value = read_binder_cookie() or frappe.generate_hash()
-	# Backport: re-verify v16/develop CookieManager still injects Path=/ and no
-	# Domain; both are required by the __Host- prefix.
 	manager.set_cookie(
 		BINDER_COOKIE,
 		value,
