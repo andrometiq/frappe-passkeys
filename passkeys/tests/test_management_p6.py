@@ -7,6 +7,7 @@ lockout interlock, and the row-7 reauth refusal under
 ``disable_user_pass_login``."""
 
 import types
+from unittest.mock import patch
 
 import frappe
 
@@ -26,8 +27,9 @@ class _Base(IntegrationTestCase):
 	def _user(self) -> str:
 		user = make_user()
 		self.addCleanup(
-			lambda u=user: frappe.db.exists("User", u)
-			and frappe.delete_doc("User", u, force=1, ignore_permissions=True)
+			lambda u=user: (
+				frappe.db.exists("User", u) and frappe.delete_doc("User", u, force=1, ignore_permissions=True)
+			)
 		)
 		return user
 
@@ -110,6 +112,38 @@ class NotificationTest(_Base):
 		notifications.record_risk_event(notifications.RISK_FALLBACK_USED, user, "otp fallback")
 		self.assertEqual(self.sent, [])
 		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before + 1)
+
+	def test_change_email_survives_activity_log_failure(self):
+		user = self._user()
+		with (
+			patch.object(notifications, "_activity_log", side_effect=RuntimeError("audit down")),
+			patch("frappe.log_error"),
+		):
+			notifications.notify_credential_added(user, "Phone")
+		self.assertEqual(len(self.sent), 1)
+
+	def test_risk_email_survives_activity_log_failure(self):
+		user = self._user()
+		with (
+			patch.object(notifications, "_activity_log", side_effect=RuntimeError("audit down")),
+			patch("frappe.log_error"),
+		):
+			notifications.record_risk_event(notifications.RISK_FALLBACK_USED, user, "otp fallback")
+		self.assertEqual(len(self.sent), 1)
+
+	def test_enforcement_email_survives_audit_failure_and_excludes_reporter(self):
+		user = self._user()
+		with (
+			patch.object(notifications, "_activity_log", side_effect=RuntimeError("audit down")),
+			patch(
+				"frappe.utils.user.get_system_managers",
+				return_value=[user, "manager@example.com", "Administrator"],
+			) as get_managers,
+			patch("frappe.log_error"),
+		):
+			notifications.record_enforcement_incapable(user)
+		get_managers.assert_called_once_with(only_name=True)
+		self.assertEqual(self.sent[0]["recipients"], ["manager@example.com"])
 
 
 class AdminInterlockTest(_Base):

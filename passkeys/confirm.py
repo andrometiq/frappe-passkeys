@@ -316,7 +316,7 @@ def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 	methods = []
 	if _enabled_credentials(user):
 		methods.append("passkey")
-	if policy_.allow_password_fallback:
+	if policy_.allow_password_fallback and _password_reauth_allowed(user):
 		methods.append("password")
 	if policy_.allow_sudo_window:
 		methods.append("sudo")
@@ -467,14 +467,14 @@ def verify_confirmation(state_id: str, credential):
 	# uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
 	# MUST NOT be relied upon as a verification factor. The false→true flip is
 	# allowed iff a password accompanied this session (a password/reauth-seeded
-	# sudo window); otherwise the typed error routes the dialog to its password
-	# tab — possession alone never mints a confirmation grant.
+	# sudo window); otherwise this consumed ceremony ends terminally — possession
+	# alone never mints a confirmation grant.
 	uv_flip_pending = not cint(cred.uv_initialized)
 	if uv_flip_pending:
 		window = session.get_window(user)
 		if not (window and window.get("seeded_by") in ("password", "reauth")):
-			session._raise_confirmation_required(
-				record["action"], methods=["password"], payload_fingerprint=record["payload_hash"]
+			raise frappe.AuthenticationError(
+				_("Passkey confirmation could not be completed. Re-authenticate and begin again.")
 			)
 
 	# sign-count policy applies (upward-only store + flag/hard-fail).
@@ -532,7 +532,7 @@ def reauth_password(pwd: str, action=None, payload_fingerprint=None):
 	# Under site `disable_user_pass_login`, a password can no
 	# longer re-auth for management once the user holds ≥1 passkey — only the
 	# passkey grant counts. Refuse before touching the password oracle at all.
-	if frappe.get_system_settings("disable_user_pass_login") and _has_enabled_passkey(user):
+	if not _password_reauth_allowed(user):
 		raise frappe.AuthenticationError(
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
 		)
@@ -627,6 +627,11 @@ def _resolve_ceremony_credential(record, credential, user):
 def _has_enabled_passkey(user: str) -> bool:
 	"""True iff the user holds ≥1 enabled credential."""
 	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
+
+
+def _password_reauth_allowed(user: str) -> bool:
+	"""Whether :func:`reauth_password` accepts password re-auth for ``user``."""
+	return not (cint(frappe.get_system_settings("disable_user_pass_login")) and _has_enabled_passkey(user))
 
 
 def _require_action(action) -> str:

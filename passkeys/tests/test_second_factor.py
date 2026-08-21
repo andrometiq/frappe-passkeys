@@ -428,10 +428,13 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		user = self._user(otp_capable=True)
 		other = self._user(otp_capable=True)
 		self._enroll(user)
+		self._enroll(other, seed="sf-other")
 		tmp_id = frappe.generate_hash()
 		state.store_otp_fallback(tmp_id, {"v": 1, "user": other})
 		with self.assertRaises(frappe.AuthenticationError):
 			self._run_login_veto(user, tmp_id=tmp_id, otp="123456")
+		self.assertEqual(state.get_otp_fallback(tmp_id).get("user"), other)
+		self.assertIsNone(self._run_login_veto(other, tmp_id=tmp_id, otp="123456"))
 
 	def test_otp_marker_is_not_consumed_after_core_2fa_policy_is_removed(self):
 		user = self._user(otp_capable=True)

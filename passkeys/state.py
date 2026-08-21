@@ -88,8 +88,7 @@ def get_uv_setup(setup_id: str) -> dict | None:
 	Wrong password attempts remain retryable (subject to the password throttle);
 	the record is atomically consumed only after a correct password.
 	"""
-	raw = frappe.cache.get(_make_key(UV_SETUP_PREFIX + setup_id))
-	return json.loads(raw) if raw is not None else None
+	return _get_json(UV_SETUP_PREFIX + setup_id)
 
 
 def store_otp_fallback(tmp_id: str, record: dict, ttl: int = OTP_FALLBACK_TTL) -> None:
@@ -104,6 +103,10 @@ def store_otp_fallback(tmp_id: str, record: dict, ttl: int = OTP_FALLBACK_TTL) -
 
 def consume_otp_fallback(tmp_id: str) -> dict | None:
 	return _consume_json(OTP_FALLBACK_PREFIX + tmp_id)
+
+
+def get_otp_fallback(tmp_id: str) -> dict | None:
+	return _get_json(OTP_FALLBACK_PREFIX + tmp_id)
 
 
 def store_grant(token_hash: str, record: dict, ttl: int = GRANT_TTL) -> None:
@@ -125,8 +128,7 @@ def set_sudo_window(sid: str, record: dict, ttl: int) -> None:
 
 
 def get_sudo_window(sid: str) -> dict | None:
-	raw = frappe.cache.get(_make_key(SUDO_PREFIX + sid))
-	return json.loads(raw) if raw is not None else None
+	return _get_json(SUDO_PREFIX + sid)
 
 
 def clear_sudo_window(sid: str) -> None:
@@ -269,6 +271,11 @@ def _make_key(name: str) -> bytes:
 def _put_json(name: str, record: dict, ttl: int) -> None:
 	# TTL at write; JSON; never touches frappe.local.cache
 	frappe.cache.set(_make_key(name), json.dumps(record), ex=ttl)
+
+
+def _get_json(name: str) -> dict | None:
+	raw = frappe.cache.get(_make_key(name))
+	return json.loads(raw) if raw is not None else None
 
 
 def _consume_json(name: str) -> dict | None:

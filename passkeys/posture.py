@@ -416,7 +416,7 @@ def build_posture() -> dict:
 			"core_2fa_method": core_2fa_method or None,
 			"passkey_only_user_count": passkey_only_count,
 			"login_user_count": login_user_count,
-			"enforcement_effective": boot._policy_effective(settings),
+			"enforcement_effective": boot.policy_effective(settings),
 			"sign_count_hard_fail": bool(cint(settings.passkey_sign_count_hard_fail)),
 			"reauth_window": cint(settings.passkey_reauth_window),
 		}

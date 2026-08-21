@@ -3,8 +3,8 @@
 
 """RP ID / origin policy (folds into ``frappe/passkey.py``).
 The UV / sign-count / BE-BS matrices arrive with the ceremony
-engine. Resolution happens at enable time from pinned configuration — never on
-a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
+engine. Validation happens at settings-save time from pinned configuration —
+never on a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
 
 import importlib.util
 import re
@@ -192,8 +192,8 @@ _APK_KEY_HASH_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 def app_origins(settings) -> list[str]:
 	"""The configured Trusted App Origins (``passkey_app_origins``), one per line,
-	trimmed and de-duplicated. Pure read — shape validation is
-	:func:`validate_app_origins` (settings save), never here."""
+	trimmed and de-duplicated. Pure read — settings-save-time shape validation is
+	owned by :func:`validate_app_origins`, never this path."""
 	origins: list[str] = []
 	for line in (settings.get("passkey_app_origins") or "").splitlines():
 		line = line.strip()
@@ -205,7 +205,7 @@ def app_origins(settings) -> list[str]:
 def resolve_expected_origins(settings, rp_id: str) -> list[str]:
 	"""The full ``expected_origin`` allowlist fed to the ceremony engine: the web
 	origins (:func:`resolve_origins`) plus the Trusted App Origins
-	(:func:`app_origins`). ``resolve_origins`` stays web-only, so the enable-time
+	(:func:`app_origins`). ``resolve_origins`` stays web-only, so the settings-save-time
 	web-origin validator, the request-host pre-check and the settings display mirror
 	never see an app origin — the native carve-out is strictly additive."""
 	origins = resolve_origins(settings, rp_id)

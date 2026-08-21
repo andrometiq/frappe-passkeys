@@ -318,8 +318,8 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_uv_uninitialized_without_password_window_refused_no_grant(self):
 		"""Regression (uninitialized-UV row): while
 		``uv_initialized=0`` the assertion's UV bit MUST NOT count as a
-		verification factor — without a password-seeded sudo window the typed
-		error routes the dialog to its password tab and NO grant is minted."""
+		verification factor. Without a password-seeded sudo window, the consumed
+		ceremony fails terminally and no grant is minted."""
 		user = self._user()
 		auth = self._enroll(user, seed="uvgate-a", uv=False)
 		frappe.set_user(user)
@@ -327,11 +327,13 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		begun = self._begin("myapp.act", params={"x": 1})
 		credential = self._assert(auth, begun["options"], uv=True)
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaises(frappe.AuthenticationError) as ctx:
 			self._verify(begun["state_id"], credential)
-		# the wire contract routes to the password tab...
-		self.assertEqual(frappe.local.response.get("methods"), ["password"])
-		# ...and the flag did NOT flip on possession alone (L3 MUST NOT)
+		self.assertNotIsInstance(ctx.exception, PasskeyConfirmationRequired)
+		self.assertIn("begin again", str(ctx.exception))
+		with self.assertRaises(CeremonyExpired):
+			self._verify(begun["state_id"], credential)
+		# The flag did NOT flip on possession alone (L3 MUST NOT).
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
@@ -618,6 +620,29 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertIn("passkey", begun["methods"])
 		self.assertNotIn("password", begun["methods"])  # never a password door
 		self.assertNotIn("sudo", begun["methods"])
+
+	def test_begin_confirmation_hides_password_when_reauth_refuses_it(self):
+		user = self._user(with_password=True)
+		self._enroll(user, seed="password-method-eligibility")
+		frappe.set_user(user)
+		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+
+		def set_disable_user_pass_login(value):
+			frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
+			frappe.clear_document_cache("System Settings", "System Settings")
+			frappe.local.system_settings = None
+
+		self.addCleanup(set_disable_user_pass_login, original)
+		set_disable_user_pass_login(1)
+		begun = self._begin(session.MANAGE_ACTION, params={})
+		self.assertIn("passkey", begun["methods"])
+		self.assertNotIn("password", begun["methods"])
+		with self.assertRaises(frappe.AuthenticationError):
+			self._reauth(
+				PWD,
+				action=session.MANAGE_ACTION,
+				payload_fingerprint=begun["payload_fingerprint"],
+			)
 
 	# ======================================================================
 	# the confirm assertion options carry a wire timeout equal to

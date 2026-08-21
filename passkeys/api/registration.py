@@ -113,6 +113,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	# 20/hr/user — BEFORE the single-use consume, so a rate-limited
 	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
 	state.rate_limit_user("verify_registration", 20, 3600)
+	session.require_authed_user()
 
 	error_message = _("Passkey registration could not be verified.")
 	if label is not None and not isinstance(label, str):
@@ -199,7 +200,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 def _require_any_login_mode(settings) -> None:
 	"""Registration is gated on ANY passkey login mode: a 2FA-only site's
 	users must still be able to enroll."""
-	if not (settings.login_with_passkey or settings.passkey_as_second_factor):
+	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
 		raise frappe.AuthenticationError(_("Passkeys are not enabled."))
 
 
@@ -222,9 +223,9 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 		# would be vetoed on its next use while the user has no password/passkey
 		# first factor, creating a self-lockout.
 		if (
-			not settings.login_with_passkey
+			not cint(settings.login_with_passkey)
 			or _enabled_credential_count(user) > 0
-			or not settings.passkey_allow_first_enrollment_on_weak_login
+			or not cint(settings.passkey_allow_first_enrollment_on_weak_login)
 		):
 			session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 		# risk event: the weak-login bootstrap scope was used.
@@ -331,7 +332,9 @@ def _insert_verified_credential(doc, settings, flow: str, authorization: str | N
 			or not cint(settings.passkey_allow_first_enrollment_on_weak_login)
 			or any(cint(row.enabled) for row in credentials)
 		):
-			session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
+			raise frappe.AuthenticationError(
+				_("Passkey registration could not be completed. Re-authenticate and begin again.")
+			)
 	_enforce_max_per_user(settings, credentials)
 
 	frappe.db.savepoint(REGISTRATION_INSERT_SAVEPOINT)

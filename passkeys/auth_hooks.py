@@ -140,6 +140,13 @@ def _consume_allowed_otp_fallback(user: str) -> bool:
 		return False
 	if path != "/api/method/login" and form.get("cmd") != "login":
 		return False
+	tmp_id = form.get("tmp_id")
+	if not tmp_id:
+		return False
+	tmp_id = str(tmp_id)
+	record = state.get_otp_fallback(tmp_id)
+	if not record or record.get("user") != user:
+		return False
 	# Core calls confirm_otp_token only while should_run_2fa() is true. Recheck
 	# that policy here before consuming our marker so a concurrent role/settings
 	# change cannot turn a request-shaped `otp` field into proof of verification.
@@ -147,11 +154,8 @@ def _consume_allowed_otp_fallback(user: str) -> bool:
 
 	if not should_run_2fa(user):
 		return False
-	tmp_id = form.get("tmp_id")
-	if not tmp_id:
-		return False
-	record = state.consume_otp_fallback(str(tmp_id))
-	return bool(record and record.get("user") == user)
+	consumed = state.consume_otp_fallback(tmp_id)
+	return bool(consumed and consumed.get("user") == user)
 
 
 def _is_password_reset_completion() -> bool:

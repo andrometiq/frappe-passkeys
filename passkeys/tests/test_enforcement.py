@@ -311,3 +311,28 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		count = info.passkeys["settings_context"]["would_be_blocked_count"]
 		self.assertIsInstance(count, int)
 		self.assertGreaterEqual(count, 1)  # at least our zero-credential test user
+
+	def test_preview_reuses_runtime_scope_for_administrator_and_automatic_roles(self):
+		settings = frappe._dict(
+			passkey_enforce_scope="Selected Roles",
+			passkey_enforce_roles=[frappe._dict(role="All")],
+			passkey_enforce_exempt_roles=[],
+		)
+
+		def get_all(doctype, **kwargs):
+			if doctype == "WebAuthn Credential":
+				return []
+			if doctype == "User":
+				return ["Administrator", "Guest", "user@example.com"]
+			raise AssertionError(f"Unexpected bulk read: {doctype}")
+
+		roles = {
+			"Administrator": ["Administrator", "All"],
+			"Guest": ["Guest", "All"],
+			"user@example.com": ["All"],
+		}
+		with (
+			patch("passkeys.boot.frappe.get_all", side_effect=get_all),
+			patch("passkeys.boot.frappe.get_roles", side_effect=lambda user: roles[user]),
+		):
+			self.assertEqual(boot._would_be_blocked_count(settings), 2)

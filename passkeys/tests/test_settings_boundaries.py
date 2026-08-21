@@ -533,8 +533,8 @@ class EnrollmentFieldVisibilityTest(IntegrationTestCase):
 	off of directly."""
 
 	# The knobs are consumed ONLY while the effective policy is "nudge" — boot._cadence_ok
-	# short-circuits (`if _policy_effective(settings) != "nudge": return False`) before it
-	# ever reads passkey_nudge_max_prompts / passkey_nudge_cooldown_days. _policy_effective
+	# short-circuits (`if policy_effective(settings) != "nudge": return False`) before it
+	# ever reads passkey_nudge_max_prompts / passkey_nudge_cooldown_days. policy_effective
 	# resolves to "nudge" for policy "Nudge" AND the pre-date phase of "Enforce After Date",
 	# so those two policies are exactly the honest visibility set (hidden under Off/Enforce).
 	NUDGE_DEPENDS_ON = 'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'

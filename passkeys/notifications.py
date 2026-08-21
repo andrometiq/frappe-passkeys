@@ -5,8 +5,8 @@
 telemetry + admin-change owner notices. Folds into
 ``frappe/passkey.py`` on the core merge.
 
-**Hook-path import discipline:** wired into the ``WebAuthn Credential``
-``on_trash``/``validate`` DocType events and the login-ceremony flag path, so it
+**Hook-path import discipline:** called from the ``WebAuthn Credential``
+``on_update``/``after_delete`` DocType events and ceremony/risk paths, so it
 MUST NOT import ``webauthn``. It imports only ``frappe`` and the webauthn-free
 ``passkeys.install`` (for the shared ``__passkeys`` Defaults parent).
 
@@ -116,6 +116,9 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 	``passkey_notify_password_fallback`` is on (default off). Non-blocking."""
 	try:
 		_activity_log(user, event, detail or event)
+	except Exception:
+		frappe.log_error(title="passkeys: risk-event audit failed")
+	try:
 		if event == RISK_FALLBACK_USED and cint(
 			frappe.db.get_single_value("Passkey Settings", "passkey_notify_password_fallback")
 		):
@@ -128,7 +131,7 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 				).format(_site_label()),
 			)
 	except Exception:
-		frappe.log_error(title="passkeys: risk-event record failed")
+		frappe.log_error(title="passkeys: risk-event email failed")
 
 
 def record_enforcement_incapable(user: str) -> None:
@@ -144,6 +147,9 @@ def record_enforcement_incapable(user: str) -> None:
 		_activity_log(
 			user, RISK_ENFORCE_INCAPABLE, f"Passkey enforcement: {user}'s device cannot create a passkey"
 		)
+	except Exception:
+		frappe.log_error(title="passkeys: enforcement-incapable audit failed")
+	try:
 		if _incapable_notified_recently(user):
 			return  # admins already advised within the window; the Activity Log still recorded
 		managers = [m for m in _system_manager_emails() if m and m != user]
@@ -160,7 +166,7 @@ def record_enforcement_incapable(user: str) -> None:
 			)
 			_mark_incapable_notified(user)  # only after a dispatch — a manager-less site retries
 	except Exception:
-		frappe.log_error(title="passkeys: enforcement-incapable advisory failed")
+		frappe.log_error(title="passkeys: enforcement-incapable email failed")
 
 
 def _incapable_notify_key(user: str) -> str:
@@ -193,7 +199,7 @@ def _system_manager_emails() -> list[str]:
 	try:
 		from frappe.utils.user import get_system_managers
 
-		return [m for m in get_system_managers() if m and "@" in m and m != "Administrator"]
+		return [m for m in get_system_managers(only_name=True) if m and "@" in m and m != "Administrator"]
 	except Exception:
 		return []
 
@@ -205,13 +211,16 @@ def _system_manager_emails() -> list[str]:
 
 def _safe(user: str, *, activity: tuple, subject: str, body: str) -> None:
 	"""Write the Activity Log row (always) + send the email (iff notify knob on).
-	Fully exception-hardened."""
+	Each sink is independently exception-hardened."""
 	try:
 		_activity_log(user, activity[0], activity[1])
+	except Exception:
+		frappe.log_error(title="passkeys: change-notification audit failed")
+	try:
 		if cint(frappe.db.get_single_value("Passkey Settings", "passkey_notify_on_change")):
 			_send(user, subject, body)
 	except Exception:
-		frappe.log_error(title="passkeys: change-notification failed")
+		frappe.log_error(title="passkeys: change-notification email failed")
 
 
 def _send(user: str, subject: str, message: str) -> None:
