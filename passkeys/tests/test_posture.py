@@ -5,6 +5,8 @@
 the permutation coverage runs on plain input dicts; one smoke test exercises the real
 ``build_posture`` reads + the whitelisted endpoint shape."""
 
+from unittest.mock import patch
+
 import frappe
 
 from passkeys import posture
@@ -15,6 +17,8 @@ from passkeys.tests.compat import IntegrationTestCase
 _LOCKED = {
 	"first_factor": True,
 	"second_factor": False,
+	"otp_fallback_enabled": False,
+	"config_read_failed": False,
 	"password_login_enabled": False,
 	"email_link_login": False,
 	"social_providers": [],
@@ -76,6 +80,35 @@ class ClassifyPostureTest(IntegrationTestCase):
 		self.assertNotIn("password_reset", _codes(result))
 		self.assertIn("core_2fa_on", _codes(result))
 		self.assertFalse(result["verdict"]["can_bypass"])
+
+	def test_second_factor_otp_fallback_controls_bypass_verdict(self):
+		for enabled, can_bypass in ((True, True), (False, False)):
+			with self.subTest(enabled=enabled):
+				result = posture.classify_posture(
+					_ctx(
+						first_factor=False,
+						second_factor=True,
+						otp_fallback_enabled=enabled,
+						password_login_enabled=True,
+						core_2fa_enabled=True,
+					)
+				)
+				self.assertEqual(result["verdict"]["can_bypass"], can_bypass)
+				self.assertEqual("otp_fallback" in _codes(result), enabled)
+
+	def test_both_modes_do_not_report_password_as_a_bypass(self):
+		result = posture.classify_posture(
+			_ctx(
+				first_factor=True,
+				second_factor=True,
+				otp_fallback_enabled=True,
+				password_login_enabled=True,
+				core_2fa_enabled=True,
+			)
+		)
+		self.assertNotIn("password_login", _codes(result))
+		self.assertIn("otp_fallback", _codes(result))
+		self.assertTrue(result["verdict"]["can_bypass"])
 
 	def test_second_factor_floor_off_is_unsupported_but_final_vetoed(self):
 		result = posture.classify_posture(
@@ -156,6 +189,14 @@ class BuildPostureSmokeTest(IntegrationTestCase):
 		self.assertIn("can_bypass", result["verdict"])
 		# the honest-limit disclaimer is always present
 		self.assertTrue(any(r["code"] == "custom_apps" for r in result["rows"]))
+
+	def test_config_read_failure_returns_degraded_verdict(self):
+		with patch("passkeys.posture._enabled_social_providers", side_effect=RuntimeError("read failed")):
+			result = posture.build_posture()
+
+		self.assertTrue(result["verdict"]["degraded"])
+		self.assertNotEqual(result["verdict"]["tone"], "good")
+		self.assertIn("posture_degraded", _codes(result))
 
 	def test_endpoint_is_system_manager_gated(self):
 		from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_security_posture
