@@ -227,14 +227,6 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._request("/api/method/passkeys.passkey.verify_second_factor", binder=binder)
 		self.assertTrue(state.binder_matches(state.binder_hash(binder)))
 
-	def test_legacy_binder_cookie_is_ignored(self):
-		set_request(
-			method="POST",
-			path="/api/method/passkeys.passkey.verify_login",
-			headers=[("Cookie", "passkey_binder=legacy")],
-		)
-		self.assertIsNone(state.read_binder_cookie())
-
 	def test_absent_binder_fails_closed(self):
 		user = self._user()
 		auth, _ = self._enroll(user)

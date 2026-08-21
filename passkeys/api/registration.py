@@ -116,8 +116,6 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	session.require_authed_user()
 
 	error_message = _("Passkey registration could not be verified.")
-	if label is not None and not isinstance(label, str):
-		raise frappe.AuthenticationError(error_message)
 	credential = _require_credential_dict(credential, error_message)
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":

@@ -249,6 +249,15 @@ so one user cannot probe another's credentials.
   version before session minting and fail if it changed.
 - **A backup restored to a stale point resurrects revoked credentials** — review
   credential inventories after any restore ([`operations.md`](operations.md)).
+- **The guest binder cookie is not `__Host-` scoped.** It is `Secure; HttpOnly;
+  SameSite=Lax` but carries no `__Host-` prefix, so a sibling subdomain of the site's
+  registrable domain (a compromised or attacker-controlled `*.example.com`) could plant a
+  `passkey_binder` cookie the browser also sends here — cookie fixation. This does not defeat
+  the login-CSRF defence: the cookie is HttpOnly and the ceremony matches its stored SHA-256, so
+  an attacker who cannot read the victim's value cannot complete a ceremony bound to it, and
+  Frappe core's own session `sid` cookie shares the identical exposure. The `__Host-` prefix
+  would close it but requires an HTTPS scheme the app cannot assume — it is silently dropped on
+  `http://` origins (dev benches, CI), which would fail login closed.
 - **Cross-origin / multi-domain serving** (Related Origin Requests) and
   identifier-first login are not implemented in this version.
 - **A console-created settings desync** (e.g. passkey 2FA on while core 2FA off)

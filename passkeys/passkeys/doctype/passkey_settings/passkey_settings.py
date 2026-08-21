@@ -15,13 +15,13 @@ from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import 
 
 class PasskeySettings(Document):
 	def validate(self):
+		self._enforce_passkey_only_login_guard()
 		if self._any_mode_enabled():
 			self._validate_enablement()
 		else:
 			self._validate_inactive_origins()
 		self._validate_reauth_window()
 		self._validate_second_factor_floor()
-		self._enforce_passkey_only_login_guard()
 		self._validate_enrollment_policy()
 		self._warn_risky_combinations()
 		self._warn_enforcement_risks()

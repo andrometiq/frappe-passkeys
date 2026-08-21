@@ -124,9 +124,8 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 	def test_non_string_label_is_rejected_before_consume(self):
 		user = self._user()
 		begun, credential, _auth = self._register(user, seed="non-string-label")
-		with self.assertRaises(frappe.AuthenticationError) as ctx:
+		with self.assertRaises(frappe.exceptions.FrappeTypeError):
 			registration.verify_registration(begun["state_id"], credential, label={"name": "Laptop"})
-		self.assertEqual(str(ctx.exception), "Passkey registration could not be verified.")
 
 		result = registration.verify_registration(begun["state_id"], credential, label="Laptop")
 		self.assertEqual(result["label"], "Laptop")

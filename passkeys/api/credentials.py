@@ -89,8 +89,6 @@ def rename_credential(name: str, label: str | None):
 	user = session.require_authed_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
 	doc = _own_credential(user, name)
-	if label is not None and not isinstance(label, str):
-		frappe.throw(_("A passkey name must be text."), frappe.ValidationError)
 	if not (label or "").strip():
 		frappe.throw(_("A passkey name cannot be empty."), frappe.ValidationError)
 	doc.label = label
