@@ -58,6 +58,8 @@ def classify_posture(ctx: dict) -> dict:
 	    Factor Authentication remains a required defence-in-depth floor."""
 	first = bool(ctx.get("first_factor"))
 	second = bool(ctx.get("second_factor"))
+	otp_fallback = bool(ctx.get("otp_fallback_enabled"))
+	config_read_failed = bool(ctx.get("config_read_failed"))
 	pw_enabled = bool(ctx.get("password_login_enabled"))
 	email_link = bool(ctx.get("email_link_login"))
 	providers = list(ctx.get("social_providers") or [])
@@ -73,9 +75,11 @@ def classify_posture(ctx: dict) -> dict:
 	rows = []
 	any_mode = first or second
 	# In first-factor mode, password login is an alternative first factor. In
-	# second-factor-only mode it rides the passkey step, so it is not a bypass.
-	pw_is_bypass = first and pw_enabled
+	# second-factor mode it is vetoed into the passkey or OTP-fallback leg.
+	pw_is_bypass = first and pw_enabled and not second
 	alternate_is_bypass = first and not second
+	if config_read_failed:
+		rows.append(_degraded_row())
 
 	# ---- no active passkey mode -------------------------------------------------
 	if not any_mode:
@@ -91,10 +95,15 @@ def classify_posture(ctx: dict) -> dict:
 		rows.append(_custom_apps_row())
 		return {
 			"verdict": {
-				"headline": _("Passkeys are not an active login factor on this site."),
-				"tone": "info",
+				"headline": (
+					_("Security posture could not be fully determined.")
+					if config_read_failed
+					else _("Passkeys are not an active login factor on this site.")
+				),
+				"tone": "high" if config_read_failed else "info",
 				"can_bypass": False,
 				"bypass_labels": [],
+				"degraded": config_read_failed,
 			},
 			"rows": rows,
 		}
@@ -112,6 +121,20 @@ def classify_posture(ctx: dict) -> dict:
 					"site-wide, or set 'Passwordless login only' per user (needs 2+ passkeys)."
 				),
 				bypass_label=_("password sign-in"),
+			)
+		)
+
+	if second and otp_fallback:
+		rows.append(
+			_row(
+				"otp_fallback",
+				"high",
+				_("OTP fallback is enabled for passkey second factor."),
+				_(
+					"An enrolled user can finish password sign-in with a verification code instead of a passkey."
+				),
+				_("Turn off 'Allow OTP Fallback' to require the passkey leg for enrolled users."),
+				bypass_label=_("OTP fallback"),
 			)
 		)
 
@@ -292,6 +315,15 @@ def classify_posture(ctx: dict) -> dict:
 			"tone": "high",
 			"can_bypass": True,
 			"bypass_labels": bypass_labels,
+			"degraded": config_read_failed,
+		}
+	elif config_read_failed:
+		verdict = {
+			"headline": _("Security posture could not be fully determined."),
+			"tone": "high",
+			"can_bypass": False,
+			"bypass_labels": [],
+			"degraded": True,
 		}
 	else:
 		verdict = {
@@ -299,6 +331,7 @@ def classify_posture(ctx: dict) -> dict:
 			"tone": "good",
 			"can_bypass": False,
 			"bypass_labels": [],
+			"degraded": False,
 		}
 
 	return {"verdict": verdict, "rows": rows}
@@ -329,30 +362,58 @@ def _custom_apps_row() -> dict:
 	)
 
 
+def _degraded_row() -> dict:
+	return _row(
+		"posture_degraded",
+		"high",
+		_("Security posture could not be fully determined."),
+		_("One or more stock authentication settings could not be read."),
+		_("Retry the check and inspect the failed System Settings, Social Login, or LDAP configuration."),
+	)
+
+
 # ---------------------------------------------------------------------------
 # reads → classify (impure)
 # ---------------------------------------------------------------------------
 
 
 def build_posture() -> dict:
-	"""Read the site's ACTUAL auth surface + this app's state, then classify. Every read
-	is defensive (a field/DocType absent on an older Frappe returns a falsy default), so
-	the endpoint never 500s on a lean site."""
+	"""Read the site's auth surface and classify it, marking failed reads degraded."""
 	from passkeys import boot
 
 	settings = frappe.get_cached_doc("Passkey Settings")
-	core_2fa = bool(cint(_system_setting("enable_two_factor_auth")))
+	disable_password, password_read_failed = _read_config(lambda: _system_setting("disable_user_pass_login"))
+	email_link, email_link_read_failed = _read_config(lambda: _system_setting("login_with_email_link"))
+	core_2fa_value, core_2fa_read_failed = _read_config(lambda: _system_setting("enable_two_factor_auth"))
+	core_2fa = bool(cint(core_2fa_value))
+	core_2fa_method, core_2fa_method_read_failed = (
+		_read_config(lambda: _system_setting("two_factor_method")) if core_2fa else (None, False)
+	)
+	social_providers, social_read_failed = _read_config(_enabled_social_providers, [])
+	ldap_enabled, ldap_read_failed = _read_config(_ldap_enabled, False)
+	config_read_failed = any(
+		(
+			password_read_failed,
+			email_link_read_failed,
+			core_2fa_read_failed,
+			core_2fa_method_read_failed,
+			social_read_failed,
+			ldap_read_failed,
+		)
+	)
 	passkey_only_count, login_user_count = _adoption_counts()
 	return classify_posture(
 		{
 			"first_factor": bool(cint(settings.login_with_passkey)),
 			"second_factor": bool(cint(settings.passkey_as_second_factor)),
-			"password_login_enabled": not bool(cint(_system_setting("disable_user_pass_login"))),
-			"email_link_login": bool(cint(_system_setting("login_with_email_link"))),
-			"social_providers": _enabled_social_providers(),
-			"ldap_enabled": _ldap_enabled(),
+			"otp_fallback_enabled": bool(cint(settings.passkey_2fa_allow_otp_fallback)),
+			"config_read_failed": config_read_failed,
+			"password_login_enabled": not bool(cint(disable_password)),
+			"email_link_login": bool(cint(email_link)),
+			"social_providers": social_providers,
+			"ldap_enabled": ldap_enabled,
 			"core_2fa_enabled": core_2fa,
-			"core_2fa_method": (_system_setting("two_factor_method") or None) if core_2fa else None,
+			"core_2fa_method": core_2fa_method or None,
 			"passkey_only_user_count": passkey_only_count,
 			"login_user_count": login_user_count,
 			"enforcement_effective": boot._policy_effective(settings),
@@ -390,23 +451,24 @@ def _adoption_counts() -> tuple[int, int]:
 
 
 def _system_setting(field: str):
+	return frappe.db.get_single_value("System Settings", field)
+
+
+def _read_config(read, default=None):
 	try:
-		return frappe.db.get_single_value("System Settings", field)
+		return read(), False
 	except Exception:
-		return None
+		return default, True
 
 
 def _enabled_social_providers() -> list:
 	"""Display labels for enabled Social Login Keys (provider_name, else the enum
 	provider, else the row name)."""
-	try:
-		rows = frappe.get_all(
-			"Social Login Key",
-			filters={"enable_social_login": 1},
-			fields=["name", "provider_name", "social_login_provider"],
-		)
-	except Exception:
-		return []
+	rows = frappe.get_all(
+		"Social Login Key",
+		filters={"enable_social_login": 1},
+		fields=["name", "provider_name", "social_login_provider"],
+	)
 	labels = []
 	for row in rows:
 		label = row.get("provider_name") or row.get("social_login_provider") or row.get("name")
@@ -418,7 +480,4 @@ def _enabled_social_providers() -> list:
 def _ldap_enabled() -> bool:
 	if not frappe.db.exists("DocType", "LDAP Settings"):
 		return False
-	try:
-		return bool(cint(frappe.db.get_single_value("LDAP Settings", "enabled")))
-	except Exception:
-		return False
+	return bool(cint(frappe.db.get_single_value("LDAP Settings", "enabled")))
