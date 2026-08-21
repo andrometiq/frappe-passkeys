@@ -12,6 +12,7 @@ disable-guard that prevents lockout; one demonstrates the out-of-band recovery
 escape."""
 
 import frappe
+from frappe.utils import set_request
 
 from passkeys import auth_hooks
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
@@ -36,6 +37,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
 		flush_settings_cache()
+		set_request(method="POST", path="/api/method/login")
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.addCleanup(self._clear_flags)
 
@@ -107,13 +109,29 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.local.flags.passkey_login = True
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
 
-	def test_impersonation_is_exempt_via_non_guest_session(self):
-		user = self._user(passkey_only=True)
-		# during impersonation the request is still authenticated as the
-		# impersonator (a real, non-Guest user) at on_login time — the signal.
+	def test_core_impersonation_routes_exempt_cross_user_login(self):
+		victim = self._user(passkey_only=True)
 		frappe.set_user("Administrator")
 		self._clear_flags()
-		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
+		method = "frappe.core.doctype.user.user.impersonate"
+		for path in (
+			f"/api/method/{method}",
+			f"/api/v1/method/{method}",
+			f"/api/v2/method/{method}",
+		):
+			with self.subTest(path=path):
+				set_request(method="POST", path=path)
+				frappe.local.form_dict = frappe._dict()
+				self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
+
+	def test_explicit_core_impersonation_cmd_exempts_cross_user_login(self):
+		victim = self._user(passkey_only=True)
+		frappe.set_user("Administrator")
+		self._clear_flags()
+		method = "frappe.core.doctype.user.user.impersonate"
+		set_request(method="POST", path=f"/api/method/{method}")
+		frappe.local.form_dict = frappe._dict(cmd=method)
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
 
 	def test_administrator_is_exempt(self):
 		# never lock the site owner out through this veto (core-2FA parity): even a
@@ -153,16 +171,82 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		user = self._user(passkey_only=True)
 		frappe.set_user(user)  # already authenticated as themselves
 		self._clear_flags()
+		set_request(method="POST", path="/an/arbitrary/non-rpc/path")
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
 
-	def test_system_manager_session_is_still_exempt(self):
-		# the SM-gated impersonate() caller — a non-Administrator SM.
+	def test_impersonation_path_with_diverting_cmd_is_vetoed(self):
+		victim = self._user(passkey_only=True)
+		attacker = self._user(passkey_only=False)
+		frappe.set_user(attacker)
+		self._clear_flags()
+		method = "frappe.core.doctype.user.user.impersonate"
+		for path in (
+			f"/api/method/{method}",
+			f"/api/v1/method/{method}",
+			f"/api/v2/method/{method}",
+		):
+			with self.subTest(path=path):
+				set_request(method="POST", path=path)
+				frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
+				with self.assertRaises(frappe.AuthenticationError):
+					auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_system_manager_session_on_non_impersonation_route_is_vetoed(self):
 		victim = self._user(passkey_only=True)
 		manager = self._user(passkey_only=False)
 		frappe.get_doc("User", manager).add_roles("System Manager")
 		frappe.set_user(manager)
 		self._clear_flags()
-		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(victim)))
+		set_request(method="POST", path="/api/method/frappe.www.login.login_via_key")
+		frappe.local.form_dict = frappe._dict()
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_missing_request_path_is_vetoed(self):
+		victim = self._user(passkey_only=True)
+		frappe.set_user("Administrator")
+		self._clear_flags()
+		frappe.local.request.path = None
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_missing_request_is_vetoed(self):
+		victim = self._user(passkey_only=True)
+		frappe.set_user("Administrator")
+		self._clear_flags()
+		frappe.local.request = None
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_impersonation_cmd_whitespace_variant_is_vetoed(self):
+		victim = self._user(passkey_only=True)
+		frappe.set_user("Administrator")
+		self._clear_flags()
+		method = "frappe.core.doctype.user.user.impersonate"
+		set_request(method="POST", path=f"/api/method/{method}")
+		frappe.local.form_dict = frappe._dict(cmd=f" {method}")
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(victim))
+
+	def test_core_method_matcher_requires_route_and_dispatch_consistency(self):
+		method = "frappe.core.doctype.user.user.impersonate"
+		for path in (
+			f"/api/method/{method}",
+			f"/api/v1/method/{method}",
+			f"/api/v2/method/{method}",
+		):
+			with self.subTest(path=path, cmd="absent"):
+				set_request(method="POST", path=path)
+				frappe.local.form_dict = frappe._dict()
+				self.assertTrue(auth_hooks._request_is_core_method(method))
+			with self.subTest(path=path, cmd=method):
+				frappe.local.form_dict = frappe._dict(cmd=method)
+				self.assertTrue(auth_hooks._request_is_core_method(method))
+			with self.subTest(path=path, cmd="frappe.www.login.login_via_key"):
+				frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
+				self.assertFalse(auth_hooks._request_is_core_method(method))
+		frappe.local.request.path = None
+		self.assertFalse(auth_hooks._request_is_core_method(method))
 
 	def test_flagged_passkey_login_passes_over_a_resumed_foreign_session(self):
 		# the app's own passkey legs (flag set before login_as) still pass
