@@ -216,7 +216,10 @@ def consume_passkey_grant(user: str, action: str, params: dict) -> bool:
 	record = state.consume_grant(hashlib.sha256(token.encode("utf-8")).hexdigest())
 	if not record:
 		return False
-	return _grant_matches(record, user, action, params) and record.get("method") == "passkey"
+	if not (_grant_matches(record, user, action, params) and record.get("method") == "passkey"):
+		return False
+	_audit_grant("consumed", action, user, "passkey")
+	return True
 
 
 def _grant_matches(record: dict, user: str, action: str, params: dict) -> bool:

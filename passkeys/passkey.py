@@ -157,8 +157,9 @@ def verify_login(state_id: str, credential):
 	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
-	credential = _as_dict(credential)
+	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
 
+	# Step numbers follow the shared ceremony-ladder convention used by registration.py.
 	# 1. atomic single-use consume; a login state can never be a register state
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "login":
@@ -310,6 +311,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	user = record["user"]
+	_require_login_attempt_allowed(user)
 	# app-owned per-user password-oracle throttle (the core tracker is off by
 	# default; this endpoint is a password oracle the app introduces)
 	if state.is_password_throttled(user):
@@ -557,7 +559,7 @@ def verify_second_factor(state_id: str, credential):
 	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
 	from passkeys import engine
 
-	credential = _as_dict(credential)
+	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
 
 	# atomic single-use consume; a second-factor state can never be anything else
 	record = state.consume_ceremony(state_id)
@@ -805,7 +807,7 @@ def _password_version(user: str) -> str | None:
 
 def _request_login_manager():
 	"""The request-time ``LoginManager`` (core builds one per request), or a fresh
-	one on the direct-call/unit path — mirrors :func:`_mint_session`'s bootstrap."""
+	one on the direct-call/unit path."""
 	login_manager = getattr(frappe.local, "login_manager", None)
 	if login_manager is None:
 		from frappe.auth import LoginManager
@@ -839,7 +841,7 @@ def _observe_2fa_floor_desync(settings) -> None:
 			),
 		)
 	except Exception:
-		pass
+		frappe.log_error(title="passkeys: 2FA floor desync observation failed")
 
 
 # ===========================================================================
@@ -972,14 +974,7 @@ def _mint_session(user: str) -> None:
 	session + cookies, Activity Log; never a fresh ``LoginManager()`` mid-flow.
 	``frappe.local.flags.passkey_login`` must already be set by the caller so
 	``seed_sudo_window`` classifies the window as passkey."""
-	login_manager = getattr(frappe.local, "login_manager", None)
-	if login_manager is None:
-		# No request-time LoginManager (direct-call / unit path): build one.
-		from frappe.auth import LoginManager
-
-		login_manager = LoginManager()
-		frappe.local.login_manager = login_manager
-	login_manager.login_as(user)
+	_request_login_manager().login_as(user)
 
 
 def _advance_credential(name: str, result, *, sign_count_hard_fail: bool = False) -> None:
@@ -1145,5 +1140,12 @@ def _b64url_decode(value: str) -> bytes:
 		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
 
 
-def _as_dict(value):
-	return json.loads(value) if isinstance(value, str) else value
+def _require_credential_dict(value, message):
+	try:
+		parsed = json.loads(value) if isinstance(value, str) else value
+	except (json.JSONDecodeError, ValueError) as exc:
+		raise frappe.AuthenticationError(message) from exc
+	# JSON request bodies may already be decoded, so validate the final value.
+	if not isinstance(parsed, dict):
+		raise frappe.AuthenticationError(message)
+	return parsed

@@ -631,6 +631,41 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")  # no session minted
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
+	def test_complete_uv_setup_core_login_lock_precedes_password_check(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+		self.addCleanup(state.consume_uv_setup, setup_id)
+
+		messages = []
+		with (
+			patch(
+				"frappe.auth.get_login_attempt_tracker",
+				side_effect=frappe.SecurityException("locked"),
+			) as tracker,
+			patch("passkeys.state.record_password_failure") as record_password_failure,
+			patch("passkeys.passkey._track_verify_failure") as track_verify_failure,
+		):
+			for password in (PWD, "wrong-password"):
+				self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+				with self.assertRaises(frappe.AuthenticationError) as ctx:
+					passkey.complete_uv_setup(setup_id, password)
+				messages.append(str(ctx.exception))
+
+			self.assertEqual(tracker.call_count, 2)
+			record_password_failure.assert_not_called()
+			track_verify_failure.assert_not_called()
+
+		self.assertEqual(messages, ["Passkey could not be verified."] * 2)
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
+		self.assertIsNotNone(state.get_uv_setup(setup_id))
+
 	def test_failed_verify_login_feeds_login_attempt_tracker(self):
 		"""N failed passkey verifies feed core's LoginAttemptTracker for the
 		resolved user, exactly as a bad password would — without leaking

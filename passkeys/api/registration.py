@@ -18,15 +18,14 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import aaguid, policy, state
+from passkeys import aaguid, policy, session, state
 from passkeys.passkey import (
 	CeremonyExpired,
-	PasskeyConfirmationRequired,
 	_enforce_request_host,
+	_require_credential_dict,
 	refuse_if_core_native,
 )
 
-MANAGE_ACTION = "passkeys.manage"
 REGISTRATION_INSERT_SAVEPOINT = "passkey_registration_insert"
 
 
@@ -64,7 +63,7 @@ def begin_registration(flow: str = "explicit"):
 	_enforce_request_host(origins)
 
 	credentials = _user_credentials(user)
-	_enforce_max_per_user(settings, credentials, flow)
+	_enforce_max_per_user(settings, credentials)
 
 	handle = _get_or_create_handle(user)
 	user_doc = frappe.get_cached_doc("User", user)
@@ -115,7 +114,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
 	state.rate_limit_user("verify_registration", 20, 3600)
 
-	credential = _as_dict(credential)
+	credential = _require_credential_dict(credential, _("Passkey registration could not be verified."))
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":
 		raise CeremonyExpired(_("That took too long — please try again."))
@@ -204,13 +203,13 @@ def _require_any_login_mode(settings) -> None:
 def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 	window = state.get_sudo_window(frappe.session.sid)
 	if not window or window.get("user") != user:
-		_raise_confirmation_required()
+		session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 	seeded_by = window.get("seeded_by")
 
 	if flow == "conditional_create":
 		# The silent upgrade rides the just-typed password's freshness.
 		if seeded_by != "password":
-			_raise_confirmation_required()
+			session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 		return seeded_by
 
 	# explicit add
@@ -224,7 +223,7 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 			or _enabled_credential_count(user) > 0
 			or not settings.passkey_allow_first_enrollment_on_weak_login
 		):
-			_raise_confirmation_required()
+			session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 		# risk event: the weak-login bootstrap scope was used.
 		from passkeys import notifications
 
@@ -236,17 +235,10 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 		return seeded_by
 	if seeded_by in ("password", "passkey", "reauth"):
 		return seeded_by
-	_raise_confirmation_required()
+	session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 
 
-def _raise_confirmation_required() -> None:
-	frappe.local.response["action"] = MANAGE_ACTION
-	frappe.local.response["payload_fingerprint"] = None
-	frappe.local.response["methods"] = ["passkey", "password"]
-	raise PasskeyConfirmationRequired(_("Confirm it's you to manage passkeys."))
-
-
-def _enforce_max_per_user(settings, credentials: list, flow: str) -> None:
+def _enforce_max_per_user(settings, credentials: list) -> None:
 	cap = int(settings.passkey_max_per_user or 10)
 	if len(credentials) >= cap:
 		frappe.throw(
@@ -336,8 +328,8 @@ def _insert_verified_credential(doc, settings, flow: str, authorization: str | N
 			or not cint(settings.passkey_allow_first_enrollment_on_weak_login)
 			or any(cint(row.enabled) for row in credentials)
 		):
-			_raise_confirmation_required()
-	_enforce_max_per_user(settings, credentials, flow)
+			session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
+	_enforce_max_per_user(settings, credentials)
 
 	frappe.db.savepoint(REGISTRATION_INSERT_SAVEPOINT)
 	try:
@@ -381,10 +373,6 @@ def _rp_name() -> str:
 	"""RP display name shown in the OS passkey sheet — the site's brand name,
 	falling back to the site id."""
 	return frappe.get_website_settings("app_name") or frappe.local.site or "Frappe"
-
-
-def _as_dict(value):
-	return json.loads(value) if isinstance(value, str) else value
 
 
 def _pad(b64url: str) -> str:
