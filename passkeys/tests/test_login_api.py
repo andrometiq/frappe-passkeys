@@ -27,7 +27,7 @@ from passkeys.tests.compat import (
 	flush_settings_cache,
 )
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -417,7 +417,30 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		)
 		self._request("/api/method/passkeys.passkey.verify_login")
 		with self.assertRaises(CeremonyExpired):
-			passkey.verify_login(state_id, {"id": "z", "response": {"userHandle": "h"}})
+			passkey.verify_login(
+				state_id,
+				{"id": "z", "response": {"clientDataJSON": b64url(b"{}"), "userHandle": "h"}},
+			)
+
+	def test_malformed_credential_envelope_is_rejected_before_consume(self):
+		user = self._user()
+		auth, _handle = self._enroll(user)
+		begun, binder = self._begin()
+		good = self._assert(auth, begun["options"], sign_count=4)
+		cases = (
+			("non-dict response", {"response": 1}),
+			("null client data", {"response": {"clientDataJSON": b64url(b"null")}}),
+			("list client data", {"response": {"clientDataJSON": b64url(b"[]")}}),
+			("scalar client data", {"response": {"clientDataJSON": b64url(b"1")}}),
+		)
+		for label, malformed in cases:
+			with self.subTest(label=label):
+				with self.assertRaises(frappe.AuthenticationError) as ctx:
+					self._verify(begun["state_id"], malformed, binder)
+				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
+
+		self._verify(begun["state_id"], good, binder)
+		self.assertEqual(frappe.session.user, user)
 
 	def test_first_factor_cross_user_substitution_is_uniform_failure(self):
 		"""StrongKey class: user B's valid assertion carrying user A's

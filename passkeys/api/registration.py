@@ -114,7 +114,10 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
 	state.rate_limit_user("verify_registration", 20, 3600)
 
-	credential = _require_credential_dict(credential, _("Passkey registration could not be verified."))
+	error_message = _("Passkey registration could not be verified.")
+	if label is not None and not isinstance(label, str):
+		raise frappe.AuthenticationError(error_message)
+	credential = _require_credential_dict(credential, error_message)
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":
 		raise CeremonyExpired(_("That took too long — please try again."))

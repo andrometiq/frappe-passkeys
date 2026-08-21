@@ -109,6 +109,13 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertTrue(v["allow_hybrid"])
 		self.assertEqual(v["incapable_policy"], "degrade")
 
+	def test_non_mapping_enforcement_state_falls_back_to_zero(self):
+		user = self._user()
+		for raw in ("null", "[]", "1"):
+			with self.subTest(raw=raw):
+				frappe.db.set_default(f"{user}_passkey_enforce", raw, parent=DEFAULTS_PARENT)
+				self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 0})
+
 	def test_grace_zero_blocks_immediately(self):
 		self._set(passkey_enforce_grace_logins=0)
 		v = self._verdict(self._user())
