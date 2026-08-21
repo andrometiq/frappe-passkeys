@@ -17,6 +17,9 @@ class PasskeySettings(Document):
 	def validate(self):
 		if self._any_mode_enabled():
 			self._validate_enablement()
+		else:
+			self._validate_inactive_origins()
+		self._validate_reauth_window()
 		self._validate_second_factor_floor()
 		self._enforce_passkey_only_login_guard()
 		self._validate_enrollment_policy()
@@ -69,12 +72,31 @@ class PasskeySettings(Document):
 				)
 			)
 
+	def _validate_inactive_origins(self):
+		if self.passkey_origins:
+			policy.validate_origins(self, policy.resolve_rp_id(self))
+		if self.passkey_app_origins:
+			policy.validate_app_origins(self)
+
+	def _validate_reauth_window(self):
+		if cint(self.passkey_reauth_window) < 0:
+			frappe.throw(_("Re-auth Window cannot be negative."), frappe.ValidationError)
+
 	def _validate_second_factor_floor(self):
 		"""The enforcement floor is structural — passkey second factor
 		requires core two-factor auth to stay ON (direct password POSTs then
 		face core's own OTP gate on every branch, with zero hook dependence)."""
 		if not cint(self.passkey_as_second_factor):
 			return
+		if not cint(self.login_with_passkey) and cint(
+			frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		):
+			frappe.throw(
+				_(
+					"Passkey as Second Factor cannot be the only passkey mode while username/password login is disabled. Enable Login with Passkey or re-enable username/password login."
+				),
+				frappe.ValidationError,
+			)
 		if not policy.lock_core_2fa_floor():
 			frappe.throw(
 				_(

@@ -209,6 +209,17 @@ class TestStateStore(IntegrationTestCase):
 		state.clear_password_failures(user)
 		self.assertFalse(state.is_password_throttled(user))
 
+	def test_claim_password_attempt_boundary_and_clear(self):
+		user = f"claim-{frappe.generate_hash(length=8)}@example.com"
+		self.addCleanup(state.clear_password_failures, user)
+
+		for count in range(1, state.PASSWORD_FAILURE_LIMIT + 1):
+			self.assertEqual(state.claim_password_attempt(user), count)
+		self.assertEqual(state.claim_password_attempt(user), state.PASSWORD_FAILURE_LIMIT + 1)
+
+		state.clear_password_failures(user)
+		self.assertEqual(state.claim_password_attempt(user), 1)
+
 	def test_sudo_window_round_trip(self):
 		sid = frappe.generate_hash()
 		record = {"user": "someone@example.com", "seeded_by": "password"}

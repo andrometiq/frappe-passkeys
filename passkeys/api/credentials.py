@@ -84,7 +84,7 @@ def list_credentials():
 @frappe.whitelist(methods=["POST"])
 def rename_credential(name: str, label: str | None):
 	"""Rename the caller's own credential. Display-only, so no sudo gate;
-	the DocType ``validate`` sanitizes + length-caps the label (stored-XSS)."""
+	the DocType label sanitizer is applied before the narrow column update."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
 	user = session.require_authed_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
@@ -94,7 +94,10 @@ def rename_credential(name: str, label: str | None):
 	if not (label or "").strip():
 		frappe.throw(_("A passkey name cannot be empty."), frappe.ValidationError)
 	doc.label = label
-	doc.save(ignore_permissions=True)
+	doc._sanitize_label()
+	if not doc.label:
+		frappe.throw(_("A passkey name cannot be empty."), frappe.ValidationError)
+	frappe.db.set_value(CREDENTIAL_DOCTYPE, doc.name, "label", doc.label, update_modified=True)
 	return {"name": doc.name, "label": doc.label}
 
 
@@ -160,6 +163,7 @@ def set_passkey_only_login(enabled):
 	passkeys (the ≥1 floor binds every writer via the handle-row ``validate``)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
 	user = session.require_authed_user()
+	state.rate_limit_user("set_passkey_only_login", 20, 3600)  # 20/hr/user
 	enabled_int = cint(enabled)
 	payload = {"enabled": bool(enabled_int)}
 	if not session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, payload):
