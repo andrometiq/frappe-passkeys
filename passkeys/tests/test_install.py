@@ -23,11 +23,22 @@ class TestVersionFloor(unittest.TestCase):
 	"""Pure unit tests of the floor check against fake versions."""
 
 	def test_below_floor_refused(self):
-		for version in ("14.99.0", "15.0.0", "15.101.0", "15.106.9", "15.106.9-beta.1"):
+		# Per-major-line floors: 15.108.0 / 16.18.3 (CVE-2026-47194). 15.107.0 and the
+		# 16.0.0-16.18.2 window are now refused; a single floor would have let 16.x pass.
+		for version in (
+			"14.99.0",
+			"15.0.0",
+			"15.101.0",
+			"15.106.9",
+			"15.106.9-beta.1",
+			"15.107.0",
+			"16.0.0",
+			"16.18.2",
+		):
 			self.assertRaises(frappe.ValidationError, install.check_frappe_version, version)
 
 	def test_at_and_above_floor_accepted(self):
-		for version in ("15.107.0", "15.113.4", "16.0.0", "16.25.0", "17.0.0-dev", "18.0.0"):
+		for version in ("15.108.0", "15.113.4", "16.18.3", "16.25.0", "17.0.0-dev", "18.0.0"):
 			install.check_frappe_version(version)  # must not raise
 
 	def test_version_tuple_parsing(self):

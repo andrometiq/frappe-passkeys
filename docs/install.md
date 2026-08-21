@@ -8,8 +8,8 @@ themselves is in [`configuration.md`](configuration.md).
 
 | Branch | Supported | Why |
 |---|---|---|
-| **v15** | **v15.107.0 and newer** | The `webauthn` library (2.8.x) requires both `cryptography>=46` and `pyOpenSSL>=26`. v15 bumped `cryptography` in 15.101.0 but only shipped `pyOpenSSL~=26` from **v15.107.0** (2026-04-28). On 15.101.0–15.106.x the dependency resolver cannot satisfy `pyOpenSSL>=26`. Older v15 (cryptography 41.x/44.x) cannot run any usable `py_webauthn` 2.x at all. |
-| **v16** | Candidate branch | Use `version-16`; release CI validates a reviewed, pinned Frappe baseline. Validate the exact Frappe patch level you deploy. |
+| **v15** | **v15.108.0 and newer** | v15.107.0 first shipped the `pyOpenSSL~=26` / `cryptography>=46` that `webauthn` 2.8.x needs; **15.108.0** additionally closes CVE-2026-47194 (host-header poisoning of magic/passwordless login links → account takeover). On 15.101.0–15.106.x the resolver cannot satisfy `pyOpenSSL>=26`; older v15 cannot run `py_webauthn` 2.x at all. |
+| **v16** | **v16.18.3 and newer** | 16.18.3 closes the same CVE-2026-47194 on the v16 line. Use `version-16`; release CI validates a reviewed, pinned Frappe baseline. Validate the exact Frappe patch level you deploy. |
 | **develop** | Integration target | Pre-release only. Moving branch-tip CI fails visibly on drift but is not a release or production-readiness attestation. |
 
 The app pins `webauthn==2.8.0`; changing that authentication-critical dependency requires the full
@@ -17,8 +17,9 @@ resolver and ceremony matrix. Python `>=3.10,<3.15` is declared. These constrain
 candidate accepts, not a promise that every future Frappe patch release in the range is compatible.
 
 The floor is declared in four places that must agree: `pyproject.toml`
-(`[tool.bench.frappe-dependencies] frappe = ">=15.107.0,<18.0.0"`), this
-documentation, a `before_install` runtime check, and CI.
+(`[tool.bench.frappe-dependencies] frappe = ">=15.108.0,<18.0.0"` — a single coarse
+lower bound), this documentation, a per-major-line `before_install` runtime check
+(≥15.108.0 / ≥16.18.3), and CI.
 
 ## Install
 
@@ -46,12 +47,17 @@ deliberate: a `before_install` failure leaves **zero** site state, whereas an
 `after_install` failure would leave a half-installed, registered app that
 re-runs its hooks on every `bench migrate`.
 
-- **Version floor.** If `frappe.__version__` is below 15.107.0, the install
+- **Version floor.** If `frappe.__version__` is below the floor for its major
+  line (v15 → 15.108.0, v16 → 16.18.3, newer majors → 15.108.0), the install
   aborts with:
 
-  > The passkeys app requires Frappe 15.107.0 or newer (found X): the webauthn
-  > library needs cryptography>=46.0.0 and pyOpenSSL>=26.0.0, which older
-  > releases do not ship.
+  > The passkeys app requires Frappe 15.108.0 or newer on this line (found X):
+  > older releases are exposed to CVE-2026-47194 (host-header poisoning of login
+  > links) and lack cryptography>=46.0.0 / pyOpenSSL>=26.0.0.
+
+  This check runs at **install time only** (`before_install`); it does not re-run
+  on `bench update`/`migrate`, so keep the deployment's Frappe at or above the
+  floor as an operational practice, not only at first install.
 
   Fix: upgrade Frappe (or the whole bench) to a supported version, then retry.
   The `bench get-app` step is unaffected — only `install-app` aborts.
