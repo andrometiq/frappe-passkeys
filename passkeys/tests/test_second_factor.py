@@ -652,7 +652,9 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
 
 		good = self._assert(auth, resp["verification"]["options"], sign_count=8)
-		frappe.cache.delete_keys(f"rl::{self._ip}")  # shared empty-cmd rl key in the test harness
+		# The harness leaves form_dict.cmd None, so every @rate_limit endpoint (leg1 +
+		# each leg2) collapses onto one "rl:None:<ip>" counter; clear it before the good leg.
+		frappe.cache.delete_keys("rl:")
 		self._leg2(state_id, good, binder)
 		self.assertEqual(frappe.session.user, user)
 
