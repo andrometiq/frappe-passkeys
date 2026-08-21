@@ -7,6 +7,7 @@ delete, the last-credential guard for passkey-only users, rename validation,
 and the passkey-grant-only ``set_passkey_only_login`` gate."""
 
 import hashlib
+from unittest.mock import patch
 
 import frappe
 
@@ -107,6 +108,44 @@ class CredentialManagementTest(IntegrationTestCase):
 		frappe.set_user(user)
 		credentials.rename_credential(cred.name, "<b>Phone</b>")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", cred.name, "label"), "Phone")
+
+	def test_rename_caps_label(self):
+		user = self._user()
+		cred = make_credential(user)
+		frappe.set_user(user)
+		credentials.rename_credential(cred.name, "x" * 200)
+		self.assertEqual(len(frappe.db.get_value("WebAuthn Credential", cred.name, "label")), 140)
+
+	def test_rename_rejects_empty_after_sanitize(self):
+		user = self._user()
+		cred = make_credential(user)
+		frappe.set_user(user)
+		with self.assertRaises(frappe.ValidationError):
+			credentials.rename_credential(cred.name, "<b></b>")
+
+	def test_rename_does_not_clobber_concurrent_auth_state(self):
+		user = self._user()
+		cred = make_credential(user, label="Old", sign_count=1)
+		frappe.set_user(user)
+		real_own_credential = credentials._own_credential
+
+		def load_then_authenticate(owner, name):
+			doc = real_own_credential(owner, name)
+			frappe.db.set_value(
+				"WebAuthn Credential",
+				name,
+				{"flagged": 1, "sign_count": 9},
+				update_modified=False,
+			)
+			return doc
+
+		with patch("passkeys.api.credentials._own_credential", side_effect=load_then_authenticate):
+			credentials.rename_credential(cred.name, "Renamed")
+
+		values = frappe.db.get_value(
+			"WebAuthn Credential", cred.name, ["label", "flagged", "sign_count"], as_dict=True
+		)
+		self.assertEqual((values.label, values.flagged, values.sign_count), ("Renamed", 1, 9))
 
 	def test_rename_cross_user_is_uniform_not_found(self):
 		user_a, user_b = self._user(), self._user()
@@ -272,6 +311,20 @@ class CredentialManagementTest(IntegrationTestCase):
 			# 3) retry with the grant → the toggle persists
 			result = credentials.set_passkey_only_login(enabled)
 			self.assertEqual(result["passkey_only_login"], want)
+
+	def test_set_passkey_only_rate_limit_raises_429(self):
+		user = self._user()
+		frappe.set_user(user)
+		frappe.local.form_dict = frappe._dict()
+		counter = f"{state.RATE_LIMIT_PREFIX}set_passkey_only_login:{user}"
+		self.addCleanup(state.clear_counter, counter)
+
+		for _ in range(20):
+			with self.assertRaises(PasskeyConfirmationRequired):
+				credentials.set_passkey_only_login(1)
+		with self.assertRaises(frappe.TooManyRequestsError) as ctx:
+			credentials.set_passkey_only_login(1)
+		self.assertEqual(ctx.exception.http_status_code, 429)
 
 	def test_list_credentials_carries_passkey_only_login_flag(self):
 		"""C2-payload-exposure: the client reads passkey_only_login from the list
