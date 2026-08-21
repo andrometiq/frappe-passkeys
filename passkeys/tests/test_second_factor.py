@@ -28,7 +28,7 @@ from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired
 from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -445,7 +445,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with patch("frappe.twofactor.should_run_2fa", return_value=True):
 			self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
 
-	def test_reset_key_changes_password_but_mints_only_a_guest_session(self):
+	def test_reset_key_v2_trailing_slash_changes_password_but_mints_only_guest(self):
 		user = self._user(otp_capable=False)
 		self._enroll(user)
 		from frappe.auth import LoginManager
@@ -455,7 +455,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		link = frappe.get_doc("User", user)._reset_password(send_email=False)
 		key = parse_qs(urlparse(link).query)["key"][0]
 		method = "frappe.core.doctype.user.user.update_password"
-		self._request(f"/api/method/{method}")
+		self._request(f"/api/v2/method/{method}/")
 		frappe.local.form_dict.update({"cmd": method, "key": key})
 		frappe.local.login_manager = LoginManager()
 		# LoginManager may resume the test harness's prior cookie; the public reset
@@ -607,7 +607,12 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		# "AAAAA" = 5 base64url data chars (≡ 1 mod 4) — undecodable. Before the fix it
 		# raised binascii.Error → 500 with the state already consumed (dead 2FA leg).
-		garbage = {"id": "AAAAA", "rawId": "AAAAA", "response": {}, "type": "public-key"}
+		garbage = {
+			"id": "AAAAA",
+			"rawId": "AAAAA",
+			"response": {"clientDataJSON": b64url(b"{}")},
+			"type": "public-key",
+		}
 		with self.assertRaises(CeremonyExpired):
 			self._leg2(resp["tmp_id"], garbage, binder)
 		fresh_sid = frappe.local.response.get("state_id")
@@ -618,7 +623,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._leg2(fresh_sid, good, binder)
 		self.assertEqual(frappe.session.user, user)
 
-	def test_malformed_credential_payload_is_rejected_before_consume(self):
+	def test_malformed_credential_envelope_is_rejected_before_consume(self):
 		user = self._user()
 		auth = self._enroll(user)
 		resp, binder = self._leg1(user, PWD)
@@ -629,6 +634,10 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 			("decoded list", []),
 			("decoded null", None),
 			("invalid JSON", "{"),
+			("non-dict response", {"response": 1}),
+			("null client data", {"response": {"clientDataJSON": b64url(b"null")}}),
+			("list client data", {"response": {"clientDataJSON": b64url(b"[]")}}),
+			("scalar client data", {"response": {"clientDataJSON": b64url(b"1")}}),
 		)
 
 		for label, malformed in cases:

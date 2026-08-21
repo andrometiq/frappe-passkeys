@@ -22,7 +22,7 @@ from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url_decode
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -138,6 +138,26 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._attach_grant(token)
 		self.assertTrue(session.consume_action_grant(user, "myapp.release_payment", {"payment_id": "PAY-1"}))
 
+	def test_malformed_credential_envelope_is_rejected_before_consume(self):
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.set_user(user)
+		begun = self._begin("myapp.act", params={"x": 1})
+		good = self._assert(auth, begun["options"], sign_count=5)
+		cases = (
+			("non-dict response", {"response": 1}),
+			("null client data", {"response": {"clientDataJSON": b64url(b"null")}}),
+			("list client data", {"response": {"clientDataJSON": b64url(b"[]")}}),
+			("scalar client data", {"response": {"clientDataJSON": b64url(b"1")}}),
+		)
+		for label, malformed in cases:
+			with self.subTest(label=label):
+				with self.assertRaises(frappe.AuthenticationError) as ctx:
+					self._verify(begun["state_id"], malformed)
+				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
+
+		self.assertTrue(self._verify(begun["state_id"], good)["grant"])
+
 	def test_grant_issuance_and_consumption_write_activity_log(self):
 		"""Every grant issuance/consumption leaves an Activity Log row —
 		routed through notifications._activity_log, not just a logger line."""
@@ -251,6 +271,24 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		frappe.set_user(user)
 		with self.assertRaises(frappe.ValidationError):
 			self._begin("myapp.pay", params={"a": 1}, payload_hash="deadbeef")
+
+	def test_confirmation_params_must_be_a_mapping(self):
+		user = self._user()
+		self._enroll(user)
+		frappe.set_user(user)
+		for label, malformed in (
+			("invalid JSON", "{"),
+			("encoded null", "null"),
+			("encoded list", "[]"),
+			("decoded list", []),
+			("decoded scalar", 1),
+		):
+			with self.subTest(label=label):
+				with self.assertRaises(frappe.ValidationError):
+					self._begin("myapp.pay", params=malformed)
+
+		begun = self._begin("myapp.pay", params=None)
+		self.assertEqual(begun["payload_fingerprint"], session.payload_hash({}))
 
 	def test_a_lied_fingerprint_mints_a_grant_the_consumer_rejects(self):
 		# correctness contract: echoing a bogus payload_hash only mints a grant

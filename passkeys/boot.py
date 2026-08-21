@@ -51,6 +51,8 @@ def get_nudge_state(user: str) -> dict:
 		data = json.loads(raw)
 	except (TypeError, ValueError):
 		return dict(_EMPTY_NUDGE)
+	if not isinstance(data, dict):
+		return dict(_EMPTY_NUDGE)
 	return {
 		"declines": cint(data.get("declines")),
 		"last_shown": data.get("last_shown"),
@@ -117,6 +119,8 @@ def get_enforcement_state(user: str) -> dict:
 	try:
 		data = json.loads(raw)
 	except (TypeError, ValueError):
+		return dict(_EMPTY_ENFORCE)
+	if not isinstance(data, dict):
 		return dict(_EMPTY_ENFORCE)
 	return {"grace_used": cint(data.get("grace_used"))}
 

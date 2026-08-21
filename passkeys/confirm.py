@@ -646,4 +646,10 @@ def _transports(raw) -> list:
 def _as_dict(value):
 	if value is None:
 		return None
-	return json.loads(value) if isinstance(value, str) else value
+	try:
+		parsed = json.loads(value) if isinstance(value, str) else value
+	except (TypeError, ValueError):
+		frappe.throw(_("Confirmation parameters must be an object."), frappe.ValidationError)
+	if not isinstance(parsed, dict):
+		frappe.throw(_("Confirmation parameters must be an object."), frappe.ValidationError)
+	return parsed

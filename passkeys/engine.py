@@ -167,6 +167,8 @@ def _reject_cross_origin(credential: dict) -> None:
 		data = json.loads(base64url_to_bytes(raw))
 	except (KeyError, TypeError, ValueError) as exc:
 		raise InvalidClientData(_("Malformed client data.")) from exc
+	if not isinstance(data, dict):
+		raise InvalidClientData(_("Malformed client data."))
 	if data.get("crossOrigin") is True:
 		raise InvalidClientData(_("Cross-origin passkey ceremonies are not allowed."))
 	if "topOrigin" in data:

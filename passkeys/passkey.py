@@ -14,6 +14,7 @@ crypto wheel must never reach import time. ``policy``/``state`` are webauthn-fre
 and safe to import at module scope."""
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -1132,8 +1133,6 @@ def _b64url_decode(value: str) -> bytes:
 	inside a ``try`` that catches only ``AuthenticationError`` — so a raw exception
 	would burn the 2FA state with NO re-arm; raising ``AuthenticationError`` here
 	routes a garbage id through the existing re-arm path instead."""
-	import binascii
-
 	try:
 		return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 	except (binascii.Error, ValueError, TypeError) as exc:
@@ -1147,5 +1146,16 @@ def _require_credential_dict(value, message):
 		raise frappe.AuthenticationError(message) from exc
 	# JSON request bodies may already be decoded, so validate the final value.
 	if not isinstance(parsed, dict):
+		raise frappe.AuthenticationError(message)
+	response = parsed.get("response")
+	if not isinstance(response, dict):
+		raise frappe.AuthenticationError(message)
+	try:
+		client_data_json = response.get("clientDataJSON")
+		client_data = base64.urlsafe_b64decode(client_data_json + "=" * (-len(client_data_json) % 4))
+		decoded = json.loads(client_data)
+	except (binascii.Error, TypeError, ValueError) as exc:
+		raise frappe.AuthenticationError(message) from exc
+	if not isinstance(decoded, dict):
 		raise frappe.AuthenticationError(message)
 	return parsed

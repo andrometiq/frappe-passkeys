@@ -52,6 +52,16 @@ class NudgeCadenceTest(IntegrationTestCase):
 		user = self._user()
 		self.assertTrue(boot.nudge_eligible(user, self._settings(), 0))
 
+	def test_non_mapping_nudge_state_falls_back_to_zero(self):
+		user = self._user()
+		for raw in ("null", "[]", "1"):
+			with self.subTest(raw=raw):
+				frappe.db.set_default(f"{user}_passkey_nudge", raw, parent=DEFAULTS_PARENT)
+				self.assertEqual(
+					boot.get_nudge_state(user),
+					{"declines": 0, "last_shown": None, "opt_out": 0},
+				)
+
 	def test_not_eligible_when_user_already_has_a_credential(self):
 		user = self._user()
 		self.assertFalse(boot.nudge_eligible(user, self._settings(), 1))

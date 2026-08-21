@@ -68,6 +68,15 @@ APP_SIDE_REASON = {
 }
 
 
+class TestClientDataPolicy(IntegrationTestCase):
+	def test_decoded_client_data_must_be_an_object(self):
+		for raw in (b"null", b"[]", b"1"):
+			with self.subTest(raw=raw):
+				credential = {"response": {"clientDataJSON": b64url(raw)}}
+				with self.assertRaises(engine.InvalidClientData):
+					engine._reject_cross_origin(credential)
+
+
 class TestSignCountPolicy(IntegrationTestCase):
 	def test_classify_matrix(self):
 		self.assertEqual(policy.classify_sign_count(0, 0), policy.SIGN_COUNT_UNCHANGED)
