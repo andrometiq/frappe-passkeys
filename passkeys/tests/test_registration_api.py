@@ -13,7 +13,7 @@ from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
-from passkeys.tests.soft_authenticator import SoftAuthenticator
+from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -90,6 +90,34 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			registration.verify_registration(begun["state_id"], credential)
 		# ...while the reusable sudo window still holds (store invariants)
 		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
+
+	def test_malformed_credential_envelope_is_rejected_before_consume(self):
+		user = self._user()
+		begun, good, _auth = self._register(user, seed="malformed-envelope")
+		cases = (
+			("non-dict response", {"response": 1}),
+			("null client data", {"response": {"clientDataJSON": b64url(b"null")}}),
+			("list client data", {"response": {"clientDataJSON": b64url(b"[]")}}),
+			("scalar client data", {"response": {"clientDataJSON": b64url(b"1")}}),
+		)
+		for label, malformed in cases:
+			with self.subTest(label=label):
+				with self.assertRaises(frappe.AuthenticationError) as ctx:
+					registration.verify_registration(begun["state_id"], malformed)
+				self.assertEqual(str(ctx.exception), "Passkey registration could not be verified.")
+
+		result = registration.verify_registration(begun["state_id"], good)
+		self.assertTrue(result["name"])
+
+	def test_non_string_label_is_rejected_before_consume(self):
+		user = self._user()
+		begun, credential, _auth = self._register(user, seed="non-string-label")
+		with self.assertRaises(frappe.AuthenticationError) as ctx:
+			registration.verify_registration(begun["state_id"], credential, label={"name": "Laptop"})
+		self.assertEqual(str(ctx.exception), "Passkey registration could not be verified.")
+
+		result = registration.verify_registration(begun["state_id"], credential, label="Laptop")
+		self.assertEqual(result["label"], "Laptop")
 
 	def test_registration_signal_excludes_disabled_credentials(self):
 		user = self._user()

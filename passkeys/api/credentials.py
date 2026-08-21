@@ -82,13 +82,15 @@ def list_credentials():
 
 
 @frappe.whitelist(methods=["POST"])
-def rename_credential(name: str, label: str):
+def rename_credential(name: str, label: str | None):
 	"""Rename the caller's own credential. Display-only, so no sudo gate;
 	the DocType ``validate`` sanitizes + length-caps the label (stored-XSS)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
 	user = session.require_authed_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
 	doc = _own_credential(user, name)
+	if label is not None and not isinstance(label, str):
+		frappe.throw(_("A passkey name must be text."), frappe.ValidationError)
 	if not (label or "").strip():
 		frappe.throw(_("A passkey name cannot be empty."), frappe.ValidationError)
 	doc.label = label
