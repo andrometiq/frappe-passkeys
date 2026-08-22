@@ -7,11 +7,10 @@
 // question B12 pins: does the conditional/autofill flow re-arm with a FRESH challenge
 // after expiry, or does a stale-challenge 401 dead-end the user?
 //
-// Behaviour (verified here): a ceremony_expired typed-401 on a `source: "conditional"`
-// verify runs handleFirstFactor401 -> rebegin() (a fresh begin_login POST that adopts a
-// new state_id + challenge) -> startConditional() (silent re-arm). It is BOUNDED by the
-// CeremonyState re-arm budget (maxRearm = 1): once spent it routes out to the password
-// form instead of looping. No stale-challenge error is ever surfaced to the user.
+// Behaviour (verified here): automatic re-arms stay bounded within one failure episode,
+// while a fresh adopted state resets capacity and any spent state makes the next explicit
+// click await a fresh begin before opening WebAuthn. The state_id/options pair is pinned
+// across the gesture, so an asynchronous adopt cannot mismatch the verify POST.
 //
 // Same hand-rolled DOM + fake timers + frappe.call stub as passkey_login_verify.test.js,
 // loaded through the bundle's node seam. Own process per file (node:test), so the
@@ -79,6 +78,7 @@ global.window = {
 	frappe: { passkeys_common: C },
 	login: { login_handlers: core.handlers },
 	localStorage: makeStorage(),
+	addEventListener() {},
 };
 global.localStorage = global.window.localStorage;
 
@@ -113,14 +113,36 @@ function installFetch(freshOptions) {
 	return () => calls;
 }
 
+function beginResponse(stateId, challenge) {
+	return {
+		ok: true,
+		json: () => Promise.resolve({
+			message: {
+				enabled: true,
+				modes: { first_factor: true, second_factor: false },
+				state_id: stateId,
+				options: { rpId: "example.test", challenge },
+			},
+		}),
+	};
+}
+
+function deferred() {
+	let resolve;
+	const promise = new Promise((done) => { resolve = done; });
+	return { promise, resolve };
+}
+
 // Fresh surface + a STALE live ceremony + a full re-arm budget before each drive.
 function primeConditional() {
 	mod.state.status = new C.LoginStatus();
 	mod.state.slowTimer = null;
-	mod.state.login.stateId = "sid-under-test";
-	mod.state.login.options = { rpId: "example.test", challenge: "stale-challenge" };
-	mod.state.login.rearmCount = 0;
+	mod.state.login.adopt("sid-under-test", { rpId: "example.test", challenge: "AQ" });
 	mod.state.login.maxRearm = 1;
+	mod.state.conditionalAbort = null;
+	mod.state.conditionalEnabled = true;
+	mod.state.busyModal = false;
+	mod.state.modes.first_factor = false;
 }
 
 const fakeCred = {
@@ -133,27 +155,132 @@ test("conditional expiry re-arms with a FRESH challenge (no stale-challenge dead
 	const fetchCalls = installFetch({ rpId: "example.test", challenge: "fresh-challenge" });
 	installCall({ status: 401, data: { exc_type: "CeremonyExpired" } });
 
-	mod.runVerify(fakeCred, { source: "conditional" });
+	mod.runVerify(fakeCred, { source: "conditional" }, "sid-under-test");
 	await tick();
 	await tick();
 
 	assert.strictEqual(mod.state.login.stateId, "fresh-sid", "the stale challenge was replaced by a freshly re-begun one");
 	assert.strictEqual(mod.state.login.options.challenge, "fresh-challenge", "the re-armed options carry the fresh challenge");
 	assert.strictEqual(fetchCalls(), 1, "exactly one re-begin fetch fired");
+	assert.strictEqual(mod.state.login.rearmCount, 1, "only the successful automatic re-arm spends the budget");
 	assert.notStrictEqual(mod.state.status.state, "failed", "a conditional expiry is silent — no stale-challenge failure is surfaced");
 });
 
-test("conditional expiry re-arm is BOUNDED — a spent budget fails out instead of looping", async () => {
+test("conditional expiry budget bounds automatic loops but leaves a spent state explicitly recoverable", async () => {
 	primeConditional();
 	mod.state.login.rearmCount = mod.state.login.maxRearm; // budget already spent
 	const fetchCalls = installFetch({ rpId: "example.test", challenge: "fresh-challenge" });
 	installCall({ status: 401, data: { exc_type: "CeremonyExpired" } });
 
-	mod.runVerify(fakeCred, { source: "conditional" });
+	mod.runVerify(fakeCred, { source: "conditional" }, "sid-under-test");
 	await tick();
 	await tick();
 
 	assert.strictEqual(fetchCalls(), 0, "no re-begin once the re-arm budget is spent (never an autofill loop)");
-	assert.strictEqual(mod.state.login.stateId, "sid-under-test", "state untouched — no fresh challenge adopted");
+	assert.strictEqual(mod.state.login.stateId, "sid-under-test", "no automatic fresh challenge was adopted");
+	assert.strictEqual(mod.state.login.spent, true, "the consumed state stays marked spent for click recovery");
+	assert.strictEqual(mod.state.login.needsPreModalRebegin(Date.now()), true, "the next click will re-begin");
 	assert.strictEqual(mod.state.status.state, "failed", "bounded: routes out to the password form instead of looping");
+});
+
+test("spent-state button click awaits re-begin before arming the WebAuthn gesture", async () => {
+	primeConditional();
+	mod.state.login.markSpent("sid-under-test");
+	const begun = deferred();
+	let fetchCalls = 0;
+	global.fetch = function () { fetchCalls += 1; return begun.promise; };
+	const gets = [];
+	global.navigator = {
+		credentials: {
+			get(options) { gets.push(options); return new Promise(() => {}); },
+		},
+	};
+
+	mod.onButtonClick();
+	assert.strictEqual(fetchCalls, 1, "click starts exactly one fresh begin");
+	assert.strictEqual(gets.length, 0, "the authenticator is not opened while begin is pending");
+
+	begun.resolve(beginResponse("fresh-click-sid", "Ag"));
+	await tick();
+	await tick();
+
+	assert.strictEqual(gets.length, 1, "the gesture starts only after the fresh state is adopted");
+	assert.strictEqual(mod.state.login.stateId, "fresh-click-sid");
+	assert.strictEqual(gets[0].publicKey.challenge[0], 2, "the gesture uses the fresh options pair");
+});
+
+test("failed click re-begin paints unavailable and the next click retries from scratch", async () => {
+	primeConditional();
+	mod.state.login.markSpent("sid-under-test");
+	let fetchCalls = 0;
+	global.fetch = function () {
+		fetchCalls += 1;
+		return Promise.resolve(fetchCalls === 1 ? { ok: false } : beginResponse("recovered-sid", "Aw"));
+	};
+	const gets = [];
+	global.navigator = {
+		credentials: {
+			get(options) { gets.push(options); return new Promise(() => {}); },
+		},
+	};
+
+	mod.onButtonClick();
+	await tick();
+	assert.strictEqual(gets.length, 0, "a degraded begin never spends a WebAuthn gesture");
+	assert.strictEqual(mod.state.login.spent, true, "failed begin leaves the held state recoverable");
+	assert.strictEqual(
+		global.document.getElementById(C.LIVE_REGION_ID).textContent,
+		"Passkeys aren't available right now."
+	);
+
+	mod.onButtonClick();
+	await tick();
+	await tick();
+	assert.strictEqual(fetchCalls, 2, "the later click retries begin rather than dead-ending");
+	assert.strictEqual(gets.length, 1, "the recovered click opens WebAuthn once");
+	assert.strictEqual(mod.state.login.stateId, "recovered-sid");
+});
+
+test("verify POST keeps the state_id captured with options when a newer adopt lands mid-gesture", async () => {
+	primeConditional();
+	const credential = deferred();
+	global.navigator = {
+		credentials: {
+			get() { return credential.promise; },
+		},
+	};
+	let posted = null;
+	global.window.frappe.call = function (opts) {
+		posted = opts.args;
+		if (opts.statusCode && opts.statusCode[200]) opts.statusCode[200]({ message: "Logged In" });
+		return Promise.resolve();
+	};
+
+	mod.onButtonClick();
+	mod.state.login.adopt("async-fresh-sid", { rpId: "example.test", challenge: "BA" });
+	credential.resolve(fakeCred);
+	await tick();
+
+	assert.strictEqual(posted.state_id, "sid-under-test", "POST is pinned to the state that armed get()");
+	assert.strictEqual(mod.state.login.stateId, "async-fresh-sid", "the newer state remains adopted");
+	assert.strictEqual(mod.state.login.spent, false, "the older gesture cannot poison the newer state");
+});
+
+test("bfcache pageshow spends the restored state and re-arms conditional UI from a fresh begin", async () => {
+	primeConditional();
+	mod.state.modes.first_factor = true;
+	mod.state.busyModal = true;
+	const begun = deferred();
+	global.fetch = function () { return begun.promise; };
+	global.navigator = {};
+
+	mod.onPageShow({ persisted: true });
+	assert.strictEqual(mod.state.login.spent, true, "the restored page never trusts its held state");
+	assert.strictEqual(mod.state.busyModal, false, "a dead pre-navigation modal cannot block the next click");
+
+	begun.resolve(beginResponse("pageshow-sid", "BQ"));
+	await tick();
+	await tick();
+	assert.strictEqual(mod.state.login.stateId, "pageshow-sid");
+	assert.strictEqual(mod.state.login.spent, false);
 });

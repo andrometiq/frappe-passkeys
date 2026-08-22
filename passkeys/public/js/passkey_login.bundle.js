@@ -41,6 +41,7 @@
 		status: new C.LoginStatus(), // the visible staged-status machine (A5/A6/C1)
 		slowTimer: null, // setTimeout handle for the slow-connection escalation
 		conditionalAbort: null, // AbortController for the pending conditional get()
+		conditionalEnabled: false, // capability decision for this login-page surface
 		sfInterceptor: null, // the document capture-phase submit listener
 		busyModal: false, // a modal get()/create() is in flight
 	};
@@ -58,6 +59,7 @@
 
 	// listen once + DOMContentLoaded fallback (the event is one-shot)
 	document.addEventListener("login_rendered", boot, { once: true });
+	window.addEventListener("pageshow", onPageShow);
 	if (document.readyState === "loading") {
 		document.addEventListener("DOMContentLoaded", function () {
 			// only if login_rendered never fired (e.g. custom template)
@@ -65,6 +67,14 @@
 		});
 	} else {
 		setTimeout(function () { if (!BOOTED) boot(); }, 0);
+	}
+
+	function onPageShow(event) {
+		if (!event || !event.persisted) return;
+		abortConditional();
+		state.busyModal = false;
+		state.login.markSpent();
+		if (state.modes.first_factor) rebeginAndRearm();
 	}
 
 	// ---------------------------------------------------------- i18n loader
@@ -116,7 +126,8 @@
 					}
 					ensureStatusEl(); // app-owned visible status (never core's develop-only banner)
 					// Conditional UI FIRST (only if not explicitly unavailable).
-					if (caps.conditionalMediation !== false) {
+					state.conditionalEnabled = caps.conditionalMediation !== false;
+					if (state.conditionalEnabled) {
 						startConditional();
 					}
 					mountButton(caps);
@@ -150,6 +161,7 @@
 
 	// ------------------------------------------------------- conditional UI
 	function startConditional() {
+		if (!state.conditionalEnabled) return;
 		var input = C.resolveIdentifierInput(document);
 		if (input) {
 			// the one-token seam: username -> "username webauthn"
@@ -163,26 +175,29 @@
 			return;
 		}
 		if (!navigator.credentials || typeof navigator.credentials.get !== "function") return;
-		if (!state.login.stateId || !state.login.options) return;
+		var stateId = state.login.stateId;
+		var options = state.login.options;
+		if (!stateId || !options) return;
 
 		abortConditional();
 		var controller = newAbortController();
 		state.conditionalAbort = controller;
 		var publicKey;
 		try {
-			publicKey = C.parseRequestOptionsFromJSON(state.login.options, window.PublicKeyCredential);
-		} catch (e) { return; }
+			publicKey = C.parseRequestOptionsFromJSON(options, window.PublicKeyCredential);
+		} catch (e) { state.login.markSpent(stateId); return; }
 
 		navigator.credentials
 			.get({ mediation: "conditional", publicKey: publicKey, signal: controller ? controller.signal : undefined })
 			.then(function (cred) {
 				state.conditionalAbort = null;
-				runVerify(cred, { source: "conditional" });
+				runVerify(cred, { source: "conditional" }, stateId);
 			})
 			.catch(function (err) {
 				state.conditionalAbort = null;
 				// AbortError is expected (we aborted for a modal get / re-begin) -> ignore.
 				if (err && err.name === "AbortError") return;
+				state.login.markSpent(stateId);
 				// A conditional failure is silent by design (no user gesture yet); a stale
 				// challenge re-arms conditional via the verify path only.
 			});
@@ -251,17 +266,21 @@
 
 	// ------------------------------------------- modal get() with pre-freshness
 	function modalGet(ctx) {
-		// pre-modal freshness — if the held state is stale, re-begin FIRST,
+		// pre-modal liveness — if the held state is spent or stale, re-begin FIRST,
 		// then run the single get() (one gesture, not two failures).
 		var proceed = function () {
-			if (!state.login.stateId || !state.login.options) {
+			var stateId = state.login.stateId;
+			var options = state.login.options;
+			if (!stateId || !options) {
+				state.login.markSpent(stateId);
 				announce(t("Passkeys aren't available right now."));
 				return;
 			}
 			var publicKey;
 			try {
-				publicKey = C.parseRequestOptionsFromJSON(state.login.options, window.PublicKeyCredential);
+				publicKey = C.parseRequestOptionsFromJSON(options, window.PublicKeyCredential);
 			} catch (e) {
+				state.login.markSpent(stateId);
 				announce(t("Couldn't start passkey sign-in — try again or sign in another way."));
 				return;
 			}
@@ -274,11 +293,12 @@
 				.then(function (cred) {
 					state.busyModal = false;
 					restore();
-					runVerify(cred, ctx);
+					runVerify(cred, ctx, stateId);
 				})
 				.catch(function (err) {
 					state.busyModal = false;
 					restore();
+					state.login.markSpent(stateId);
 					onCeremonyError(err, ctx);
 				});
 		};
@@ -303,16 +323,18 @@
 	}
 
 	// ------------------------------------------------------ verify (first factor)
-	function runVerify(cred, ctx) {
+	function runVerify(cred, ctx, stateId) {
 		var attachment = cred && cred.authenticatorAttachment;
 		var assertion;
 		try {
 			assertion = C.authAssertionToJSON(cred);
 		} catch (e) {
+			state.login.markSpent(stateId);
 			applyLoginStatus("failed");
 			return;
 		}
-		var payload = { state_id: state.login.stateId, credential: JSON.stringify(assertion) };
+		state.login.markSpent(stateId);
+		var payload = { state_id: stateId, credential: JSON.stringify(assertion) };
 
 		// Stage 2 — server round-trip. Arm the slow-connection escalation on a timer.
 		applyLoginStatus("verifying");
@@ -369,9 +391,9 @@
 		if (kind === "ceremony_expired") {
 			// re-begin + ONE fresh ceremony, at most once. NEVER re-POST.
 			if (state.login.canRearm()) {
-				state.login.markRearm();
 				rebegin().then(function (ok) {
 					if (!ok) { neutralFail(); return; }
+					state.login.markRearm();
 					if (ctx.source === "button") {
 						modalGet(ctx);
 					} else {
@@ -389,7 +411,7 @@
 			// tell the provider so it prunes the dead passkey from the device.
 			signalUnknownCredential(cred);
 			applyLoginStatus(C.loginStatusForServerKind(kind)); // -> "removed"
-			rearmAfterVisibleFailure(ctx);
+			rearmAfterVisibleFailure();
 			return;
 		}
 		if (kind === "uv_setup_required") {
@@ -399,16 +421,17 @@
 		}
 		// unknown typed error / plain 401 -> re-arm once so the user is never dead-ended
 		neutralFail();
-		rearmAfterVisibleFailure(ctx);
+		rearmAfterVisibleFailure();
 	}
 
-	// after any user-visible failure that consumed the state, re-begin once to re-arm
+	// after any user-visible failure that spent the state, re-begin once to re-arm
 	// conditional UI + the button (bounded; never a loop).
-	function rearmAfterVisibleFailure(ctx) {
+	function rearmAfterVisibleFailure() {
 		if (!state.login.canRearm()) return;
-		state.login.markRearm();
 		rebegin().then(function (ok) {
-			if (ok && ctx && ctx.source === "conditional") startConditional();
+			if (!ok) return;
+			state.login.markRearm();
+			startConditional();
 		});
 	}
 
@@ -685,7 +708,9 @@
 		if (!payload) return;
 		try {
 			var p = window.PublicKeyCredential.signalUnknownCredential(payload);
-			if (p && typeof p.catch === "function") p.catch(noop); // Safari 26 never-settles
+			if (p && typeof p.catch === "function") {
+				p.catch(function (err) { console.debug("Passkey credential prune failed.", err); });
+			}
 		} catch (e) { /* Firefox absent, etc. */ }
 	}
 
@@ -991,6 +1016,8 @@
 		module.exports = {
 			state: state, runVerify: runVerify, applyLoginStatus: applyLoginStatus,
 			armSlowTimer: armSlowTimer, clearSlowTimer: clearSlowTimer, API: API,
+			onButtonClick: onButtonClick, modalGet: modalGet, rebegin: rebegin,
+			onPageShow: onPageShow,
 			secondFactorWebAuthnAvailable: secondFactorWebAuthnAvailable,
 			showSecondFactorUnavailable: showSecondFactorUnavailable,
 		};
