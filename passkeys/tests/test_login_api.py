@@ -484,6 +484,35 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.verify_login(begun["state_id"], credential)
 
+	def test_first_factor_engine_failure_classes_collapse_to_uniform_wire_type(self):
+		from passkeys import engine
+
+		user = self._user()
+		auth, _handle = self._enroll(user)
+		failure_classes = (
+			engine.InvalidClientData,
+			engine.AuthenticationVerificationFailed,
+			engine.BackupFlagViolation,
+			engine.SignCounterViolation,
+		)
+		with patch("passkeys.passkey._track_verify_failure") as track_verify_failure:
+			for failure_class in failure_classes:
+				with self.subTest(failure_class=failure_class.__name__):
+					begun, binder = self._begin()
+					credential = self._assert(auth, begun["options"])
+					with (
+						patch(
+							"passkeys.engine.verify_authentication",
+							side_effect=failure_class("private verification cause"),
+						),
+						self.assertRaises(frappe.AuthenticationError) as rejected,
+					):
+						self._verify(begun["state_id"], credential, binder)
+					self.assertIs(type(rejected.exception), frappe.AuthenticationError)
+					self.assertEqual(str(rejected.exception), "Passkey could not be verified.")
+					self.assertIsInstance(rejected.exception.__cause__, failure_class)
+		self.assertEqual(track_verify_failure.call_count, len(failure_classes))
+
 	def test_begin_login_refuses_a_foreign_request_origin(self):
 		"""Cross-site origin: a request whose Origin is not in the configured
 		origins fails closed at begin (host-mismatch diagnosability)."""
