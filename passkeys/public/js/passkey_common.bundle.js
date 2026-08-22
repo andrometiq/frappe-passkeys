@@ -285,25 +285,34 @@
 	// Pins the retry contract. An assertion is NEVER re-POSTed; retry always
 	// means a NEW ceremony + a NEW get()/create(). Re-arm is bounded at one per
 	// user-visible failure, never an automatic loop.
+	var PRE_MODAL_REBEGIN_MARGIN_MS = 30000;
 	function CeremonyState(opts) {
 		opts = opts || {};
 		this.stateId = opts.stateId || null;
 		this.options = opts.options || null;
 		this.beginAt = typeof opts.beginAt === "number" ? opts.beginAt : Date.now();
 		this.ttlMs = typeof opts.ttlMs === "number" ? opts.ttlMs : 300000;
+		this.spent = opts.spent === true;
 		this.rearmCount = 0;
 		this.maxRearm = typeof opts.maxRearm === "number" ? opts.maxRearm : 1;
 	}
-	// Pre-modal freshness: before any MODAL get(), if the held state's
-	// age >= TTL, re-begin FIRST then run the single get() — one gesture, not two failures.
+	// Pre-modal liveness: before any MODAL get(), replace a spent state or one near expiry.
 	CeremonyState.prototype.needsPreModalRebegin = function (now) {
 		now = typeof now === "number" ? now : Date.now();
-		return this.stateId !== null && (now - this.beginAt) >= this.ttlMs;
+		var freshnessLimit = Math.max(0, this.ttlMs - PRE_MODAL_REBEGIN_MARGIN_MS);
+		return this.spent || (this.stateId !== null && (now - this.beginAt) >= freshnessLimit);
 	};
 	CeremonyState.prototype.adopt = function (stateId, options, now) {
 		this.stateId = stateId;
 		this.options = options;
 		this.beginAt = typeof now === "number" ? now : Date.now();
+		this.spent = false;
+		this.rearmCount = 0;
+	};
+	CeremonyState.prototype.markSpent = function (stateId) {
+		if (typeof stateId !== "undefined" && stateId !== this.stateId) return false;
+		this.spent = true;
+		return true;
 	};
 	// Re-arm after a verify that consumed the state without success — returns true if a
 	// re-arm is permitted (bounded), false once the cap is hit (back to password form).
@@ -316,6 +325,7 @@
 	};
 	CeremonyState.prototype.reset = function () {
 		this.rearmCount = 0;
+		this.spent = false;
 	};
 
 	// -------------------------------------------------- login status machine
