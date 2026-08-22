@@ -83,6 +83,68 @@ class TestDocTypeSchemas(PasskeyTestCase):
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_max_per_user"), 10)
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window"), 600)
 
+	def test_settings_tabs_match_the_form_layout(self):
+		meta = frappe.get_meta("Passkey Settings")
+		expected_order = (
+			"login_modes_tab",
+			"login_with_passkey",
+			"passkey_as_second_factor",
+			"passkey_2fa_allow_otp_fallback",
+			"relying_party_tab",
+			"passkey_rp_id",
+			"passkey_origins",
+			"resolved_rp_html",
+			"mobile_apps_tab",
+			"passkey_app_origins",
+			"passkey_android_package_name",
+			"passkey_android_cert_fingerprints",
+			"column_break_mobile",
+			"passkey_ios_team_id",
+			"passkey_ios_bundle_id",
+			"enrollment_tab",
+			"passkey_enrollment_policy",
+			"passkey_enforce_after",
+			"passkey_nudge_max_prompts",
+			"column_break_enrollment",
+			"passkey_nudge_cooldown_days",
+			"passkey_conditional_create",
+			"enforcement_section",
+			"passkey_enforce_scope",
+			"passkey_enforce_roles",
+			"passkey_enforce_privileged_always",
+			"column_break_enforcement",
+			"passkey_enforce_grace_logins",
+			"passkey_enforce_incapable",
+			"passkey_enforce_allow_hybrid",
+			"security_tab",
+			"passkey_sign_count_hard_fail",
+			"passkey_max_per_user",
+			"column_break_policy",
+			"passkey_reauth_window",
+			"passkey_allow_first_enrollment_on_weak_login",
+			"notifications_tab",
+			"passkey_notify_on_change",
+			"passkey_notify_password_fallback",
+			"passkey_notify_password_login",
+		)
+		self.assertEqual(tuple(field.fieldname for field in meta.fields), expected_order)
+		self.assertEqual(
+			[
+				(meta.get_field(fieldname).fieldtype, meta.get_field(fieldname).label)
+				for fieldname in expected_order
+				if fieldname.endswith("_tab")
+			],
+			[
+				("Tab Break", "Login Modes"),
+				("Tab Break", "Relying Party"),
+				("Tab Break", "Mobile Apps"),
+				("Tab Break", "Enrollment"),
+				("Tab Break", "Security"),
+				("Tab Break", "Notifications"),
+			],
+		)
+		self.assertEqual(meta.get_field("enforcement_section").label, "Enforcement Scope")
+
 
 class TestWebAuthnCredential(PasskeyTestCase):
 	def test_credential_id_sha256_globally_unique(self):
