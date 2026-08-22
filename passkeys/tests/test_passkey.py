@@ -71,6 +71,7 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			("passkey_nudge_cooldown_days", "30"),
 			("passkey_conditional_create", "1"),
 			("passkey_enforce_scope", "All Users"),
+			("passkey_enforce_privileged_always", "1"),
 			("passkey_enforce_grace_logins", "3"),
 			("passkey_enforce_incapable", "Degrade to Nudge"),
 			("passkey_enforce_allow_hybrid", "1"),

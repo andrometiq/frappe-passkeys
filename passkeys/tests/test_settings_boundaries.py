@@ -24,6 +24,7 @@ Scoped to real coupling per the map — no blind Cartesian. Uses the established
 """
 
 import time
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import add_to_date, now_datetime, nowdate
@@ -333,9 +334,9 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
 		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_privileged_always = 1
 		settings.passkey_enforce_grace_logins = 3
 		settings.set("passkey_enforce_roles", [])
-		settings.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
 		self.addCleanup(self._restore)
@@ -352,11 +353,11 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 			"passkey_enrollment_policy",
 			"passkey_enforce_after",
 			"passkey_enforce_scope",
+			"passkey_enforce_privileged_always",
 			"passkey_enforce_grace_logins",
 		):
 			doc.set(field, self._snapshot.get(field))
 		doc.set("passkey_enforce_roles", [])
-		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		doc.flags.ignore_permissions = True
 		# Skip re-validation: this is a pure state restore, and a settings row left invalid by
 		# an earlier committing test in the run must not make cleanup raise (cascade guard).
@@ -485,6 +486,7 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 			"passkey_enrollment_policy",
 			"passkey_enforce_after",
 			"passkey_enforce_scope",
+			"passkey_enforce_privileged_always",
 			"passkey_enforce_grace_logins",
 			"passkey_enforce_incapable",
 		):
@@ -514,14 +516,30 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			self._save(passkey_enrollment_policy="Enforce", passkey_enforce_grace_logins=-1)
 
-	def test_enforce_saves_with_warnings_but_not_blocked(self):
-		# All Users + System Manager not exempt only WARNS (msgprint) — the save proceeds.
-		doc = self._save(
-			passkey_enrollment_policy="Enforce",
-			passkey_enforce_scope="All Users",
-			passkey_enforce_grace_logins=0,
-		)
+	def test_privileged_opt_out_warns_but_does_not_block_save(self):
+		with patch("frappe.msgprint") as msgprint:
+			doc = self._save(
+				passkey_enrollment_policy="Enforce",
+				passkey_enforce_privileged_always=0,
+			)
 		self.assertEqual(doc.passkey_enrollment_policy, "Enforce")
+		messages = [call.args[0] for call in msgprint.call_args_list]
+		self.assertIn(
+			"Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first.",
+			messages,
+		)
+
+	def test_recommended_privileged_enforcement_has_no_self_lockout_warning(self):
+		with patch("frappe.msgprint") as msgprint:
+			self._save(
+				passkey_enrollment_policy="Enforce",
+				passkey_enforce_privileged_always=1,
+			)
+		messages = [call.args[0] for call in msgprint.call_args_list]
+		self.assertFalse(any("System Manager is not in the exempt roles" in message for message in messages))
+		self.assertFalse(
+			any("Privileged users (System Manager) are outside" in message for message in messages)
+		)
 
 
 class EnrollmentFieldVisibilityTest(IntegrationTestCase):

@@ -40,7 +40,7 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_enforce_after: repaint,
 	passkey_enforce_scope: repaint,
 	passkey_enforce_roles: repaint,
-	passkey_enforce_exempt_roles: repaint,
+	passkey_enforce_privileged_always: repaint,
 	passkey_enforce_incapable: repaint,
 	validate: function (frm) {
 		var M = frappe.passkeys_manage_common;

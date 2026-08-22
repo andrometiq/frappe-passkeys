@@ -15,6 +15,7 @@ from frappe.utils import cint
 
 from passkeys import install
 from passkeys.patches.v17_0 import fold_nudge_flag_into_enrollment_policy as fold_nudge_patch
+from passkeys.patches.v17_0 import remove_role_exemptions as remove_exemptions_patch
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -79,23 +80,22 @@ class TestFoldNudgeMigration(unittest.TestCase):
 
 		with (
 			patch.object(fold_nudge_patch.install, "is_core_native", return_value=False),
-			patch.object(fold_nudge_patch.install, "ensure_enforcement_defaults") as ensure,
 			patch.object(fold_nudge_patch.frappe.db, "get_single_value", return_value=current),
 			patch.object(fold_nudge_patch.frappe.db, "get_value", side_effect=get_value),
 			patch.object(fold_nudge_patch.frappe.db, "set_single_value") as set_single,
 			patch.object(fold_nudge_patch.frappe.db, "delete") as delete,
 		):
 			fold_nudge_patch.execute()
-		return set_single, delete, ensure
+		return set_single, delete
 
 	def test_legacy_zero_and_one_map_to_off_and_nudge(self):
 		for legacy, expected in (("0", "Off"), ("1", "Nudge")):
 			with self.subTest(legacy=legacy):
-				set_single, _delete, _ensure = self._execute(current=None, legacy=legacy)
+				set_single, _delete = self._execute(current=None, legacy=legacy)
 				set_single.assert_any_call("Passkey Settings", "passkey_enrollment_policy", expected)
 
 	def test_preselected_policy_is_never_overwritten(self):
-		set_single, delete, _ensure = self._execute(current="Enforce", legacy="1")
+		set_single, delete = self._execute(current="Enforce", legacy="1")
 		policy_writes = [
 			call for call in set_single.call_args_list if call.args[1] == "passkey_enrollment_policy"
 		]
@@ -105,12 +105,9 @@ class TestFoldNudgeMigration(unittest.TestCase):
 		)
 
 	def test_rerun_with_persisted_values_is_idempotent(self):
-		set_single, delete, ensure = self._execute(
-			current="Nudge", defaults=fold_nudge_patch._ENFORCEMENT_DEFAULTS
-		)
+		set_single, delete = self._execute(current="Nudge", defaults=fold_nudge_patch._ENFORCEMENT_DEFAULTS)
 		set_single.assert_not_called()
 		delete.assert_called_once()
-		ensure.assert_called_once_with()
 
 
 class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
@@ -128,10 +125,7 @@ class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
 			("Passkey Settings", "passkey_enrollment_nudge", "1"),
 		)
 
-		with (
-			patch.object(fold_nudge_patch.install, "is_core_native", return_value=False),
-			patch.object(fold_nudge_patch.install, "ensure_enforcement_defaults"),
-		):
+		with patch.object(fold_nudge_patch.install, "is_core_native", return_value=False):
 			fold_nudge_patch.execute()
 
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy"), "Nudge")
@@ -141,6 +135,46 @@ class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
 				{"doctype": "Passkey Settings", "field": "passkey_enrollment_nudge"},
 			)
 		)
+
+
+class TestRemoveRoleExemptionsMigration(IntegrationTestCase):
+	def test_deletes_only_obsolete_exemption_rows(self):
+		obsolete = frappe.get_doc(
+			{
+				"doctype": "Passkey Enforcement Role",
+				"parent": "Passkey Settings",
+				"parenttype": "Passkey Settings",
+				"parentfield": "passkey_enforce_exempt_roles",
+				"role": "System Manager",
+			}
+		)
+		obsolete.db_insert()
+		selected = frappe.get_doc(
+			{
+				"doctype": "Passkey Enforcement Role",
+				"parent": "Passkey Settings",
+				"parenttype": "Passkey Settings",
+				"parentfield": "passkey_enforce_roles",
+				"role": "System Manager",
+			}
+		)
+		selected.db_insert()
+
+		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
+			remove_exemptions_patch.execute()
+
+		self.assertFalse(frappe.db.exists("Passkey Enforcement Role", obsolete.name))
+		self.assertTrue(frappe.db.exists("Passkey Enforcement Role", selected.name))
+
+	def test_native_core_short_circuits(self):
+		with (
+			patch.object(remove_exemptions_patch.install, "is_core_native", return_value=True),
+			patch.object(remove_exemptions_patch.frappe.db, "delete") as delete,
+			patch.object(remove_exemptions_patch.frappe, "clear_document_cache") as clear_cache,
+		):
+			remove_exemptions_patch.execute()
+		delete.assert_not_called()
+		clear_cache.assert_not_called()
 
 
 class TestCoreHandoverCapability(unittest.TestCase):

@@ -22,6 +22,10 @@ release.
 
 ### Changed
 
+- The Passkey Settings form is reorganized into Login Modes, Relying Party, Mobile Apps,
+  Enrollment, Security, and Notifications tabs.
+- Role-wide enforcement exemptions are removed in favor of per-user temporary exemptions and
+  console recovery.
 - RP IDs no longer imply trust in `https://<rp_id>`. Only a compatible configured `host_name`
   origin and explicitly listed Passkey Origins are accepted. **Action required before upgrading an
   already-enabled site:** confirm `host_name` or an explicit Passkey Origin resolves within the RP
@@ -42,6 +46,9 @@ release.
 
 ### Security
 
+- Privileged users (`System Manager`) are now inside enforcement scope by default, with no standing
+  role exemption. This matches industry practice and Frappe core's removal of the Administrator 2FA
+  exemption.
 - Test-only WebAuthn helpers require a test runner, or a System Manager on a site with both
   `developer_mode` and `allow_tests` enabled; all helper endpoints are POST-only.
 - Assertion counters are reclassified under row locks before sessions or grants are minted,

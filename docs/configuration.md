@@ -57,8 +57,7 @@ in [`mobile-apps.md`](mobile-apps.md). Leave them blank for a web-only site.
 The **Enrollment Policy** is the rung control of the passkey adoption ladder — it
 decides whether, and how hard, the app pushes passkey-less users to enroll. The
 nudge and conditional-create knobs tune the softer rungs; the separate
-**Enforcement Scope & Escape Hatches** section below only takes effect on the
-harder ones.
+**Enforcement Scope** section below only takes effect on the harder ones.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
@@ -68,26 +67,27 @@ harder ones.
 | **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. Off: only the explicit nudge/enroll flow creates passkeys. |
 
-## Enforcement Scope & Escape Hatches
+## Enforcement Scope
 
 This section is shown, and takes effect, **only** when **Enrollment Policy** is
-*Enforce* or *Enforce After Date*. It scopes who enforcement applies to and keeps
-capable-but-stuck users — and administrators — from being dead-ended.
+*Enforce* or *Enforce After Date*. It scopes who enforcement applies to and
+provides recovery controls for capable-but-stuck users. Privileged users remain
+in scope by default even when enforcement targets selected roles.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
 | **Enforcement Scope** (`passkey_enforce_scope`) | All Users | Whether enforcement applies to everyone (*All Users*) or only to users holding one of the selected roles (*Selected Roles*). |
 | **Enforce for Roles** (`passkey_enforce_roles`) | *empty* | Only shown when scope is *Selected Roles*. A user is in scope for enforcement if they hold **any** of these roles. |
-| **Exempt Roles** (`passkey_enforce_exempt_roles`) | System Manager *(seeded)* | Users holding **any** of these roles are always exempt — the break-glass hatch. `System Manager` is seeded automatically (on install and on upgrade) so an administrator can never lock themselves out the moment enforcement is turned on. |
+| **Always Enforce for Privileged Users** (`passkey_enforce_privileged_always`) | On | Keeps users holding `System Manager` in scope even when scope is *Selected Roles*. Administrators are high-value targets, so keeping this on is the recommended posture. Turning it off is allowed but produces an amber warning. A temporary per-user exemption still wins when recovery is needed. |
 | **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. A defer can consume at most one grace login per session, even if the endpoint is retried or multiple tabs render the prompt. `0` blocks immediately. |
 | **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
 | **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
 ### A user can't get past enforcement — what to do
 
-Enforce is a **post-login interstitial**, not an auth block, so a stuck user is
-never truly locked out — the levers below go from least to most drastic. Pick the
-narrowest one that fits.
+Enforce is a **post-login interstitial**, not a pre-session authentication block,
+but **Block + Notify Admin** can still prevent useful application access. The
+levers below go from least to most drastic. Pick the narrowest one that fits.
 
 1. **They said "I can't set one up here."** With the default *Incapable Device
    Policy* (**Degrade to Nudge**) the interstitial already let them through as a
@@ -98,24 +98,41 @@ narrowest one that fits.
    **Passkeys** section (System Managers see it on anyone's form). While the policy
    is *Enforce* / *Enforce After Date* it shows two admin actions; click **Exempt
    from passkey enforcement**. Under the hood this assigns the dedicated
-   **`Passkey Enforcement Exempt`** role (created on first use) and adds it to
-   *Exempt Roles* — the user drops out of scope immediately. **Remove enforcement
-   exemption** reverses it. The role and the *Exempt Roles* entry are left in place
-   for reuse.
+   **`Passkey Enforcement Exempt`** marker role (created on first use) — the user
+   drops out of scope immediately, including a `System Manager` covered by
+   *Always Enforce for Privileged Users*. **Remove enforcement exemption** reverses
+   it. The marker role remains available for reuse, but only explicit per-user
+   assignments exempt anyone; there is no role-wide exemption setting.
 3. **Give them more grace logins.** In the same section, **Reset grace logins**
    restores the user's full deferral budget (the *Grace Logins* count) so the
    interstitial goes back to "Remind me later" instead of blocking. Use it to buy a
    capable-but-not-right-now user time to enroll.
-4. **Adjust scope or roles.** If a whole group is caught wrongly, narrow
-   **Enforcement Scope** to *Selected Roles* (and set *Enforce for Roles*), or add a
-   role they all share to **Exempt Roles**. Both take effect on the next login.
+4. **Adjust scope or roles.** If a whole non-privileged group is caught wrongly,
+   narrow **Enforcement Scope** to *Selected Roles* and set *Enforce for Roles*.
+   This takes effect on the next login. Privileged users stay in scope while
+   *Always Enforce for Privileged Users* is on.
 5. **Back off the policy.** Flipping **Enrollment Policy** to **Nudge** turns every
    interstitial back into a dismissible prompt site-wide — the escape hatch when a
    rollout is biting more users than expected.
+6. **If every administrator is locked out, use the server console.** Disable the
+   enrollment gate without invoking the settings controller:
 
-**Break-glass guarantee:** **System Manager** is a seeded *Exempt Role*, so an
-administrator is never enforced and can always reach these settings — even if the
-policy is misconfigured. Keep it exempt unless you are certain.
+   ```bash
+   bench --site <site> execute passkeys.recovery.disable_enforcement
+   ```
+
+   This idempotently drops an enforcing policy to *Nudge* and deliberately leaves
+   every other Passkey Setting untouched. Frappe core also provides operator
+   recovery hatches for restoring an administrator account:
+
+   ```bash
+   bench --site <site> add-system-manager <email>
+   bench --site <site> set-admin-password <new-password>
+   ```
+
+There are no standing role-wide exemptions. Administrators are enforced first by
+default; recovery is an explicit temporary marker-role assignment for one user or
+an operator-only console action when no administrator can reach Desk.
 
 ## Notifications
 
