@@ -209,10 +209,13 @@ test("resolveButtonMount prefers .page-card-actions, falls back to providers the
 });
 
 // ------------------------------------------------------- retry state machine
-test("CeremonyState.needsPreModalRebegin fires only when age >= TTL and a state exists", () => {
+test("CeremonyState.needsPreModalRebegin reserves a 30s TTL margin and detects spent state", () => {
 	const s = new C.CeremonyState({ stateId: "s1", options: {}, beginAt: 1000, ttlMs: 300000 });
-	assert.strictEqual(s.needsPreModalRebegin(1000 + 299999), false);
-	assert.strictEqual(s.needsPreModalRebegin(1000 + 300000), true);
+	assert.strictEqual(s.needsPreModalRebegin(1000 + 269999), false);
+	assert.strictEqual(s.needsPreModalRebegin(1000 + 270000), true);
+	s.beginAt = 1000;
+	s.markSpent("s1");
+	assert.strictEqual(s.needsPreModalRebegin(1001), true, "spent state re-begins before a gesture");
 	const empty = new C.CeremonyState({ ttlMs: 300000 });
 	empty.stateId = null;
 	assert.strictEqual(empty.needsPreModalRebegin(1e15), false, "no state => nothing to re-begin");
@@ -227,12 +230,23 @@ test("CeremonyState re-arm is bounded at one per visible failure, then refuses",
 	assert.strictEqual(s.canRearm(), true, "reset re-enables after a fresh success cycle");
 });
 
-test("CeremonyState.adopt swaps in a fresh state_id + resets begin clock (never re-POST)", () => {
-	const s = new C.CeremonyState({ stateId: "old", beginAt: 1, ttlMs: 10 });
+test("CeremonyState.adopt swaps state and resets spent-ness, clock, and automatic re-arm capacity", () => {
+	const s = new C.CeremonyState({ stateId: "old", beginAt: 1, ttlMs: 300000 });
+	s.markSpent("old");
+	s.markRearm();
 	s.adopt("new", { challenge: "x" }, 5000);
 	assert.strictEqual(s.stateId, "new");
 	assert.strictEqual(s.beginAt, 5000);
+	assert.strictEqual(s.spent, false);
+	assert.strictEqual(s.canRearm(), true, "fresh server state has fresh automatic re-arm capacity");
 	assert.strictEqual(s.needsPreModalRebegin(5001), false);
+});
+
+test("CeremonyState.markSpent does not poison a newer asynchronously adopted state", () => {
+	const s = new C.CeremonyState({ stateId: "gesture-state", options: {} });
+	s.adopt("newer-state", {}, 10);
+	assert.strictEqual(s.markSpent("gesture-state"), false);
+	assert.strictEqual(s.spent, false);
 });
 
 // ------------------------------------------------------------- i18n merge

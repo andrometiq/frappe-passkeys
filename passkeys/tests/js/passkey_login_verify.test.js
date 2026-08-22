@@ -85,6 +85,7 @@ global.window = {
 	frappe: { passkeys_common: C },
 	login: { login_handlers: core.handlers },
 	localStorage: makeStorage(),
+	addEventListener() {},
 };
 global.localStorage = global.window.localStorage;
 
@@ -120,8 +121,7 @@ function primeVerify(opts) {
 	opts = opts || {};
 	mod.state.status = new C.LoginStatus();
 	mod.state.slowTimer = null;
-	mod.state.login.stateId = "sid-under-test";
-	mod.state.login.options = { rpId: "example.test" };
+	mod.state.login.adopt("sid-under-test", { rpId: "example.test" });
 	// Force canRearm() false so the unknown_credential path never kicks off a rebegin fetch.
 	if (opts.blockRearm) mod.state.login.rearmCount = 999;
 }
@@ -135,7 +135,7 @@ test("verify: a transport failure with NO recognized status ends the verifying s
 	primeVerify();
 	installCall({ networkError: true });
 
-	mod.runVerify(fakeCred, { source: "button" });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	assert.strictEqual(mod.state.status.state, "verifying", "starts in verifying with the slow timer armed");
 	assert.notStrictEqual(mod.state.slowTimer, null, "slow timer armed for the round-trip");
 
@@ -149,7 +149,7 @@ test("verify: a 500 that only paints core (never touches our surface) still ends
 	primeVerify();
 	installCall({ status: 500, data: {} });
 
-	mod.runVerify(fakeCred, { source: "button" });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();
 
 	assert.strictEqual(mod.state.status.state, "failed", "500 no longer sticks on Verifying…");
@@ -161,7 +161,7 @@ test("verify: a 429 throttle ends the verifying state (core painter runs, our su
 	primeVerify();
 	installCall({ status: 429, data: {} });
 
-	mod.runVerify(fakeCred, { source: "button" });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();
 
 	assert.strictEqual(mod.state.status.state, "failed", "429 no longer sticks on Verifying…");
@@ -172,7 +172,7 @@ test("verify: the finalizer does NOT overwrite the success beat a 200 handler al
 	primeVerify();
 	installCall({ status: 200, data: { message: "Logged In" } });
 
-	mod.runVerify(fakeCred, { source: "button" });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();
 
 	assert.strictEqual(mod.state.status.state, "success", "success is owned by onSuccessEarly; finalizer must not clobber it");
@@ -183,7 +183,7 @@ test("verify: the finalizer does NOT overwrite a specific typed-401 state (remov
 	primeVerify({ blockRearm: true });
 	installCall({ status: 401, data: { exc_type: "UnknownCredential" } });
 
-	mod.runVerify(fakeCred, { source: "button" });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();
 
 	assert.strictEqual(mod.state.status.state, "removed", "on401 owns UnknownCredential -> removed; finalizer must leave it");

@@ -44,6 +44,12 @@ release.
   use the same server-owned contracts.
 - Legacy unsigned credential exports require an explicit, operator-reviewed import opt-in.
 
+### Fixed
+
+- First-factor passkey retries now replace spent or near-expiry ceremonies before prompting,
+  preserve each gesture's exact state/options pair, and recover across repeated failures and bfcache
+  restores without a page reload.
+
 ### Security
 
 - Privileged users (`System Manager`) are now inside enforcement scope by default, with no standing
