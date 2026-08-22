@@ -23,7 +23,7 @@ test("shouldShowEnforcementAdmin only on an enforcement rung", () => {
 
 test("enforcementAdminViewModel: in-scope, no passkey, grace spent", () => {
 	const vm = M.enforcementAdminViewModel({
-		exempt: false, exempt_via_other_role: false, in_scope: true,
+		exempt: false, in_scope: true,
 		credential_count: 0, grace_used: 2, grace_total: 3, grace_remaining: 1,
 	});
 	assert.equal(vm.exempt, false);
@@ -36,7 +36,7 @@ test("enforcementAdminViewModel: in-scope, no passkey, grace spent", () => {
 
 test("enforcementAdminViewModel: exempt user flips the button + indicator", () => {
 	const vm = M.enforcementAdminViewModel({
-		exempt: true, exempt_via_other_role: false, in_scope: false,
+		exempt: true, in_scope: false,
 		credential_count: 0, grace_used: 0, grace_total: 3, grace_remaining: 3,
 	});
 	assert.equal(vm.exemptButtonKey, "enforceAdminUnexempt"); // offers to remove exemption
@@ -47,20 +47,9 @@ test("enforcementAdminViewModel: exempt user flips the button + indicator", () =
 	assert.equal(vm.indicator.textKey, "enforceAdminStateExempt");
 });
 
-test("enforcementAdminViewModel: exempt-via-other-role is surfaced distinctly", () => {
-	const vm = M.enforcementAdminViewModel({
-		exempt: false, exempt_via_other_role: true, in_scope: false,
-		credential_count: 0, grace_used: 0, grace_total: 3, grace_remaining: 3,
-	});
-	// The dedicated-role toggle still offers "exempt" (it governs only its own role),
-	// but the indicator tells the admin they're already exempt by another role.
-	assert.equal(vm.exemptButtonKey, "enforceAdminExempt");
-	assert.deepEqual(vm.indicator, { color: "blue", textKey: "enforceAdminStateExemptOther" });
-});
-
 test("enforcementAdminViewModel: in scope but already enrolled reads as satisfied", () => {
 	const vm = M.enforcementAdminViewModel({
-		exempt: false, exempt_via_other_role: false, in_scope: true,
+		exempt: false, in_scope: true,
 		credential_count: 2, grace_used: 0, grace_total: 3, grace_remaining: 3,
 	});
 	assert.deepEqual(vm.indicator, { color: "green", textKey: "enforceAdminStateSatisfied" });
@@ -68,7 +57,7 @@ test("enforcementAdminViewModel: in scope but already enrolled reads as satisfie
 
 test("enforcementAdminViewModel: out-of-scope user reads as not-in-scope", () => {
 	const vm = M.enforcementAdminViewModel({
-		exempt: false, exempt_via_other_role: false, in_scope: false,
+		exempt: false, in_scope: false,
 		credential_count: 0, grace_used: 0, grace_total: 3, grace_remaining: 3,
 	});
 	assert.deepEqual(vm.indicator, { color: "gray", textKey: "enforceAdminStateNotScope" });

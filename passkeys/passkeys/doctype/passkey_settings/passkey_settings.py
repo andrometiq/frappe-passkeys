@@ -164,12 +164,11 @@ class PasskeySettings(Document):
 				),
 				indicator="orange",
 			)
-		# Self-lockout risk: enforcing everyone without System Manager exempt.
-		exempt_roles = {row.role for row in (self.passkey_enforce_exempt_roles or [])}
-		if self.passkey_enforce_scope != "Selected Roles" and "System Manager" not in exempt_roles:
+		# Privileged accounts are the first targets; opting them out weakens the rollout.
+		if not cint(self.passkey_enforce_privileged_always):
 			frappe.msgprint(
 				_(
-					"System Manager is not in the exempt roles while enforcing for all users — an administrator on a device that cannot create a passkey could be locked out. Keep System Manager exempt as a break-glass unless you are certain."
+					"Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first."
 				),
 				indicator="orange",
 			)

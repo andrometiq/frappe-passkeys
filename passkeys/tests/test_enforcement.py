@@ -10,7 +10,7 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_to_date, cint, now_datetime, nowdate
 
-from passkeys import boot, notifications, passkey
+from passkeys import boot, enforcement_admin, notifications, passkey
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
@@ -25,6 +25,7 @@ _FIELDS = (
 	"passkey_enrollment_policy",
 	"passkey_enforce_after",
 	"passkey_enforce_scope",
+	"passkey_enforce_privileged_always",
 	"passkey_enforce_grace_logins",
 	"passkey_enforce_incapable",
 	"passkey_enforce_allow_hybrid",
@@ -43,11 +44,11 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
 		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_privileged_always = 1
 		settings.passkey_enforce_grace_logins = 3
 		settings.passkey_enforce_incapable = "Degrade to Nudge"
 		settings.passkey_enforce_allow_hybrid = 1
 		settings.set("passkey_enforce_roles", [])
-		settings.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
 		self.addCleanup(self._restore)
@@ -65,7 +66,6 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		if (cint(doc.login_with_passkey) or cint(doc.passkey_as_second_factor)) and not doc.passkey_origins:
 			doc.passkey_origins = "https://example.com"
 		doc.set("passkey_enforce_roles", [])
-		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		doc.flags.ignore_permissions = True
 		doc.save()
 		flush_settings_cache()
@@ -96,6 +96,13 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def _verdict(self, user, creds=0):
 		return boot.build_enforcement(user, self._settings(), creds)
+
+	def _set_enforced_roles(self, *roles):
+		doc = frappe.get_doc("Passkey Settings")
+		doc.set("passkey_enforce_roles", [{"role": role} for role in roles])
+		doc.flags.ignore_permissions = True
+		doc.save()
+		flush_settings_cache()
 
 	# ---- rung resolution ------------------------------------------------
 
@@ -147,20 +154,34 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	# ---- scope + exemptions --------------------------------------------
 
-	def test_exempt_role_is_break_glass(self):
-		# System Manager is seeded exempt by default → never in scope.
-		self.assertFalse(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
+	def test_marker_role_is_per_user_break_glass(self):
+		user = self._user()
+		enforcement_admin.set_user_exemption(user, True)
+		self.assertIn(boot.EXEMPT_ROLE, set(frappe.get_roles(user)))
+		self.assertFalse(self._verdict(user)["in_scope"])
 
 	def test_selected_roles_scope_membership(self):
 		self._set(passkey_enforce_scope="Selected Roles")
-		# rebuild the roles child table on the settings doc
-		doc = frappe.get_doc("Passkey Settings")
-		doc.set("passkey_enforce_roles", [{"role": "Sales User"}])
-		doc.flags.ignore_permissions = True
-		doc.save()
-		flush_settings_cache()
+		self._set_enforced_roles("Sales User")
 		self.assertFalse(self._verdict(self._user())["in_scope"])  # no Sales User role
 		self.assertTrue(self._verdict(self._user(roles=["Sales User"]))["in_scope"])
+
+	def test_privileged_always_includes_system_manager_under_selected_roles(self):
+		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=1)
+		self._set_enforced_roles("Sales User")
+		self.assertTrue(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
+
+	def test_privileged_opt_out_excludes_system_manager_under_selected_roles(self):
+		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=0)
+		self._set_enforced_roles("Sales User")
+		self.assertFalse(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
+
+	def test_marker_role_wins_over_privileged_always(self):
+		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=1)
+		self._set_enforced_roles("Sales User")
+		user = self._user(roles=["System Manager"])
+		enforcement_admin.set_user_exemption(user, True)
+		self.assertFalse(self._verdict(user)["in_scope"])
 
 	# ---- Enforce After Date (server clock) -----------------------------
 
@@ -316,7 +337,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		settings = frappe._dict(
 			passkey_enforce_scope="Selected Roles",
 			passkey_enforce_roles=[frappe._dict(role="All")],
-			passkey_enforce_exempt_roles=[],
+			passkey_enforce_privileged_always=1,
 		)
 
 		def get_all(doctype, **kwargs):

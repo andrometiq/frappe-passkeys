@@ -3,7 +3,7 @@
 
 """Fold the legacy ``passkey_enrollment_nudge`` Check into the new
 ``passkey_enrollment_policy`` Select — the rung control of the passkey adoption /
-enforcement ladder — and seed the break-glass System Manager exempt role.
+enforcement ladder.
 
 Behaviour-preserving mapping for sites that predate the ladder::
 
@@ -72,7 +72,3 @@ def execute():
 		)
 		if stored is None:
 			frappe.db.set_single_value("Passkey Settings", field, default)
-
-	# Seed the break-glass System Manager exempt role for upgraded sites (fresh
-	# installs get it via install.after_install -> ensure_enforcement_defaults()).
-	install.ensure_enforcement_defaults()

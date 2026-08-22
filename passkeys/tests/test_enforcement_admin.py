@@ -23,6 +23,7 @@ _FIELDS = (
 	"passkey_enrollment_policy",
 	"passkey_enforce_after",
 	"passkey_enforce_scope",
+	"passkey_enforce_privileged_always",
 	"passkey_enforce_grace_logins",
 	"passkey_enforce_incapable",
 	"passkey_enforce_allow_hybrid",
@@ -45,11 +46,11 @@ class EnforcementAdminTest(IntegrationTestCase):
 		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
 		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_privileged_always = 1
 		settings.passkey_enforce_grace_logins = 3
 		settings.passkey_enforce_incapable = "Degrade to Nudge"
 		settings.passkey_enforce_allow_hybrid = 1
 		settings.set("passkey_enforce_roles", [])
-		settings.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
 		self.addCleanup(self._restore)
@@ -58,13 +59,12 @@ class EnforcementAdminTest(IntegrationTestCase):
 	def _restore(self):
 		# Mirrors test_enforcement: the settings write must be restored + committed so the
 		# modes-on state never leaks (some legs commit past the per-test savepoint). Also
-		# strip our lazily-added exempt role from the settings table so the fixture is clean.
+		# strip our lazily-added exempt role so the fixture is clean.
 		frappe.set_user("Administrator")
 		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
 			doc.set(field, self._snapshot.get(field))
 		doc.set("passkey_enforce_roles", [])
-		doc.set("passkey_enforce_exempt_roles", [{"role": "System Manager"}])
 		# Restore the exact pre-test snapshot without re-validating it. A UI test may
 		# have installed an HTTP-only development origin that is valid only through
 		# its guarded helper; cleanup must not become order-dependent on that state.
@@ -109,9 +109,13 @@ class EnforcementAdminTest(IntegrationTestCase):
 		view = enforcement_admin.set_user_exemption(user, True)
 
 		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE), "role is created lazily on first exemption")
-		# role landed in the settings exempt table
-		exempt_roles = {row.role for row in self._settings().passkey_enforce_exempt_roles}
-		self.assertIn(EXEMPT_ROLE, exempt_roles)
+		# no obsolete role-wide settings row is created
+		self.assertFalse(
+			frappe.db.exists(
+				"Passkey Enforcement Role",
+				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
+			)
+		)
 		# role assigned to the user, and the scope verdict flips
 		self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
 		self.assertFalse(self._in_scope(user))
@@ -130,9 +134,14 @@ class EnforcementAdminTest(IntegrationTestCase):
 		self.assertTrue(self._in_scope(user))
 		self.assertFalse(view["exempt"])
 		self.assertTrue(view["in_scope"])
-		# role + settings row LEFT in place
+		# marker role LEFT in place for reuse; no settings row exists
 		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE))
-		self.assertIn(EXEMPT_ROLE, {row.role for row in self._settings().passkey_enforce_exempt_roles})
+		self.assertFalse(
+			frappe.db.exists(
+				"Passkey Enforcement Role",
+				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
+			)
+		)
 
 	def test_exempt_is_idempotent_no_duplicate_rows(self):
 		user = self._user()
@@ -144,9 +153,12 @@ class EnforcementAdminTest(IntegrationTestCase):
 			"Has Role", filters={"parent": user, "role": EXEMPT_ROLE, "parenttype": "User"}
 		)
 		self.assertEqual(len(has_role), 1)
-		# no duplicate settings exempt row
-		rows = [r for r in self._settings().passkey_enforce_exempt_roles if r.role == EXEMPT_ROLE]
-		self.assertEqual(len(rows), 1)
+		self.assertFalse(
+			frappe.db.exists(
+				"Passkey Enforcement Role",
+				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
+			)
+		)
 
 	def test_exempt_accepts_documented_boolean_forms(self):
 		user = self._user()
@@ -211,13 +223,12 @@ class EnforcementAdminTest(IntegrationTestCase):
 		self.assertFalse(view["exempt"])
 		self.assertTrue(view["enforcing"])
 
-	def test_view_flags_exempt_via_other_role(self):
-		# A System Manager is exempt via the seeded role, NOT our dedicated one.
+	def test_view_keeps_privileged_user_in_scope_without_an_exemption(self):
 		user = self._user(roles=["System Manager"])
 		view = enforcement_admin.get_user_enforcement_admin(user)
 		self.assertFalse(view["exempt"])
-		self.assertTrue(view["exempt_via_other_role"])
-		self.assertFalse(view["in_scope"])
+		self.assertNotIn("exempt_via_other_role", view)
+		self.assertTrue(view["in_scope"])
 
 	# ---- authorization (System-Manager gate) ----------------------------
 

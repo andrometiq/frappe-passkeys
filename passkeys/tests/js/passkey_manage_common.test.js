@@ -465,27 +465,40 @@ test("settingsBanners: Enforce After Date without a date is a Save-blocking erro
 	assert.ok(b.some((x) => x.key === M.COPY.enforceNoDate && x.level === "error"));
 	// with a date ⇒ gone
 	const ok = M.settingsBanners(
-		{ login_with_passkey: 1, passkey_enrollment_policy: "Enforce After Date", passkey_enforce_after: "2026-08-01" },
-		{ passkey_enforce_exempt_roles: [{ role: "System Manager" }] }
+		{
+			login_with_passkey: 1,
+			passkey_enrollment_policy: "Enforce After Date",
+			passkey_enforce_after: "2026-08-01",
+			passkey_enforce_privileged_always: 1,
+		},
+		{}
 	);
 	assert.ok(!ok.some((x) => x.key === M.COPY.enforceNoDate));
 });
 
 test("settingsBanners: enforcing while no mode enabled warns it is inert", () => {
 	const b = M.settingsBanners(
-		{ login_with_passkey: 0, passkey_as_second_factor: 0, passkey_enrollment_policy: "Enforce" },
-		{ passkey_enforce_exempt_roles: [{ role: "System Manager" }] }
+		{
+			login_with_passkey: 0,
+			passkey_as_second_factor: 0,
+			passkey_enrollment_policy: "Enforce",
+			passkey_enforce_privileged_always: 1,
+		},
+		{}
 	);
 	assert.ok(b.some((x) => x.key === M.COPY.enforceNoMode && x.level === "warning"));
 });
 
-test("settingsBanners: self-lockout warning when enforcing all users without System Manager exempt", () => {
-	const doc = { login_with_passkey: 1, passkey_enrollment_policy: "Enforce", passkey_enforce_scope: "All Users" };
+test("settingsBanners: privileged-always opt-out warns", () => {
+	const doc = {
+		login_with_passkey: 1,
+		passkey_enrollment_policy: "Enforce",
+		passkey_enforce_privileged_always: 0,
+	};
 	const b = M.settingsBanners(doc, {});
-	assert.ok(b.some((x) => x.key === M.COPY.enforceSelfLockout && x.level === "warning"));
-	// System Manager exempt ⇒ suppressed
-	doc.passkey_enforce_exempt_roles = [{ role: "System Manager" }];
-	assert.ok(!M.settingsBanners(doc, {}).some((x) => x.key === M.COPY.enforceSelfLockout));
+	assert.ok(b.some((x) => x.key === M.COPY.enforcePrivilegedOutside && x.level === "warning"));
+	doc.passkey_enforce_privileged_always = 1;
+	assert.ok(!M.settingsBanners(doc, {}).some((x) => x.key === M.COPY.enforcePrivilegedOutside));
 });
 
 test("settingsBanners: Selected Roles with no roles enforces nobody (warning)", () => {
@@ -495,7 +508,7 @@ test("settingsBanners: Selected Roles with no roles enforces nobody (warning)", 
 			passkey_enrollment_policy: "Enforce",
 			passkey_enforce_scope: "Selected Roles",
 			passkey_enforce_roles: [],
-			passkey_enforce_exempt_roles: [{ role: "System Manager" }],
+			passkey_enforce_privileged_always: 1,
 		},
 		{}
 	);
@@ -508,7 +521,7 @@ test("settingsBanners: Block+Notify incapable policy warns; report-only preview 
 			login_with_passkey: 1,
 			passkey_enrollment_policy: "Enforce",
 			passkey_enforce_incapable: "Block + Notify Admin",
-			passkey_enforce_exempt_roles: [{ role: "System Manager" }],
+			passkey_enforce_privileged_always: 1,
 		},
 		{ wouldBeBlockedCount: 7 }
 	);
@@ -520,7 +533,7 @@ test("settingsBanners: Block+Notify incapable policy warns; report-only preview 
 
 test("settingsBanners: no enforcement banners under Nudge / Off", () => {
 	const nudge = M.settingsBanners({ login_with_passkey: 1, passkey_enrollment_policy: "Nudge" }, { wouldBeBlockedCount: 3 });
-	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforceSelfLockout, M.COPY.enforcePreview].indexOf(x.key) !== -1));
+	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforcePrivilegedOutside, M.COPY.enforcePreview].indexOf(x.key) !== -1));
 });
 
 // ---------------------------------------------------- security-posture panel
