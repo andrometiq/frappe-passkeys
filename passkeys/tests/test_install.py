@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import frappe
 from frappe.utils import cint
 
-from passkeys import install
+from passkeys import boot, install
 from passkeys.patches.v17_0 import fold_nudge_flag_into_enrollment_policy as fold_nudge_patch
 from passkeys.patches.v17_0 import remove_role_exemptions as remove_exemptions_patch
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
@@ -155,6 +155,8 @@ class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
 
 
 class TestRemoveRoleExemptionsMigration(IntegrationTestCase):
+	_PRIVILEGED_FIELD = "passkey_enforce_privileged_always"
+
 	def test_deletes_only_obsolete_exemption_rows(self):
 		obsolete = frappe.get_doc(
 			{
@@ -183,14 +185,53 @@ class TestRemoveRoleExemptionsMigration(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("Passkey Enforcement Role", obsolete.name))
 		self.assertTrue(frappe.db.exists("Passkey Enforcement Role", selected.name))
 
+	def test_absent_privileged_default_is_seeded_for_upgraded_site(self):
+		frappe.db.delete(
+			"Singles",
+			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
+		)
+		frappe.db.set_single_value("Passkey Settings", "passkey_enforce_scope", "Selected Roles")
+
+		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
+			remove_exemptions_patch.execute()
+
+		stored = frappe.db.get_value(
+			"Singles",
+			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
+			"value",
+			order_by=None,
+		)
+		self.assertEqual(stored, "1")
+		settings = frappe.get_cached_doc("Passkey Settings")
+		with patch.object(boot.frappe, "get_roles", return_value=["System Manager"]):
+			self.assertTrue(boot._user_in_enforce_scope("manager@example.com", settings))
+
+	def test_explicit_privileged_opt_out_survives_patch(self):
+		frappe.db.set_single_value("Passkey Settings", self._PRIVILEGED_FIELD, 0)
+
+		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
+			remove_exemptions_patch.execute()
+
+		stored = frappe.db.get_value(
+			"Singles",
+			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
+			"value",
+			order_by=None,
+		)
+		self.assertEqual(stored, "0")
+
 	def test_native_core_short_circuits(self):
 		with (
 			patch.object(remove_exemptions_patch.install, "is_core_native", return_value=True),
 			patch.object(remove_exemptions_patch.frappe.db, "delete") as delete,
+			patch.object(remove_exemptions_patch.frappe.db, "get_value") as get_value,
+			patch.object(remove_exemptions_patch.frappe.db, "set_single_value") as set_single,
 			patch.object(remove_exemptions_patch.frappe, "clear_document_cache") as clear_cache,
 		):
 			remove_exemptions_patch.execute()
 		delete.assert_not_called()
+		get_value.assert_not_called()
+		set_single.assert_not_called()
 		clear_cache.assert_not_called()
 
 
