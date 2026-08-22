@@ -28,7 +28,7 @@ Use four outcomes during that review:
 | `WebAuthn Credential` | Port or migrate to the final core credential DocType | Preserve credential IDs, public keys, sign counters, backup flags, UV state, owner, enabled/flagged state, metadata, and uniqueness. |
 | `WebAuthn User Handle` | Port or migrate to the final core handle model | Preserve immutable user/handle mapping and passkey-only state. |
 | `Passkey Settings` | Fold into the core settings owner selected by maintainers | Copy every scalar deliberately; validate RP/origin semantics after copy. Do not infer compatibility from matching field names. |
-| `Passkey Enforcement Role` child rows | Re-parent or transform explicitly | Preserve both include/exempt role sets and verify no orphaned child rows. This is data migration, not a scalar copy. |
+| `Passkey Enforcement Role` child rows and per-user exemption marker | Re-parent selected-role rows; preserve marker assignments | Preserve the selected enforcement-role set, delete legacy role-wide exemption rows, and retain `Passkey Enforcement Exempt` assignments on `User`. Native recovery also needs an operator-only console equivalent. |
 | `__passkeys` DefaultValue rows | Migrate or intentionally reset by type | Separate nudge/grace state from ephemeral Redis state and document the decision. |
 | Export schema v2 | Migration/recovery input only if core implements it | Verify site binding and HMAC before use; define field mapping; default to empty destination; review any merge. |
 

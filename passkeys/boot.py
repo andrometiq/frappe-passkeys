@@ -36,6 +36,11 @@ ENFORCE_EVENTS = ("defer", "incapable")
 
 _EMPTY_ENFORCE = {"grace_used": 0}
 
+# Enrollment-enforcement role policy. The dedicated exemption marker is created
+# lazily by enforcement_admin; privileged roles stay in scope by default.
+EXEMPT_ROLE = "Passkey Enforcement Exempt"
+PRIVILEGED_ROLES = {"System Manager"}
+
 
 def _nudge_key(user: str) -> str:
 	return f"{user}_passkey_nudge"
@@ -209,13 +214,16 @@ def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
 
 
 def _user_in_enforce_scope(user: str, settings) -> bool:
-	"""Whether ``user`` falls within the enforcement scope AND is not exempt. An exempt
-	role (``System Manager`` by default) ALWAYS wins — the break-glass guarantee — so it
-	is checked before the scope match."""
+	"""Whether ``user`` falls within the enforcement scope.
+
+	The per-user marker role wins first. Otherwise privileged roles stay in scope when
+	that safeguard is enabled, before Selected Roles is evaluated. All Users is the
+	remaining fallback."""
 	roles = set(frappe.get_roles(user))
-	exempt = {row.role for row in (settings.passkey_enforce_exempt_roles or [])}
-	if roles & exempt:
+	if EXEMPT_ROLE in roles:
 		return False
+	if cint(settings.passkey_enforce_privileged_always) and roles & PRIVILEGED_ROLES:
+		return True
 	if settings.passkey_enforce_scope == "Selected Roles":
 		target = {row.role for row in (settings.passkey_enforce_roles or [])}
 		return bool(roles & target)

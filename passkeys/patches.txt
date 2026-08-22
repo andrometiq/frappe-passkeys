@@ -2,3 +2,4 @@
 
 [post_model_sync]
 passkeys.patches.v17_0.fold_nudge_flag_into_enrollment_policy
+passkeys.patches.v17_0.remove_role_exemptions

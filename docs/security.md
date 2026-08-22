@@ -72,7 +72,9 @@ does not consume or satisfy it. Calling core's OTP path directly creates no mark
 *Passkey Only Login* veto. Administrator is **not** exempt from the enrolled second-factor rule:
 once an enabled credential is explicitly enrolled while Passkey as Second Factor is active, the
 same alternate-path veto applies. Core's site-wide `disable_user_pass_login` also has no
-Administrator exemption.
+Administrator exemption. Passkey enrollment enforcement likewise keeps `System Manager` users in
+scope by default; recovery uses a temporary per-user marker role or the operator-only console helper,
+never a standing administrator-role exemption.
 
 **Password rotation is checked at the session boundary.** Every password-to-passkey ceremony stores
 a keyed, non-reversible version of the password hash at leg one and compares it with the current

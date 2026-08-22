@@ -35,7 +35,7 @@
   "enforcement_section",
   "passkey_enforce_scope",
   "passkey_enforce_roles",
-  "passkey_enforce_exempt_roles",
+  "passkey_enforce_privileged_always",
   "column_break_enforcement",
   "passkey_enforce_grace_logins",
   "passkey_enforce_incapable",
@@ -241,11 +241,11 @@
    "options": "Passkey Enforcement Role"
   },
   {
-   "description": "Users holding any of these roles are always exempt (break-glass). System Manager is seeded here by default so an administrator can never lock themselves out.",
-   "fieldname": "passkey_enforce_exempt_roles",
-   "fieldtype": "Table MultiSelect",
-   "label": "Exempt Roles",
-   "options": "Passkey Enforcement Role"
+   "default": "1",
+   "description": "Users holding a privileged role (System Manager) stay in the enforcement scope even when Scope is Selected Roles. Industry practice enforces the strongest authentication for administrators first.",
+   "fieldname": "passkey_enforce_privileged_always",
+   "fieldtype": "Check",
+   "label": "Always Enforce for Privileged Users"
   },
   {
    "fieldname": "column_break_enforcement",
@@ -302,7 +302,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-07-16 00:00:00.000000",
+ "modified": "2026-08-22 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

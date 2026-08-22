@@ -132,7 +132,6 @@
 		enforceAdminReset: "Reset grace logins",
 		enforceAdminGrace: "Grace logins used: {0} of {1} ({2} remaining).",
 		enforceAdminStateExempt: "Exempt from enforcement",
-		enforceAdminStateExemptOther: "Exempt via another role",
 		enforceAdminStateEnforced: "In scope — must enroll a passkey",
 		enforceAdminStateSatisfied: "In scope — already has a passkey",
 		enforceAdminStateNotScope: "Not in enforcement scope",
@@ -179,10 +178,9 @@
 		enforceNoMode:
 			"Enrollment enforcement has no effect while both passkey login modes are off. Enable a " +
 			"passkey login mode for the policy to apply.",
-		enforceSelfLockout:
-			"System Manager is not in the exempt roles while enforcing for all users — an " +
-			"administrator on a device that cannot create a passkey could be locked out. Keep " +
-			"System Manager exempt as a break-glass unless you are certain.",
+		enforcePrivilegedOutside:
+			"Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
+			"the accounts attackers target first — industry practice enforces them first.",
 		enforceEmptyRoles:
 			"Enforcement scope is 'Selected Roles' but no roles are listed, so the policy applies " +
 			"to nobody. Add the roles to enforce, or switch the scope to 'All Users'.",
@@ -441,24 +439,20 @@
 	// get_user_enforcement_admin payload. Returns the button labels/actions, the reset
 	// enable state, and a status indicator — the DOM layer translates the COPY keys and
 	// fills the numeric grace args. `exempt` is the dedicated-role exemption (the toggle
-	// target); `exempt_via_other_role` (e.g. System Manager) is surfaced distinctly so the
-	// admin isn't misled into thinking the button governs it.
+	// target).
 	function enforcementAdminViewModel(state) {
 		state = state || {};
 		var exempt = state.exempt === true;
-		var exemptOther = state.exempt_via_other_role === true;
 		var inScope = state.in_scope === true;
 		var hasCred = cint(state.credential_count) > 0;
 		var graceUsed = cint(state.grace_used);
 		var indicator;
 		if (exempt) indicator = { color: "green", textKey: "enforceAdminStateExempt" };
-		else if (exemptOther) indicator = { color: "blue", textKey: "enforceAdminStateExemptOther" };
 		else if (inScope && hasCred) indicator = { color: "green", textKey: "enforceAdminStateSatisfied" };
 		else if (inScope) indicator = { color: "orange", textKey: "enforceAdminStateEnforced" };
 		else indicator = { color: "gray", textKey: "enforceAdminStateNotScope" };
 		return {
 			exempt: exempt,
-			exemptViaOther: exemptOther,
 			inScope: inScope,
 			graceUsed: graceUsed,
 			graceTotal: cint(state.grace_total),
@@ -591,10 +585,9 @@
 		if (enforcing) {
 			// Inert policy: enforcing while no passkey login mode is on.
 			if (!anyMode) banners.push({ level: "warning", key: COPY.enforceNoMode });
-			// Self-lockout: enforcing everyone without System Manager exempt.
-			var exempt = roleNames(doc.passkey_enforce_exempt_roles);
-			if (doc.passkey_enforce_scope !== "Selected Roles" && exempt.indexOf("System Manager") === -1) {
-				banners.push({ level: "warning", key: COPY.enforceSelfLockout });
+			// Privileged accounts should remain inside enforcement scope.
+			if (!isTruthy(doc.passkey_enforce_privileged_always)) {
+				banners.push({ level: "warning", key: COPY.enforcePrivilegedOutside });
 			}
 			// Selected-roles scope with an empty role list enforces against nobody.
 			if (doc.passkey_enforce_scope === "Selected Roles" && !roleNames(doc.passkey_enforce_roles).length) {
