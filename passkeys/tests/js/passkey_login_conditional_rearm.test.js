@@ -25,6 +25,24 @@ const C = require("../../public/js/passkey_common.bundle.js");
 
 const realSetTimeout = global.setTimeout;
 const tick = () => new Promise((r) => realSetTimeout(r, 0));
+const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+
+function installNavigator(value) {
+	Object.defineProperty(globalThis, "navigator", {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
+test.after(() => {
+	if (originalNavigatorDescriptor) {
+		Object.defineProperty(globalThis, "navigator", originalNavigatorDescriptor);
+	} else {
+		delete globalThis.navigator;
+	}
+});
 
 // ---- fake timers (installed before load: swallow boot()'s setTimeout) ----------------
 const fakeTimers = new Map();
@@ -71,7 +89,7 @@ function makeCoreHandlers() {
 }
 
 global.document = makeDoc();
-global.navigator = {}; // no navigator.credentials — startConditional early-returns regardless
+installNavigator({}); // no navigator.credentials — startConditional early-returns regardless
 global.fetch = function () { return Promise.reject(new Error("no network in test")); };
 const core = makeCoreHandlers();
 global.window = {
@@ -190,11 +208,11 @@ test("spent-state button click awaits re-begin before arming the WebAuthn gestur
 	let fetchCalls = 0;
 	global.fetch = function () { fetchCalls += 1; return begun.promise; };
 	const gets = [];
-	global.navigator = {
+	installNavigator({
 		credentials: {
 			get(options) { gets.push(options); return new Promise(() => {}); },
 		},
-	};
+	});
 
 	mod.onButtonClick();
 	assert.strictEqual(fetchCalls, 1, "click starts exactly one fresh begin");
@@ -218,11 +236,11 @@ test("failed click re-begin paints unavailable and the next click retries from s
 		return Promise.resolve(fetchCalls === 1 ? { ok: false } : beginResponse("recovered-sid", "Aw"));
 	};
 	const gets = [];
-	global.navigator = {
+	installNavigator({
 		credentials: {
 			get(options) { gets.push(options); return new Promise(() => {}); },
 		},
-	};
+	});
 
 	mod.onButtonClick();
 	await tick();
@@ -244,11 +262,11 @@ test("failed click re-begin paints unavailable and the next click retries from s
 test("verify POST keeps the state_id captured with options when a newer adopt lands mid-gesture", async () => {
 	primeConditional();
 	const credential = deferred();
-	global.navigator = {
+	installNavigator({
 		credentials: {
 			get() { return credential.promise; },
 		},
-	};
+	});
 	let posted = null;
 	global.window.frappe.call = function (opts) {
 		posted = opts.args;
@@ -272,7 +290,7 @@ test("bfcache pageshow spends the restored state and re-arms conditional UI from
 	mod.state.busyModal = true;
 	const begun = deferred();
 	global.fetch = function () { return begun.promise; };
-	global.navigator = {};
+	installNavigator({});
 
 	mod.onPageShow({ persisted: true });
 	assert.strictEqual(mod.state.login.spent, true, "the restored page never trusts its held state");
