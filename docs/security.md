@@ -17,6 +17,9 @@ A consumed, expired, or evicted state yields a uniform typed error, never a
 silent pass. A wrong passkey at the second factor re-arms a *fresh* state up to a
 small cap rather than burning the only 2FA state.
 
+This uniform-error contract assumes **System Settings → Allow Error Traceback** is off. Frappe v15
+ships it defaulted on; production sites must disable it or every 401 includes the traceback.
+
 **Guest login-CSRF defence (binder cookie).** Because the attacker in a login-CSRF
 is the ceremony's own legitimate starter, a browser-bound token is the only
 defence. Guest ceremonies set an ephemeral `Secure; HttpOnly; SameSite=Lax`

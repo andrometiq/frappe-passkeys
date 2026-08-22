@@ -248,9 +248,9 @@ def verify_login(state_id: str, credential):
 			raise frappe.AuthenticationError(
 				_("This passkey can't complete a passwordless sign-in. Please verify another way.")
 			)
-	except frappe.AuthenticationError:
+	except frappe.AuthenticationError as exc:
 		_track_verify_failure(cred.user)
-		raise
+		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
 	_track_verify_success(cred.user)
 
 	if outcome == policy.UV_SETUP:

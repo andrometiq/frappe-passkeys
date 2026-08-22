@@ -52,6 +52,8 @@ release.
 
 ### Security
 
+- First-factor verification failures now collapse to the uniform `AuthenticationError` wire type
+  instead of exposing the engine's cause class to guests.
 - Privileged users (`System Manager`) are now inside enforcement scope by default, with no standing
   role exemption. This matches industry practice and Frappe core's removal of the Administrator 2FA
   exemption.
