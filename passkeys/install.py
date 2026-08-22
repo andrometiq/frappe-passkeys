@@ -194,7 +194,7 @@ def _ensure_settings_defaults():
 	login modes OFF (installing is not enabling)."""
 	doc = frappe.get_doc("Passkey Settings")
 	for df in doc.meta.fields:
-		if df.fieldtype in ("Section Break", "Column Break", "HTML"):
+		if df.fieldtype in ("Section Break", "Column Break", "Tab Break", "HTML"):
 			continue
 		if df.default is not None and doc.get(df.fieldname) is None:
 			doc.set(df.fieldname, df.default)

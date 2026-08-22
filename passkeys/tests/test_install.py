@@ -8,7 +8,7 @@ import os
 import stat
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import frappe
 from frappe.utils import cint
@@ -66,6 +66,23 @@ class TestInstallGuards(IntegrationTestCase):
 
 	def test_before_install_passes_on_this_bench(self):
 		install.before_install()  # must not raise
+
+
+class TestSettingsDefaults(unittest.TestCase):
+	def test_skips_tab_breaks_when_persisting_declared_defaults(self):
+		doc = Mock()
+		doc.meta.fields = (
+			types.SimpleNamespace(fieldtype="Tab Break", fieldname="settings_tab"),
+			types.SimpleNamespace(fieldtype="Check", fieldname="enabled", default="1"),
+		)
+		doc.flags = types.SimpleNamespace()
+		doc.get.return_value = None
+		with patch.object(install.frappe, "get_doc", return_value=doc):
+			install._ensure_settings_defaults()
+
+		doc.get.assert_called_once_with("enabled")
+		doc.set.assert_called_once_with("enabled", "1")
+		doc.save.assert_called_once_with()
 
 
 class TestFoldNudgeMigration(unittest.TestCase):
