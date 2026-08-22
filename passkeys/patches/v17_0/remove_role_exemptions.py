@@ -19,4 +19,19 @@ def execute():
 			"parentfield": "passkey_enforce_exempt_roles",
 		},
 	)
+	stored = frappe.db.get_value(
+		"Singles",
+		{
+			"doctype": "Passkey Settings",
+			"field": "passkey_enforce_privileged_always",
+		},
+		"value",
+		order_by=None,
+	)
+	if stored is None:
+		frappe.db.set_single_value(
+			"Passkey Settings",
+			"passkey_enforce_privileged_always",
+			1,
+		)
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
