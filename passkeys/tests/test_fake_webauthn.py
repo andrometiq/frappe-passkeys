@@ -138,8 +138,10 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		)
 
 		_request(binder=binder)
-		with self.assertRaises(engine.AuthenticationVerificationFailed):
+		with self.assertRaises(frappe.AuthenticationError) as rejected:
 			passkey.verify_login(begun["state_id"], assertion)
+		self.assertIs(type(rejected.exception), frappe.AuthenticationError)
+		self.assertIsInstance(rejected.exception.__cause__, engine.AuthenticationVerificationFailed)
 		# no session was minted — verification genuinely gated the login
 		self.assertEqual(frappe.session.user, "Guest")
 
