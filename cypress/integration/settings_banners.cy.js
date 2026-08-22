@@ -11,6 +11,13 @@ const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : des
 const USER = "Administrator";
 const PW = () => Cypress.env("adminPassword") || "admin";
 
+function activate_settings_tab(tab_fieldname, field_selector) {
+	cy.get(`.form-tabs .nav-link[data-fieldname='${tab_fieldname}']`, { timeout: 20000 })
+		.should("be.visible")
+		.click();
+	return cy.get(field_selector, { timeout: 20000 }).should("be.visible");
+}
+
 chromium_only("passkey settings — banners + one-way-door dialog", () => {
 	before(() => {
 		cy.enable_virtual_authenticator();
@@ -34,14 +41,14 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 	it("shows the RP-ID one-way-door warning beside the field", () => {
 		cy.visit("/app/passkey-settings");
 		cy.get(".form-dashboard", { timeout: 20000 }).should("exist");
-		cy.get("[data-fieldname='passkey_rp_id']", { timeout: 20000 })
+		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id']")
 			.should("contain.text", "Changing the RP ID invalidates every existing passkey");
 	});
 
 	it("warns when change notifications are turned off while a mode is on", () => {
 		cy.visit("/app/passkey-settings");
-		cy.get("[data-fieldname='passkey_notify_on_change'] input[type='checkbox']", { timeout: 20000 })
-			.uncheck({ force: true });
+		activate_settings_tab("notifications_tab", "[data-fieldname='passkey_notify_on_change']");
+		cy.get("[data-fieldname='passkey_notify_on_change'] input[type='checkbox']").uncheck({ force: true });
 		cy.contains("removes the main safeguard against a hijacked session").should("exist");
 	});
 
@@ -54,7 +61,7 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 
 	it("raises a loud confirm when the RP ID is changed", () => {
 		cy.visit("/app/passkey-settings");
-		cy.get("[data-fieldname='passkey_rp_id'] input", { timeout: 20000 })
+		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id'] input")
 			.clear()
 			.type("changed.example.com")
 			.blur();
