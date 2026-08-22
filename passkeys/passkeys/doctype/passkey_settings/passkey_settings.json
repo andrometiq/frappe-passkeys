@@ -4,28 +4,22 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "login_modes_section",
+  "login_modes_tab",
   "login_with_passkey",
   "passkey_as_second_factor",
   "passkey_2fa_allow_otp_fallback",
-  "relying_party_section",
+  "relying_party_tab",
   "passkey_rp_id",
   "passkey_origins",
   "resolved_rp_html",
-  "mobile_apps_section",
+  "mobile_apps_tab",
   "passkey_app_origins",
   "passkey_android_package_name",
   "passkey_android_cert_fingerprints",
   "column_break_mobile",
   "passkey_ios_team_id",
   "passkey_ios_bundle_id",
-  "policy_section",
-  "passkey_sign_count_hard_fail",
-  "passkey_max_per_user",
-  "column_break_policy",
-  "passkey_reauth_window",
-  "passkey_allow_first_enrollment_on_weak_login",
-  "enrollment_section",
+  "enrollment_tab",
   "passkey_enrollment_policy",
   "passkey_enforce_after",
   "passkey_nudge_max_prompts",
@@ -40,15 +34,21 @@
   "passkey_enforce_grace_logins",
   "passkey_enforce_incapable",
   "passkey_enforce_allow_hybrid",
-  "notifications_section",
+  "security_tab",
+  "passkey_sign_count_hard_fail",
+  "passkey_max_per_user",
+  "column_break_policy",
+  "passkey_reauth_window",
+  "passkey_allow_first_enrollment_on_weak_login",
+  "notifications_tab",
   "passkey_notify_on_change",
   "passkey_notify_password_fallback",
   "passkey_notify_password_login"
  ],
  "fields": [
   {
-   "fieldname": "login_modes_section",
-   "fieldtype": "Section Break",
+   "fieldname": "login_modes_tab",
+   "fieldtype": "Tab Break",
    "label": "Login Modes"
   },
   {
@@ -73,8 +73,8 @@
    "label": "Allow OTP Fallback for Passkey Second Factor"
   },
   {
-   "fieldname": "relying_party_section",
-   "fieldtype": "Section Break",
+   "fieldname": "relying_party_tab",
+   "fieldtype": "Tab Break",
    "label": "Relying Party"
   },
   {
@@ -96,8 +96,8 @@
    "options": "<p class=\"text-muted small\">The resolved RP ID and origins are validated when a login mode is enabled.</p>"
   },
   {
-   "fieldname": "mobile_apps_section",
-   "fieldtype": "Section Break",
+   "fieldname": "mobile_apps_tab",
+   "fieldtype": "Tab Break",
    "label": "Mobile Apps"
   },
   {
@@ -135,44 +135,8 @@
    "label": "iOS Bundle ID"
   },
   {
-   "fieldname": "policy_section",
-   "fieldtype": "Section Break",
-   "label": "Policy"
-  },
-  {
-   "default": "0",
-   "description": "Reject logins on a signature-counter regression instead of logging and flagging the credential",
-   "fieldname": "passkey_sign_count_hard_fail",
-   "fieldtype": "Check",
-   "label": "Hard-fail on Sign Count Regression"
-  },
-  {
-   "default": "10",
-   "fieldname": "passkey_max_per_user",
-   "fieldtype": "Int",
-   "label": "Maximum Passkeys per User"
-  },
-  {
-   "fieldname": "column_break_policy",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "600",
-   "description": "Seconds a fresh login or re-authentication satisfies the sudo gate for passkey management",
-   "fieldname": "passkey_reauth_window",
-   "fieldtype": "Int",
-   "label": "Re-authentication Window (Seconds)"
-  },
-  {
-   "default": "1",
-   "description": "Let accounts without a usable password (social login only) enroll their first passkey shortly after an interactive login",
-   "fieldname": "passkey_allow_first_enrollment_on_weak_login",
-   "fieldtype": "Check",
-   "label": "Allow First Enrollment on Weak Login"
-  },
-  {
-   "fieldname": "enrollment_section",
-   "fieldtype": "Section Break",
+   "fieldname": "enrollment_tab",
+   "fieldtype": "Tab Break",
    "label": "Enrollment"
   },
   {
@@ -222,7 +186,7 @@
    "depends_on": "eval:[\"Enforce\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy)",
    "fieldname": "enforcement_section",
    "fieldtype": "Section Break",
-   "label": "Enforcement Scope & Escape Hatches"
+   "label": "Enforcement Scope"
   },
   {
    "default": "All Users",
@@ -274,8 +238,44 @@
    "label": "Allow Hybrid (Phone / QR) Enrollment"
   },
   {
-   "fieldname": "notifications_section",
-   "fieldtype": "Section Break",
+   "fieldname": "security_tab",
+   "fieldtype": "Tab Break",
+   "label": "Security"
+  },
+  {
+   "default": "0",
+   "description": "Reject logins on a signature-counter regression instead of logging and flagging the credential",
+   "fieldname": "passkey_sign_count_hard_fail",
+   "fieldtype": "Check",
+   "label": "Hard-fail on Sign Count Regression"
+  },
+  {
+   "default": "10",
+   "fieldname": "passkey_max_per_user",
+   "fieldtype": "Int",
+   "label": "Maximum Passkeys per User"
+  },
+  {
+   "fieldname": "column_break_policy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "600",
+   "description": "Seconds a fresh login or re-authentication satisfies the sudo gate for passkey management",
+   "fieldname": "passkey_reauth_window",
+   "fieldtype": "Int",
+   "label": "Re-authentication Window (Seconds)"
+  },
+  {
+   "default": "1",
+   "description": "Let accounts without a usable password (social login only) enroll their first passkey shortly after an interactive login",
+   "fieldname": "passkey_allow_first_enrollment_on_weak_login",
+   "fieldtype": "Check",
+   "label": "Allow First Enrollment on Weak Login"
+  },
+  {
+   "fieldname": "notifications_tab",
+   "fieldtype": "Tab Break",
    "label": "Notifications"
   },
   {
@@ -302,7 +302,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-22 00:00:00.000000",
+ "modified": "2026-08-22 00:00:01.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",
