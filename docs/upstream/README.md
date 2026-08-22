@@ -63,6 +63,7 @@ Any native proposal must preserve or deliberately supersede these app guarantees
 | Password-disable validator | Count native passkey login as a surviving method only when the native feature and fields exist | [`patch-02-disable-user-pass-login-validator.md`](patch-02-disable-user-pass-login-validator.md) |
 | Native login surface | Render and initialize passkeys without DOM-injection shims | [`patch-03-login-page-context-template.md`](patch-03-login-page-context-template.md) |
 | Conditional UI token | Add `webauthn` to the username autocomplete contract | [`patch-04-autocomplete-webauthn-token.md`](patch-04-autocomplete-webauthn-token.md) |
+| Settings placement | Decide whether passkey settings fold into System Settings or stay a linked single | [`patch-05-system-settings-placement.md`](patch-05-system-settings-placement.md) |
 | App-to-core inventory | Decide port/fold/replace/discard per component at PR time | [`mapping.md`](mapping.md) |
 | Acceptance gates | Rebase, security, migration, coexistence, rollback, and release checks | [`VALIDATE.md`](VALIDATE.md) |
 
