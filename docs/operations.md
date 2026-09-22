@@ -16,8 +16,10 @@ This matters for every backup, restore, and deploy.
 - `WebAuthn User Handle` rows — the opaque 64-byte user handles and the per-user
   *Passkey Only Login* flag.
 - `Passkey Settings` — every knob.
-- Per-user enrollment-nudge counters (stored as default-value rows under the
-  `__passkeys` parent).
+- Per-user enrollment-nudge state, enforcement grace counters and incapable-device
+  notification markers (default-value rows under the `__passkeys` parent). User renames
+  carry these values forward; merges retain each existing target value and otherwise
+  carry the source value. The old keys are removed.
 
 **Ephemeral — in Redis, TTL-expiring, deliberately not durable:**
 

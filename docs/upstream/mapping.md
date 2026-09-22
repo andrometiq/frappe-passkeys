@@ -29,7 +29,7 @@ Use four outcomes during that review:
 | `WebAuthn User Handle` | Port or migrate to the final core handle model | Preserve immutable user/handle mapping and passkey-only state. |
 | `Passkey Settings` | Fold into the core settings owner selected by maintainers | Copy every scalar deliberately; validate RP/origin semantics after copy. Do not infer compatibility from matching field names. |
 | `Passkey Enforcement Role` child rows and per-user exemption marker | Re-parent selected-role rows; preserve marker assignments | Preserve the selected enforcement-role set, delete legacy role-wide exemption rows, and retain `Passkey Enforcement Exempt` assignments on `User`. Native recovery also needs an operator-only console equivalent. |
-| `__passkeys` DefaultValue rows | Migrate or intentionally reset by type | Separate nudge/grace state from ephemeral Redis state and document the decision. |
+| `__passkeys` DefaultValue rows | Migrate or intentionally reset by type | Separate nudge/grace state from ephemeral Redis state; preserve User rename/merge handling and current locking reads when folding events. |
 | Export schema v2 | Migration/recovery input only if core implements it | Verify site binding and HMAC before use; define field mapping; default to empty destination; review any merge. |
 
 ## UI and integration
@@ -58,3 +58,7 @@ Use four outcomes during that review:
 The upstream PR should replace this proposal with a dated matrix containing the exact app commit,
 core commit, chosen destinations, migration behavior, and test evidence. Counts and hashes belong in
 that immutable review snapshot, not in this evergreen design document.
+
+The enrollment boot contract includes `enforcement.degrade_nudge_eligible`: the server
+applies the ordinary nudge opt-out, cap and cooldown to in-scope, unenrolled users under
+Degrade. Both Desk and portal require this explicit verdict for incapable-device nudges.

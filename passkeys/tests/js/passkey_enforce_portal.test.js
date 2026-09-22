@@ -31,6 +31,8 @@ function fakeEl(tag) {
 		setAttribute(k, v) { node._attrs[k] = v; },
 		getAttribute(k) { return node._attrs[k]; },
 		appendChild(c) { c.parentNode = node; node.children.push(c); return c; },
+		insertBefore(c, before) { c.parentNode = node; const i = node.children.indexOf(before); node.children.splice(i < 0 ? 0 : i, 0, c); return c; },
+		remove() { if (node.parentNode) node.parentNode.removeChild(node); },
 		removeChild(c) { const i = node.children.indexOf(c); if (i >= 0) node.children.splice(i, 1); c.parentNode = null; return c; },
 		addEventListener(type, fn) { (node._listeners[type] = node._listeners[type] || []).push(fn); },
 		removeEventListener(type, fn) { const a = node._listeners[type]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
@@ -161,4 +163,74 @@ test("portal confirm: password error remains visible on the retry prompt", async
 	assert.strictEqual(error.textContent, "That password wasn't right. Try again.");
 	pressEscape();
 	await assert.rejects(retry, (err) => err.code === C.CONFIRM_CODES.USER_CANCELLED);
+});
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const normalFetch = global.fetch;
+function bannerDoc() {
+	const doc = makeDoc();
+	doc.querySelector = () => doc.body;
+	doc.getElementById = (id) => findNode(doc.body, (n) => n.id === id);
+	return doc;
+}
+
+test("portal nudge: SHOWN follows insertion and no host spends nothing", () => {
+	fetchLog.length = 0;
+	global.document = bannerDoc();
+	global.fetch = (url, opts) => {
+		assert.ok(document.getElementById("passkey-portal-nudge"));
+		return normalFetch(url, opts);
+	};
+	try {
+		mod.renderNudgeBanner();
+		assert.strictEqual(fetchLog.length, 1);
+		assert.strictEqual(fetchLog[0].body.event, M.NUDGE_EVENTS.SHOWN);
+		global.document = makeDoc();
+		mod.renderNudgeBanner();
+		assert.strictEqual(fetchLog.length, 1);
+	} finally { global.fetch = normalFetch; }
+});
+
+test("portal: disabled modes suppress nudge and enforcement", async () => {
+	global.document = bannerDoc();
+	fetchLog.length = 0;
+	frappeObj.boot = { passkeys: { enabled: false, nudge_state: { eligible: true },
+		enforcement: { effective: "enforce", in_scope: true, degrade_nudge_eligible: true } } };
+	mod.maybeEnforceOrNudge();
+	await tick();
+	assert.strictEqual(document.body.children.length, 0);
+	assert.strictEqual(fetchLog.length, 0);
+	delete frappeObj.boot;
+});
+
+test("portal: Degrade renders directly using enforcement cadence", async () => {
+	for (const eligible of [true, false, undefined]) {
+		global.document = bannerDoc();
+		fetchLog.length = 0;
+		frappeObj.boot = { passkeys: { enabled: true, credential_count: 0, nudge_state: { eligible: false },
+			enforcement: { effective: "enforce", in_scope: true, incapable_policy: "degrade", degrade_nudge_eligible: eligible } } };
+		mod.maybeEnforceOrNudge();
+		await tick();
+		assert.strictEqual(!!document.getElementById("passkey-portal-nudge"), eligible === true);
+		assert.strictEqual(fetchLog.length, eligible === true ? 1 : 0);
+	}
+	delete frappeObj.boot;
+});
+
+test("portal opt-out failures are announced when no management status root exists", async () => {
+	const announce = C.announce;
+	const messages = [];
+	C.announce = (doc, msg) => messages.push(msg);
+	try {
+		for (const outcome of [false, true, "reject"]) {
+			messages.length = 0;
+			global.document = bannerDoc();
+			global.fetch = () => outcome === "reject" ? Promise.reject(new Error("offline")) :
+				Promise.resolve({ ok: outcome, json: () => Promise.resolve({}) });
+			mod.renderNudgeBanner();
+			findButton(document.body, (b) => b.textContent === M.COPY.nudgeNever).click();
+			await tick();
+			assert.deepStrictEqual(messages, outcome === true ? [] : [M.COPY.nudgeSaveFailed]);
+		}
+	} finally { global.fetch = normalFetch; C.announce = announce; }
 });

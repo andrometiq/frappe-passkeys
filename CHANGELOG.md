@@ -46,6 +46,13 @@ release.
 
 ### Fixed
 
+- Concurrent nudge events preserve opt-out, and enforcement deferrals read current grace state.
+- Nudges count only after rendering, failed opt-out saves show an error, and both login modes
+  being off suppresses nudge and upsell eligibility.
+- Incapable devices under Degrade to Nudge share the ordinary cap, cooldown and opt-out on
+  Desk and portal. User renames preserve nudge, grace and notification state; merges keep target values.
+- Stale hybrid upsell hints are consumed even when capped and cleared on login initialization.
+- Failed silent conditional creation falls back to the eligible visible nudge, except on abort.
 - Server CI rejects failed, empty, or unrecognized test summaries even when the framework test
   command exits successfully.
 - Enabling either login mode now checks the actual ceremony-engine imports in an isolated process,

@@ -432,7 +432,7 @@
 	// opening /passkeys.
 	function maybeEnforceOrNudge() {
 		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
-		if (!b) return;
+		if (!b || b.enabled === false) return;
 		C.detectCapabilities({ window: window }).then(function (caps) {
 			var clientCaps = { supported: caps.supported, uvpaa: caps.uvpaa, hybrid: caps.hybrid };
 			var enf = M.enforcementDecision(b, clientCaps);
@@ -440,7 +440,7 @@
 				if (enf.notifyAdmin) reportIncapableOnce();
 				if (enf.variant === "enforce") { showEnforceModal(b, enf); return; }
 				// incapable + Degrade ⇒ the standard, non-blocking nudge banner
-				maybeNudgeBanner(b, clientCaps);
+				renderNudgeBanner();
 				return;
 			}
 			maybeNudgeBanner(b, clientCaps);
@@ -544,16 +544,26 @@
 		if (document.getElementById("passkey-portal-nudge")) return;
 		var host = mountRoot || document.querySelector(".page_content, main, body");
 		if (!host) return;
-		post(METHODS.recordNudge, { event: M.NUDGE_EVENTS.SHOWN }).catch(function () {});
 		var bar = el("div", "passkey-nudge-banner"); bar.id = "passkey-portal-nudge"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", t(M.COPY.nudgeTitle));
 		bar.appendChild(el("strong", "passkey-nudge-title", t(M.COPY.nudgeTitle)));
 		bar.appendChild(el("span", "passkey-nudge-copy", t(M.COPY.nudgeBody)));
 		var acts = el("span", "passkey-nudge-acts");
 		acts.appendChild(primary(t(M.COPY.nudgeCta), function () { if (mountRoot) addPasskey(); else location.href = "/passkeys"; }));
-		acts.appendChild(link(t(M.COPY.nudgeLater), function () { post(METHODS.recordNudge, { event: M.NUDGE_EVENTS.DECLINED }).catch(function () {}); bar.remove(); }));
-		acts.appendChild(link(t(M.COPY.nudgeNever), function () { post(METHODS.recordNudge, { event: M.NUDGE_EVENTS.OPT_OUT }).catch(function () {}); bar.remove(); }));
+		acts.appendChild(link(t(M.COPY.nudgeLater), function () { recordNudge(M.NUDGE_EVENTS.DECLINED); bar.remove(); }));
+		acts.appendChild(link(t(M.COPY.nudgeNever), function () { recordNudge(M.NUDGE_EVENTS.OPT_OUT); bar.remove(); }));
 		bar.appendChild(acts);
 		host.insertBefore(bar, host.firstChild);
+		recordNudge(M.NUDGE_EVENTS.SHOWN);
+	}
+
+	function recordNudge(event) {
+		function failed() {
+			if (event === M.NUDGE_EVENTS.OPT_OUT) setPortalStatus(t(M.COPY.nudgeSaveFailed), "error");
+		}
+		return post(METHODS.recordNudge, { event: event }).then(function (res) {
+			if (!res || !res.ok) failed();
+			return res;
+		}, failed);
 	}
 
 	// --------------------------------------------------------------- utils
@@ -600,6 +610,6 @@
 	// enforcement interstitial + modal builder so `node --test` can pin the defer-on-Esc
 	// contract without a bench. No-op in the browser — `module` is undefined there.
 	if (typeof module === "object" && module.exports) {
-		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal, makeConfirmUI: makeConfirmUI, setPortalStatus: setPortalStatus };
+		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal, makeConfirmUI: makeConfirmUI, setPortalStatus: setPortalStatus, renderNudgeBanner: renderNudgeBanner, maybeEnforceOrNudge: maybeEnforceOrNudge, recordNudge: recordNudge };
 	}
 })();

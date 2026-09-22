@@ -27,6 +27,7 @@
 "Add a passkey and skip the password next time — sign in with your fingerprint, face, or screen lock instead.","Ajoutez une clé d'accès et évitez le mot de passe la prochaine fois — connectez-vous plutôt avec votre empreinte digitale, votre visage ou le verrouillage de votre écran."
 "Not now","Pas maintenant"
 "Don't ask again","Ne plus demander"
+"Couldn't save your choice — please try again.","Impossible d'enregistrer votre choix — veuillez réessayer."
 "Add a passkey to this device","Ajouter une clé d'accès à cet appareil"
 "You just signed in from another device. Add a passkey here to sign in directly next time.","Vous venez de vous connecter depuis un autre appareil. Ajoutez une clé d'accès ici pour vous connecter directement la prochaine fois."
 "Passwordless login only","Connexion sans mot de passe uniquement"

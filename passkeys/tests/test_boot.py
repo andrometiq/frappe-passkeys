@@ -171,3 +171,14 @@ class BootInfoTest(IntegrationTestCase):
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.get_signal_data()
+
+	def test_both_modes_off_disable_nudge_and_upsell(self):
+		user = self._user()
+		for first, second in ((0, 0), (1, 0), (0, 1)):
+			with self.subTest(first=first, second=second):
+				frappe.db.set_single_value("Passkey Settings", "login_with_passkey", first)
+				frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", second)
+				flush_settings_cache()
+				payload = boot.build_passkeys_boot(user)
+				self.assertEqual(payload["nudge_state"]["eligible"], bool(first or second))
+				self.assertEqual(payload["upsell_eligible"], bool(first or second))

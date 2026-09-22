@@ -238,6 +238,7 @@ function enfBoot(over) {
 			grace_total: 3,
 			allow_hybrid: true,
 			incapable_policy: "degrade",
+			degrade_nudge_eligible: true,
 			reason: "grace",
 		},
 		(over && over.enforcement) || {}
@@ -830,3 +831,12 @@ test("signalCredentialState keeps registration/deletion parity, including an emp
 //      the field snaps back to the saved value and the doc is NOT dirty.
 //   2. Change it again, click "Yes, change it" → the value sticks and can be saved.
 //   3. Esc / click-outside the warn behaves like Cancel (reverts).
+
+for (const eligible of [true, false, undefined]) {
+	test(`enforcementDecision: Degrade requires explicit server eligibility (${eligible})`, () => {
+		const d = M.enforcementDecision(enfBoot({ enforcement: { degrade_nudge_eligible: eligible } }), { supported: false });
+		assert.strictEqual(d.show, eligible === true);
+		assert.strictEqual(d.variant, "nudge");
+		assert.strictEqual(d.reason, eligible === true ? "incapable_degrade" : "incapable_degrade_capped");
+	});
+}

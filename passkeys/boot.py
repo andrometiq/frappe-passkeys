@@ -49,7 +49,10 @@ def _nudge_key(user: str) -> str:
 def get_nudge_state(user: str) -> dict:
 	"""The user's ``{declines, last_shown, opt_out}`` nudge blob. Absent or
 	malformed ⇒ a fresh zero-state (never raises — a bad row must not brick boot)."""
-	raw = frappe.db.get_default(_nudge_key(user), parent=DEFAULTS_PARENT)
+	return _parse_nudge_state(frappe.db.get_default(_nudge_key(user), parent=DEFAULTS_PARENT))
+
+
+def _parse_nudge_state(raw) -> dict:
 	if not raw:
 		return dict(_EMPTY_NUDGE)
 	try:
@@ -77,7 +80,15 @@ def record_nudge_event(user: str, event: str) -> dict:
 	``opt_out`` ("Don't ask again") is terminal. Returns the new state."""
 	if event not in NUDGE_EVENTS:
 		frappe.throw(frappe._("Unknown nudge event."), frappe.ValidationError)
-	state = get_nudge_state(user)
+	frappe.db.get_value("User", user, "name", for_update=True)
+	state = _parse_nudge_state(
+		frappe.db.get_value(
+			"DefaultValue",
+			{"parent": DEFAULTS_PARENT, "defkey": _nudge_key(user)},
+			"defvalue",
+			for_update=True,
+		)
+	)
 	if event == "shown":
 		state["declines"] = cint(state.get("declines")) + 1
 		state["last_shown"] = now_datetime().isoformat()
@@ -118,7 +129,10 @@ def get_enforcement_state(user: str) -> dict:
 	have deferred since coming in scope. Stored the twofactor way (site-wide
 	``DefaultValue`` under ``__passkeys``), exactly like the nudge state, so a decline
 	is recordable before any credential exists. Absent/malformed ⇒ a fresh zero-state."""
-	raw = frappe.db.get_default(_enforce_key(user), parent=DEFAULTS_PARENT)
+	return _parse_enforcement_state(frappe.db.get_default(_enforce_key(user), parent=DEFAULTS_PARENT))
+
+
+def _parse_enforcement_state(raw) -> dict:
 	if not raw:
 		return dict(_EMPTY_ENFORCE)
 	try:
@@ -137,14 +151,24 @@ def _save_enforcement_state(user: str, state: dict) -> None:
 def record_enforcement_event(user: str, event: str) -> dict:
 	"""Fold a ``record_enforcement`` event into the user's grace state. ``defer``
 	("Remind me later") spends one grace login. The endpoint claims a per-session
-	idempotency key first; the User lock here serializes distinct sessions updating
-	the same DefaultValue row. ``incapable`` records no counter (the endpoint handles
-	the admin advisory). Returns the new state."""
+	idempotency key first; the User lock serializes writers and the locking
+	DefaultValue read bypasses cached state and stale transaction snapshots.
+	``incapable`` records no counter (the endpoint handles the admin advisory).
+	Returns the new state."""
 	if event not in ENFORCE_EVENTS:
 		frappe.throw(frappe._("Unknown enforcement event."), frappe.ValidationError)
 	if event == "defer":
 		frappe.db.get_value("User", user, "name", for_update=True)
-	state = get_enforcement_state(user)
+		state = _parse_enforcement_state(
+			frappe.db.get_value(
+				"DefaultValue",
+				{"parent": DEFAULTS_PARENT, "defkey": _enforce_key(user)},
+				"defvalue",
+				for_update=True,
+			)
+		)
+	else:
+		state = get_enforcement_state(user)
 	if event == "defer":
 		state["grace_used"] = cint(state.get("grace_used")) + 1
 	_save_enforcement_state(user, state)
@@ -168,7 +192,7 @@ def clear_enforcement_state(user: str) -> None:
 
 
 def _cadence_ok(settings, state: dict) -> bool:
-	"""Shared nudge/upsell cadence. Gated first on the policy rung: the nudge cadence
+	"""Shared nudge/upsell cadence. Requires a login mode; the ordinary cadence
 	only runs while the effective policy is ``nudge`` (``Off`` ⇒ silent; ``Enforce`` /
 	post-date ⇒ the enforcement interstitial owns the surface, not the nudge). The
 	remaining thresholds come from Passkey Settings knobs (``passkey_nudge_max_prompts``
@@ -176,8 +200,15 @@ def _cadence_ok(settings, state: dict) -> bool:
 	∧ cooldown elapsed. The **credential-count** gate is applied by the caller — the
 	enrollment nudge requires 0 credentials, the post-hybrid upsell does not (the user
 	just signed in, so they hold ≥1)."""
+	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
+		return False
 	if policy_effective(settings) != "nudge":
 		return False
+	return _nudge_thresholds_ok(settings, state)
+
+
+def _nudge_thresholds_ok(settings, state: dict) -> bool:
+	"""Opt-out, prompt cap and cooldown shared by ordinary and degraded nudges."""
 	if cint(state.get("opt_out")):
 		return False
 	if cint(state.get("declines")) >= cint(settings.passkey_nudge_max_prompts):
@@ -230,7 +261,7 @@ def _user_in_enforce_scope(user: str, settings) -> bool:
 	return True  # "All Users"
 
 
-def build_enforcement(user: str, settings, credential_count: int) -> dict:
+def build_enforcement(user: str, settings, credential_count: int, nudge_state: dict | None = None) -> dict:
 	"""The server-owned enrollment-enforcement verdict — same trust model as
 	``nudge_state`` (scope, date and grace counters live server-side; the client only
 	ANDs its device-capability probe). Shape::
@@ -244,6 +275,7 @@ def build_enforcement(user: str, settings, credential_count: int) -> dict:
 	      grace_total,
 	      allow_hybrid,
 	      incapable_policy,
+	      degrade_nudge_eligible,
 	      reason,
 	  }
 
@@ -252,7 +284,9 @@ def build_enforcement(user: str, settings, credential_count: int) -> dict:
 	matches scope and is not exempt; ``blocking`` bites only an in-scope user who still
 	has zero passkeys and has exhausted their grace logins. ``incapable_policy``
 	(``degrade``/``block_notify``) + ``allow_hybrid`` are the §capability hinge the
-	client honors on a device that genuinely cannot create a passkey."""
+	client honors on a device that genuinely cannot create a passkey.
+	``degrade_nudge_eligible`` applies ordinary nudge thresholds to an in-scope,
+	zero-credential user under Degrade."""
 	effective = policy_effective(settings)
 	mode_on = bool(cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
 	incapable_policy = (
@@ -285,6 +319,14 @@ def build_enforcement(user: str, settings, credential_count: int) -> dict:
 		"grace_total": grace_total,
 		"allow_hybrid": allow_hybrid,
 		"incapable_policy": incapable_policy,
+		"degrade_nudge_eligible": (
+			in_scope
+			and credential_count == 0
+			and incapable_policy == "degrade"
+			and _nudge_thresholds_ok(
+				settings, nudge_state if nudge_state is not None else get_nudge_state(user)
+			)
+		),
 		"reason": reason,
 	}
 
@@ -310,8 +352,8 @@ def build_passkeys_boot(user: str) -> dict:
 	  * ``upsell_eligible``    — post-hybrid upsell cadence WITHOUT the 0-credential gate.
 	  * ``enforcement``        — the server-owned enforcement verdict
 	    ``{policy, effective, in_scope, blocking, grace_remaining, grace_total,
-	    allow_hybrid, incapable_policy, reason}`` (see :func:`build_enforcement`); the
-	    post-login interstitial reads ``blocking`` the way the banner reads
+	    allow_hybrid, incapable_policy, degrade_nudge_eligible, reason}``
+	    (see :func:`build_enforcement`); the post-login interstitial reads ``blocking`` the way the banner reads
 	    ``nudge_state.eligible``.
 	  * ``settings_context``   — ``{core_two_factor_auth, disable_user_pass_login,
 	    passkey_only_user_count, would_be_blocked_count}`` for the cross-flag banners +
@@ -342,7 +384,7 @@ def build_passkeys_boot(user: str) -> dict:
 		"post_login_method": _post_login_method(user),
 		"conditional_create": bool(cint(settings.passkey_conditional_create)),
 		"upsell_eligible": upsell_eligible(user, settings, state),
-		"enforcement": build_enforcement(user, settings, credential_count),
+		"enforcement": build_enforcement(user, settings, credential_count, state),
 		"settings_context": _settings_context(user, settings),
 		"rp_id": policy.resolve_rp_id(settings),
 	}

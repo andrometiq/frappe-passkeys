@@ -29,6 +29,8 @@ _FIELDS = (
 	"passkey_enforce_grace_logins",
 	"passkey_enforce_incapable",
 	"passkey_enforce_allow_hybrid",
+	"passkey_nudge_max_prompts",
+	"passkey_nudge_cooldown_days",
 )
 
 
@@ -441,3 +443,57 @@ class EnforcementVerdictTest(IntegrationTestCase):
 			patch("passkeys.boot.frappe.get_roles", side_effect=lambda user: roles[user]),
 		):
 			self.assertEqual(boot._would_be_blocked_count(settings), 2)
+
+	def test_defer_reads_current_database_state(self):
+		user = self._user()
+		boot.record_enforcement_event(user, "defer")
+		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)
+		frappe.db.set_value(
+			"DefaultValue",
+			{"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_enforce"},
+			"defvalue",
+			frappe.as_json({"grace_used": 2}),
+		)
+		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)  # cache is still stale
+		self.assertEqual(boot.record_enforcement_event(user, "defer")["grace_used"], 3)
+		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 3)
+
+	def test_degrade_nudge_uses_ordinary_thresholds(self):
+		self._set(passkey_nudge_max_prompts=3, passkey_nudge_cooldown_days=30)
+		user = self._user()
+		self.assertTrue(self._verdict(user)["degrade_nudge_eligible"])
+		self.assertFalse(self._verdict(user, creds=1)["degrade_nudge_eligible"])
+		boot.record_nudge_event(user, "opt_out")
+		self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
+		for nudge_state in (
+			{"declines": 3, "opt_out": 0, "last_shown": None},
+			{"declines": 1, "opt_out": 0, "last_shown": now_datetime().isoformat()},
+		):
+			with self.subTest(nudge_state=nudge_state):
+				frappe.db.set_default(
+					f"{user}_passkey_nudge", frappe.as_json(nudge_state), parent=DEFAULTS_PARENT
+				)
+				self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
+
+	def test_degrade_nudge_requires_degrade_and_scope(self):
+		self._set(passkey_nudge_max_prompts=3, passkey_nudge_cooldown_days=30)
+		user = self._user()
+		self._set(passkey_enforce_incapable="Block + Notify Admin")
+		self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
+		self._set(passkey_enforce_incapable="Degrade to Nudge", passkey_enforce_scope="Selected Roles")
+		self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
+		for policy in ("Off", "Nudge"):
+			self._set(passkey_enrollment_policy=policy)
+			with patch.object(boot, "get_nudge_state") as read_nudge:
+				self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
+			read_nudge.assert_not_called()
+
+	def test_boot_reuses_nudge_state_for_degrade_verdict(self):
+		self._set(passkey_nudge_max_prompts=3, passkey_nudge_cooldown_days=30)
+		user = self._user()
+		with patch.object(boot, "get_nudge_state", wraps=boot.get_nudge_state) as read_nudge:
+			payload = boot.build_passkeys_boot(user)
+		read_nudge.assert_called_once_with(user)
+		self.assertTrue(payload["enforcement"]["degrade_nudge_eligible"])
+		self.assertFalse(payload["nudge_state"]["eligible"])
+		self.assertFalse(payload["upsell_eligible"])

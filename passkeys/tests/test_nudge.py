@@ -5,6 +5,8 @@
 server-side per-user counters (cap + cooldown + opt-out), the ``record_nudge``
 event vocabulary, and the eligibility gate the boot flag / portal expose."""
 
+from unittest.mock import patch
+
 import frappe
 from frappe.utils import add_to_date, now_datetime
 
@@ -13,7 +15,12 @@ from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 
-_NUDGE_KNOBS = ("passkey_enrollment_policy", "passkey_nudge_max_prompts", "passkey_nudge_cooldown_days")
+_NUDGE_KNOBS = (
+	"passkey_enrollment_policy",
+	"passkey_nudge_max_prompts",
+	"passkey_nudge_cooldown_days",
+	"login_with_passkey",
+)
 
 
 class NudgeCadenceTest(IntegrationTestCase):
@@ -25,6 +32,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		settings.passkey_nudge_max_prompts = 3
 		settings.passkey_nudge_cooldown_days = 30
 		settings.save(ignore_permissions=True)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
 		flush_settings_cache()
 		self.addCleanup(self._restore)
 		self.addCleanup(frappe.set_user, "Administrator")
@@ -147,3 +155,76 @@ class NudgeCadenceTest(IntegrationTestCase):
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.record_nudge("shown")
+
+	def test_shown_preserves_opt_out_from_current_database_row(self):
+		user = self._user()
+		boot.record_nudge_event(user, "shown")
+		self.assertEqual(boot.get_nudge_state(user)["opt_out"], 0)
+		frappe.db.set_value(
+			"DefaultValue",
+			{"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_nudge"},
+			"defvalue",
+			frappe.as_json({"declines": 2, "opt_out": 1, "last_shown": None}),
+		)
+		self.assertEqual(boot.get_nudge_state(user)["opt_out"], 0)  # cache is still stale
+		result = boot.record_nudge_event(user, "shown")
+		self.assertEqual(result["opt_out"], 1)
+		self.assertEqual(result["declines"], 3)
+		self.assertEqual(boot.get_nudge_state(user), result)
+
+	def test_user_rename_moves_all_default_state(self):
+		old = self._user()
+		new = f"renamed-{old}"
+		self.addCleanup(frappe.delete_doc, "User", new, force=1, ignore_permissions=True)
+		boot.record_nudge_event(old, "opt_out")
+		boot.record_enforcement_event(old, "defer")
+		frappe.db.set_default(f"{old}_passkey_incapable_notified", "marker", parent=DEFAULTS_PARENT)
+		expected = {
+			suffix: frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT)
+			for suffix in passkey.USER_DEFAULT_SUFFIXES
+		}
+		frappe.rename_doc("User", old, new)
+		for suffix, value in expected.items():
+			self.assertEqual(frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT), value)
+			self.assertIsNone(frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT))
+			self.assertFalse(
+				frappe.db.exists("DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{old}_{suffix}"})
+			)
+
+	def test_user_merge_preserves_target_default_state(self):
+		old, new = self._user(), self._user()
+		boot.record_nudge_event(old, "shown")
+		boot.record_nudge_event(new, "opt_out")
+		boot.record_enforcement_event(old, "defer")
+		boot.record_enforcement_event(new, "defer")
+		boot.record_enforcement_event(new, "defer")
+		for user in (old, new):
+			frappe.db.set_default(f"{user}_passkey_incapable_notified", user, parent=DEFAULTS_PARENT)
+		expected = {
+			suffix: frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT)
+			for suffix in passkey.USER_DEFAULT_SUFFIXES
+		}
+		frappe.rename_doc("User", old, new, merge=True)
+		for suffix, value in expected.items():
+			self.assertEqual(frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT), value)
+			self.assertIsNone(frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT))
+
+	def test_user_merge_carries_state_when_target_has_none(self):
+		old, new = self._user(), self._user()
+		boot.record_nudge_event(old, "opt_out")
+		boot.record_enforcement_event(old, "defer")
+		frappe.db.set_default(f"{old}_passkey_incapable_notified", "marker", parent=DEFAULTS_PARENT)
+		frappe.rename_doc("User", old, new, merge=True)
+		self.assertEqual(boot.get_nudge_state(new)["opt_out"], 1)
+		self.assertEqual(boot.get_enforcement_state(new)["grace_used"], 1)
+		self.assertEqual(
+			frappe.db.get_default(f"{new}_passkey_incapable_notified", parent=DEFAULTS_PARENT), "marker"
+		)
+
+	def test_dormant_rename_leaves_defaults_untouched(self):
+		old, new = self._user(), self._user()
+		boot.record_nudge_event(old, "opt_out")
+		with patch.object(passkey.install, "dormant", return_value=True):
+			passkey.rename_user_artifacts(frappe.get_doc("User", new), "after_rename", old, new)
+		self.assertEqual(boot.get_nudge_state(old)["opt_out"], 1)
+		self.assertEqual(boot.get_nudge_state(new)["opt_out"], 0)

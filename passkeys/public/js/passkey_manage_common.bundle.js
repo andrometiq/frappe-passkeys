@@ -109,6 +109,7 @@
 		nudgeCta: "Create a passkey",
 		nudgeLater: "Not now",
 		nudgeNever: "Don't ask again",
+		nudgeSaveFailed: "Couldn't save your choice — please try again.",
 		upsellTitle: "Add a passkey to this device",
 		upsellBody:
 			"You just signed in from another device. Add a passkey here to sign in " +
@@ -367,7 +368,7 @@
 	// honor DEVICE CAPABILITY, which the server cannot know. Returns:
 	//   show        — surface an interstitial at all
 	//   variant     — "enforce" (the blocking/skippable enrollment gate) or "nudge"
-	//                 (a genuinely-incapable device under Degrade — never a dead-end)
+	//                 (an incapable device under Degrade, subject to server nudge cadence)
 	//   blocking    — the enforce variant is non-dismissible (grace exhausted, or the
 	//                 admin chose Block + Notify Admin for an incapable device)
 	//   allowHybrid — offer the phone/QR enrollment path
@@ -415,11 +416,11 @@
 			out.notifyAdmin = true;
 			out.reason = "incapable_block_notify";
 		} else {
-			// Degrade to a non-blocking nudge variant (the default escape hatch).
-			out.show = true;
+			// Degrade shares the ordinary server-owned nudge cadence.
+			out.show = enf.degrade_nudge_eligible === true;
 			out.variant = "nudge";
 			out.blocking = false;
-			out.reason = "incapable_degrade";
+			out.reason = out.show ? "incapable_degrade" : "incapable_degrade_capped";
 		}
 		return out;
 	}

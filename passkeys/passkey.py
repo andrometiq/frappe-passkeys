@@ -72,6 +72,9 @@ def refuse_if_core_native() -> None:
 		raise PasskeyServedByCore(_("This site serves passkeys natively."))
 
 
+USER_DEFAULT_SUFFIXES = ("passkey_nudge", "passkey_enforce", "passkey_incapable_notified")
+
+
 def cascade_delete_user_artifacts(doc, method=None):
 	"""User on_trash: drop the user's credential, handle, and Defaults rows.
 
@@ -83,8 +86,24 @@ def cascade_delete_user_artifacts(doc, method=None):
 		return
 	for doctype in ("WebAuthn Credential", "WebAuthn User Handle"):
 		frappe.db.delete(doctype, {"user": doc.name})
-	for suffix in ("passkey_nudge", "passkey_enforce", "passkey_incapable_notified"):
+	for suffix in USER_DEFAULT_SUFFIXES:
 		frappe.defaults.clear_default(f"{doc.name}_{suffix}", parent=install.DEFAULTS_PARENT)
+
+
+def rename_user_artifacts(doc, method=None, old=None, new=None, merge=False):
+	"""User after_rename: carry Defaults state forward; merges preserve target values.
+
+	Like the delete cascade, dormant shells leave core-owned state alone.
+	"""
+	if install.dormant() or not old or not new or old == new:
+		return
+	for suffix in USER_DEFAULT_SUFFIXES:
+		old_key, new_key = f"{old}_{suffix}", f"{new}_{suffix}"
+		value = frappe.db.get_default(old_key, parent=install.DEFAULTS_PARENT)
+		target = frappe.db.get_default(new_key, parent=install.DEFAULTS_PARENT) if merge else None
+		if value is not None and target is None:
+			frappe.db.set_default(new_key, value, parent=install.DEFAULTS_PARENT)
+		frappe.defaults.clear_default(old_key, parent=install.DEFAULTS_PARENT)
 
 
 # ===========================================================================

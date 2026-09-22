@@ -50,6 +50,7 @@
 	function boot() {
 		if (BOOTED) return; // idempotent injection guard (login_rendered is one-shot)
 		BOOTED = true;
+		try { if (window.localStorage) localStorage.removeItem("passkey_upsell_add_local"); } catch (e) { /* ignore */ }
 		C.ensureLiveRegion(document);
 		// merge our own guest translation catalog (REQUIRED on v15/v16), then start.
 		loadAppTranslations()

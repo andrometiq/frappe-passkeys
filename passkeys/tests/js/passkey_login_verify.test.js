@@ -54,7 +54,7 @@ function makeDoc() {
 		addEventListener() {}, // login_rendered / DOMContentLoaded never fire under node
 		removeEventListener() {},
 	};
-	doc.body = { appendChild() {} };
+	doc.body = { appendChild() {}, removeAttribute() {} };
 	doc.documentElement = doc.body;
 	return doc;
 }
@@ -188,4 +188,11 @@ test("verify: the finalizer does NOT overwrite a specific typed-401 state (remov
 
 	assert.strictEqual(mod.state.status.state, "removed", "on401 owns UnknownCredential -> removed; finalizer must leave it");
 	assert.strictEqual(mod.state.slowTimer, null, "slow timer cleared by on401");
+});
+
+test("login boot clears a stale hybrid upsell flag before sign-in", async () => {
+	localStorage.setItem("passkey_upsell_add_local", "1");
+	window.frappe._passkey_login.boot();
+	assert.strictEqual(localStorage.getItem("passkey_upsell_add_local"), null);
+	await tick();
 });

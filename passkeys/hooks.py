@@ -136,6 +136,7 @@ doc_events = {
 	"User": {
 		# Without this cascade, Link integrity blocks User deletion.
 		"on_trash": "passkeys.passkey.cascade_delete_user_artifacts",
+		"after_rename": "passkeys.passkey.rename_user_artifacts",
 	},
 	"System Settings": {
 		# Reverse half of the two-way 2FA floor: refuse flipping

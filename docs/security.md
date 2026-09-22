@@ -140,6 +140,12 @@ rejects another site or a bad signature. Its default requires empty passkey tabl
 schema-v1 files from pre-v2 app builds are rejected unless an operator reviews their provenance and
 passes `allow_unsigned_legacy=True`; this opt-in does not make the file authenticated.
 
+**Enrollment cadence is server-owned.** Nudge events and grace deferrals lock the User
+row before reading the current DefaultValue row with a locking read, bypassing cached
+values and stale transaction snapshots. Concurrent nudge events preserve opt-out and
+deferrals preserve spent grace. Degrade to Nudge honors the same opt-out, cap and
+cooldown on Desk and portal; renaming a User preserves these budgets.
+
 **Native dormancy requires an explicit contract.** Fresh installation is blocked by any
 `frappe.passkey` module to avoid installing two authorities. An already-installed app no-ops hooks
 and returns `417 PasskeyServedByCore` only when core defines the exact marker

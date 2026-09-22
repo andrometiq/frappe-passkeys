@@ -104,6 +104,7 @@ global.document = (function () {
 })();
 global.window = { frappe: frappeObj, localStorage: { getItem: () => null, setItem() {}, removeItem() {} } };
 global.localStorage = global.window.localStorage;
+global.location = { hostname: "example.com" };
 
 const mod = require("../../public/js/passkey_desk.bundle.js");
 assert.strictEqual(typeof mod.showEnforceDialog, "function", "node test seam must export showEnforceDialog");
@@ -142,4 +143,111 @@ test("desk enforce: a blocking (grace-exhausted) gate wires no dismissal defer",
 	const d = Dialog.instances[Dialog.instances.length - 1];
 	d.hide();
 	assert.strictEqual(deferCount(), 0, "a blocking gate is static and has no grace left — it never records a defer");
+});
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const normalFetch = global.fetch;
+function shownCount() { return fetchLog.filter((f) => f.body.event === M.NUDGE_EVENTS.SHOWN).length; }
+
+test("desk nudge: SHOWN follows show, and a constructor failure spends nothing", () => {
+	fetchLog.length = 0;
+	global.fetch = (url, opts) => {
+		assert.strictEqual(Dialog.instances.at(-1).shown, true);
+		return normalFetch(url, opts);
+	};
+	try {
+		mod.showNudgeDialog({}, false);
+		assert.strictEqual(shownCount(), 1);
+		frappeObj.ui.Dialog = function () { throw new Error("render failed"); };
+		assert.throws(() => mod.showNudgeDialog({}, false), /render failed/);
+		assert.strictEqual(shownCount(), 1);
+	} finally { frappeObj.ui.Dialog = Dialog; global.fetch = normalFetch; }
+});
+
+test("desk nudge: failed opt-out alerts, successful opt-out and other events stay silent", async () => {
+	const alerts = [];
+	frappeObj.show_alert = (alert) => alerts.push(alert);
+	try {
+		for (const outcome of [false, true, "reject"]) {
+			alerts.length = 0;
+			global.fetch = () => outcome === "reject" ? Promise.reject(new Error("offline")) :
+				Promise.resolve({ ok: outcome, json: () => Promise.resolve({}) });
+			mod.showNudgeDialog({}, false);
+			findButton(Dialog.instances.at(-1)._body, (b) => b.textContent === M.COPY.nudgeNever).click();
+			await tick();
+			assert.deepStrictEqual(alerts, outcome === true ? [] : [{ message: M.COPY.nudgeSaveFailed, indicator: "red" }]);
+			alerts.length = 0;
+			await mod.recordNudge(M.NUDGE_EVENTS.DECLINED);
+			assert.deepStrictEqual(alerts, []);
+		}
+	} finally { global.fetch = normalFetch; delete frappeObj.show_alert; }
+});
+
+test("desk upsell: consumes the flag even when server cadence caps it", async () => {
+	let flag = "1";
+	const storage = global.localStorage;
+	global.localStorage = window.localStorage = {
+		getItem: (key) => key === M.UPSELL_FLAG_KEY ? flag : null,
+		removeItem: (key) => { if (key === M.UPSELL_FLAG_KEY) flag = null; },
+	};
+	frappeObj.boot = { passkeys: { upsell_eligible: false, nudge_state: { eligible: false } } };
+	Dialog.instances.length = 0;
+	try {
+		mod.maybeNudge();
+		await tick();
+		assert.strictEqual(flag, null);
+		assert.strictEqual(Dialog.instances.length, 0);
+	} finally { global.localStorage = window.localStorage = storage; delete frappeObj.boot; }
+});
+
+test("desk capped Degrade falls through without showing any prompt", async () => {
+	frappeObj.boot = { passkeys: {
+		credential_count: 0, nudge_state: { eligible: false }, upsell_eligible: false,
+		enforcement: { effective: "enforce", in_scope: true, incapable_policy: "degrade", degrade_nudge_eligible: false },
+	} };
+	Dialog.instances.length = 0;
+	fetchLog.length = 0;
+	mod.maybeNudge();
+	await tick();
+	assert.strictEqual(Dialog.instances.length, 0);
+	assert.strictEqual(shownCount(), 0);
+	delete frappeObj.boot;
+});
+
+test("desk conditional create: unsuccessful attempts fall back once, abort and credentials do not", async () => {
+	window.PublicKeyCredential = {
+		getClientCapabilities: () => Promise.resolve({ conditionalCreate: true }),
+		parseCreationOptionsFromJSON: (options) => { if (!options) throw new Error("invalid options"); return options; },
+	};
+	frappeObj.boot = { passkeys: {
+		nudge_state: { eligible: true }, upsell_eligible: false,
+		conditional_create: true, post_login_method: "password",
+	} };
+	try {
+		for (const outcome of ["NotAllowedError", "AbortError", "credential", "null", "begin_failed", "bad_options", "network"]) {
+			Dialog.instances.length = 0;
+			fetchLog.length = 0;
+			global.navigator = { credentials: { create: () => {
+				if (outcome === "credential") return Promise.resolve({ toJSON: () => ({ id: "created" }) });
+				if (outcome === "null") return Promise.resolve(null);
+				return Promise.reject(Object.assign(new Error(outcome), { name: outcome }));
+			} } };
+			global.fetch = (url, opts) => {
+				if (url.includes("begin_registration")) {
+					if (outcome === "network") return Promise.reject(new Error("offline"));
+					return Promise.resolve({ ok: outcome !== "begin_failed", json: () => Promise.resolve({ message: {
+						options: outcome === "bad_options" ? null : {}, state_id: "state",
+					} }) });
+				}
+				if (url.includes("record_nudge")) assert.strictEqual(Dialog.instances.at(-1).shown, true);
+				return normalFetch(url, opts);
+			};
+			mod.maybeNudge();
+			await tick();
+			const expected = ["AbortError", "credential"].includes(outcome) ? 0 : 1;
+			assert.strictEqual(Dialog.instances.length, expected, outcome);
+			assert.strictEqual(shownCount(), expected, outcome);
+			if (outcome === "credential") assert.ok(fetchLog.some((f) => f.url.includes("verify_registration")));
+		}
+	} finally { global.fetch = normalFetch; delete window.PublicKeyCredential; delete frappeObj.boot; }
 });

@@ -241,6 +241,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 		# left on the shared single by an earlier committing test must not break its setup.
 		for field, value in {
 			"passkey_enrollment_policy": "Nudge",
+			"login_with_passkey": 1,
 			"passkey_nudge_max_prompts": 3,
 			"passkey_nudge_cooldown_days": 30,
 		}.items():
@@ -254,6 +255,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 		# Faithful restore (never `or 0` — that coerces a blank Select/int into a literal "0").
 		for field in (
 			"passkey_enrollment_policy",
+			"login_with_passkey",
 			"passkey_nudge_max_prompts",
 			"passkey_nudge_cooldown_days",
 		):
@@ -550,11 +552,8 @@ class EnrollmentFieldVisibilityTest(IntegrationTestCase):
 	ship-time declaration evaluated client-side, so this asserts the meta the form drives
 	off of directly."""
 
-	# The knobs are consumed ONLY while the effective policy is "nudge" — boot._cadence_ok
-	# short-circuits (`if policy_effective(settings) != "nudge": return False`) before it
-	# ever reads passkey_nudge_max_prompts / passkey_nudge_cooldown_days. policy_effective
-	# resolves to "nudge" for policy "Nudge" AND the pre-date phase of "Enforce After Date",
-	# so those two policies are exactly the honest visibility set (hidden under Off/Enforce).
+	# The form exposes these knobs under Nudge / Enforce After Date. Their stored
+	# values also govern incapable-device nudges under Enforce + Degrade.
 	NUDGE_DEPENDS_ON = 'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'
 
 	def _field(self, fieldname):

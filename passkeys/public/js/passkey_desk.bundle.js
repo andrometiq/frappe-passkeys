@@ -665,11 +665,12 @@
 			}
 			// post-hybrid upsell takes precedence (the login just happened over hybrid)
 			var upsell = M.upsellDecision(b, clientCaps, storageGet, Date.now());
-			if (upsell.showUpsell) { clearUpsellFlag(); return showNudgeDialog(b, true); }
+			clearUpsellFlag();
+			if (upsell.showUpsell) return showNudgeDialog(b, true);
 			// silent conditional create (no dialog) — Firefox has none, so the visible
 			// nudge is its whole story
 			var d = M.nudgeDecision(b, clientCaps, Date.now());
-			if (d.allowConditionalCreate) { conditionalCreate(); return; }
+			if (d.allowConditionalCreate) { conditionalCreate(function () { if (d.showNudge) showNudgeDialog(b, false); }); return; }
 			if (d.showNudge) showNudgeDialog(b, false);
 		}).then(markNudgeEvaluated, markNudgeEvaluated);
 	}
@@ -685,7 +686,6 @@
 	}
 
 	function showNudgeDialog(b, isUpsell) {
-		recordNudge(M.NUDGE_EVENTS.SHOWN);
 		var titleKey = isUpsell ? M.COPY.upsellTitle : M.COPY.nudgeTitle;
 		var bodyKey = isUpsell ? M.COPY.upsellBody : M.COPY.nudgeBody;
 		var d = new frappe.ui.Dialog({ title: t(titleKey), size: "small" });
@@ -708,12 +708,14 @@
 			d.$wrapper.on("hide.bs.modal", function () { if (!d._acted) { d._acted = true; recordNudge(M.NUDGE_EVENTS.DECLINED); } });
 		}
 		d.show();
+		recordNudge(M.NUDGE_EVENTS.SHOWN);
 	}
 
-	function conditionalCreate() {
-		if (!navigator.credentials || typeof navigator.credentials.create !== "function") return;
-		post(METHODS.beginRegistration, { flow: "conditional_create" }).then(function (res) {
-			if (!res || !res.ok) return; // silent no-op
+	function conditionalCreate(onNotUpgraded) {
+		if (!navigator.credentials || typeof navigator.credentials.create !== "function") { onNotUpgraded(); return; }
+		var upgraded = false;
+		return post(METHODS.beginRegistration, { flow: "conditional_create" }).then(function (res) {
+			if (!res || !res.ok) return;
 			var begin = unwrap(res.body) || {};
 			var options;
 			try { options = parseCreate(begin.options); } catch (e) { return; }
@@ -723,23 +725,37 @@
 			abortConditionalCreate();
 			var controller = newAbortController();
 			_conditionalCreateAbort = controller;
-			navigator.credentials.create({
+			return navigator.credentials.create({
 				publicKey: options,
 				mediation: "conditional",
 				signal: controller ? controller.signal : undefined,
 			}).then(function (cred) {
 				_conditionalCreateAbort = null;
 				if (!cred) return;
+				upgraded = true;
 				var payload = C.registrationResponseToJSON(cred);
-				post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (v) {
+				return post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (v) {
 					if (v && v.ok) fireSignal(unwrap(v.body));
 				});
-			}).catch(function () { _conditionalCreateAbort = null; /* silent on decline/absence/abort */ });
-		}).catch(function () {});
+			});
+		}).then(function () {
+			if (!upgraded) onNotUpgraded();
+		}, function (err) {
+			_conditionalCreateAbort = null;
+			if (!upgraded && (!err || err.name !== "AbortError")) onNotUpgraded();
+		});
 	}
 
 	function recordNudge(event) {
-		post(METHODS.recordNudge, { event: event }).catch(function () {}); // server counters authoritative
+		function failed() {
+			if (event === M.NUDGE_EVENTS.OPT_OUT && frappe.show_alert) {
+				frappe.show_alert({ message: t(M.COPY.nudgeSaveFailed), indicator: "red" });
+			}
+		}
+		return post(METHODS.recordNudge, { event: event }).then(function (res) {
+			if (!res || !res.ok) failed();
+			return res;
+		}, failed);
 	}
 
 	// ------------------------------------------------------ enforcement gate
@@ -956,6 +972,6 @@
 	// enforcement/nudge interstitials so `node --test` can pin the defer-on-dismiss
 	// contract without a bench. No-op in the browser — `module` is undefined there.
 	if (typeof module === "object" && module.exports) {
-		module.exports = { showEnforceDialog: showEnforceDialog, showNudgeDialog: showNudgeDialog };
+		module.exports = { showEnforceDialog: showEnforceDialog, showNudgeDialog: showNudgeDialog, maybeNudge: maybeNudge, recordNudge: recordNudge };
 	}
 })();

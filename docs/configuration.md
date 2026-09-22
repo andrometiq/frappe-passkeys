@@ -54,9 +54,16 @@ nudge and conditional-create knobs tune the softer rungs; the separate
 |---|---|---|
 | **Enrollment Policy** (`passkey_enrollment_policy`) | Nudge | The adoption-ladder rung, a Select of four values. **Off** — never prompt. **Nudge** — show a dismissible "set up a passkey" prompt after login to users who have none, capped by the two nudge knobs below. **Enforce** — in-scope users must register a passkey to keep using the app (recovery stays available). **Enforce After Date** — behaves as *Nudge* until the date in *Enforce After*, then becomes *Enforce*. Enforce is a **post-login interstitial**: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block. |
 | **Enforce After** (`passkey_enforce_after`) | *blank* | Only shown, and required, when the policy is *Enforce After Date*. Enforcement begins on this date, evaluated against the server clock on every request; before it the policy behaves as *Nudge*, and a past date behaves as an immediate *Enforce*. |
-| **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops (applies to *Nudge*, and to *Enforce After Date* while it is still before its date). Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
+| **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops (applies to *Nudge*, to *Enforce After Date* before its date, and to incapable devices under *Degrade to Nudge*). Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
 | **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. Off: only the explicit nudge/enroll flow creates passkeys. |
+
+Nudges and the post-hybrid upsell are disabled when both passkey login modes are off.
+A prompt counts only after the Desk dialog is shown or the portal banner is inserted.
+"Don't ask again" persists per user; a failed save displays an error so the user can retry.
+If conditional creation finishes without a credential, the eligible visible nudge appears;
+an aborted or still-pending attempt does not trigger it. The post-hybrid upsell hint is
+consumed on evaluation, even when capped, and cleared when the login page initializes.
 
 ## Enforcement Scope
 
@@ -71,7 +78,7 @@ in scope by default even when enforcement targets selected roles.
 | **Enforce for Roles** (`passkey_enforce_roles`) | *empty* | Only shown when scope is *Selected Roles*. A user is in scope for enforcement if they hold **any** of these roles. |
 | **Always Enforce for Privileged Users** (`passkey_enforce_privileged_always`) | On | Keeps users holding `System Manager` in scope even when scope is *Selected Roles*. Administrators are high-value targets, so keeping this on is the recommended posture. Turning it off is allowed but produces an amber warning. A temporary per-user exemption still wins when recovery is needed. |
 | **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. A defer can consume at most one grace login per session, even if the endpoint is retried or multiple tabs render the prompt. `0` blocks immediately. |
-| **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
+| **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* uses the ordinary opt-out, prompt cap and cooldown on both Desk and portal, and never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
 | **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
 ### A user can't get past enforcement — what to do
@@ -82,7 +89,8 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
 
 1. **They said "I can't set one up here."** With the default *Incapable Device
    Policy* (**Degrade to Nudge**) the interstitial already let them through as a
-   dismissible nudge without emailing administrators. Nothing is blocking;
+   dismissible nudge (or silently when opted out, capped or cooling down), without emailing
+   administrators. Nothing is blocking;
    help them enroll on a capable device (or issue a security key) when convenient.
    Only **Block + Notify Admin** keeps the gate up — the fixes below apply then.
 2. **Exempt this one user (one click).** Open the user's **User** form → the
