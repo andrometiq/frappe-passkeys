@@ -77,7 +77,7 @@ test("C3: collectPassword self-creates the dialog on the straight-to-password ro
 	const doc = makeDoc();
 	const Dialog = makeDialogClass(doc);
 	global.document = doc;
-	global.navigator = {};
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true }); // Node 21+: getter-only global
 	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
 
 	// require AFTER the globals exist — the confirm bundle reads window at load
@@ -106,7 +106,7 @@ test("a wrong-password message stays in the re-rendered prompt until the next su
 	const doc = makeDoc();
 	const Dialog = makeDialogClass(doc);
 	global.document = doc;
-	global.navigator = {};
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true }); // Node 21+: getter-only global
 	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
 	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
 	const ui = require("../../public/js/passkey_confirm.bundle.js").makeDialogUI();

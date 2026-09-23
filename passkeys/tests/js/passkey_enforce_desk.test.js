@@ -20,6 +20,12 @@ const assert = require("node:assert");
 const C = require("../../public/js/passkey_common.bundle.js");
 const M = require("../../public/js/passkey_manage_common.bundle.js");
 
+// Node 21+ ships a getter-only global `navigator`, so a plain assignment is silently
+// ignored and the bundle would see Node's navigator (no `credentials`).
+function installNavigator(value) {
+	Object.defineProperty(globalThis, "navigator", { configurable: true, enumerable: true, value, writable: true });
+}
+
 // Swallow load-time timers (the bundle schedules onReady via setTimeout at boot).
 global.setTimeout = function () { return 0; };
 global.clearTimeout = function () {};
@@ -335,11 +341,11 @@ test("desk conditional create: unsuccessful attempts fall back once, abort and c
 		for (const outcome of ["NotAllowedError", "AbortError", "credential", "null", "begin_failed", "bad_options", "network", "verify_failed", "verify_network"]) {
 			Dialog.instances.length = 0;
 			fetchLog.length = 0;
-			global.navigator = { credentials: { create: () => {
+			installNavigator({ credentials: { create: () => {
 				if (["credential", "verify_failed", "verify_network"].includes(outcome)) return Promise.resolve({ toJSON: () => ({ id: "created" }) });
 				if (outcome === "null") return Promise.resolve(null);
 				return Promise.reject(Object.assign(new Error(outcome), { name: outcome }));
-			} } };
+			} } });
 			global.fetch = (url, opts) => {
 				if (url.includes("begin_registration")) {
 					if (outcome === "network") return Promise.reject(new Error("offline"));

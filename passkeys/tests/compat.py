@@ -17,6 +17,7 @@ __all__ = [
 	"WebAuthnAssertMixin",
 	"arrange_clean_login_policy",
 	"arrange_mode_floor",
+	"arrange_saveable_system_settings",
 	"flush_settings_cache",
 	"is_signed_out_by_frappe",
 ]
@@ -113,3 +114,29 @@ def arrange_clean_login_policy(testcase):
 
 	testcase.addCleanup(_set, cint(original))
 	_set(0)
+
+
+def arrange_saveable_system_settings(testcase):
+	"""Fill System Settings' mandatory ``language`` / ``time_zone`` if blank, so a test
+	may ``save()`` the document.
+
+	A site created without the setup wizard (CI's fresh site) leaves both empty, and
+	every System Settings save then raises ``MandatoryError`` — which a test expecting
+	a floor's ``ValidationError`` would otherwise accept by accident. The fill values
+	are Frappe's own fallbacks for the blank fields, so runtime behaviour is unchanged.
+	Commits both the fill and the restore: the concurrency tests save from separate
+	connections, and a committed fill must not outlive the test."""
+	fallbacks = {"language": "en", "time_zone": "Asia/Kolkata"}
+	blank = [field for field in fallbacks if not frappe.db.get_single_value("System Settings", field)]
+	if not blank:
+		return
+
+	def _set(values):
+		for field, value in values.items():
+			frappe.db.set_single_value("System Settings", field, value)
+		frappe.db.commit()
+		frappe.clear_document_cache("System Settings", "System Settings")
+		frappe.local.system_settings = None
+
+	testcase.addCleanup(_set, dict.fromkeys(blank))
+	_set({field: fallbacks[field] for field in blank})

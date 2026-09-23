@@ -26,7 +26,12 @@ from frappe.utils.password import update_password
 from passkeys import auth_hooks, passkey, session, state
 from passkeys.api import registration
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	WebAuthnAssertMixin,
+	arrange_saveable_system_settings,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
@@ -629,15 +634,17 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_floor_reverse_system_settings_guard_blocks_1_to_0_flip(self):
 		# reverse half: the doc_events guard refuses flipping enable_two_factor_auth
 		# 1→0 while passkey_as_second_factor is on (already 1 from setUp)
+		arrange_saveable_system_settings(self)
 		ss = frappe.get_doc("System Settings")
 		ss.enable_two_factor_auth = 0
-		with self.assertRaises(frappe.ValidationError):
+		with self.assertRaisesRegex(frappe.ValidationError, "Cannot disable Two Factor Authentication"):
 			ss.save(ignore_permissions=True)
 		# the floor still holds
 		self.assertEqual(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"), 1)
 
 	def test_floor_reverse_system_settings_refuses_disabling_passwords_when_sf_only(self):
 		# SF is the only passkey mode (setUp): enrolled users would have no login path left
+		arrange_saveable_system_settings(self)
 		original = frappe.db.get_single_value("System Settings", "login_with_email_link")
 		self.addCleanup(frappe.db.set_single_value, "System Settings", "login_with_email_link", original)
 		ss = frappe.get_doc("System Settings")

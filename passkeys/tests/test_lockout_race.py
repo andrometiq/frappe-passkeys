@@ -34,7 +34,7 @@ from passkeys.api import credentials
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
 )
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, arrange_saveable_system_settings
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -77,6 +77,7 @@ class CoreTwoFactorFloorRaceTest(IntegrationTestCase):
 		super().setUp()
 		self.site = frappe.local.site
 		self.sites_path = frappe.local.sites_path
+		arrange_saveable_system_settings(self)
 		self.passkey_snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		self.core_snapshot = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 1)

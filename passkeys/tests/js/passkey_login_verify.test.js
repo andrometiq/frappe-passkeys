@@ -78,7 +78,7 @@ function makeCoreHandlers() {
 }
 
 global.document = makeDoc();
-global.navigator = {};
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true }); // Node 21+: getter-only global
 global.fetch = function () { return Promise.reject(new Error("no network in test")); }; // neutralise any re-arm
 const core = makeCoreHandlers();
 global.window = {

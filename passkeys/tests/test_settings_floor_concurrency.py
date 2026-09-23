@@ -11,7 +11,11 @@ import traceback
 import frappe
 from frappe.utils import cint
 
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	arrange_saveable_system_settings,
+	flush_settings_cache,
+)
 
 PASSKEY_FIELDS = ("login_with_passkey", "passkey_as_second_factor", "passkey_rp_id", "passkey_origins")
 SYSTEM_FIELDS = ("enable_two_factor_auth", "disable_user_pass_login", "login_with_email_link")
@@ -43,6 +47,7 @@ class SettingsFloorConcurrencyTest(IntegrationTestCase):
 		super().setUp()
 		self.site = frappe.local.site
 		self.sites_path = frappe.local.sites_path
+		arrange_saveable_system_settings(self)
 		self._passkey_snapshot = {
 			f: frappe.db.get_single_value("Passkey Settings", f) for f in PASSKEY_FIELDS
 		}
