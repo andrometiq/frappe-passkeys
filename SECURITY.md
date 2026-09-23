@@ -1,11 +1,15 @@
 # Security Policy
 
-## Release Status
+## Supported Versions
 
-This project is pre-release and has no tagged stable version. The maintained development branches
-are `develop`, `version-15`, and `version-16`, but a branch name alone is not a production support
-attestation. Deployments must validate an exact app commit against their exact Frappe version and
-topology using the [release checklist](docs/release-checklist.md).
+| Branch | Release line | Security fixes |
+| --- | --- | --- |
+| `version-16` | 16.x (Frappe v16) | Yes |
+| `version-15` | 15.x (Frappe v15) | Yes |
+| `develop` | Integration branch | Fixed here first; not for production |
+
+Fixes land on `develop` and ship in the next 15.x / 16.x release. Validate a release against your
+exact Frappe version and topology with the [release checklist](docs/release-checklist.md).
 
 ## Reporting A Vulnerability
 
@@ -23,8 +27,8 @@ If private vulnerability reporting is unavailable, open a public issue containin
 for a private maintainer contact. Do not include technical details in that issue.
 
 Maintainers will acknowledge receipt, reproduce and classify the report, coordinate a fix and
-release plan, and credit the reporter when requested. Because the project has no stable release or
-commercial support contract, no response-time SLA is promised.
+release plan, and credit the reporter when requested. This is a community project without a
+commercial support contract, so no response-time SLA is promised.
 
 ## Scope
 
