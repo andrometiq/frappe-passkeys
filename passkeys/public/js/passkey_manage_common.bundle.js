@@ -101,7 +101,7 @@
 		enforceBody:
 			"Your organization requires a passkey to keep signing in. It only takes a " +
 			"moment — use your fingerprint, face, screen lock, or a security key.",
-		enforceRemindLater: "Remind me later ({0} sign-ins left)",
+		enforceRemindLater: "Remind me later (sign-ins left: {0})",
 		enforceCantSetUp: "I can't set one up here",
 		enforceBlockedNotice:
 			"We've let your administrator know. Please contact them to finish signing in.",

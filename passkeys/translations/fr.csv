@@ -153,7 +153,7 @@
 "Too many attempts. Wait a moment, then try again.","Trop de tentatives. Patientez un instant, puis réessayez."
 "Set up a passkey to continue","Configurez une clé d'accès pour continuer"
 "Your organization requires a passkey to keep signing in. It only takes a moment — use your fingerprint, face, screen lock, or a security key.","Votre organisation exige une clé d'accès pour continuer à vous connecter. Cela ne prend qu'un instant — utilisez votre empreinte digitale, votre visage, le verrouillage de votre écran ou une clé de sécurité."
-"Remind me later ({0} sign-ins left)","Me le rappeler plus tard ({0} connexions restantes)"
+"Remind me later (sign-ins left: {0})","Me le rappeler plus tard (connexions restantes : {0})"
 "I can't set one up here","Je ne peux pas en configurer une ici"
 "We've let your administrator know. Please contact them to finish signing in.","Nous avons prévenu votre administrateur. Veuillez le contacter pour terminer votre connexion."
 "Try passkey setup again","Réessayer de configurer une clé d'accès"
