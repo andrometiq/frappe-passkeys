@@ -1,25 +1,15 @@
-// passkey_desk.bundle.js — Desk-wide credential management + enrollment nudges.
-// Loaded via app_include_js on every Desk page, AFTER
-// passkey_common.bundle.js (frappe.passkeys_common), passkey_manage_common.bundle.js
-// (frappe.passkeys_manage_common) and passkey_confirm.bundle.js (frappe.passkeys.confirm/
-// call). Destination on core merge: frappe/public/js/frappe/passkey/desk.js.
+// passkey_desk.bundle.js — Desk credential management + enrollment nudges. Loads AFTER
+// passkey_common, passkey_manage_common and passkey_confirm (frappe.passkeys.confirm/call).
 //
 // Publishes `frappe.passkeys.manage`:
 //   renderCards(container, opts)        — the shared card component (own creds)
 //   renderReadOnlyInventory(el, user)   — System-Manager view of another user
-//   openManagerDialog()                 — the "My Passkeys" manager dialog (kept for
-//                                         CTAs/nudges; the primary home is the User
-//                                         form "Passkeys" section, user_passkeys.js)
+//   openManagerDialog()                 — the "My Passkeys" manager dialog
 //   addPasskey(opts)                    — the registration ceremony (sudo-gated)
 //   refresh()                           — re-fetch + repaint any live surface
 //
-// It also, at Desk boot: runs the post-login enrollment nudge / conditional-create /
-// post-hybrid upsell off frappe.boot.passkeys, and fires
-// signalAllAcceptedCredentials fire-and-forget.
-//
-// The DOM/frappe wiring lives here; all pure decisions (view-models, nudge
-// cadence, upsell gate, delete guard) come from passkey_manage_common.bundle.js so they
-// stay node-testable without a bench.
+// At Desk boot it runs the enforcement gate / nudge / conditional create / upsell from
+// frappe.boot.passkeys. Pure decisions live in passkey_manage_common.bundle.js.
 //
 // eslint-env browser
 (function () {
@@ -32,12 +22,8 @@
 	var t = C.t;
 	var METHODS = M.MANAGE_METHODS;
 
-	// A pending conditionalCreate() (mediation:"conditional") holds a WebAuthn
-	// request open for the whole tab; the platform serializes credential requests,
-	// so any later EXPLICIT ceremony (registration or a confirm gesture) throws
-	// "A request is already pending" until it's aborted. Mirror the login bundle's
-	// AbortController discipline: store the controller, pass its signal into
-	// create(), and abort it before any explicit ceremony in this tab.
+	// A pending conditionalCreate() holds a WebAuthn request open for the tab, so any
+	// explicit ceremony throws "A request is already pending" until it is aborted.
 	var _conditionalCreateAbort = null;
 	function newAbortController() {
 		return typeof AbortController === "function" ? new AbortController() : null;
@@ -50,8 +36,7 @@
 	}
 
 	// ------------------------------------------------------------ AAGUID asset
-	// Client provider snapshot. Optional release asset; absent ⇒ {} ⇒ cards
-	// fall back to the server-supplied `provider` field or "Unknown provider".
+	// Optional client provider snapshot; absent ⇒ {}.
 	var _aaguidMap = null;
 	function loadAaguidMap() {
 		if (_aaguidMap) return Promise.resolve(_aaguidMap);
@@ -62,9 +47,8 @@
 	}
 
 	// ---------------------------------------------------------------- transport
-	// Raw fetch so we own the 401 body (the retry contract for sudo-gated
-	// mutations). Resolves {ok, status, body} for ANY status; rejects only on a
-	// transport failure. Mirrors passkey_confirm.bundle.js::post.
+	// Raw fetch so we own the 401 retry-contract body. Resolves {ok, status, body} for any
+	// status; rejects only on a transport failure.
 	function post(method, body, headers) {
 		return fetch("/api/method/" + method, {
 			method: "POST",
@@ -88,13 +72,9 @@
 	function unwrap(body) { return C.unwrapMessage(body); }
 
 	// -------------------------------------------------------------- sudo dance
-	// A sudo-gated mutation: call the method; on the 401 contract run a
-	// passkeys.manage confirmation (passkey-first, password fallback — the confirm
-	// client owns that dialog + a11y), then retry once with the grant header. The
-	// confirmation re-seeds the full-sudo window so the retry passes.
+	// A sudo-gated mutation: on the 401 contract run a passkeys.manage confirmation, then
+	// retry once with the grant header.
 	function guardedCall(method, args) {
-		// The confirm engine runs a WebAuthn get() gesture; abort any pending
-		// conditionalCreate() first so it doesn't serialize behind it.
 		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.call) {
 			return window.frappe.passkeys.call(method, args || {});
@@ -106,11 +86,9 @@
 		});
 	}
 
-	// Ensure a live management sudo window before a multi-step ceremony
-	// (registration is begin→create→verify, so it can't ride guardedCall's single
-	// retry). Returns a promise that resolves once the window is seeded.
+	// Seed a management sudo window before registration (begin→create→verify cannot ride
+	// guardedCall's single retry).
 	function ensureManageSudo() {
-		// Same as guardedCall: the confirm gesture is an explicit ceremony.
 		abortConditionalCreate();
 		if (window.frappe && window.frappe.passkeys && window.frappe.passkeys.confirm) {
 			return window.frappe.passkeys.confirm(M.MANAGE_ACTION);
@@ -119,13 +97,9 @@
 	}
 
 	// ---------------------------------------------------------- registration
-	// Add a passkey (explicit flow). Sudo-gated: try begin; on the 401
-	// contract run a management confirmation then retry begin. On success run the
-	// modal create() (with the credProps extension) and verify.
+	// Add a passkey: sudo-gated begin, then a modal create() with credProps, then verify.
 	function addPasskey(opts) {
 		opts = opts || {};
-		// Serialize-safety: an explicit registration must not race a pending
-		// conditionalCreate() get/create held open in this tab.
 		abortConditionalCreate();
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
 			frappe.msgprint({ title: t("Passkeys unavailable"), message: t("This browser can't create passkeys."), indicator: "orange" });
@@ -218,9 +192,7 @@
 	}
 
 	// ============================================================ card component
-	// The shared card component. Renders the caller's own credentials into
-	// `container`; wires rename (inline, no sudo) + delete (confirm + sudo gate) +
-	// the empty-state "Create a passkey" hero + the add button. a11y.
+	// The caller's own credentials: rename (no sudo), delete (sudo-gated), empty state, add.
 	function renderCards(container, opts) {
 		opts = opts || {};
 		if (!container) return;
@@ -361,10 +333,7 @@
 		d.show();
 	}
 
-	// passwordless-login switch. Current value rides the list payload
-	// (server-authoritative), with the boot flag as a fallback; defaults OFF when
-	// neither ships it yet. Disabled when the user has no usable (enabled) passkey —
-	// you can't go passwordless with none, and enabling needs a passkey grant anyway.
+	// Passwordless-login switch. The value comes from the list payload, else boot, else off.
 	function isPasskeyOnly(payload) {
 		if (payload && payload.passkey_only_login !== undefined) return !!payload.passkey_only_login;
 		var b = boot();
@@ -405,10 +374,7 @@
 		return row;
 	}
 
-	// Sudo-gated toggle: confirm + a single-use PASSKEY grant only —
-	// mirrors deleteCard's sudo dance. guardedCall runs the 401 confirm and
-	// retries with the grant; the boolean {enabled} payload matches the fingerprint
-	// the server binds the grant to ({"enabled": <bool>}).
+	// Needs a single-use PASSKEY grant; the server binds it to the {"enabled": <bool>} payload.
 	function confirmPasskeyOnly(desired, current, opts) {
 		if (desired === current) return;
 		var warn = desired
@@ -451,9 +417,8 @@
 		});
 	}
 
-	// System-Manager read-only inventory of ANOTHER user. list_* only
-	// ever returns the SESSION user's rows, so we read the DocType directly (System
-	// Manager has read); disable/delete happen on the WebAuthn Credential DocType.
+	// System-Manager read-only inventory of ANOTHER user, read from the DocType directly
+	// (list_* returns only the session user's rows).
 	function renderReadOnlyInventory(container, user) {
 		if (!container) return;
 		container.innerHTML = "";
@@ -488,13 +453,8 @@
 	}
 
 	// ------------------------------------------------ admin enforcement recovery
-	// System-Manager enforcement-recovery controls for ANOTHER user (one-click exemption +
-	// grace reset), rendered beneath the read-only inventory on the User-form Passkeys
-	// section. Visibility is gated on the SITE enforcement policy (shouldShowEnforcementAdmin
-	// off the admin's own boot — policy is site-wide); the per-target exemption + grace
-	// state comes from the System-Manager-gated get_user_enforcement_admin read. Every
-	// server endpoint re-checks only_for("System Manager"), so this is a convenience
-	// surface, never the trust boundary.
+	// System-Manager enforcement recovery for ANOTHER user (exemption + grace reset). Every
+	// endpoint re-checks only_for("System Manager"); this is convenience, not the boundary.
 	function enfAdminCall(method, args) {
 		return post(method, args || {}).then(function (res) {
 			if (res && res.ok) return unwrap(res.body);
@@ -588,10 +548,7 @@
 		if (_managerDialog) {
 			wireManagerDialogEsc(_managerDialog);
 			_managerDialog.show();
-			// Re-render UNCONDITIONALLY with the known root so every reopen fetches fresh
-			// via list_credentials. The old refresh({dialog}) path passed no `.root` and
-			// then gated on $wrapper.is(":visible") — which is false mid fade-in — so the
-			// re-render was skipped and the stale DOM from the first open showed (A3).
+			// Re-render on every open: $wrapper.is(":visible") is false mid fade-in.
 			if (_managerDialog._passkeyRoot) refresh({ root: _managerDialog._passkeyRoot });
 			return _managerDialog;
 		}
@@ -610,10 +567,7 @@
 		return d;
 	}
 
-	// Native dialog affordance to re-fetch the card list on demand (e.g. a passkey was
-	// added or removed on another device while this dialog stayed open). Uses
-	// frappe.ui.Dialog.add_custom_action (present on v15/v16/develop); a no-op if it's
-	// somehow unavailable, so the dialog still opens.
+	// A refresh action for changes made on another device while the dialog is open.
 	function addReloadAction(d, root) {
 		if (!d || typeof d.add_custom_action !== "function") return;
 		d.add_custom_action(t("Reload"), function () { refresh({ root: root }); });
@@ -633,10 +587,7 @@
 	function boot() { return (window.frappe && frappe.boot && frappe.boot.passkeys) || null; }
 
 	function markNudgeEvaluated() {
-		// Deterministic "the boot enforcement/upsell/nudge decision has run" signal,
-		// set whatever the outcome (shown or not). Mirrors data-passkeys-second-factor-ready
-		// (passkey_login.bundle.js): lets specs anchor prove-absence assertions on the
-		// decision point instead of an arbitrary settle timer. Inert in production.
+		// Marks that the boot decision ran, whatever the outcome, so specs can assert absence.
 		try {
 			document.documentElement.setAttribute("data-passkeys-nudge-evaluated", "true");
 		} catch (e) { /* test signal only */ }
@@ -784,8 +735,7 @@
 		}).catch(function () {});
 	}
 	// Report an incapable device at most once per session (avoids a second admin email
-	// when the auto-detected Block+Notify path and the "I can't set one up here" escape
-	// both fire).
+	// when the escape is clicked again).
 	var _incapableReported = false;
 	function reportIncapableOnce() {
 		if (_incapableReported) return;
@@ -793,31 +743,28 @@
 		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE).catch(function () {});
 	}
 
-	// The post-login ENFORCEMENT interstitial (desk). Blocking dialogs are made static
-	// (no Esc / backdrop / close-X dismiss) — the ONLY ways out are enrolling or the
-	// incapable escape, so a capable user is never dead-ended and an incapable one is
-	// never hard-locked. Honest, guilt-free copy; "Remind me later" is equal-weight to
-	// the primary while grace remains, and shows the real remaining count.
+	// The post-login enforcement interstitial. A blocking gate is static; its only exits
+	// are enrolling, the incapable escape and sign-out. "Remind me later" shows the real
+	// remaining grace count.
 	function showEnforceDialog(b, enf) {
 		var d = new frappe.ui.Dialog({ title: t(M.COPY.enforceTitle), size: "small" });
 		var body = d.$body ? d.$body.get(0) : null;
 		if (body) {
 			body.appendChild(el("p", "passkey-nudge-body", t(M.COPY.enforceBody)));
 			var actions = el("div", "passkey-nudge-actions");
-			// Primary CTA — runs under the fresh-login sudo window; keeps a blocking
-			// dialog open until enrollment actually succeeds (a cancelled OS sheet must
-			// not dismiss a required gate).
+			// Runs under the fresh-login sudo window; the gate stays open until enrollment succeeds.
 			actions.appendChild(primaryButton(t(M.COPY.nudgeCta), function () { enforceCreate(d); }));
 			if (!enf.blocking) {
-				// Skippable while grace remains — equal-weight, honest remaining count.
 				var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
 				actions.appendChild(linkButton(later, function () {
 					d._acted = true; recordEnforcementDefer(b, enf); d.hide();
 				}));
 			} else {
-				// Grace exhausted (or admin Block): administrator recovery and sign-out remain
-				// available while passkey setup itself can be retried in place.
-				actions.appendChild(linkButton(t(M.COPY.enforceContactAdmin), function () {
+				// Only Block + Notify Admin actually notifies an administrator; under Degrade
+				// the escape just lets the user through.
+				var notifiesAdmin = ((b && b.enforcement) || {}).incapable_policy === "block_notify";
+				var escapeLabel = notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp;
+				actions.appendChild(linkButton(t(escapeLabel), function () {
 					onEnforceCantSetUp(b, d, body);
 				}));
 				actions.appendChild(linkButton(t(M.COPY.enforceSignOut), signOut));
@@ -825,13 +772,8 @@
 			body.appendChild(actions);
 		}
 		makeStaticIfBlocking(d, enf.blocking);
-		// Esc / backdrop / close-X dismiss of a NON-BLOCKING gate = "Remind me later"
-		// semantics: spend one grace login exactly once, however the modal closed. The
-		// explicit link sets `_acted` before hiding, so this fires only on an UNACTED
-		// dismissal (Esc / backdrop / X) — the route the click handlers never cover. The
-		// hide event is the one reliable catch-all across dismissal routes; the sibling
-		// nudge dialog uses the same guard. A blocking gate is static (undismissable) with
-		// no grace left to spend, so it wires nothing here.
+		// Dismissing a non-blocking gate is "Remind me later": it spends one grace login.
+		// `_acted` stops a double count after the explicit link.
 		if (!enf.blocking && d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () {
 				if (!d._acted) { d._acted = true; recordEnforcementDefer(b, enf); }
@@ -853,9 +795,9 @@
 		});
 	}
 
-	// "I can't set one up here": trust the claim, alert the admin, then honor the site's
+	// The blocking gate's escape: trust the claim, record it, then honor the site's
 	// incapable-device policy — Degrade lets them proceed (prompted again next session),
-	// Block keeps the gate up with an escalation notice (the admin's explicit choice).
+	// Block + Notify Admin alerts the admin and keeps the gate up with a notice.
 	function onEnforceCantSetUp(b, d, body) {
 		reportIncapableOnce();
 		var enf = (b && b.enforcement) || {};
@@ -874,9 +816,7 @@
 		}
 	}
 
-	// Make a blocking dialog non-dismissible: static Bootstrap backdrop + no keyboard
-	// dismiss + hide the header close-X. Best-effort (wrapped) so the dialog still opens
-	// if any selector shifts across Frappe versions.
+	// Static backdrop, no keyboard dismiss, no close-X. Best-effort across Frappe versions.
 	function makeStaticIfBlocking(d, blocking) {
 		if (!blocking) return;
 		try {
@@ -943,16 +883,9 @@
 	if (!window.frappe.ui.passkey.manage) window.frappe.ui.passkey.manage = manage;
 
 	// ------------------------------------------------------------- desk boot
-	// The nudge is a frappe.ui.Dialog, so it becomes `cur_dialog`. Frappe's route
-	// transition (frappe/views/container.js change_to) hides `cur_dialog` on every
-	// page render unless it is keep_open — and `frappe.after_ajax(onReady)` can
-	// fire BEFORE the landing route's initial render on a slow/loaded boot. A nudge
-	// opened in that window is torn straight back down by the render, and its
-	// hide.bs.modal handler records a decline the user never made (observed as a
-	// flaky "nudge never appeared" — the modal shows then the page render hides it).
-	// So defer the nudge until the landing page has rendered: show now if the
-	// container already holds a page, else on the next page-change. Real user
-	// navigation still closes it (that IS a decline); only the boot render is dodged.
+	// Frappe's route change (container.js change_to) hides `cur_dialog`, and after_ajax can
+	// fire before the landing page renders; a nudge opened then is torn down and records a
+	// decline the user never made. So wait for the first page render.
 	function nudgeAfterInitialRender() {
 		if (window.frappe && frappe.container && frappe.container.page) {
 			maybeNudge();
@@ -975,9 +908,7 @@
 	else if (document.readyState !== "loading") setTimeout(onReady, 0);
 	else document.addEventListener("DOMContentLoaded", function () { setTimeout(onReady, 0); });
 
-	// Node-only test seam (UMD-lite, mirrors passkey_login.bundle.js): expose the
-	// enforcement/nudge interstitials so `node --test` can pin the defer-on-dismiss
-	// contract without a bench. No-op in the browser — `module` is undefined there.
+	// Node-only test seam; `module` is undefined in the browser.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { showEnforceDialog: showEnforceDialog, showNudgeDialog: showNudgeDialog, maybeNudge: maybeNudge, recordNudge: recordNudge };
 	}

@@ -1,14 +1,6 @@
-// passkey_settings.js — the Passkey Settings form UX. Wired via
-// `doctype_js = {"Passkey Settings": "public/js/passkey_settings.js"}`. Renders
-// the banner/dialog matrix on the settings form and
-// puts the loud one-way-door confirm on the RP-ID field. Destination on core merge:
-// the passkey section of frappe/core/doctype/system_settings/system_settings.js.
-//
-// The banner DECISIONS come from passkey_manage_common.bundle.js::settingsBanners (pure,
-// node-tested); this file only paints them and wires the confirm dialog. Cross-flag
-// context (core enable_two_factor_auth / disable_user_pass_login / the passkey-only
-// user count) is read from frappe.boot.passkeys.settings_context when the server
-// provides it.
+// passkey_settings.js — the Passkey Settings form: paints the banners decided by
+// passkey_manage_common.bundle.js::settingsBanners, the posture report and the RP-ID
+// one-way-door confirm.
 //
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
@@ -21,13 +13,9 @@ frappe.ui.form.on("Passkey Settings", {
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
 		paintMobileFieldDescriptions(frm);
 		paintBanners(frm, M);
-		// Pull the RP ID the SERVER will actually resolve right now (fresh — boot can
-		// be stale on a settings page left open, e.g. after host_name was just set in
-		// site_config.json). Repaints once it lands so the banner matches Save exactly.
+		// The RP ID the server resolves now (boot can be stale); repaints when it lands.
 		fetchResolvedRpId(frm);
-		// The security-posture verdict — "what should I see first": can a passkey be
-		// bypassed right now, and how to close each gap. Reads SAVED server state, so it
-		// is fetched on refresh (which also fires after every save), not on keystroke.
+		// The posture verdict reads SAVED state, so fetch on refresh (also after save).
 		fetchSecurityPosture(frm, M);
 	},
 	// Repaint on any knob change so the matrix stays live before save.
@@ -71,10 +59,7 @@ frappe.ui.form.on("Passkey Settings", {
 			__("Yes, change it"),
 			true // set_danger — Cancel is the safe default
 		);
-		// Cancel / Esc / backdrop dismissal MUST revert the field, so a backed-out
-		// change can never be saved (the confirm has to actually gate the save).
-		// The modal hide event is the reliable catch-all across dismissal routes
-		// (same idiom as the desk nudge dialog + passkey_confirm.bundle.js::wireCancel).
+		// Any dismissal MUST revert the field so a backed-out change can never be saved.
 		if (d && d.$wrapper && d.$wrapper.on) {
 			d.$wrapper.on("hide.bs.modal", function () {
 				if (proceeded) return;
@@ -99,9 +84,7 @@ function repaint(frm) {
 	if (M) paintBanners(frm, M);
 }
 
-// Fetch the RP ID the server resolves right now (System-Manager-gated, read-only
-// endpoint). Cached on the form and read by buildContext; on failure we fall back to
-// frappe.boot.passkeys.rp_id, so the display is never worse than boot.
+// Fetch the RP ID the server resolves now; on failure buildContext falls back to boot.
 function fetchResolvedRpId(frm) {
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_resolved_rp_id",
@@ -118,19 +101,11 @@ function fetchResolvedRpId(frm) {
 	});
 }
 
-// The hosted "why passkeys" explainer — the theory page the report footer points to
-// (opened in a new tab; never iframed, per the CSP-fragility note).
+// The hosted explainer the report footer links to (new tab, never iframed).
 var POSTURE_THEORY_URL = "https://andrometiq.github.io/frappe-passkeys/why-passkeys.html";
 
-// Fetch + paint the admin security-posture report (System-Manager-gated, read-only
-// endpoint). The view-model is PURE (M.postureReport) fed by the server rows; this only
-// paints it: a compact status card that lands the verdict at a glance — a satisfying
-// tick when everything is fine, otherwise a calm "here are some recommendations" card
-// (never alarm-red) — with a call-to-action that reveals the full designed checklist in
-// place. States rendered:
-// loading, all-clear (good), gaps (high), passkeys-not-active (info), and a calm
-// "unavailable" note on error. On any failure the surface degrades quietly (no worse
-// than before it existed).
+// Fetch + paint the security-posture report (view-model: M.postureReport). States:
+// loading, all-clear, gaps, passkeys-not-active, and a quiet "unavailable" on error.
 function fetchSecurityPosture(frm, M) {
 	if (!M.postureReport) return;
 	renderPostureState(frm, { state: "loading" });
@@ -159,8 +134,7 @@ function renderPostureState(frm, opts) {
 	paintPostureReport(host, opts.report);
 }
 
-// A quiet single-line card (loading / unavailable) — same shell as the verdict card so
-// the surface never jumps as it settles.
+// A single-line card (loading / unavailable) in the verdict card's shell, so nothing jumps.
 function postureNoticeCard(markKind, text) {
 	var card = postureCardShell("gray", markKind);
 	card.classList.add("passkey-posture-card--muted");
@@ -168,32 +142,24 @@ function postureNoticeCard(markKind, text) {
 	return card;
 }
 
-// The compact verdict card + the collapsible full report. The card always carries the
-// verdict text, so the point lands even before the CTA is clicked; the CTA reveals the
-// per-check breakdown + the theory link in place.
+// The verdict card + the collapsible full report.
 function paintPostureReport(host, report) {
 	var summary = report.summary;
 	var tone = summary.tone; // "good" | "high" | "info"
-	// Calm, never alarmist (the owner's principle): the posture surface has NO alarm-red.
-	// A clean site is a satisfying green tick; anything else is a calm BLUE "here are some
-	// recommendations" card — a bypass path is a recommendation, not an emergency. Red is
-	// reserved for the genuine save-blocking errors in the banner host ABOVE this card.
+	// No red here: a bypass path is a recommendation. Red is kept for the save-blocking
+	// banners above this card.
 	var indicator = tone === "good" ? "green" : tone === "high" ? "blue" : "gray";
 	var markKind = tone === "good" ? "good" : "note"; // tick for all-clear, info-circle otherwise
 
 	var card = postureCardShell(indicator, markKind);
 	card.classList.add("passkey-posture-card--" + tone);
-	// role="status", not "alert" (last arg false): a recommendation is announced politely,
-	// never as an assertive interruption (the screen-reader equivalent of the rejected red).
+	// role="status", not "alert": a recommendation is announced politely.
 	card.appendChild(postureCardBody(__("Security posture"), report.headline.text || __("Security posture"), false));
 
 	var region = buildPostureReportRegion(report);
 	region.hidden = true;
 
-	// The CTA: "View recommendations" when there are hardening suggestions, "View report"
-	// when all-clear. NO "Review N gaps" count — the numeric gap badge read like a virus
-	// scanner (and the collapsed report already lists the rows). Always btn-default, never
-	// btn-danger — this surface never alarms. Toggles the in-place report (aria-expanded).
+	// "View recommendations" or, when all-clear, "View report"; toggles the report in place.
 	var ctaOpen = summary.canBypass ? __("View recommendations") : __("View report");
 	var ctaClose = __("Hide report");
 	var cta = document.createElement("button");
@@ -254,8 +220,7 @@ function buildPostureReportRegion(report) {
 		region.appendChild(postureRowEl(row));
 	});
 
-	// Footer: the hosted theory explainer. A plain link opened in a new tab — external
-	// URL, so no iframe (avoids CSP fragility); noopener/noreferrer on the new tab.
+	// Footer: the hosted explainer, in a new tab with noopener/noreferrer.
 	var footer = document.createElement("div");
 	footer.className = "passkey-posture-footer";
 	var link = document.createElement("a");
@@ -270,8 +235,7 @@ function buildPostureReportRegion(report) {
 }
 
 function postureRowEl(row) {
-	// No alarm-red here either — a "flag" (high-severity bypass path) shares the "warn"
-	// amber; this is a calm recommendations list, priority carried by row order not colour.
+	// "flag" shares the "warn" amber; priority is carried by row order, not colour.
 	var indicator = row.mark === "flag" ? "orange"
 		: row.mark === "warn" ? "orange"
 		: row.mark === "tune" ? "blue" : "gray";
@@ -308,9 +272,7 @@ function postureRowEl(row) {
 	return wrap;
 }
 
-// The tick/flag glyphs. App-shipped inline SVG (lucide-style artwork, stroke=currentColor)
-// — NEVER a desk "#icon-*" sprite href (v15's sprite lacks many symbols), so the mark
-// renders identically on v15 / v16 / develop and colours itself from the row indicator.
+// The tick/flag glyphs as inline SVG: v15's desk sprite lacks many symbols.
 var POSTURE_MARK_SVG = {
 	good: '<circle cx="12" cy="12" r="9"></circle><path d="m8.2 12.4 2.6 2.6 5-5.4"></path>',
 	flag: '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>',
@@ -323,17 +285,14 @@ function postureMark(kind) {
 	var span = document.createElement("span");
 	span.className = "passkey-posture-mark passkey-posture-mark--" + kind;
 	span.setAttribute("aria-hidden", "true");
-	// Constant artwork (no user data) — safe to set as innerHTML, same idiom as
-	// passkey_common.js::iconSvg / the desk bundle's glyph render.
+	// Constant artwork (no user data), so innerHTML is safe.
 	span.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true" ' +
 		'style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">' +
 		(POSTURE_MARK_SVG[kind] || POSTURE_MARK_SVG.note) + "</svg>";
 	return span;
 }
 
-// A self-managed posture container, mounted just BELOW the banner host so a genuine (red)
-// save-blocker in the banners always outranks the calm recommendations card — real
-// problems first. Cleared on every paint (never stacks duplicates).
+// The posture container, mounted BELOW the banner host so save-blockers come first.
 function postureHost(frm) {
 	if (frm._passkey_posture_host && frm._passkey_posture_host.isConnected) return frm._passkey_posture_host;
 	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
@@ -362,16 +321,11 @@ function paintBanners(frm, M) {
 	banners.forEach(function (bn) {
 		host.appendChild(bannerEl(bn.level, M.format(__(bn.key), bn.args || [])));
 	});
-	// The resolved RP ID / origins echo is NOT a top banner anymore — it renders inline in
-	// the "Resolved Configuration" field, right next to the RP-ID / origins fields.
 	paintResolvedConfig(frm, ctx);
 }
 
-// Render the resolved RP ID + origins INLINE in the "Resolved Configuration" HTML field
-// (resolved_rp_html), which sits directly below the RP-ID / origins fields — the subtle,
-// near-the-field home the owner asked for, instead of a top banner. Dynamic values go in
-// as DOM text nodes (auto-escaped) before the field's .html() sink, so free-text
-// passkey_origins can never inject markup.
+// Render the resolved RP ID + origins in the resolved_rp_html field. Values go in as text
+// nodes before the .html() sink, so free-text passkey_origins can never inject markup.
 function paintResolvedConfig(frm, ctx) {
 	var field = frm.get_field && frm.get_field("resolved_rp_html");
 	if (!field || !field.html) return;
@@ -400,8 +354,7 @@ function paintResolvedConfig(frm, ctx) {
 	field.html(box.innerHTML);
 }
 
-// A self-managed banner container so repaints never stack duplicates. Mounted once
-// at the top of the form layout; cleared on every paint.
+// The banner container at the top of the form; cleared on every paint.
 function bannerHost(frm) {
 	if (frm._passkey_banner_host && frm._passkey_banner_host.isConnected) return frm._passkey_banner_host;
 	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
@@ -424,20 +377,14 @@ function bannerEl(level, msg) {
 	return div;
 }
 
-// Resolve the settings context. RP ID is credential scope. Trusted origins are the
-// exact configured site origin supplied by the server plus explicit passkey_origins;
-// an RP apex is never inferred as an origin. Cross-flag data rides
-// frappe.boot.passkeys.settings_context when the server ships it (optional — the
-// pure matrix omits the banners that need it if absent).
+// The settings context for settingsBanners. Cross-flag data comes from
+// frappe.boot.passkeys.settings_context when the server ships it.
 function buildContext(frm) {
 	var boot = (frappe.boot && frappe.boot.passkeys) || {};
 	var sc = boot.settings_context || {};
 	var host = window.location && window.location.hostname;
-	// Server-truth resolution, mirroring policy.resolve_rp_id: an explicit RP ID wins
-	// (the server validates + lowercases it); otherwise the value the SERVER resolves
-	// from host_name — fetched live (frm._passkey_server_rpid), falling back to the
-	// boot value before that lands. NEVER window.location.hostname: the browser host is
-	// not what the server uses, so showing it makes the form disagree with Save (A1).
+	// Mirrors policy.resolve_rp_id: the explicit RP ID, else the server's host_name
+	// resolution. Never window.location.hostname, which is not what the server uses.
 	var explicit = (frm.doc.passkey_rp_id || "").trim().toLowerCase();
 	var serverResolved = frm._passkey_server_rpid !== undefined
 		? frm._passkey_server_rpid
@@ -449,6 +396,7 @@ function buildContext(frm) {
 	var origins = parseOrigins(frm.doc.passkey_origins, configuredSiteOrigin);
 	return {
 		currentHost: host,
+		currentOrigin: window.location && window.location.origin,
 		resolvedRpId: rpId,
 		resolvedOrigins: origins,
 		configuredSiteOrigin: configuredSiteOrigin,
@@ -463,9 +411,7 @@ function buildContext(frm) {
 	};
 }
 
-// Derive the resolved origins the same way the server does (policy.resolve_origins):
-// exact configured site origin first, then explicit custom lines. RP ID is never used.
-// Delegates to the pure, node-tested helper so this stays a thin DOM glue file.
+// Resolved origins, as policy.resolve_origins derives them.
 function parseOrigins(raw, configuredSiteOrigin) {
 	var M = typeof frappe !== "undefined" && frappe.passkeys_manage_common;
 	if (M && M.deriveOrigins) return M.deriveOrigins(raw, configuredSiteOrigin);

@@ -225,12 +225,24 @@ const engine = C.createConfirmEngine({
   runGesture: (opts) => navigator.credentials
     .get({ publicKey: C.parseRequestOptionsFromJSON(opts) })
     .then((cred) => C.authAssertionToJSON(cred)),
-  ui: makeYourConfirmModal,   // chooseMethod / collectPassword / announce / busy / done — your DOM
+  ui: makeYourConfirmModal,   // your DOM; see the controller contract below
 });
 frappe.passkeys = frappe.passkeys || {};
 frappe.passkeys.confirm = frappe.passkeys.confirm || engine.confirm;
 frappe.passkeys.call = frappe.passkeys.call || engine.call;
 ```
+
+`ui` is a controller object, or a function returning a fresh one per confirmation. The
+engine calls every method below without checking that it exists, so implement all six:
+
+| Method | Called when |
+|---|---|
+| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | Both methods are available. Resolve `"passkey"` or `"password"`; reject to cancel. |
+| `collectPassword({action, actionLabel, parameterSummary})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. |
+| `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
+| `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
+| `busy(isBusy)` | The passkey gesture is in progress. |
+| `done(isOk)` | The confirmation finished or failed. Close your modal here. |
 
 `passkey_portal.bundle.js` is a full, self-contained reference implementation of
 `makeYourConfirmModal` (a `role="dialog"` overlay with focus trap and Esc handling).

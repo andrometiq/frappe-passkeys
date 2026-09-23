@@ -1,17 +1,7 @@
-// passkey_portal.bundle.js — the portal /passkeys page component + the portal
-// enrollment-nudge banner. Delivered via web_include_js on
-// authenticated portal pages when a passkey mode is enabled (the shim gates it).
-// Loaded AFTER passkey_common.bundle.js
-// (frappe.passkeys_common) and passkey_manage_common.bundle.js
-// (frappe.passkeys_manage_common). Destination on core merge: frappe/public/js/
-// frappe/passkey/portal.js + frappe/www/passkeys.js.
-//
-// Portal pages do NOT ship frappe.ui.Dialog or the desk confirm bundle, so this
-// file builds:
-//   * its own confirm engine from the node-tested pure C.createConfirmEngine,
-//     wired to a self-contained, a11y-correct modal, and
-//   * a compact card renderer over the pure passkey_manage_common view-models.
-// The card DOM differs from the desk bundle only in its framework glue.
+// passkey_portal.bundle.js — the portal /passkeys page, the enforcement gate and the
+// nudge banner on authenticated portal pages. Loads AFTER passkey_common and
+// passkey_manage_common. Portal pages have no frappe.ui.Dialog or desk confirm bundle,
+// so this builds its own modal and confirm engine (C.createConfirmEngine).
 //
 // eslint-env browser
 (function () {
@@ -51,8 +41,7 @@
 	function unwrap(body) { return C.unwrapMessage(body); }
 
 	// -------------------------------------------------------- self-contained modal
-	// role=dialog + aria-modal + focus trap + Esc + focus return. Mirrors the
-	// login bundle's buildDialog; portal has no frappe.ui.Dialog.
+	// role=dialog + aria-modal + focus trap + Esc + focus return.
 	function buildModal(cfg) {
 		var restore = C.captureFocus(document);
 		var overlay = el("div", "passkey-portal-overlay");
@@ -78,7 +67,11 @@
 		function onKey(e) {
 			// A static modal (a blocking enforcement gate) suppresses Esc dismissal —
 			// the overlay never wires a backdrop-click either, so it cannot be dismissed.
-			if (e.key === "Escape" && !cfg.static) { e.preventDefault(); close(); return; }
+			if (e.key === "Escape" && !cfg.static) {
+				e.preventDefault();
+				close();
+				return;
+			}
 			if (e.key === "Tab") {
 				var f = root.querySelectorAll("button, input, a[href], [tabindex]:not([tabindex='-1'])");
 				if (!f.length) return;
@@ -98,9 +91,7 @@
 	}
 
 	// ----------------------------------------------- confirm engine (sudo dance)
-	// The portal's frappe.passkeys.confirm/call, built from the pure engine + a
-	// portal modal adapter (chooseMethod / collectPassword). Used for the delete
-	// sudo gate.
+	// The portal's frappe.passkeys.confirm/call: the pure engine + this modal adapter.
 	function appendConfirmationContext(body, opts, passwordOnly) {
 		var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
 		var label = context.labelFromServer ? context.label : t(context.label);
@@ -188,13 +179,21 @@
 					appendConfirmationContext(modal.body, opts, true);
 					var lbl = el("label", "", t("Confirm your password to continue.")); lbl.setAttribute("for", "passkey-portal-pw");
 					var input = document.createElement("input");
-					input.type = "password"; input.id = "passkey-portal-pw"; input.className = "form-control"; input.autocomplete = "current-password";
+					input.type = "password";
+					input.id = "passkey-portal-pw";
+					input.className = "form-control";
+					input.autocomplete = "current-password";
 					modal.body.appendChild(lbl); modal.body.appendChild(input);
 					var error = el("div", "passkey-confirm-msg", passwordMessage);
 					error.setAttribute("role", "alert"); error.setAttribute("aria-live", "assertive");
 					modal.body.appendChild(error);
 					modal.actions.innerHTML = "";
-					function submit() { var v = input.value; input.value = ""; passwordMessage = ""; settle(resolve, v); }
+					function submit() {
+						var v = input.value;
+						input.value = "";
+						passwordMessage = "";
+						settle(resolve, v);
+					}
 					modal.actions.appendChild(primary(t("Confirm"), submit));
 					modal.actions.appendChild(link(t("Cancel"), function () { if (modal) modal.close(); }));
 					input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -218,11 +217,17 @@
 	}
 	function runGesture(optionsJSON) {
 		if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
-			var e = new Error("not supported"); e.name = "NotSupportedError"; return Promise.reject(e);
+			var e = new Error("not supported");
+			e.name = "NotSupportedError";
+			return Promise.reject(e);
 		}
 		var pk = C.parseRequestOptionsFromJSON(optionsJSON);
 		return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
-			if (!cred) { var err = new Error("no credential"); err.name = "NotAllowedError"; throw err; }
+			if (!cred) {
+				var err = new Error("no credential");
+				err.name = "NotAllowedError";
+				throw err;
+			}
 			return C.authAssertionToJSON(cred);
 		});
 	}
@@ -256,16 +261,14 @@
 			var creds = payload.credentials || [];
 			if (!creds.length) { mountRoot.appendChild(emptyState()); return; }
 			var list = el("ul", "passkey-card-list"); list.setAttribute("role", "list");
-		creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map, translate: t }))); });
+			creds.forEach(function (cred) { list.appendChild(cardEl(M.credentialViewModel(cred, { aaguidMap: map, translate: t }))); });
 			mountRoot.appendChild(list);
 			mountRoot.appendChild(addRow());
 			mountRoot.appendChild(passkeyOnlyRow(creds, payload)); // passwordless-login switch
 		});
 	}
 
-	// the per-user passwordless-login switch. Current value rides the list
-	// payload (server-authoritative), boot as fallback; OFF when neither ships it.
-	// Disabled with no usable (enabled) passkey — enabling needs a passkey grant.
+	// Passwordless-login switch. The value comes from the list payload, else boot, else off.
 	function isPasskeyOnly(payload) {
 		if (payload && payload.passkey_only_login !== undefined) return !!payload.passkey_only_login;
 		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
@@ -282,7 +285,9 @@
 		main.appendChild(el("div", "passkey-only-help", t(M.COPY[availability.helpKey])));
 		row.appendChild(main);
 		var toggle = document.createElement("input");
-		toggle.type = "checkbox"; toggle.className = "passkey-only-toggle"; toggle.checked = current;
+		toggle.type = "checkbox";
+		toggle.className = "passkey-only-toggle";
+		toggle.checked = current;
 		toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-checked", current ? "true" : "false");
 		toggle.setAttribute("aria-label", t(M.COPY.passkeyOnlyLabel));
 		if (availability.disabled) { toggle.disabled = true; toggle.setAttribute("title", t(M.COPY.passkeyOnlyNeedsTwo)); }
@@ -294,9 +299,7 @@
 		row.appendChild(toggle);
 		return row;
 	}
-	// Sudo-gated: confirm + single-use PASSKEY grant only. engine.call runs
-	// the 401 confirm dance; the boolean {enabled} payload matches the fingerprint
-	// the server binds the grant to ({"enabled": <bool>}). Mirrors deleteCard's flow.
+	// Needs a single-use PASSKEY grant; the server binds it to the {"enabled": <bool>} payload.
 	function confirmPasskeyOnly(desired, current) {
 		if (desired === current) return;
 		var modal = buildModal({ title: desired ? t("Turn on passwordless login?") : t("Turn off passwordless login?") });
@@ -310,7 +313,11 @@
 				setPortalStatus(desired ? t("Passwordless login is on.") : t("Passwordless login is off."), "success");
 				render();
 			}).catch(function (err) {
-				if (err && err.code === "user_cancelled") { setPortalStatus(""); render(); return; }
+				if (err && err.code === "user_cancelled") {
+					setPortalStatus("");
+					render();
+					return;
+				}
 				setPortalStatus((err && err.message) || t("Couldn't change passwordless login."), "error");
 				render();
 			});
@@ -328,18 +335,21 @@
 	function addRow() {
 		var row = el("div", "passkey-card-add-row");
 		row.appendChild(primary(t(M.COPY.addButton), addPasskey));
-		// Reload affordance (parity with the desk manager dialog): re-fetch the list for
-		// the "changed on another device while the page stayed open" case. render()
-		// re-runs list_credentials.
+		// Reload for changes made on another device while the page is open.
 		row.appendChild(link(t("Reload"), function () { render(); }));
 		return row;
 	}
 	function cardEl(vm) {
 		var li = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled")); li.setAttribute("data-name", vm.name);
-		var g = el("span", "passkey-card-glyph"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg("key", "icon"); li.appendChild(g);
+		var g = el("span", "passkey-card-glyph");
+		g.setAttribute("aria-hidden", "true");
+		g.innerHTML = C.iconSvg("key", "icon");
+		li.appendChild(g);
 		var main = el("div", "passkey-card-main");
 		var lr = el("div", "passkey-card-labelrow");
-		var le = el("span", "passkey-card-label", vm.label); le.setAttribute("title", vm.label); lr.appendChild(le);
+		var le = el("span", "passkey-card-label", vm.label);
+		le.setAttribute("title", vm.label);
+		lr.appendChild(le);
 		var badge = el("span", "passkey-badge passkey-badge-" + (vm.badge.synced ? "synced" : "device"), t(vm.badge.key));
 		badge.setAttribute("title", t(vm.badge.hintKey)); lr.appendChild(badge);
 		if (!vm.enabled) lr.appendChild(el("span", "passkey-badge passkey-badge-disabled", t(M.COPY.disabledBadge)));
@@ -349,7 +359,11 @@
 		meta.appendChild(el("span", "passkey-card-created", t(M.COPY.createdLabel) + ": " + fmtDate(vm.created)));
 		meta.appendChild(el("span", "passkey-card-lastused", vm.lastUsed ? t(M.COPY.lastUsedLabel) + ": " + fmtDate(vm.lastUsed) : t(M.COPY.lastUsedNever)));
 		main.appendChild(meta);
-		if (vm.flagged) { var fb = el("div", "passkey-card-flagged", t(M.COPY.flaggedBanner)); fb.setAttribute("role", "alert"); main.appendChild(fb); }
+		if (vm.flagged) {
+			var fb = el("div", "passkey-card-flagged", t(M.COPY.flaggedBanner));
+			fb.setAttribute("role", "alert");
+			main.appendChild(fb);
+		}
 		li.appendChild(main);
 		var actions = el("div", "passkey-card-actions");
 		actions.appendChild(iconBtn("passkey-rename", "pencil", vm.a11y.rename, function () { renameCard(vm); }));
@@ -361,7 +375,10 @@
 	function renameCard(vm) {
 		var modal = buildModal({ title: t("Rename passkey") });
 		var input = document.createElement("input");
-		input.type = "text"; input.className = "form-control"; input.value = vm.label; input.setAttribute("aria-label", t(M.COPY.renamePrompt));
+		input.type = "text";
+		input.className = "form-control";
+		input.value = vm.label;
+		input.setAttribute("aria-label", t(M.COPY.renamePrompt));
 		modal.body.appendChild(el("label", "", t(M.COPY.renamePrompt)));
 		modal.body.appendChild(input);
 		modal.actions.appendChild(primary(t("Save"), function () {
@@ -402,22 +419,26 @@
 		modal.open();
 	}
 
-	// The add-passkey ceremony (begin + sudo dance + create + verify) is the shared
-	// headless engine (frappe.passkeys.headless.register) — this card engine is a
-	// CALLER of the same node-tested code path a custom UI uses; the wrapper is only
-	// the portal's DOM (announce / render / onResult). The sudo dance rides
-	// frappe.passkeys.confirm, which this bundle set to `engine.confirm` above.
+	// Registration is frappe.passkeys.headless.register, the same path a custom UI uses.
 	function addPasskey(opts) {
 		opts = opts || {};
 		function done(ok) { if (typeof opts.onResult === "function") opts.onResult(ok); }
 		if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
-			setPortalStatus(t("This browser can't create passkeys."), "error"); done(false); return;
+			setPortalStatus(t("This browser can't create passkeys."), "error");
+			done(false);
+			return;
 		}
 		var H = window.frappe && window.frappe.passkeys && window.frappe.passkeys.headless;
-		if (!H) { setPortalStatus(t(M.COPY.addFailed), "error"); done(false); return; }
+		if (!H) {
+			setPortalStatus(t(M.COPY.addFailed), "error");
+			done(false);
+			return;
+		}
 		setPortalStatus(t("Follow your device's prompt to add a passkey…"), "pending");
 		H.register({ flow: "explicit" }).then(function () {
-			setPortalStatus(t("Passkey added."), "success"); render(); done(true);
+			setPortalStatus(t("Passkey added."), "success");
+			render();
+			done(true);
 		}, function (err) {
 			setPortalStatus(t(err && err.code === "already_registered" ? M.COPY.alreadyRegistered : M.COPY.addFailed), "error");
 			done(false);
@@ -425,11 +446,8 @@
 	}
 
 	// ------------------------------------------------ enforcement + nudge boot
-	// One capability probe drives both surfaces: the server enforcement verdict outranks
-	// the nudge (a user MUST register), then the dismissible nudge banner for everyone
-	// else. Enforcement on the portal must ride EVERY authenticated page (portal_nudge
-	// shim delivers this bundle everywhere) so a portal-only user can't escape by never
-	// opening /passkeys.
+	// One capability probe; enforcement outranks the nudge. This runs on every
+	// authenticated portal page, so a portal-only user can't skip it by avoiding /passkeys.
 	function maybeEnforceOrNudge() {
 		var b = (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
 		if (!b || b.enabled === false) return;
@@ -471,18 +489,14 @@
 		recordEnforcement(M.ENFORCE_EVENTS.INCAPABLE).catch(function () {});
 	}
 
-	// The post-login ENFORCEMENT interstitial (portal). Blocking ⇒ a static modal
-	// (no Esc / no backdrop dismiss); the only ways out are enrolling or the incapable
-	// escape. Honest, guilt-free copy matching the desk gate.
+	// The post-login enforcement interstitial. Blocking ⇒ a static modal whose only exits
+	// are enrolling, the incapable escape and sign-out.
 	function showEnforceModal(b, enf) {
 		var modal = buildModal({
 			title: t(M.COPY.enforceTitle),
 			static: enf.blocking === true,
-			// Esc dismiss of a NON-BLOCKING gate = "Remind me later": spend one grace login
-			// exactly once (mirrors the confirm modal's onClose + _settled guard). The explicit
-			// link sets `_settled` before closing, so this fires only on an UNACTED Esc dismissal —
-			// the route no click handler covers. A blocking gate is static (Esc suppressed) with
-			// no grace left to spend, so it records nothing.
+			// Esc on a non-blocking gate is "Remind me later": it spends one grace login.
+			// `_settled` stops a double count after the explicit link.
 			onClose: function () {
 				if (!enf.blocking && !modal._settled) { modal._settled = true; recordEnforcementDefer(b, enf); }
 			},
@@ -492,10 +506,15 @@
 		if (!enf.blocking) {
 			var later = M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]);
 			modal.actions.appendChild(link(later, function () {
-				recordEnforcementDefer(b, enf); modal._settled = true; modal.close();
+				recordEnforcementDefer(b, enf);
+				modal._settled = true;
+				modal.close();
 			}));
 		} else {
-			modal.actions.appendChild(link(t(M.COPY.enforceContactAdmin), function () { onEnforceCantSetUp(b, modal); }));
+			// Only Block + Notify Admin actually notifies an administrator.
+			var notifiesAdmin = ((b && b.enforcement) || {}).incapable_policy === "block_notify";
+			var escapeLabel = notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp;
+			modal.actions.appendChild(link(t(escapeLabel), function () { onEnforceCantSetUp(b, modal); }));
 			modal.actions.appendChild(link(t(M.COPY.enforceSignOut), signOut));
 		}
 		modal.open();
@@ -507,9 +526,9 @@
 		addPasskey({ onResult: function (ok) { if (ok) { modal._settled = true; modal.close(); } } });
 	}
 
-	// "I can't set one up here": alert the admin, then honor the incapable-device policy
-	// — Degrade lets them proceed (re-prompted next page), Block keeps the gate up with
-	// an escalation notice.
+	// The blocking gate's escape: record it, then honor the incapable-device policy —
+	// Degrade lets them proceed (re-prompted next page), Block + Notify Admin alerts the
+	// admin and keeps the gate up with a notice.
 	function onEnforceCantSetUp(b, modal) {
 		reportIncapableOnce();
 		var enf = (b && b.enforcement) || {};
@@ -528,8 +547,7 @@
 	}
 
 	// ------------------------------------------------------- portal nudge banner
-	// A dismissible inline banner ("portal nudge banner") — never a modal. Caps may be
-	// supplied by maybeEnforceOrNudge (one shared probe) or detected here.
+	// A dismissible inline banner, never a modal. `caps` may come from maybeEnforceOrNudge.
 	function maybeNudgeBanner(b, caps) {
 		b = b || (window.frappe && frappe.boot && frappe.boot.passkeys) || null;
 		if (!b) return;
@@ -545,7 +563,10 @@
 		if (isPasskeyPage || document.getElementById("passkey-portal-nudge")) return;
 		var host = document.querySelector(".page_content, main, body");
 		if (!host) return;
-		var bar = el("div", "passkey-nudge-banner"); bar.id = "passkey-portal-nudge"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", t(M.COPY.nudgeTitle));
+		var bar = el("div", "passkey-nudge-banner");
+		bar.id = "passkey-portal-nudge";
+		bar.setAttribute("role", "region");
+		bar.setAttribute("aria-label", t(M.COPY.nudgeTitle));
 		bar.appendChild(el("strong", "passkey-nudge-title", t(M.COPY.nudgeTitle)));
 		bar.appendChild(el("span", "passkey-nudge-copy", t(M.COPY.nudgeBody)));
 		var acts = el("span", "passkey-nudge-acts");
@@ -560,7 +581,11 @@
 			recordNudge(M.NUDGE_EVENTS.OPT_OUT).then(function (res) {
 				optingOut = false;
 				if (res && res.ok) { bar.remove(); return; }
-				if (!error) { error = el("p", "passkey-nudge-error"); error.setAttribute("role", "alert"); bar.appendChild(error); }
+				if (!error) {
+					error = el("p", "passkey-nudge-error");
+					error.setAttribute("role", "alert");
+					bar.appendChild(error);
+				}
 				error.textContent = t(M.COPY.nudgeSaveFailed);
 			});
 		}));
@@ -599,16 +624,48 @@
 		statusRoot.setAttribute("role", kind === "error" ? "alert" : "status");
 		statusRoot.textContent = msg;
 	}
-	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
-	function primary(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-primary btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
-	function link(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-link btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
+	function el(tag, cls, text) {
+		var n = document.createElement(tag);
+		if (cls) n.className = cls;
+		if (text != null) n.textContent = text;
+		return n;
+	}
+	function primary(label, on) {
+		var b = document.createElement("button");
+		b.type = "button";
+		b.className = "btn btn-primary btn-sm passkey-btn";
+		b.textContent = label;
+		b.addEventListener("click", on);
+		return b;
+	}
+	function link(label, on) {
+		var b = document.createElement("button");
+		b.type = "button";
+		b.className = "btn btn-link btn-sm passkey-btn";
+		b.textContent = label;
+		b.addEventListener("click", on);
+		return b;
+	}
 	function iconBtn(cls, iconName, name, on) {
-		var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-xs btn-default passkey-icon-btn " + cls;
+		var b = document.createElement("button");
+		b.type = "button";
+		b.className = "btn btn-xs btn-default passkey-icon-btn " + cls;
 		b.setAttribute("aria-label", name); b.setAttribute("title", name);
-		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg(iconName, "icon icon-sm"); b.appendChild(g);
+		var g = el("span", "passkey-icon");
+		g.setAttribute("aria-hidden", "true");
+		g.innerHTML = C.iconSvg(iconName, "icon icon-sm");
+		b.appendChild(g);
 		b.addEventListener("click", on); return b;
 	}
-	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) { /* fall back to the raw value */ } return String(v); }
+	function fmtDate(v) {
+		if (!v) return "—";
+		try {
+			if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v);
+		} catch (e) {
+			/* fall back to the raw value */
+		}
+		return String(v);
+	}
 
 	// --------------------------------------------------------------- boot
 	// Web pages on v15/v16 carry no app strings: merge the catalog before the first paint.
@@ -617,9 +674,7 @@
 		maybeEnforceOrNudge();
 	});
 
-	// Node-only test seam (UMD-lite, mirrors passkey_login.bundle.js): expose the
-	// enforcement interstitial + modal builder so `node --test` can pin the defer-on-Esc
-	// contract without a bench. No-op in the browser — `module` is undefined there.
+	// Node-only test seam; `module` is undefined in the browser.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal, makeConfirmUI: makeConfirmUI, setPortalStatus: setPortalStatus, renderNudgeBanner: renderNudgeBanner, maybeEnforceOrNudge: maybeEnforceOrNudge, recordNudge: recordNudge };
 	}

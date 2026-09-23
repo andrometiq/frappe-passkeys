@@ -407,7 +407,12 @@ test("settingsBanners: host mismatch is suppressed when no RP ID resolves", () =
 	// masquerade as a mismatch).
 	const b = M.settingsBanners(
 		{ login_with_passkey: 1 },
-		{ currentHost: "staging.example.com", resolvedRpId: null, resolvedOrigins: ["https://other.example.com"] }
+		{
+			currentHost: "staging.example.com",
+			currentOrigin: "https://staging.example.com",
+			resolvedRpId: null,
+			resolvedOrigins: ["https://other.example.com"],
+		}
 	);
 	assert.ok(!b.some((x) => x.key === M.COPY.hostMismatch));
 	assert.ok(b.some((x) => x.key === M.COPY.rpIdUnresolved));
@@ -416,15 +421,39 @@ test("settingsBanners: host mismatch is suppressed when no RP ID resolves", () =
 test("settingsBanners: host mismatch when current host not in resolved origins", () => {
 	const b = M.settingsBanners(
 		{ login_with_passkey: 1 },
-		{ currentHost: "staging.example.com", resolvedRpId: "example.com", resolvedOrigins: ["https://example.com"] }
+		{
+			currentHost: "staging.example.com",
+			currentOrigin: "https://staging.example.com",
+			resolvedRpId: "example.com",
+			resolvedOrigins: ["https://example.com"],
+		}
 	);
 	assert.ok(b.some((x) => x.key === M.COPY.hostMismatch && x.level === "error"));
-	// match => no banner
 	const b2 = M.settingsBanners(
 		{ login_with_passkey: 1 },
-		{ currentHost: "example.com", resolvedOrigins: ["https://example.com"] }
+		{
+			currentHost: "example.com",
+			currentOrigin: "https://example.com",
+			resolvedRpId: "example.com",
+			resolvedOrigins: ["https://example.com"],
+		}
 	);
 	assert.ok(!b2.some((x) => x.key === M.COPY.hostMismatch));
+});
+
+test("settingsBanners: host mismatch compares the full origin, port included", () => {
+	const banners = (currentOrigin, resolvedOrigins) =>
+		M.settingsBanners(
+			{ login_with_passkey: 1 },
+			{ currentHost: "localhost", currentOrigin, resolvedRpId: "localhost", resolvedOrigins }
+		).some((x) => x.key === M.COPY.hostMismatch);
+	// Every origin carries an explicit port and the page is served on it: no false alarm.
+	assert.strictEqual(banners("http://localhost:8011", ["http://localhost:8011"]), false);
+	// Same host, wrong port or scheme: the server would refuse the ceremony, so flag it.
+	assert.strictEqual(banners("http://localhost:8000", ["http://localhost:8011"]), true);
+	assert.strictEqual(banners("http://localhost:8011", ["https://localhost:8011"]), true);
+	// An explicit default port is the same origin.
+	assert.strictEqual(banners("https://example.com", ["https://Example.com:443/"]), false);
 });
 
 test("settingsBanners: 2FA needs core two-factor; notify-off + dead-combo warnings", () => {
@@ -675,10 +704,14 @@ test("postureReport: empty/absent response degrades cleanly", () => {
 
 // ---------------------------------------------------------- origins + signal
 
-test("originsIncludeHost / originHost normalise scheme + path", () => {
-	assert.strictEqual(M.originHost("https://Example.com:8000/login"), "example.com:8000");
-	assert.strictEqual(M.originsIncludeHost(["https://a.com", "https://b.com"], "b.com"), true);
-	assert.strictEqual(M.originsIncludeHost(["https://a.com"], "b.com"), false);
+test("originsIncludeOrigin / canonicalOrigin normalise case, default port and path", () => {
+	assert.strictEqual(M.canonicalOrigin("https://Example.com:8000/login"), "https://example.com:8000");
+	assert.strictEqual(M.canonicalOrigin("https://example.com:443"), "https://example.com");
+	assert.strictEqual(M.canonicalOrigin("example.com"), null);
+	assert.strictEqual(M.canonicalOrigin("localhost:8011"), null);
+	assert.strictEqual(M.originsIncludeOrigin(["https://a.com", "https://b.com"], "https://b.com"), true);
+	assert.strictEqual(M.originsIncludeOrigin(["https://a.com"], "https://b.com"), false);
+	assert.strictEqual(M.originsIncludeOrigin(["https://a.com"], null), false);
 });
 
 test("signalPayload: shapes user_handle + credential_ids, else null", () => {

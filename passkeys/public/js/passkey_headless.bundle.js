@@ -1,32 +1,12 @@
-// passkey_headless.bundle.js — the documented, markup-free ("headless") public JS API a
-// custom UI calls to drive the WHOLE passkey lifecycle without any of the app's
-// own DOM: first-factor login, registration (add), list, rename, remove, the
-// passwordless-only switch, and capability detection. Destination on core merge:
-// frappe/public/js/frappe/passkey/ (frappe.ui.passkey.*).
+// passkey_headless.bundle.js — the documented, markup-free public JS API for custom UIs:
+// first-factor login, registration, list, rename, remove, the passwordless-only switch
+// and capability detection. The portal bundle calls `register()` here too, so custom UIs
+// run the same tested path.
 //
-// This is the SINGLE ceremony orchestrator shared by the app's own barebones
-// surfaces and by third-party custom UIs. The app's portal card engine
-// (passkey_portal.bundle.js) is a caller of `register()` here, so a custom UI
-// exercises the exact same, tested code path the shipped UI does.
-//
-// Everything protocol/state-machine-shaped already lives in the two PURE libs:
-//   * frappe.passkeys_common (passkey_common.bundle.js)        — base64url, the L3 JSON
-//     shim, capability detection, DOMException/typed-error mapping, and the
-//     node-tested createConfirmEngine (the re-auth engine behind frappe.passkeys.
-//     confirm / .call).
-//   * frappe.passkeys_manage_common (passkey_manage_common.bundle.js) — MANAGE_METHODS,
-//     the card view-models, provider lookup, and the nudge/enforcement decisions.
-// This module is the THIN browser wiring (fetch + CSRF + navigator.credentials)
-// that ties those pure pieces to the server whitelist. It carries no markup and
-// ships no styling — a custom UI supplies its own DOM and reads the result.
-//
-// Dual export (UMD-lite, mirrors passkey_common.bundle.js): the pure `createHeadless`
-// factory (all browser deps injected) is `module.exports`-ed for `node --test`;
-// the browser side wires the real fetch/navigator deps and publishes a default
-// instance at `frappe.passkeys.headless` (+ forward-compat `frappe.ui.passkey.
-// headless`). Loaded as its own web_include_js/app_include_js entry AFTER
-// passkey_common.bundle.js (required) and passkey_manage_common.bundle.js (required for the
-// management calls; login + capability detection need only the former).
+// The pure `createHeadless` factory (browser deps injected) is exported for node; the
+// browser publishes a default instance at `frappe.passkeys.headless` (and
+// `frappe.ui.passkey.headless`). Loads AFTER passkey_common (required) and
+// passkey_manage_common (needed for the management calls).
 //
 // eslint-env browser, node
 (function (root, factory) {
@@ -40,9 +20,7 @@
 	}
 
 	// ------------------------------------------------------------ browser wiring
-	// Build a default headless instance from the real fetch + navigator.credentials
-	// deps and the pure libs' globals, then publish it. Self-gates: with
-	// frappe.passkeys_common absent it publishes nothing (like every other bundle).
+	// Publish a default instance wired to fetch + navigator.credentials.
 	function publishBrowser(api) {
 		var win = window;
 		var C = win.frappe && win.frappe.passkeys_common;
@@ -94,10 +72,8 @@
 			});
 		}
 
-		// Run a create() gesture: parse the L3 CreationOptionsJSON, inject the
-		// credProps extension (py_webauthn emits none, so the discoverable tri-state
-		// stays Unknown without it — mirrors the desk/portal bundles), call
-		// navigator.credentials.create, serialize to RegistrationResponseJSON.
+		// Run a create() gesture with credProps injected (py_webauthn emits none, so the
+		// discoverable tri-state would stay Unknown) and serialize the result.
 		function createCredential(optionsJSON) {
 			if (!navigator.credentials || typeof navigator.credentials.create !== "function") {
 				return rejectNamed("NotSupportedError", "not supported");
@@ -199,9 +175,7 @@
 		rename_failed: true,
 	};
 
-	// The engine. All browser dependencies are injected so the whole
-	// begin -> gesture -> verify lifecycle is unit-testable under node:test with no
-	// bench and no jsdom. deps:
+	// The engine; every browser dependency is injected. deps:
 	//   common          — frappe.passkeys_common (the pure lib)
 	//   post(m,b,h)     -> Promise<{ok,status,body}>
 	//   getAssertion(optionsJSON, opts?) -> Promise<assertionJSON>   (parse+get+toJSON)

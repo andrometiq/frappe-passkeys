@@ -341,12 +341,8 @@
 }
 
 /* --------------------------------------------------------------------------
- * Security-posture report (Passkey Settings form). Admin-only. A compact verdict
- * CARD lands the point at a glance — a satisfying tick when everything is fine,
- * otherwise a calm recommendations card (never alarm-red) — with a call-to-action
- * that reveals the full designed checklist in place (one problem line + one recommendation each,
- * disclaimer last) and a footer link to the hosted theory explainer. Uses Frappe's
- * semantic tokens so light/dark both adapt without a prefers-color-scheme dependency.
+ * Security-posture report (Passkey Settings form): a verdict card and a collapsible
+ * checklist. Frappe's semantic tokens adapt it to light and dark.
  * ------------------------------------------------------------------------ */
 .passkey-posture {
 	margin: 0 0 12px;
@@ -407,10 +403,8 @@
 .passkey-posture-card .passkey-posture-mark svg { width: 26px; height: 26px; }
 .passkey-posture-row .passkey-posture-mark svg { width: 18px; height: 18px; }
 .passkey-posture-mark--good { color: var(--green-500, #28a745); }
-/* No alarm-red in the posture surface — it is a calm recommendations checklist, not a
- * problem report (the owner's "calm, not alarmist" principle). "flag" (a high-severity
- * bypass path) renders in the SAME amber as "warn": both read as "worth a look", and
- * priority is carried by row ORDER (posturePanel sorts high first), not by colour. */
+/* No red in the posture surface: "flag" shares the "warn" amber and priority is carried
+ * by row order (posturePanel sorts high first). */
 .passkey-posture-mark--flag { color: var(--orange-500, #f5a623); }
 .passkey-posture-mark--warn { color: var(--orange-500, #f5a623); }
 .passkey-posture-mark--tune { color: var(--blue-500, #2490ef); }

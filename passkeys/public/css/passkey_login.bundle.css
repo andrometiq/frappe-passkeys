@@ -36,10 +36,8 @@
 	outline-offset: 2px;
 }
 
-/* Visible staged-status surface for the passkey login ceremony
- * (idle → waiting → verifying → success / failure). App-owned + always present on
- * v15/v16/develop — NEVER core's develop-only .login-error-banner. Painted with Frappe's
- * own CSS tokens so it inherits the site theme and dark mode with no scheme override. */
+/* The passkey login status (idle → waiting → verifying → success / failure), painted
+ * with Frappe's tokens so it follows the theme and dark mode. */
 .passkey-status {
 	display: flex;
 	align-items: center;

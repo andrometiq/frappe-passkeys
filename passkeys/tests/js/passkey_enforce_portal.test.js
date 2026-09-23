@@ -136,6 +136,28 @@ test("portal enforce: a blocking (static) gate cannot be Esc-dismissed and recor
 	assert.strictEqual(deferCount(), 0, "a static blocking gate suppresses Esc and records no defer");
 });
 
+test("portal enforce: the blocking gate's escape is labelled by what it does under each policy", () => {
+	const labels = [M.COPY.enforceCantSetUp, M.COPY.enforceContactAdmin];
+	const incapable = () => fetchLog.filter((f) => f.body.event === M.ENFORCE_EVENTS.INCAPABLE).length;
+	fetchLog.length = 0;
+
+	global.document = makeDoc();
+	mod.showEnforceModal({ enforcement: { incapable_policy: "degrade" } }, { blocking: true, graceRemaining: 0 });
+	const cantSetUp = findButton(global.document.body, (b) => labels.includes(b.textContent));
+	assert.strictEqual(cantSetUp.textContent, M.COPY.enforceCantSetUp, "Degrade notifies nobody, so it must not promise an admin");
+	cantSetUp.click();
+	assert.strictEqual(global.document.body.children.length, 0, "under Degrade the escape lets the user through");
+	assert.strictEqual(incapable(), 1, "the incapable claim is still recorded");
+
+	global.document = makeDoc();
+	mod.showEnforceModal({ enforcement: { incapable_policy: "block_notify" } }, { blocking: true, graceRemaining: 0 });
+	const contact = findButton(global.document.body, (b) => labels.includes(b.textContent));
+	assert.strictEqual(contact.textContent, M.COPY.enforceContactAdmin);
+	contact.click();
+	assert.strictEqual(global.document.body.children.length, 1, "Block + Notify Admin keeps the gate up");
+	assert.ok(findNode(global.document.body, (n) => n.textContent === M.COPY.enforceBlockedNotice), "the admin-notified notice is shown");
+});
+
 test("portal confirm: direct password route opens and Esc rejects instead of hanging", async () => {
 	global.document = makeDoc();
 	const ui = mod.makeConfirmUI();

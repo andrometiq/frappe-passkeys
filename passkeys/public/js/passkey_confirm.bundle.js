@@ -5,19 +5,11 @@
 // Public API:
 //   const grant = await frappe.passkeys.confirm("myapp.release_payment", {payment_id});
 //   await frappe.passkeys.call("myapp.api.release_payment", {payment_id});
-// Core destination namespace: frappe.ui.passkey.* (aliased here for forward-compat).
+// Also aliased at frappe.ui.passkey.*.
 //
-// This file is the browser/frappe-bound wiring: raw fetch (CSRF + credentials),
-// the WebAuthn L3 gesture, and the frappe.ui.Dialog confirmation UI + a11y. ALL
-// protocol/state-machine logic (begin -> gesture -> verify -> grant, the 401
-// retry / verbatim payload_fingerprint echo, concurrency dedupe, the
-// typed rejection taxonomy) lives in passkey_common.bundle.js::createConfirmEngine so
-// it is unit-testable under `node --test` without a bench. JS NEVER computes a
-// payload hash — begin_confirmation is handed raw params, or echoes back a
-// server-issued payload_fingerprint verbatim.
-//
-// Loaded as an app_include_js entry AFTER passkey_common.bundle.js (which sets the
-// frappe.passkeys_common global this file reads).
+// Browser wiring only (fetch, the WebAuthn gesture, the frappe.ui.Dialog UI); the protocol
+// lives in passkey_common.bundle.js::createConfirmEngine. JS never computes a payload
+// hash: the server's payload_fingerprint is echoed verbatim. Loads AFTER passkey_common.
 //
 // eslint-env browser
 (function () {
@@ -44,10 +36,8 @@
 		return h;
 	}
 
-	// Raw fetch so we own the 401 body (the retry contract) and can attach the
-	// grant header on retry — bypasses frappe's global error painter.
-	// Resolves to {ok, status, body} for ANY HTTP status; rejects only on a
-	// transport-level failure (offline / DNS), which the engine maps to `network`.
+	// Raw fetch so we own the 401 body and bypass frappe's error painter. Resolves
+	// {ok, status, body} for any status; rejects only on a transport failure.
 	function post(method, body, headers) {
 		return fetch(methodUrl(method), {
 			method: "POST",
@@ -89,10 +79,8 @@
 	}
 
 	// ------------------------------------------------------------------ dialog
-	// A frappe.ui.Dialog-backed confirmation UI. Returns the `ui` controller the
-	// engine drives (chooseMethod / collectPassword / announce / busy / done).
-	// One dialog instance per ceremony; the engine guarantees only one is live
-	// at a time (concurrency dedupe), so we mint a fresh controller each run.
+	// The frappe.ui.Dialog controller the engine drives; a fresh one per ceremony (the engine
+	// keeps only one live at a time).
 	function makeDialogUI() {
 		var dialog = null;
 		var restoreFocus = C.captureFocus(document);
@@ -179,10 +167,8 @@
 					ensureDialog(opts);
 					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
 					var actName = context.labelFromServer ? context.label : t(context.label);
-					// The built-in passkey-management action (delete / add a passkey) gets
-					// plain, honest framing: the user landed here because this sign-in wasn't
-					// strongly verified recently (A4). Other (third-party) actions keep the
-					// action-named lead.
+					// The built-in management action explains that this sign-in wasn't strongly
+					// verified recently; third-party actions keep the action-named lead.
 					var leadHtml = '<p class="passkey-confirm-action"><strong>' + esc(actName) + '</strong></p>' +
 						(opts.action === "passkeys.manage"
 						? '<p class="passkey-confirm-lead">' +
@@ -229,11 +215,8 @@
 			// reject (user_cancelled) if the user dismisses the dialog.
 			collectPassword: function (opts) {
 				return new Promise(function (resolve, reject) {
-					// The engine can route STRAIGHT to the password leg (caps.passkey
-					// false — a zero-credential user, or the sudo window expired) WITHOUT
-					// ever calling chooseMethod, so the dialog may not exist yet. Create
-					// it here too — mirrors the portal bundle's `if (!modal)` guard — or
-					// setContent()/bodyEl() dereference a null dialog (TypeError crash).
+					// The engine can go straight to the password leg without chooseMethod, so
+					// the dialog may not exist yet.
 					opts = opts || {};
 					ensureDialog(opts);
 					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
@@ -427,9 +410,7 @@
 		if (!f.passkeys.call) f.passkeys.call = unavailable;
 	}
 
-	// Node-only test seam (UMD-lite, mirrors passkey_common.bundle.js): expose the dialog
-	// UI factory so `node --test` can exercise the straight-to-password route
-	// without a bench/jsdom. No-op in the browser — `module` is undefined there.
+	// Node-only test seam; `module` is undefined in the browser.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { makeDialogUI: makeDialogUI, minimalDialog: minimalDialog };
 	}

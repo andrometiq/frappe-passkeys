@@ -1,21 +1,8 @@
-// passkey_manage_common.bundle.js — shared PURE logic for the credential-management
-// surfaces + enrollment nudges + settings UX. Destination on core merge:
-// frappe/public/js/frappe/passkey/ (frappe.ui.passkey.*).
-//
-// Like passkey_common.bundle.js this module is deliberately framework-light and
-// side-effect-free at load time so its pure logic (card view-models, provider
-// resolution, the nudge cadence decision, the post-hybrid upsell gate, the
-// settings-banner matrix, the last-method delete guard, signal-payload shaping)
-// is unit-testable under plain `node --test` WITHOUT a bench and WITHOUT jsdom.
-//
-// The DOM/frappe wiring (frappe.ui.Dialog, fetch, navigator.credentials, the
-// User-form / navbar / portal renderers, the Passkey Settings form glue) lives in
-// passkey_desk.bundle.js / user_passkeys.js / passkey_portal.bundle.js /
-// passkey_settings.js, which pass real values into these pure functions.
-//
-// Dual export (UMD-lite): CommonJS `module.exports` for node tests; browser
-// global `frappe.passkeys_manage_common` for the bundles (loaded as its own
-// app_include_js/web_include_js entry AFTER passkey_common.bundle.js).
+// passkey_manage_common.bundle.js — pure logic for credential management, enrollment
+// nudges and the settings UX, side-effect-free at load so `node --test` covers it. The
+// DOM wiring lives in the desk/portal bundles, user_passkeys.js and passkey_settings.js.
+// Exports CommonJS for node and `frappe.passkeys_manage_common` in the browser; it must
+// load AFTER passkey_common.bundle.js.
 //
 // eslint-env browser, node
 (function (root, factory) {
@@ -32,9 +19,6 @@
 	"use strict";
 
 	// ================================================================ wire seam
-	// Whitelisted server method dotted-paths the management UI calls. The credential/
-	// registration rows live in passkeys/api/*.py; the nudge/enforcement rows in
-	// passkeys/passkey.py.
 	var MANAGE_METHODS = {
 		list: "passkeys.api.credentials.list_credentials",
 		rename: "passkeys.api.credentials.rename_credential",
@@ -71,9 +55,7 @@
 	var ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
 	// ===================================================== translatable copy keys
-	// English source strings (the DOM layer wraps each with __()). These map into
-	// translations/{lang}.csv. Logic here
-	// never bakes a language in — it returns keys/args, the renderer translates.
+	// English source strings; logic returns keys/args and the renderer calls __().
 	var COPY = {
 		// cards / empty state
 		unknownProvider: "Unknown provider",
@@ -193,9 +175,7 @@
 	};
 
 	// ------------------------------------------------------------ tiny formatter
-	// Minimal {0}/{1} placeholder fill so pure logic can build accessible names
-	// without depending on frappe's __() at test time. The DOM layer still passes
-	// each COPY key through __() first (frappe's __ does the same placeholder fill).
+	// {0}/{1} placeholder fill for pure logic; the DOM layer translates the key first.
 	function format(str, args) {
 		if (!args || !args.length) return str;
 		return String(str).replace(/\{(\d+)\}/g, function (m, i) {
@@ -205,12 +185,8 @@
 	}
 
 	// ---------------------------------------------------------- provider lookup
-	// Card provider name. Preference order:
-	//   1. server-supplied cred.provider (single source of truth = aaguid.py) —
-	//      preferred so the client never ships a second copy of the snapshot;
-	//   2. an injected client aaguidMap[aaguid] (release asset), when present;
-	//   3. null  ⇒ caller shows the generic glyph + "Unknown provider".
-	// A zero / empty AAGUID is NEVER an error (Safari ships none) — just Unknown.
+	// Card provider name: server cred.provider, else aaguidMap[aaguid], else null (Unknown).
+	// A zero / empty AAGUID is not an error (Safari ships none).
 	function providerFor(cred, aaguidMap) {
 		cred = cred || {};
 		if (cred.provider) return String(cred.provider);
@@ -245,9 +221,7 @@
 		return format(tr(key), [label || ""]);
 	}
 
-	// A per-credential view-model the card renderers consume. Carries RAW values
-	// (dates stay raw so the renderer can use frappe.datetime) + pre-built
-	// accessible names + badge + provider. Escaping happens in the DOM layer.
+	// Per-credential card view-model. Values stay raw (the DOM layer formats and escapes).
 	function credentialViewModel(cred, opts) {
 		opts = opts || {};
 		cred = cred || {};
@@ -275,10 +249,8 @@
 	}
 
 	// ------------------------------------------------------- nudge cadence
-	// Whether the cooldown window has elapsed since the last nudge. `cooldownDays`
-	// is the `passkey_nudge_cooldown_days` knob (default 30). Never shown ⇒
-	// eligible. An unparseable timestamp is treated as never-shown (fail toward the
-	// adoption lever, bounded by the decline cap).
+	// Whether `cooldownDays` (default 30) have passed since the last nudge. Never shown or
+	// an unparseable timestamp ⇒ eligible (the decline cap still bounds it).
 	function cooldownElapsed(lastShownIso, cooldownDays, now) {
 		if (!lastShownIso) return true;
 		var then = Date.parse(lastShownIso);
@@ -322,19 +294,15 @@
 		return true;
 	}
 
-	// The AUTHORITATIVE visible-nudge cadence: the server computes it in
-	// `boot.nudge_state.eligible` (counters are server-side, "never
-	// client-side-only caps"). Trust it when present; fall back to clientEligible
-	// only for a bootinfo that predates the flag.
+	// The server's `boot.nudge_state.eligible` is authoritative; clientEligible is the
+	// fallback for a bootinfo without it.
 	function serverEligible(boot, now) {
 		var ns = boot && boot.nudge_state;
 		if (ns && typeof ns.eligible === "boolean") return ns.eligible;
 		return clientEligible(boot, now);
 	}
 
-	// The post-login enrollment-nudge decision. The server owns cadence
-	// (`nudge_state.eligible`); the client only ANDs its capability checks. Returns
-	// a verdict with a machine-readable `reason` for tests/telemetry.
+	// The post-login nudge decision: server cadence AND client capability, with a `reason`.
 	//   boot: frappe.boot.passkeys
 	//   caps: client capability probe (supported / conditionalCreate)
 	function nudgeDecision(boot, caps, now) {
@@ -348,12 +316,9 @@
 		else if (!supported) out.reason = "unsupported";
 		else { out.showNudge = true; out.reason = "eligible"; }
 
-		// Conditional create (silent upgrade): its own knob
-		// (`boot.conditional_create`, the server flag — fail-safe OFF when absent),
-		// the client capability, AND a PASSWORD-seeded fresh-login window
-		// (post_login_method === "password") — a raw session-age check cannot tell a
-		// password login from an email-link one. Rides the server cadence
-		// (`eligible` already encodes 0 credentials + the nudge knob).
+		// Conditional create needs the server flag (off when absent), the capability and a
+		// PASSWORD-seeded login window: session age alone cannot tell a password login from
+		// an email-link one.
 		out.allowConditionalCreate =
 			eligible &&
 			caps.conditionalCreate === true &&
@@ -363,9 +328,8 @@
 		return out;
 	}
 
-	// The post-login ENFORCEMENT decision — the §capability hinge. The server owns the
-	// verdict (`boot.enforcement`: scope / date / grace); the client's only job is to
-	// honor DEVICE CAPABILITY, which the server cannot know. Returns:
+	// The post-login enforcement decision. The server owns the verdict (`boot.enforcement`);
+	// the client adds only device capability, which the server cannot know. Returns:
 	//   show        — surface an interstitial at all
 	//   variant     — "enforce" (the blocking/skippable enrollment gate) or "nudge"
 	//                 (an incapable device under Degrade, subject to server nudge cadence)
@@ -426,21 +390,14 @@
 	}
 
 	// ---------------------------------------------- admin enforcement recovery
-	// Whether the User-form Passkeys section admin area should surface the enforcement-
-	// recovery controls (one-click exemption + grace reset). Gated on the SITE policy
-	// being an enforcement rung — the policy is site-wide, so the admin's own boot
-	// `enforcement.policy` is the right signal and no per-target fetch is needed just to
-	// decide visibility. Off / Nudge ⇒ nothing to recover from, so the area stays hidden.
+	// Show the User-form enforcement-recovery controls only under an enforcement policy.
+	// The policy is site-wide, so the admin's own boot value decides.
 	function shouldShowEnforcementAdmin(boot) {
 		var policy = boot && boot.enforcement && boot.enforcement.policy;
 		return policy === "Enforce" || policy === "Enforce After Date";
 	}
 
-	// Pure view-model for the admin enforcement-recovery controls, from the
-	// get_user_enforcement_admin payload. Returns the button labels/actions, the reset
-	// enable state, and a status indicator — the DOM layer translates the COPY keys and
-	// fills the numeric grace args. `exempt` is the dedicated-role exemption (the toggle
-	// target).
+	// View-model for the admin enforcement-recovery controls (get_user_enforcement_admin).
 	function enforcementAdminViewModel(state) {
 		state = state || {};
 		var exempt = state.exempt === true;
@@ -470,13 +427,9 @@
 
 	function cint(v) { var n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
 
-	// Post-hybrid upsell: after a hybrid (QR) assertion with local isUVPAA
-	// the login bundle set UPSELL_FLAG_KEY. Offer "add a passkey to this device",
-	// **cadence-capped identically to the nudge but WITHOUT the 0-credentials gate**
-	// (the user just signed in, so they already hold ≥1 credential). Prefer a
-	// server `upsell_eligible` flag; else a conservative client cadence over the
-	// cadence signals present in bootinfo (declines / opt_out), default cap.
-	// `storageGet(key)` reads localStorage (injected so the logic stays browser-free).
+	// Post-hybrid upsell: after a QR sign-in the login bundle sets UPSELL_FLAG_KEY; offer
+	// "add a passkey to this device" under the nudge cadence but without the 0-credentials
+	// gate. `storageGet(key)` is injected so the logic stays browser-free.
 	function upsellDecision(boot, caps, storageGet, now) {
 		boot = boot || {};
 		caps = caps || {};
@@ -507,14 +460,11 @@
 	}
 
 	// ---------------------------------------------------- settings banners
-	// A pure decision matrix: given the Passkey Settings values + optional server
-	// context, return the banners to paint. Each is {level, key, args}. The DOM
-	// layer maps `key` (a COPY.* string) through __(). Banners that need cross-flag
-	// server data (core enable_two_factor_auth / disable_user_pass_login / the
-	// flagged-user count) are emitted ONLY when that data is supplied in `ctx`.
+	// Banners ({level, key, args}) for the Passkey Settings values. Banners that need
+	// server context are emitted only when `ctx` carries it.
 	//   doc: { login_with_passkey, passkey_as_second_factor, passkey_notify_on_change,
 	//          passkey_rp_id, passkey_origins }
-	//   ctx: { currentHost, resolvedRpId, resolvedOrigins, coreTwoFactor,
+	//   ctx: { currentHost, currentOrigin, resolvedRpId, resolvedOrigins, coreTwoFactor,
 	//          disablePassLogin, passkeyOnlyUserCount }
 	function settingsBanners(doc, ctx) {
 		doc = doc || {};
@@ -524,28 +474,20 @@
 		var secondFactor = isTruthy(doc.passkey_as_second_factor);
 		var anyMode = firstFactor || secondFactor;
 
-		// The RP-ID one-way-door caution is NOT a permanent top banner anymore — it lives
-		// inline as the passkey_rp_id field description (near its field, subtle), plus the
-		// loud typed confirm on an actual change. COPY.rpIdOneWayDoor stays the confirm copy.
-
-		// No RP ID resolves while a mode is being enabled — this is exactly the
-		// save-blocking condition the server throws on (_validate_enablement), surfaced
-		// INLINE before save with the two concrete fixes. `resolvedRpId` is now
-		// server-truth (explicit field, else the server host_name resolution — never
-		// the browser host), so a blank value here means Save WILL fail.
+		// No RP ID while enabling a mode: Save will fail (_validate_enablement), so say how
+		// to fix it now. `resolvedRpId` is server-truth, never the browser host.
 		if (anyMode && !ctx.resolvedRpId) {
 			banners.push({ level: "error", key: COPY.rpIdUnresolved, args: [ctx.currentHost || ""] });
 		}
 
-		// Host mismatch — fail-closed must be diagnosable. Client-computable
-		// from the resolved origins vs the current host. Only meaningful once an RP ID
-		// actually resolves (otherwise rpIdUnresolved above is the real story).
+		// This page's origin is not trusted, so ceremonies here will fail. Only once an RP ID
+		// resolves; otherwise rpIdUnresolved is the real story.
 		if (
 			ctx.resolvedRpId &&
-			ctx.currentHost &&
+			ctx.currentOrigin &&
 			Array.isArray(ctx.resolvedOrigins) &&
 			ctx.resolvedOrigins.length &&
-			!originsIncludeHost(ctx.resolvedOrigins, ctx.currentHost)
+			!originsIncludeOrigin(ctx.resolvedOrigins, ctx.currentOrigin)
 		) {
 			banners.push({ level: "error", key: COPY.hostMismatch, args: [ctx.resolvedRpId || ""] });
 		}
@@ -622,9 +564,8 @@
 			.filter(function (r) { return !!r; });
 	}
 
-	// Client mirror of server policy.resolve_origins. The RP ID is credential scope,
-	// never an origin. Start only with the exact configured site origin supplied by
-	// the server, then append explicit passkey_origins lines (deduped, in order).
+	// Client mirror of policy.resolve_origins: the configured site origin, then the explicit
+	// passkey_origins lines (deduped). The RP ID is never an origin.
 	function deriveOrigins(raw, configuredSiteOrigin) {
 		var origins = configuredSiteOrigin ? [String(configuredSiteOrigin).trim()] : [];
 		String(raw || "").split(/\r?\n/).forEach(function (line) {
@@ -708,37 +649,34 @@
 		};
 	}
 
-	// Exact-host membership for an origins allowlist (host compare, scheme-tolerant).
-	function originsIncludeHost(origins, host) {
-		host = String(host || "").toLowerCase();
-		for (var i = 0; i < origins.length; i++) {
-			var h = originHost(origins[i]);
-			if (h && h === host) return true;
-		}
-		return false;
+	// Exact-origin membership (scheme, host and port), as the server matches
+	// clientDataJSON.origin against its allowlist.
+	function originsIncludeOrigin(origins, origin) {
+		var target = canonicalOrigin(origin);
+		return !!target && origins.some(function (candidate) {
+			return canonicalOrigin(candidate) === target;
+		});
 	}
-	function originHost(origin) {
-		var s = String(origin || "").trim().toLowerCase();
-		s = s.replace(/^https?:\/\//, "");
-		s = s.replace(/\/.*$/, "");
-		return s || null;
+	// Browser-canonical scheme://host[:port] (default port dropped), or null.
+	function canonicalOrigin(origin) {
+		try {
+			var canonical = new URL(String(origin || "").trim()).origin;
+			return canonical === "null" ? null : canonical;
+		} catch (e) {
+			return null;
+		}
 	}
 
 	// ---------------------------------------------------- security posture panel
-	// Pure renderer for the admin "Security posture" panel. The SERVER
-	// (posture.build_posture) ships the verdict + already-translated rows; this only
-	// ORDERS them for the attention hierarchy and shapes a view-model — NO copy lives
-	// here (the reveal-vs-vague split is decided server-side, on the SM-only surface).
-	// Order: severity high→medium→low→info, and the detectability disclaimer
-	// (detectable === false) always sorts LAST regardless of its severity.
+	// Orders the server's translated posture rows (posture.build_posture): severity
+	// high→info, the detectability disclaimer (detectable === false) always last. No copy here.
 	var POSTURE_SEVERITY_RANK = { high: 0, medium: 1, low: 2, info: 3 };
 
 	function posturePanel(response) {
 		response = response || {};
 		var verdict = response.verdict || {};
 		var rows = Array.isArray(response.rows) ? response.rows.slice() : [];
-		// Stable sort (V8): the disclaimer sinks last, then by severity; server order
-		// is preserved within a bucket.
+		// Stable sort keeps server order within a bucket.
 		rows.sort(function (a, b) {
 			var da = a && a.detectable === false ? 1 : 0;
 			var db = b && b.detectable === false ? 1 : 0;
@@ -783,17 +721,12 @@
 		return POSTURE_ROW_MARK[row.severity] || "note";
 	}
 
-	// The settings-report view-model: the CTA/summary + per-row marks the Passkey
-	// Settings form paints (a satisfying headline verdict, a call-to-action, then a
-	// severity-ordered checklist). Builds ON posturePanel (same ordering + normalisation)
-	// and adds ONLY presentation-neutral shape — the copy still lives server-side.
-	//   summary.tone       "good" | "high" | "info" (mirrors the verdict)
-	//   summary.allClear   true iff the verdict is "good" (no stock bypass path) —
-	//                      the "satisfying tick when everything is fine" signal
-	//   summary.canBypass  true iff at least one active bypass path exists
-	//   summary.actionCount how many rows want action now (flags + warnings) — the
-	//                      count the CTA surfaces ("Review N gaps")
-	//   rows[].mark        "flag" | "warn" | "tune" | "note" (see postureRowMark)
+	// The settings-report view-model, built on posturePanel:
+	//   summary.tone        "good" | "high" | "info" (mirrors the verdict)
+	//   summary.allClear    true iff the verdict is "good"
+	//   summary.canBypass   true iff at least one active bypass path exists
+	//   summary.actionCount rows wanting action now (flags + warnings)
+	//   rows[].mark         "flag" | "warn" | "tune" | "note" (see postureRowMark)
 	function postureReport(response) {
 		var panel = posturePanel(response);
 		var flagCount = 0;
@@ -835,14 +768,13 @@
 		var userHandle = s.user_handle || s.userHandle || null;
 		var ids = s.credential_ids || s.credentialIds || null;
 		if (!userHandle || !Array.isArray(ids)) return null;
-		// F3: an EMPTY ids array is valid and INTENTIONAL — after a genuine last-passkey
-		// delete the provider is meant to hide ALL of the user's passkeys. We reject only a
-		// NON-array (nothing to signal); [] passes through on purpose. The desk/portal caller
-		// fires this only behind a successful server read, so a failed list never sends [].
+		// An empty array is intentional: after the last passkey is deleted the provider should
+		// hide them all. Callers signal only after a successful server read, so a failed list
+		// never sends [].
 		return { userHandle: userHandle, allAcceptedCredentialIds: ids.slice() };
 	}
 
-	// Shape a signalCurrentUserDetails payload (F2) from a get_signal_data response or a
+	// Shape a signalCurrentUserDetails payload from a get_signal_data response or a
 	// verify_registration signal block. Returns null when there's nothing to sync.
 	// signalCurrentUserDetails needs BOTH name + displayName; if the server sent only one,
 	// mirror it into the other so the provider's account-chooser label is never blanked.
@@ -919,19 +851,19 @@
 		enforcementAdminViewModel: enforcementAdminViewModel,
 		upsellDecision: upsellDecision,
 		settingsBanners: settingsBanners,
-			roleNames: roleNames,
-			deriveOrigins: deriveOrigins,
-			passkeyOnlyAvailability: passkeyOnlyAvailability,
-			validateAndroidFingerprints: validateAndroidFingerprints,
-			enforcementDeferKey: enforcementDeferKey,
-			createSessionEventRecorder: createSessionEventRecorder,
-			originsIncludeHost: originsIncludeHost,
-		originHost: originHost,
+		roleNames: roleNames,
+		deriveOrigins: deriveOrigins,
+		passkeyOnlyAvailability: passkeyOnlyAvailability,
+		validateAndroidFingerprints: validateAndroidFingerprints,
+		enforcementDeferKey: enforcementDeferKey,
+		createSessionEventRecorder: createSessionEventRecorder,
+		originsIncludeOrigin: originsIncludeOrigin,
+		canonicalOrigin: canonicalOrigin,
 		posturePanel: posturePanel,
 		postureRowMark: postureRowMark,
 		postureReport: postureReport,
-			signalPayload: signalPayload,
-			currentUserDetailsPayload: currentUserDetailsPayload,
-			signalCredentialState: signalCredentialState,
-		};
+		signalPayload: signalPayload,
+		currentUserDetailsPayload: currentUserDetailsPayload,
+		signalCredentialState: signalCredentialState,
+	};
 });

@@ -94,7 +94,9 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
    dismissible nudge (or silently when opted out, capped or cooling down), without emailing
    administrators. Nothing is blocking;
    help them enroll on a capable device (or issue a security key) when convenient.
-   Only **Block + Notify Admin** keeps the gate up — the fixes below apply then.
+   Only **Block + Notify Admin** keeps the gate up; there the button reads
+   **Contact administrator**, because clicking it emails the System Managers. The
+   fixes below apply then.
 2. **Exempt this one user (one click).** Open the user's **User** form → the
    **Passkeys** section (System Managers see it on anyone's form). While the policy
    is *Enforce* / *Enforce After Date* it shows two admin actions; click **Exempt

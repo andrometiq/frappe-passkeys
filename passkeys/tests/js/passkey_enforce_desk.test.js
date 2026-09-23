@@ -51,6 +51,13 @@ function findButton(root, pred) {
 	return null;
 }
 
+function findNode(root, pred) {
+	if (!root) return null;
+	if (pred(root)) return root;
+	for (const c of root.children) { const f = findNode(c, pred); if (f) return f; }
+	return null;
+}
+
 // A mock frappe.ui.Dialog. .hide() fires the hide.bs.modal handlers registered via
 // $wrapper.on — the one path every real dismissal (Esc / backdrop / X / programmatic)
 // funnels through. It is intentionally NOT idempotent so a repeated hide exercises the
@@ -143,6 +150,34 @@ test("desk enforce: a blocking (grace-exhausted) gate wires no dismissal defer",
 	const d = Dialog.instances[Dialog.instances.length - 1];
 	d.hide();
 	assert.strictEqual(deferCount(), 0, "a blocking gate is static and has no grace left — it never records a defer");
+});
+
+function incapableCount() {
+	return fetchLog.filter((f) => f.url.includes("record_enforcement") && f.body.event === M.ENFORCE_EVENTS.INCAPABLE).length;
+}
+function escapeLink(d) {
+	const labels = [M.COPY.enforceCantSetUp, M.COPY.enforceContactAdmin];
+	return findButton(d._body, (b) => labels.includes(b.textContent));
+}
+
+test("desk enforce: the blocking gate's escape is labelled by what it does under each policy", () => {
+	fetchLog.length = 0;
+	Dialog.instances.length = 0;
+	mod.showEnforceDialog({ enforcement: { incapable_policy: "degrade" } }, { blocking: true, graceRemaining: 0 });
+	const degrade = Dialog.instances[Dialog.instances.length - 1];
+	const cantSetUp = escapeLink(degrade);
+	assert.strictEqual(cantSetUp.textContent, M.COPY.enforceCantSetUp, "Degrade notifies nobody, so it must not promise an admin");
+	cantSetUp.click();
+	assert.strictEqual(degrade.hidden, true, "under Degrade the escape lets the user through");
+	assert.strictEqual(incapableCount(), 1, "the incapable claim is still recorded");
+
+	mod.showEnforceDialog({ enforcement: { incapable_policy: "block_notify" } }, { blocking: true, graceRemaining: 0 });
+	const notify = Dialog.instances[Dialog.instances.length - 1];
+	const contact = escapeLink(notify);
+	assert.strictEqual(contact.textContent, M.COPY.enforceContactAdmin);
+	contact.click();
+	assert.strictEqual(notify.hidden, false, "Block + Notify Admin keeps the gate up");
+	assert.ok(findNode(notify._body, (n) => n.textContent === M.COPY.enforceBlockedNotice), "the admin-notified notice is shown");
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));

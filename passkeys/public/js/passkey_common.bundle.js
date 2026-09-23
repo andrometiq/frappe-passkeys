@@ -1,13 +1,6 @@
-// passkey_common.bundle.js — shared WebAuthn L3 helpers for the passkeys app.
-// Destination on core merge: frappe/public/js/frappe/passkey/ (frappe.ui.passkey.*).
-//
-// This module is deliberately framework-light and side-effect-free at load time so its
-// pure logic (JSON shim, feature detection, error mapping, selector resolution, retry
-// state machine, i18n merge) can be unit-tested under plain `node --test` WITHOUT a bench.
-//
-// Dual export (UMD-lite): CommonJS `module.exports` for node tests; browser global
-// `frappe.passkeys_common` for the login/portal/desk bundles (loaded as its own
-// web_include_js/app_include_js entry BEFORE any bundle that reads it).
+// passkey_common.bundle.js — shared WebAuthn L3 helpers, side-effect-free at load so
+// `node --test` can exercise them without a bench. Exports CommonJS for node and
+// `frappe.passkeys_common` in the browser; it must load BEFORE any bundle that reads it.
 //
 // eslint-env browser, node
 (function (root, factory) {
@@ -35,9 +28,8 @@
 		return str;
 	}
 
-	// Merge (never clobber) an app translation catalog into frappe._messages.
-	// frappe._messages legitimately holds Web-Form strings on v15/v16 pages and the full
-	// core catalog on develop — Object.assign MERGES.
+	// Merge, never clobber: frappe._messages already holds Web-Form strings on v15/v16 and
+	// the full core catalog on develop.
 	function mergeAppTranslations(frappeRef, catalog) {
 		if (!frappeRef || !catalog) return;
 		frappeRef._messages = frappeRef._messages || {};
@@ -72,7 +64,7 @@
 	function b64urlToBytes(b64url) {
 		var b64 = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
 		var pad = b64.length % 4;
-		if (pad) b64 += "====".slice(pad); // tolerate unpadded input (spike)
+		if (pad) b64 += "====".slice(pad); // tolerate unpadded input
 		var bin = (typeof atob === "function")
 			? atob(b64)
 			: Buffer.from(b64, "base64").toString("binary");
@@ -231,8 +223,7 @@
 	}
 
 	// ------------------------------------------------------- error mapping
-	// Map a browser DOMException from navigator.credentials.get/create to a fixed code.
-	// Codes are the exhaustive rejection taxonomy.
+	// Map a get()/create() DOMException to the fixed rejection taxonomy.
 	function mapDomException(err) {
 		var name = err && (err.name || err.code);
 		switch (name) {
@@ -277,17 +268,15 @@
 	}
 
 	// -------------------------------------------------- selector resolution
-	// Two DOM generations, one contract. Probe selectors that no-op
-	// on drift: a miss returns null and callers skip the patch/button — never throw.
+	// A selector miss returns null and callers skip the patch — never throw.
 	function resolveIdentifierInput(doc) {
 		if (!doc) return null;
 		// develop login.html:21, v16 :13, v15 :9 — id is stable across generations
 		return doc.querySelector("#login_email");
 	}
 
-	// Find the visible section's action group (the login page shows one <section> at a
-	// time via login.route()); prefer .page-card-actions, then a provider button group,
-	// then the form itself. Returns {mount, mode} or null.
+	// Mount point in the visible login section: .page-card-actions, else a provider
+	// button group, else the form. Returns {mount, mode} or null.
 	function resolveButtonMount(doc) {
 		if (!doc) return null;
 		var visibleSection = pickVisibleSection(doc);
@@ -378,20 +367,10 @@
 	};
 
 	// -------------------------------------------------- login status machine
-	// The VISIBLE staged-status surface for the first-factor login ceremony (the
-	// explicit "Sign in with a passkey" button AND the conditional/autofill flow).
-	// ONE pure source of truth: each state maps to ONE piece of copy that feeds BOTH
-	// the on-page status element AND the aria-live region, so the sighted and
-	// screen-reader experiences can never drift (A6). The bundle
-	// (passkey_login.bundle.js) owns the DOM element + the slow-connection timer; this
-	// holds the states, their copy/tone, and the legal transitions so the whole flow is
-	// unit-testable under node:test with no browser.
-	//
-	// Copy is the English base (the bundle wraps each string in t() at render time) and
-	// follows the error-copy playbook: geeky-but-accurate on the happy path
-	// (WebAuthn really does wait for the device, then verify a signature), plain + routed
-	// on failure — every error names a way out, and there is no humor in an error state.
-	// Tone drives styling: "progress" (spinner), "success" (resolved beat), "error".
+	// The first-factor login's visible status. Each state has ONE copy string that feeds
+	// both the on-page status element and the aria-live region, so sighted and
+	// screen-reader users always get the same message. Copy is the English base (wrapped
+	// in t() at render); every error names a way out. Tone: progress / success / error.
 	var LOGIN_STATES = {
 		idle: { text: "", tone: "idle", visible: false, terminal: false },
 		waiting: { text: "Waiting for your device…", tone: "progress", visible: true, terminal: false },
@@ -405,9 +384,8 @@
 			text: "No passkey was used — you can try again or sign in another way.",
 			tone: "error", visible: true, terminal: true,
 		},
-		// A removed/stale passkey the server no longer recognises (server UnknownCredential).
-		// Midway copy per the playbook: help the user WITHOUT asserting the account fact
-		// ("didn't work here", not "isn't registered") — it may have been removed.
+		// Server UnknownCredential. The copy never asserts the account fact ("didn't work
+		// here", not "isn't registered"): enumeration-safe.
 		removed: {
 			text: "That passkey didn't work here — it may have been removed. Sign in another way.",
 			tone: "error", visible: true, terminal: true,
@@ -419,11 +397,9 @@
 		failed: { text: "Couldn't use a passkey — sign in another way.", tone: "error", visible: true, terminal: true },
 	};
 
-	// Legal transitions. The bundle renders whatever view `to()` returns, so an
-	// out-of-order call is a safe no-op (stay in the current state) rather than a crash
-	// or a nonsense paint — e.g. a late error can never overwrite the "You're in" success
-	// beat while the page is redirecting. verifying→waiting is allowed for the transparent
-	// ceremony_expired re-arm (abandon the verify, start a fresh gesture).
+	// Legal transitions; an out-of-order call stays put, so a late error can never
+	// overwrite "You're in" during the redirect. verifying→waiting serves the
+	// ceremony_expired re-arm.
 	var LOGIN_TRANSITIONS = {
 		idle: ["waiting", "verifying"],
 		waiting: ["verifying", "cancelled", "removed", "unsupported", "failed", "idle"],
@@ -460,10 +436,8 @@
 	};
 	LoginStatus.prototype.view = function () { return loginStatusView(this.state); };
 
-	// Map a mapDomException() code (the browser-gesture rejection taxonomy) to a login
-	// state. cancel and timeout are BOTH NotAllowedError → both land on "cancelled": the
-	// browser collapses them by design (privacy), so we never invent a distinct "timed
-	// out" cause. not_supported is a genuine capability fact and stays distinct.
+	// Map a mapDomException() code to a login state. Browsers report cancel and timeout
+	// as the same NotAllowedError (privacy), so both land on "cancelled".
 	function loginStatusForDomCode(code) {
 		switch (code) {
 			case "not_supported":
@@ -477,10 +451,8 @@
 		}
 	}
 
-	// Map a mapServerExcType() kind (the server's typed 401 taxonomy) to a login state.
-	// unknown_credential (a removed/stale credential the server no longer recognises) gets
-	// its OWN distinct visible state (A5); every other typed refusal collapses to the
-	// generic "failed" route-out (enumeration-safe — the copy never branches by cause).
+	// Map a mapServerExcType() kind to a login state. unknown_credential gets its own
+	// state; every other refusal collapses to "failed" (enumeration-safe).
 	function loginStatusForServerKind(kind) {
 		switch (kind) {
 			case "unknown_credential":
@@ -491,9 +463,7 @@
 	}
 
 	// ------------------------------------------------------- signal builders
-	// Base64url of a live PublicKeyCredential's id. cred.id is ALREADY the base64url of
-	// rawId per the WebAuthn spec; fall back to encoding rawId when a stub/older browser
-	// omits it. Returns null when neither is present.
+	// Base64url credential id: cred.id already is one per spec; else encode rawId; else null.
 	function credentialIdB64url(cred) {
 		if (!cred) return null;
 		if (typeof cred.id === "string" && cred.id) return cred.id;
@@ -515,9 +485,8 @@
 		return true;
 	}
 
-	// Build the signalUnknownCredential payload {rpId, credentialId} (F1) from the asserted
-	// credential the server just rejected. The spec REQUIRES a valid base64url credentialId —
-	// the old empty {} rejected with TypeError and pruned nothing.
+	// signalUnknownCredential payload {rpId, credentialId} for the credential the server
+	// just rejected.
 	//
 	// Guard: only signal when the assertion carried a userHandle. The server raises
 	// UnknownCredential for BOTH "credential row not found" (safe to prune) AND "assertion
@@ -563,18 +532,13 @@
 	}
 
 	// ------------------------------------------------------- version-native icons
-	// Native-first icon resolution. Each management glyph maps to an ORDERED list of
-	// sprite <symbol> ids; at render time we take the FIRST id whose <symbol> is actually
-	// present in the document (sprite symbols carry their id — document.getElementById) and
-	// emit the host's own <use href="#id"> form, so each Frappe version renders its OWN
-	// native icon with native sprite styling. Grounded in the shipped sprites:
+	// Native-first icons: use the first candidate <symbol> present in the host sprite so
+	// each Frappe version renders its own glyph:
 	//   pencil : develop/v16 lucide → #icon-pencil ; v15 timeless → #icon-edit
 	//   trash  : develop/v16 lucide → #icon-trash  ; v15 timeless → #icon-delete
 	//   key    : develop/v16 lucide → #icon-key    ; v15 has NO key glyph → inline fallback
-	// If NONE of an icon's candidates is present (v15's key; or a login/portal page whose
-	// desk sprite is absent, or is injected only AFTER our render), we degrade to the
-	// app-shipped inline SVG below. That degradation is intentional — the inline glyph
-	// always renders correctly, so a missing/late sprite can never blank the button (A2).
+	// With no candidate present (v15's key, or a page whose sprite is absent or loads after
+	// us) we fall back to the inline SVG below, so a button is never blank.
 	var ICON_SYMBOLS = {
 		pencil: ["icon-pencil", "icon-edit"],
 		trash: ["icon-trash", "icon-delete"],
@@ -603,13 +567,9 @@
 			'<circle cx="7.5" cy="15.5" r="5.5"/>',
 	};
 
-	// Build an icon markup string, native-first (see ICON_SYMBOLS). `name` is a key in
-	// ICON_SYMBOLS/ICON_PATHS; unknown ⇒ "". Keeps the caller's classes (icon / icon-sm) so
-	// sizing + theming apply in either branch. `doc` defaults to the global document (browser);
-	// tests inject a stub. When a candidate <symbol> is present we emit the native <use> form
-	// with NO inline fill/stroke (native styling is correct for that version). Otherwise — no
-	// document, or no candidate present — we return the PINNED inline SVG so v15's `.icon` CSS
-	// vars can't render the outline art as a solid blob.
+	// Icon markup for `name` (unknown ⇒ ""), keeping the caller's classes. The native <use>
+	// form carries no inline fill/stroke; the fallback is the pinned inline SVG. `doc`
+	// defaults to the global document; tests inject a stub.
 	function iconSvg(name, className, doc) {
 		var cls = className ? ' class="' + className + '"' : "";
 		var d = doc || (typeof document !== "undefined" ? document : null);
@@ -633,12 +593,9 @@
 	}
 
 	// ============================================================ confirm
-	// Action-confirmation ("passkey signing") primitive — the PURE protocol
-	// engine. Zero window/document/navigator/frappe references so the whole
-	// begin -> gesture -> verify -> grant flow (+ the 401 retry / fingerprint
-	// echo, + concurrency dedupe) is unit-testable under node:test
-	// with injected deps. The frappe.ui.Dialog UI + fetch/navigator wiring live
-	// in passkey_confirm.bundle.js, which passes real deps here.
+	// The action-confirmation protocol engine: begin -> gesture -> verify -> grant, the 401
+	// retry with fingerprint echo, and concurrency dedupe. No browser globals; the UI and
+	// fetch/navigator wiring are injected (passkey_confirm.bundle.js, the portal bundle).
 
 	// Wire constants — MUST mirror passkeys/session.py GRANT_HEADER/GRANT_KWARG.
 	var GRANT_HEADER = "X-Passkey-Grant";
@@ -672,10 +629,8 @@
 		return body;
 	}
 
-	// Extract the human-readable text Frappe puts in a thrown error's
-	// `_server_messages` (a JSON string of JSON-encoded {message,...} dicts) so a
-	// server refusal (e.g. the last-passkey delete guard) is surfaced VERBATIM instead
-	// of collapsed into a generic string (A4). Returns null when there is none.
+	// The text in a thrown error's `_server_messages` (a JSON string of JSON-encoded
+	// {message,...} dicts), so a server refusal is shown verbatim. Null when absent.
 	function serverMessages(body) {
 		if (!body || typeof body !== "object" || !body._server_messages) return null;
 		var arr;
@@ -825,7 +780,7 @@
 	//                                                          (reject to cancel)
 	//     collectPassword({action, actionLabel, parameterSummary}) -> Promise<string>
 	//                                                          (reject to cancel)
-	//     announce(msg), busy(bool), done(ok), passwordError(msg), close()
+	//     announce(msg), busy(bool), done(ok), passwordError(msg)
 	//   }
 	//   translate (optional): (str) -> str
 	//   now (optional): () -> ms
@@ -893,8 +848,8 @@
 					Array.isArray(begin.methods) ? begin.methods : input.methods
 				);
 				if (!caps.passkey && !caps.password) {
-					// Genuinely can't re-auth (weak login, no password, no usable passkey):
-					// tell the user what to do instead of a dead-end generic error (A4).
+					// No way to re-authenticate (weak login, no password, no usable passkey):
+					// say what to do instead.
 					return reject(CONFIRM_CODES.FALLBACK_UNAVAILABLE,
 						"This needs you to confirm it's you, but this sign-in can't be confirmed " +
 						"with a passkey or password. Sign in again with your password or a passkey, then try again.");
@@ -1013,9 +968,8 @@
 				}).then(function (grant) {
 					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
 						if (res2 && res2.ok) return unwrapMessage(res2.body);
-						// Confirmed, but the retry still failed. A specific server refusal
-						// (e.g. the last-passkey delete guard, which fires only AFTER the sudo
-						// gate passes) is surfaced verbatim instead of collapsed (A4).
+						// Confirmed, but the retry still failed: show the server's own refusal
+						// (e.g. the last-passkey guard, which runs after the sudo gate).
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							serverMessages(res2 && res2.body) ||
 								tr("We confirmed it's you, but the action still didn't go through — please try again."));
@@ -1027,15 +981,9 @@
 		}
 
 		function httpError(res) {
-			// `res` is a REAL HTTP response that isn't the 401 retry contract (417
-			// served-by-core, other 4xx, or 5xx with a non-contract body). The server
-			// was reached and refused — that is NOT a transport failure. A dropped
-			// fetch (offline/DNS) rejects the promise and is mapped to `network` at the
-			// call site below; distinguishing the two lets callers tell "offline" from
-			// "the server said no". Stays inside the fixed taxonomy: a
-			// reached-but-failed request is `confirmation_failed`, never `network`.
-			// Surface the server's own message when it carried one (e.g. the
-			// last-passkey delete guard's ValidationError) instead of a generic string (A4).
+			// A real HTTP response that isn't the 401 contract: the server was reached and
+			// refused, so it is `confirmation_failed` (with the server's message when it sent
+			// one), never `network`. A dropped fetch rejects and maps to `network` below.
 			return new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 				serverMessages(res && res.body) ||
 					tr("The action couldn't be confirmed — please try again."));

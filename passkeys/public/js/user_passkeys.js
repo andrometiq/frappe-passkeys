@@ -1,22 +1,8 @@
-// user_passkeys.js — the "Passkeys" section on the Desk User form. Wired via
-// `doctype_js = {"User": "public/js/user_passkeys.js"}`.
-//
-// Placement is DETERMINISTIC. install.sync_user_form_section adds a Custom Field
-// Section Break ("passkeys_section", label "Passkeys") + an HTML wrapper
-// ("passkeys_html") positioned right AFTER the User form's "Change Password" /
-// security area — where a user manages their password & 2FA. This file renders into
-// that HTML wrapper. When no passkey mode is active (or the app is dormant, or the
-// viewer isn't allowed the section) it hides the lone HTML control, which leaves the
-// section empty and Frappe collapses it (`.empty-section` → display:none). So the
-// section never floats to the end of the form and never shows an empty header —
-// replacing the old `frm.dashboard.add_section()` that appended non-deterministically.
-//
-// Own form ⇒ full interactive cards + add; another user's form (System Manager) ⇒
-// read-only inventory + a link to the WebAuthn Credential DocType for admin
-// disable/delete. All rendering is delegated to frappe.passkeys.manage
-// (passkey_desk.bundle.js, loaded first via app_include_js); this file is only the
-// form glue. Destination on core merge: the passkeys section inside
-// frappe/core/doctype/user/user.js.
+// user_passkeys.js — the "Passkeys" section on the Desk User form. It renders into the
+// passkeys_html Custom Field that install.sync_user_form_section places after the
+// password area; hiding that lone control lets Frappe collapse the empty section.
+// Own form ⇒ interactive cards; another user's (System Manager) ⇒ read-only inventory.
+// Rendering is delegated to frappe.passkeys.manage (passkey_desk.bundle.js).
 //
 // eslint-env browser
 frappe.ui.form.on("User", {
@@ -76,9 +62,7 @@ frappe.ui.form.on("User", {
 			root.className = "passkey-admin-inventory";
 			host.appendChild(root);
 			manage.renderReadOnlyInventory(root, frm.doc.name);
-			// Admin enforcement-recovery controls (one-click exemption + grace reset),
-			// beneath the inventory. renderEnforcementAdmin self-gates on the site
-			// enforcement policy (from boot), so it renders nothing on Off/Nudge sites.
+			// Enforcement recovery; renders nothing unless the site policy enforces.
 			if (manage.renderEnforcementAdmin) {
 				var enfRoot = document.createElement("div");
 				enfRoot.className = "passkey-admin-enforcement";
