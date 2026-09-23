@@ -281,6 +281,20 @@ class DormantHooksTest(IntegrationTestCase):
 		self.assertTrue(frappe.db.exists("WebAuthn Credential", {"user": user}))
 		self.assertTrue(frappe.db.exists("WebAuthn User Handle", {"user": user}))
 
+	def test_enrolled_user_merge_refusal_is_a_noop(self):
+		old, new = self._user(), self._user()
+		make_handle(old)
+		make_handle(new)
+		user_doc = frappe.get_doc("User", old)
+		# control: the refusal really fires when the app is live
+		with self.assertRaisesRegex(frappe.ValidationError, "both users have passkeys"):
+			passkey.refuse_enrolled_user_merge(user_doc, "before_rename", old, new, merge=True)
+		# dormant: silent pass, and no app table is read (core owns User merges)
+		with _core_native(), patch("frappe.db.count", side_effect=AssertionError("app table read")):
+			self.assertIsNone(
+				passkey.refuse_enrolled_user_merge(user_doc, "before_rename", old, new, merge=True)
+			)
+
 	def test_cascade_delete_removes_rows_when_active(self):
 		user = self._user()
 		make_credential(user)

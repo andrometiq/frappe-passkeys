@@ -265,6 +265,10 @@ def release_payment(payment_id, amount):
     ...
 ```
 
+Only the arguments named in `bind_params` are bound to the grant; naming a `**kwargs` parameter
+binds its whole mapping. `allow_password_fallback` defaults to `True`, which lets a user confirm with
+their password; set it to `False`, as above, to require a passkey.
+
 `display_params` must be a subset of `bind_params`, and every `bind_params` name must be a parameter
 of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. Undeclared
 arguments are never returned to the client. The server emits `action_label` and `parameter_summary`, translating labels and rendering

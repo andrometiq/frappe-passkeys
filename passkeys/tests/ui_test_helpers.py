@@ -53,6 +53,15 @@ def _guarded_test_helper(fn):
 	return guarded
 
 
+def commit_passkey_settings() -> None:
+	"""Commit, then cache the committed Passkey Settings. Left empty, the cache is
+	refilled on the next miss, possibly by a concurrent request whose snapshot
+	predates this commit, which pins the old modes for every later request."""
+	frappe.db.commit()
+	flush_settings_cache()
+	frappe.get_cached_doc("Passkey Settings")
+
+
 @frappe.whitelist(methods=["POST"])
 def configure_login(
 	rp_id: str,
@@ -72,8 +81,7 @@ def configure_login(
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	flush_settings_cache()
-	frappe.db.commit()
+	commit_passkey_settings()
 	return values
 
 
@@ -108,8 +116,7 @@ def configure_second_factor(
 		frappe.db.set_single_value("Passkey Settings", field, value)
 	frappe.local.system_settings = None
 	frappe.clear_document_cache("System Settings", "System Settings")
-	flush_settings_cache()
-	frappe.db.commit()
+	commit_passkey_settings()
 	return values
 
 
@@ -125,8 +132,7 @@ def teardown_second_factor() -> dict:
 	frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
 	frappe.local.system_settings = None
 	frappe.clear_document_cache("System Settings", "System Settings")
-	flush_settings_cache()
-	frappe.db.commit()
+	commit_passkey_settings()
 	return {"ok": 1}
 
 
@@ -355,8 +361,7 @@ def configure_nudge(
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	flush_settings_cache()
-	frappe.db.commit()
+	commit_passkey_settings()
 	return values
 
 

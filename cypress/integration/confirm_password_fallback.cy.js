@@ -15,6 +15,7 @@ const FALLBACK_PW = "passkey-confirm-fallback-password";
 const PROBE = "passkeys.tests.ui_test_helpers.confirm_probe";
 const PROBE_ACTION = "passkeys.tests.confirm_probe";
 const PROBE_PK_ONLY = "passkeys.tests.ui_test_helpers.confirm_probe_passkey_only";
+const SEED_NUDGE = "passkeys.tests.ui_test_helpers.seed_nudge_state";
 
 const ensure_desk_access = (user) =>
 	cy.call("frappe.client.get", { doctype: "User", name: user }).then((body) => {
@@ -47,7 +48,11 @@ chromium_only("passkey action-confirmation — password fallback", () => {
 
 	it("mints a password-method grant and authorizes the action", () => {
 		cy.login(FALLBACK_USER, FALLBACK_PW);
+		// This passkey-less user is nudge-eligible; the enrollment nudge would cover the dialog.
+		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 1 });
 		cy.visit_desk(FALLBACK_USER);
+		// A dialog opened before the initial desk render is hidden by it.
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
 		cy.request("/api/method/frappe.auth.get_logged_user")
 			.its("body.message")
 			.should("eq", FALLBACK_USER);

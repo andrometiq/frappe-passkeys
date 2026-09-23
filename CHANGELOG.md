@@ -97,10 +97,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - An impersonated session can no longer register a passkey, so an Administrator impersonating a
   user cannot leave behind a credential that user never created.
 - System Settings refuses to disable username/password login while Passkey as Second Factor is
-  the only passkey mode (the Passkey Settings side already refused the same combination).
+  the only passkey mode (the Passkey Settings side already refused the same combination). Both
+  sides, and the two-factor floor, check each other under row locks, so concurrent saves of the two
+  settings pages cannot together commit an unsafe combination.
 - `@passkey_protected` rejects `bind_params` names missing from the decorated function's
   signature at decoration time, and reads bound names passed through `**kwargs`; previously both
-  bound `None`, so one grant covered any payload.
+  bound `None`, so one grant covered any payload. Naming the `**kwargs` parameter itself binds the
+  whole mapping.
 - Assertion counters are reclassified under row locks before sessions or grants are minted,
   rejecting duplicate nonzero counter replays.
 - Credential import refuses unsigned files by default, modified or cross-site v2 files,

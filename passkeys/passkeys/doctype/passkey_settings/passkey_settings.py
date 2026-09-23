@@ -94,19 +94,19 @@ class PasskeySettings(Document):
 	def _validate_second_factor_floor(self):
 		"""The enforcement floor is structural — passkey second factor
 		requires core two-factor auth to stay ON (direct password POSTs then
-		face core's own OTP gate on every branch, with zero hook dependence)."""
+		face core's own OTP gate on every branch, with zero hook dependence).
+		Runs under the mode lock ``validate`` took first and reads System Settings
+		with locking reads, mirroring ``auth_hooks.guard_system_settings``."""
 		if not cint(self.passkey_as_second_factor):
 			return
-		if not cint(self.login_with_passkey) and cint(
-			frappe.db.get_single_value("System Settings", "disable_user_pass_login")
-		):
+		if not cint(self.login_with_passkey) and policy.lock_system_setting("disable_user_pass_login"):
 			frappe.throw(
 				_(
 					"Passkey as Second Factor cannot be the only passkey mode while username/password login is disabled. Enable Login with Passkey or re-enable username/password login."
 				),
 				frappe.ValidationError,
 			)
-		if not policy.lock_core_2fa_floor():
+		if not policy.lock_system_setting("enable_two_factor_auth"):
 			frappe.throw(
 				_(
 					"Passkey as Second Factor requires Two Factor Authentication to be enabled in System Settings — it is the backstop for password logins that bypass the passkey UI."

@@ -209,18 +209,18 @@ def _is_dev_localhost(host: str) -> bool:
 	return bool(frappe.conf.get("developer_mode")) and host in LOCALHOST_HOSTS
 
 
-def lock_core_2fa_floor() -> int:
-	"""Lock and return core's 2FA flag.
+def lock_system_setting(fieldname: str) -> int:
+	"""Lock one System Settings Single row and return its current integer value.
 
-	Both the Passkey Settings forward validator and the System Settings reverse
-	validator take this same ``tabSingles`` row lock. Concurrent saves therefore
-	cannot each validate the other's stale pre-change value and commit a desync.
+	A plain read inside REPEATABLE READ can return the transaction's stale
+	snapshot; this locking read sees the latest commit. The floor validators take
+	the Passkey Settings lock (``lock_passkey_modes``) first, then these rows.
 	"""
 	rows = frappe.db.sql(
 		"""select `value` from `tabSingles`
 		where `doctype` = %s and `field` = %s
 		for update""",
-		("System Settings", "enable_two_factor_auth"),
+		("System Settings", fieldname),
 	)
 	return cint(rows[0][0] if rows else 0)
 

@@ -491,6 +491,35 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			frappe.local.response.get("payload_fingerprint"), session.payload_hash({"amount": 10})
 		)
 
+	def test_binding_the_kwargs_parameter_binds_the_whole_mapping(self):
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.set_user(user)
+
+		@confirm.passkey_protected(action="myapp.pay-mapping", bind_params=["kwargs"])
+		def pay(**kwargs):
+			return kwargs
+
+		fingerprints = {}
+		for amount in (10, 999):
+			self._request("/api/method/myapp.pay-mapping")
+			with self.assertRaises(PasskeyConfirmationRequired):
+				pay(amount=amount)
+			fingerprints[amount] = frappe.local.response.get("payload_fingerprint")
+		self.assertEqual(fingerprints[10], session.payload_hash({"kwargs": {"amount": 10}}))
+		self.assertNotEqual(fingerprints[10], fingerprints[999])
+
+		def grant_for_amount_10(sign_count):
+			begun = self._begin("myapp.pay-mapping", payload_hash=fingerprints[10])
+			assertion = self._assert(auth, begun["options"], sign_count=sign_count)
+			return self._verify(begun["state_id"], assertion)["grant"]
+
+		self._request("/api/method/myapp.pay-mapping", grant_header=grant_for_amount_10(1))
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay(amount=999)
+		self._request("/api/method/myapp.pay-mapping", grant_header=grant_for_amount_10(2))
+		self.assertEqual(pay(amount=10), {"amount": 10})
+
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()
 		auth = self._enroll(user)

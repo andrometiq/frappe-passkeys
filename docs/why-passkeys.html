@@ -441,7 +441,7 @@
         <p class="eyebrow">For your Frappe site</p>
         <h2 id="frappe-h">Turning this on</h2>
         <p>Adding passkeys to a Frappe site means choosing the same model as Google. Sign-in becomes phishing-resistant by construction, and lighter for users than the password it replaces.</p>
-        <p>The server stops storing a crackable secret. It stores a public key that is safe to leak.</p>
+        <p>For each passkey the server stores only a public key, which is safe to leak. A password the account still has keeps its hash on the server.</p>
       </div>
       <figure class="spot spot-ui">
         <div class="login" role="img" aria-label="A mock login screen where a 'Sign in with a passkey' button replaces the password field.">

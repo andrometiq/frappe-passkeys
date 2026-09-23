@@ -52,7 +52,10 @@ def cascade_delete_user_artifacts(doc, method=None):
 
 def refuse_enrolled_user_merge(doc, method=None, old=None, new=None, merge=False):
 	"""User before_rename: a merge would re-point both users' handle rows at one user and
-	fail on the handle's unique index; refuse it with a clear message instead."""
+	fail on the handle's unique index; refuse it with a clear message instead.
+	Dormant shells leave User merges to core."""
+	if install.dormant():
+		return
 	if merge and frappe.db.count("WebAuthn User Handle", {"user": ("in", [old, new])}) > 1:
 		frappe.throw(
 			_(

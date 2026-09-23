@@ -39,10 +39,12 @@ Frappe v15, v16, and develop.
 - **Passkey as a second factor.** A passkey step after the password, built on Frappe's own
   two-factor flow. Users can fall back to a one-time code if the site allows it.
 
-- **Passkey confirmation for sensitive actions.** Decorate any whitelisted method with
-  `@passkey_protected` and it runs only after a fresh passkey confirmation. Each confirmation is
-  single-use, expires in about three minutes, and is bound to the user, the session, the action,
-  and the exact payload. This suits approvals such as releasing a bank payment.
+- **Confirmation for sensitive actions.** Decorate any whitelisted method with
+  `@passkey_protected` and it runs only after a fresh confirmation. By default a user may confirm
+  with their password instead of a passkey; pass `allow_password_fallback=False` to require a
+  passkey. Each confirmation is single-use, expires in about three minutes, and is bound to the
+  user, the session, the action, and the values of the arguments you list in `bind_params`. This
+  suits approvals such as releasing a bank payment.
   See [Custom UI](docs/custom-ui.md#action-confirmation-for-your-own-methods).
 
 - **Enrollment nudges and enforcement.** Prompt users without a passkey to create one, with a
@@ -62,12 +64,13 @@ Frappe v15, v16, and develop.
 - **Custom UIs.** Build your own screens with the markup-free `frappe.passkeys.headless`
   JavaScript API, or call the REST endpoints from a native or single-page app.
 
-- **Secure by default.** Every login mode ships off. User verification is required. An exact
-  signature-counter replay is always rejected, and a counter regression flags the passkey and emails
-  its owner (or is rejected, if you choose). Relying Party ID and origins come from pinned
+- **Secure by default.** Every login mode ships off. Passwordless sign-in and action confirmations
+  require user verification (a PIN or biometric); a passkey used as the second factor after a
+  password does not. A repeated non-zero signature counter is always rejected, and a counter
+  regression flags the passkey and emails its owner (or is rejected, if you choose). Relying Party ID and origins come from pinned
   configuration, never from request headers. Guest endpoints are rate-limited per IP and signed-in
-  endpoints per user. A passkey-only account needs at least two passkeys, and its last passkey
-  cannot be removed.
+  endpoints per user. Switching an account to passkey-only sign-in needs two enabled passkeys, and
+  the account's last passkey cannot then be removed.
 
 <details>
 <summary>Screenshots</summary>

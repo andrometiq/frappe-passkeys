@@ -14,6 +14,7 @@ from frappe import _
 from frappe.utils import cint
 
 from passkeys import install, policy, state
+from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_passkey_modes
 
 
 def on_login_veto(login_manager=None, **kwargs):
@@ -213,20 +214,27 @@ def guard_system_settings(doc, method=None):
 	floor weaker, and blocking every save on an already-desynced site (a raw
 	``db_set``/console edit — console-bypass posture) would deadlock System
 	Settings entirely. The runtime 2FA desync that a console edit can still create
-	is surfaced by the leg-1 daily observation log (``passkeys.passkey``)."""
+	is surfaced by the leg-1 daily observation log (``passkeys.passkey``).
+
+	Both halves lock the Passkey Settings rows first and read every value they
+	compare with a locking read, so a concurrent Passkey Settings save serializes
+	or deadlocks instead of each save approving the other's stale state
+	(docs/security.md)."""
 	if install.dormant():
 		return  # dormant-shell: core owns the floors — silent no-op
-	_guard_password_login_floor(doc)
-	_guard_two_factor_floor(doc)
+	if not cint(doc.disable_user_pass_login) and cint(doc.enable_two_factor_auth):
+		return  # neither floor can weaken
+	modes = lock_passkey_modes()
+	_guard_password_login_floor(doc, modes)
+	_guard_two_factor_floor(doc, modes)
 
 
-def _guard_password_login_floor(doc) -> None:
+def _guard_password_login_floor(doc, modes) -> None:
 	if not cint(doc.disable_user_pass_login):
 		return
-	if cint(frappe.db.get_single_value("System Settings", "disable_user_pass_login")):
+	if policy.lock_system_setting("disable_user_pass_login"):
 		return  # already on — not a 0→1 flip
-	modes = frappe.db.get_singles_dict("Passkey Settings")
-	if not cint(modes.passkey_as_second_factor) or cint(modes.login_with_passkey):
+	if not modes.passkey_as_second_factor or modes.login_with_passkey:
 		return
 	frappe.throw(
 		_(
@@ -236,13 +244,12 @@ def _guard_password_login_floor(doc) -> None:
 	)
 
 
-def _guard_two_factor_floor(doc) -> None:
+def _guard_two_factor_floor(doc, modes) -> None:
 	if cint(doc.enable_two_factor_auth):
 		return  # staying on / turning on — nothing to guard
-	old_value = policy.lock_core_2fa_floor()
-	if not old_value:
+	if not policy.lock_system_setting("enable_two_factor_auth"):
 		return  # already off (or a console-created desync) — not a 1→0 flip
-	if not cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor")):
+	if not modes.passkey_as_second_factor:
 		return  # passkey second factor not in use — no floor to protect
 	frappe.throw(
 		_(

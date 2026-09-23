@@ -46,7 +46,9 @@ completes only when the authenticator actually verified the user (UV bit set)
 **and** that credential's UV was initialized with a second factor — a bare UV
 assertion against an uninitialized credential is routed to a one-time
 password-backed setup step, never straight to a session. Action confirmation
-always requires UV. UV is read from the assertion, never assumed.
+always requires UV. A second-factor assertion after a correct password does not:
+the password already proved knowledge, and the passkey adds possession. UV is read
+from the assertion, never assumed.
 
 **Sign-count and backup-flag policy.** Counters are stored and checked app-side:
 an exact non-zero replay is always rejected; a regression is flagged (and its
@@ -100,7 +102,10 @@ passkey, and a successful verified passkey resets the same consecutive-failure s
 
 **Action-confirmation grants are tightly bound.** A grant from the
 `@passkey_protected` primitive is single-use, ~180 s, and bound to
-`user + session + action + exact payload`. Tokens are returned once and stored
+`user + session + action + payload`, where the payload is the values of the arguments named in
+`bind_params` (naming a `**kwargs` parameter binds the whole mapping). Arguments left out of
+`bind_params` are not bound. By default the user may confirm with a password instead of a passkey;
+`allow_password_fallback=False` requires a passkey. Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload
 hash is always computed server-side with a pinned canonicalization — the client
@@ -128,8 +133,13 @@ cannot spend an OTP fallback marker.
 **Security invariants are transactionally locked.** Authentication locks the user and credential
 before counter/UV updates; registration locks the user, handle, and credential census before cap
 enforcement and insertion; credential deletion and passkey-only toggles share a locked login-floor
-census; and mode-setting changes lock the Single rows before checking passkey-only users. This
-prevents concurrent workers from committing individually valid reads into an invalid combined state.
+census; and mode-setting changes lock the Single rows before checking passkey-only users. The
+Passkey Settings and System Settings floor validators (second factor needs core 2FA; second factor
+cannot be the only passkey mode while password login is off) lock the Passkey Settings rows and read
+the other document's values with locking reads. Frappe locks each Single's own rows before
+`validate`, so two such saves at the same moment can meet in opposite order; InnoDB then aborts one
+as a deadlock and the admin retries it. This prevents concurrent workers from committing
+individually valid reads into an invalid combined state.
 
 **Enrollment grace is once per session.** A user/session digest is claimed atomically in Redis, so
 retries or multiple tabs can consume at most one grace defer for that session.

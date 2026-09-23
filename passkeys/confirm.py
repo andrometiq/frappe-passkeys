@@ -16,7 +16,7 @@ passkey confirmation before a sensitive whitelisted action — the
         ...
 
 The decorator requires a single-use grant bound to *(this action, this session,
-this exact payload)* before the wrapped function runs; absent/invalid, it raises
+the values of the declared bind_params)* before the wrapped function runs; absent/invalid, it raises
 ``PasskeyConfirmationRequired`` (HTTP 401) carrying a server-computed
 ``payload_fingerprint`` the client echoes back. The client half
 (``frappe.passkeys.confirm`` / ``frappe.passkeys.call`` + dialog) is the frozen
@@ -188,7 +188,8 @@ def passkey_protected(
 	display_label: str | None = None,
 	display_params: dict[str, str] | None = None,
 ):
-	"""Require a fresh passkey confirmation before a whitelisted method runs.
+	"""Require a fresh confirmation (a passkey, or a password when the policy allows)
+	before a whitelisted method runs.
 
 	Put this **below** ``@frappe.whitelist`` on any sensitive server method::
 
@@ -279,7 +280,8 @@ def _bound_params(fn, args, kwargs, bind_params) -> dict:
 	"""Extract the declared ``bind_params`` from the call, robust to positional
 	or keyword passing (frappe delivers whitelisted args as kwargs, but bind the
 	signature so ``bind_params`` is order-independent). Names that reach a
-	``**kwargs`` parameter are read from it."""
+	``**kwargs`` parameter are read from it; naming the ``**kwargs`` parameter
+	itself binds the whole mapping."""
 	if not bind_params:
 		return {}
 	signature = inspect.signature(fn)
@@ -291,7 +293,7 @@ def _bound_params(fn, args, kwargs, bind_params) -> dict:
 		source = dict(kwargs)
 	for parameter in signature.parameters.values():
 		if parameter.kind is parameter.VAR_KEYWORD:
-			source.update(source.pop(parameter.name, {}))
+			source = {**source.get(parameter.name, {}), **source}
 	return {k: source.get(k) for k in bind_params}
 
 

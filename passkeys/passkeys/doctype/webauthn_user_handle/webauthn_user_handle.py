@@ -7,12 +7,13 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 
-def lock_passkey_mode_floor() -> bool:
-	"""Lock the Single DocType rows shared by mode-off saves and flag enables.
+def lock_passkey_modes() -> frappe._dict:
+	"""Lock the Passkey Settings Single rows and return both login-mode flags, read current.
 
-	The lock lives until the surrounding transaction commits or rolls back. Both
-	writers take it before any handle/credential lock, preventing the two valid
-	pre-state reads from committing an invalid modes-off + passkey-only state.
+	Mode-floor writers (Passkey Settings saves, passkey-only flag enables, the
+	System Settings floor guards) take it before any handle or credential lock. It
+	lives until the transaction ends, so two writers cannot each validate the
+	other's stale pre-change state.
 	"""
 	rows = frappe.db.sql(
 		"SELECT `field`, `value` FROM `tabSingles` WHERE `doctype` = %s FOR UPDATE",  # nosemgrep
@@ -20,7 +21,16 @@ def lock_passkey_mode_floor() -> bool:
 		as_dict=True,
 	)
 	values = {row.field: row.value for row in rows}
-	return bool(cint(values.get("login_with_passkey")) or cint(values.get("passkey_as_second_factor")))
+	return frappe._dict(
+		login_with_passkey=cint(values.get("login_with_passkey")),
+		passkey_as_second_factor=cint(values.get("passkey_as_second_factor")),
+	)
+
+
+def lock_passkey_mode_floor() -> bool:
+	"""Take :func:`lock_passkey_modes`; True when any passkey login mode is on."""
+	modes = lock_passkey_modes()
+	return bool(modes.login_with_passkey or modes.passkey_as_second_factor)
 
 
 def lock_login_floor(user: str) -> tuple[int, list[str]]:

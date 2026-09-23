@@ -233,7 +233,8 @@ self-hoster override in [`operations.md`](operations.md).
 Security-sensitive read/modify/write paths take database locks in a consistent order. Credential
 assertion bookkeeping re-locks the credential before advancing counters; UV setup locks the user and
 credential; registration locks the user, handle, and credential census before applying the per-user
-cap and insert; passkey-only credential deletion/toggling locks the shared login floor; and Passkey
-Settings mode changes lock the Single rows before checking flagged users. These locks make concurrent
+cap and insert; passkey-only credential deletion/toggling locks the shared login floor; Passkey
+Settings mode changes lock the Single rows before checking flagged users; and the Passkey Settings /
+System Settings floor checks read each other's values with locking reads. These locks make concurrent
 verification, registration, deletion, flag changes, and settings saves serialize instead of each
 committing from a stale snapshot.
