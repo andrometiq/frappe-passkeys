@@ -1,10 +1,13 @@
 # Changelog
 
 All notable changes to this project are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project has not published a stable
-release.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each release branch carries its own
+version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 16.0.0
+(`version-16`, for Frappe v16), with the same features and fixes.
 
 ## [Unreleased]
+
+## [15.0.0] / [16.0.0] — 2026-09-24 — First public release
 
 ### Added
 
