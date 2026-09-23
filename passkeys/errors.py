@@ -29,9 +29,10 @@ class PasskeyConfirmationRequired(frappe.AuthenticationError):
 	"""A `@passkey_protected` action needs a fresh confirmation grant."""
 
 
-class ConfirmationFailed(frappe.AuthenticationError):
-	"""A signed-in user's confirmation or password re-auth was refused. A subclass because
-	Frappe clears the session cookies for the exact ``AuthenticationError`` class only."""
+class CeremonyFailed(frappe.AuthenticationError):
+	"""A signed-in user's ceremony (registration, confirmation, password re-auth) was
+	refused. A subclass because Frappe clears the session cookies for the exact
+	``AuthenticationError`` class only, which would sign the user out."""
 
 
 class PasskeyServedByCore(frappe.ValidationError):

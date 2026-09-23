@@ -10,8 +10,9 @@ import frappe
 
 from passkeys import state
 from passkeys.api import registration
+from passkeys.errors import CeremonyFailed
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache, is_signed_out_by_frappe
 from passkeys.tests.factories import make_credential, make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
 
@@ -141,7 +142,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		)
 		for label, malformed in cases:
 			with self.subTest(label=label):
-				with self.assertRaises(frappe.AuthenticationError) as ctx:
+				with self.assertRaises(CeremonyFailed) as ctx:
 					registration.verify_registration(begun["state_id"], malformed)
 				self.assertEqual(str(ctx.exception), "Passkey registration could not be verified.")
 
@@ -175,6 +176,25 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		begun2, credential2, _ = self._register(user, seed="primary")
 		with self.assertRaises(frappe.AuthenticationError):
 			registration.verify_registration(begun2["state_id"], credential2)
+
+	def test_refused_registration_keeps_the_user_signed_in(self):
+		user = self._user()
+		begun, credential, _auth = self._register(user, seed="keeps-session")
+		registration.verify_registration(begun["state_id"], credential)
+
+		begun, credential, _auth = self._register(user, seed="keeps-session")
+		with self.assertRaises(CeremonyFailed) as duplicate:
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertEqual(str(duplicate.exception), "This passkey is already registered.")
+		self.assertFalse(is_signed_out_by_frappe(duplicate.exception))
+
+		# the shared ceremony helpers refuse with the same class for a signed-in caller
+		begun, credential, _auth = self._register(user, seed="keeps-session-retry")
+		with self.assertRaises(CeremonyFailed) as malformed:
+			registration.verify_registration(begun["state_id"], {"response": 1})
+		self.assertFalse(is_signed_out_by_frappe(malformed.exception))
+
+		self.assertTrue(registration.verify_registration(begun["state_id"], credential)["name"])
 
 	def test_cross_account_credential_id_rejected(self):
 		user_a = self._user()

@@ -19,7 +19,7 @@ from frappe import _
 from frappe.utils import cint
 
 from passkeys import aaguid, ceremony, policy, session, state
-from passkeys.errors import CeremonyExpired, refuse_if_core_native
+from passkeys.errors import CeremonyExpired, CeremonyFailed, refuse_if_core_native
 
 REGISTRATION_INSERT_SAVEPOINT = "passkey_registration_insert"
 
@@ -52,7 +52,7 @@ def begin_registration(flow: str = "explicit"):
 	if not rp_id:
 		frappe.throw(_("Passkeys are not configured for this site."), frappe.ValidationError)
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	ceremony.enforce_request_host(origins)
+	ceremony.enforce_request_host(origins, error=CeremonyFailed)
 
 	credentials = _user_credentials(user)
 	_enforce_max_per_user(settings, credentials)
@@ -107,16 +107,16 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 	from passkeys import engine
 
 	error_message = _("Passkey registration could not be verified.")
-	credential = ceremony.require_credential_dict(credential, error_message)
+	credential = ceremony.require_credential_dict(credential, error_message, error=CeremonyFailed)
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":
 		raise CeremonyExpired(_("That took too long — please try again."))
 	if record.get("sid") != frappe.session.sid or record.get("user") != frappe.session.user:
-		raise frappe.AuthenticationError(_("Passkey registration could not be verified."))
+		raise CeremonyFailed(_("Passkey registration could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)  # ladder step 3b: mid-ceremony disable fails closed
-	ceremony.enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [], error=CeremonyFailed)
 
 	flow = record.get("flow", "explicit")
 	result = engine.verify_registration(
@@ -198,7 +198,7 @@ def _require_any_login_mode(settings) -> None:
 	"""Registration is gated on ANY passkey login mode: a 2FA-only site's
 	users must still be able to enroll."""
 	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
-		raise frappe.AuthenticationError(_("Passkeys are not enabled."))
+		raise CeremonyFailed(_("Passkeys are not enabled."))
 
 
 def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
@@ -283,7 +283,7 @@ def _get_or_create_handle(user: str):
 
 def _lock_user(user: str) -> None:
 	if not frappe.db.get_value("User", user, "name", for_update=True):
-		raise frappe.AuthenticationError(_("Passkey registration could not be verified."))
+		raise CeremonyFailed(_("Passkey registration could not be verified."))
 
 
 def _get_or_create_handle_after_user_lock(user: str):
@@ -329,7 +329,7 @@ def _insert_verified_credential(doc, settings, flow: str, authorization: str | N
 			or not cint(settings.passkey_allow_first_enrollment_on_weak_login)
 			or any(cint(row.enabled) for row in credentials)
 		):
-			raise frappe.AuthenticationError(
+			raise CeremonyFailed(
 				_("Passkey registration could not be completed. Re-authenticate and begin again.")
 			)
 	_enforce_max_per_user(settings, credentials)
@@ -343,7 +343,7 @@ def _insert_verified_credential(doc, settings, flow: str, authorization: str | N
 		# the surrounding request transaction.
 		frappe.db.rollback(save_point=REGISTRATION_INSERT_SAVEPOINT)
 		frappe.db.release_savepoint(REGISTRATION_INSERT_SAVEPOINT)
-		raise frappe.AuthenticationError(_("This passkey is already registered."))
+		raise CeremonyFailed(_("This passkey is already registered."))
 	else:
 		frappe.db.release_savepoint(REGISTRATION_INSERT_SAVEPOINT)
 	return handle

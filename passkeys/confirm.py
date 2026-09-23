@@ -47,7 +47,7 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 from passkeys import ceremony, policy, session, state
-from passkeys.errors import CeremonyExpired, ConfirmationFailed, refuse_if_core_native
+from passkeys.errors import CeremonyExpired, CeremonyFailed, refuse_if_core_native
 
 # ---------------------------------------------------------------------------
 # Per-action policy registry. A protected call publishes its policy to the
@@ -388,9 +388,9 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
-		raise ConfirmationFailed(_("Passkeys aren't set up for this site."))
+		raise CeremonyFailed(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	ceremony.enforce_request_host(origins)
+	ceremony.enforce_request_host(origins, error=CeremonyFailed)
 
 	creds = ceremony.enabled_credentials(user)
 	options, challenge_b64 = engine.build_authentication_options(
@@ -455,17 +455,19 @@ def verify_confirmation(state_id: str, credential: object):
 
 	from passkeys import engine
 
-	credential = ceremony.require_credential_dict(credential, _("Passkey could not be verified."))
+	credential = ceremony.require_credential_dict(
+		credential, _("Passkey could not be verified."), error=CeremonyFailed
+	)
 
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
 		raise CeremonyExpired(_("That took too long — please try again."))
 	# sid + user binding: a ceremony minted for another session/user is unusable.
 	if record.get("user") != user or record.get("sid") != frappe.session.sid:
-		raise ConfirmationFailed(_("Passkey could not be verified."))
+		raise CeremonyFailed(_("Passkey could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
-	ceremony.enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [], error=CeremonyFailed)
 
 	# resolve the asserted credential: must belong to the user AND be a member of
 	# THIS ceremony's allow-list (the StrongKey credential-substitution defence).
@@ -485,7 +487,7 @@ def verify_confirmation(state_id: str, credential: object):
 	# UV bit MUST be 1 for a confirmation — a wire-`preferred` downgrade or
 	# a non-UV authenticator cannot mint an action grant.
 	if not result.user_verified:
-		raise ConfirmationFailed(_("Please verify it's you to confirm this action."))
+		raise CeremonyFailed(_("Please verify it's you to confirm this action."))
 	# uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
 	# MUST NOT be relied upon as a verification factor. The false→true flip is
 	# allowed iff a password accompanied this session (a password/reauth-seeded
@@ -495,7 +497,7 @@ def verify_confirmation(state_id: str, credential: object):
 	if uv_flip_pending:
 		window = session.get_window(user)
 		if not (window and window.get("seeded_by") in ("password", "reauth")):
-			raise ConfirmationFailed(
+			raise CeremonyFailed(
 				_("Passkey confirmation could not be completed. Re-authenticate and begin again.")
 			)
 
@@ -504,6 +506,7 @@ def verify_confirmation(state_id: str, credential: object):
 		cred.name,
 		result,
 		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
+		error=CeremonyFailed,
 	)
 	if uv_flip_pending:
 		# the standard password-accompanied uv_initialized flip (the same
@@ -547,18 +550,18 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 	# longer re-auth for management once the user holds ≥1 passkey — only the
 	# passkey grant counts. Refuse before touching the password oracle at all.
 	if not _password_reauth_allowed(user):
-		raise ConfirmationFailed(
+		raise CeremonyFailed(
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
 		)
 
 	# Claim atomically before checking the password: the limit-th attempt passes;
 	# the next is refused without touching the oracle.
 	if state.claim_password_attempt(user) > state.PASSWORD_FAILURE_LIMIT:
-		raise ConfirmationFailed(_("Too many attempts. Please try again later."))
+		raise CeremonyFailed(_("Too many attempts. Please try again later."))
 	try:
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
-		raise ConfirmationFailed(_("That password didn't match — try again."))
+		raise CeremonyFailed(_("That password didn't match — try again."))
 	state.clear_password_failures(user)
 
 	if action:
@@ -566,7 +569,7 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 		policy_ = get_action_policy(action)
 		if not policy_.allow_password_fallback:
 			# passkey-only assurance action — no password grant is ever minted.
-			raise ConfirmationFailed(_("This action requires a passkey — a password can't confirm it."))
+			raise CeremonyFailed(_("This action requires a passkey — a password can't confirm it."))
 		if not payload_fingerprint:
 			frappe.throw(_("Missing confirmation payload."), frappe.ValidationError)
 		token = session.mint_action_grant(user, action, str(payload_fingerprint), method="password")
@@ -618,12 +621,12 @@ def _resolve_payload_hash(params, payload_hash) -> str:
 def _resolve_ceremony_credential(record, credential, user):
 	cred_id = credential.get("id") or credential.get("rawId")
 	if not cred_id:
-		raise ConfirmationFailed(_("Passkey could not be verified."))
-	sha = hashlib.sha256(ceremony.b64url_decode(cred_id)).hexdigest()
+		raise CeremonyFailed(_("Passkey could not be verified."))
+	sha = hashlib.sha256(ceremony.b64url_decode(cred_id, error=CeremonyFailed)).hexdigest()
 	if sha not in set(record.get("allow_sha256") or []):
-		raise ConfirmationFailed(_("Passkey could not be verified."))
+		raise CeremonyFailed(_("Passkey could not be verified."))
 	if not ceremony.lock_enabled_user(user):
-		raise ConfirmationFailed(_("Passkey could not be verified."))
+		raise CeremonyFailed(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",
 		{"credential_id_sha256": sha},
@@ -632,7 +635,7 @@ def _resolve_ceremony_credential(record, credential, user):
 		for_update=True,
 	)
 	if not cred or cred.user != user or not cint(cred.enabled):
-		raise ConfirmationFailed(_("Passkey could not be verified."))
+		raise CeremonyFailed(_("Passkey could not be verified."))
 	return cred
 
 

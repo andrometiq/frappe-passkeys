@@ -19,9 +19,14 @@ from frappe.utils.password import update_password
 
 from passkeys import confirm, session, state
 from passkeys.api import registration
-from passkeys.errors import ConfirmationFailed
+from passkeys.errors import CeremonyFailed
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	WebAuthnAssertMixin,
+	flush_settings_cache,
+	is_signed_out_by_frappe,
+)
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
@@ -153,7 +158,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		)
 		for label, malformed in cases:
 			with self.subTest(label=label):
-				with self.assertRaises(frappe.AuthenticationError) as ctx:
+				with self.assertRaises(CeremonyFailed) as ctx:
 					self._verify(begun["state_id"], malformed)
 				self.assertEqual(str(ctx.exception), "Passkey could not be verified.")
 
@@ -661,33 +666,15 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._request("/api/method/passkeys.confirm.reauth_password")
 		return confirm.reauth_password(pwd, action=action, payload_fingerprint=payload_fingerprint)
 
-	def _is_signed_out_by_frappe(self, exc) -> bool:
-		"""Run ``exc`` through Frappe's real request error handler and report whether
-		it deletes the session cookie."""
-		from frappe.app import handle_exception
-		from frappe.auth import LoginManager
-
-		self._request("/api/method/passkeys.confirm.reauth_password")
-		sid = frappe.session.sid
-		frappe.local.login_manager = LoginManager.__new__(LoginManager)
-		try:
-			raise exc
-		except frappe.AuthenticationError:
-			handle_exception(exc)  # inside ``except``: the handler formats the live traceback
-		finally:
-			del frappe.local.login_manager
-			frappe.session.sid = sid
-		return "sid" in frappe.local.cookie_manager.to_delete
-
 	def test_wrong_reauth_password_keeps_the_session_and_a_retry_succeeds(self):
 		user = self._user(with_password=True)
 		frappe.set_user(user)
 		state.clear_sudo_window(self.sid)
-		with self.assertRaises(ConfirmationFailed) as ctx:
+		with self.assertRaises(CeremonyFailed) as ctx:
 			self._reauth("not-" + PWD)
-		self.assertFalse(self._is_signed_out_by_frappe(ctx.exception))
+		self.assertFalse(is_signed_out_by_frappe(ctx.exception))
 		# control: the same handler signs out on the bare class
-		self.assertTrue(self._is_signed_out_by_frappe(frappe.AuthenticationError()))
+		self.assertTrue(is_signed_out_by_frappe(frappe.AuthenticationError()))
 		self.assertTrue(self._reauth(PWD).get("seeded"))
 		self.assertTrue(session.has_management_sudo(user))
 

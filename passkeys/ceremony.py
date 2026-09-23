@@ -4,7 +4,11 @@
 """Ceremony primitives shared by the login, confirmation and registration endpoints:
 request-host membership, credential-envelope parsing, the enabled-credential set,
 the User row lock that starts every lock sequence, and the post-assertion credential
-advance. Webauthn-free: the endpoints import ``engine`` lazily, never this module."""
+advance. Webauthn-free: the endpoints import ``engine`` lazily, never this module.
+
+Every refusal raises ``error``: the uniform ``AuthenticationError`` for the Guest login
+wire, and ``errors.CeremonyFailed`` from signed-in callers, since Frappe signs a user
+out on the exact base class."""
 
 import base64
 import binascii
@@ -17,7 +21,7 @@ from frappe.utils import cint, now_datetime
 from passkeys import policy
 
 
-def enforce_request_host(origins: list) -> None:
+def enforce_request_host(origins: list, *, error=frappe.AuthenticationError) -> None:
 	"""Fail-closed host membership. No-ops without an HTTP request (direct-call unit
 	paths): the library's ``expected_origin`` check against clientDataJSON is the
 	binding enforcement; this is the ops-diagnosable pre-check that also powers the
@@ -32,7 +36,7 @@ def enforce_request_host(origins: list) -> None:
 			title="passkeys: request host not in configured origins",
 			message=f"request origin {origin} not in {origins}",
 		)
-		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
+		raise error(_("Passkeys aren't set up for this site."))
 
 
 def request_origin() -> str | None:
@@ -45,38 +49,38 @@ def request_ip() -> str | None:
 	return getattr(frappe.local, "request_ip", None)
 
 
-def b64url_decode(value: str) -> bytes:
+def b64url_decode(value: str, *, error=frappe.AuthenticationError) -> bytes:
 	"""Base64url-decode a credential id (tolerating stripped padding). A malformed
-	value raises the uniform ``AuthenticationError``, never a raw decode error: a 500
+	value raises ``error``, never a raw decode error: a 500
 	would break the uniform-401 contract, and in ``verify_second_factor`` (after the
 	single-use consume) it would burn the 2FA state instead of re-arming."""
 	try:
 		return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 	except (binascii.Error, ValueError, TypeError) as exc:
-		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
+		raise error(_("Passkey could not be verified.")) from exc
 
 
-def require_credential_dict(value, message):
+def require_credential_dict(value, message, *, error=frappe.AuthenticationError):
 	"""Parse a client credential (JSON string or decoded dict) and check its envelope
 	shape before any state is consumed; any malformation raises ``message``."""
 	try:
 		parsed = json.loads(value) if isinstance(value, str) else value
 	except (json.JSONDecodeError, ValueError) as exc:
-		raise frappe.AuthenticationError(message) from exc
+		raise error(message) from exc
 	# JSON request bodies may already be decoded, so validate the final value.
 	if not isinstance(parsed, dict):
-		raise frappe.AuthenticationError(message)
+		raise error(message)
 	response = parsed.get("response")
 	if not isinstance(response, dict):
-		raise frappe.AuthenticationError(message)
+		raise error(message)
 	try:
 		client_data_json = response.get("clientDataJSON")
 		client_data = base64.urlsafe_b64decode(client_data_json + "=" * (-len(client_data_json) % 4))
 		decoded = json.loads(client_data)
 	except (binascii.Error, TypeError, ValueError) as exc:
-		raise frappe.AuthenticationError(message) from exc
+		raise error(message) from exc
 	if not isinstance(decoded, dict):
-		raise frappe.AuthenticationError(message)
+		raise error(message)
 	return parsed
 
 
@@ -95,7 +99,9 @@ def lock_enabled_user(user: str) -> bool:
 	return bool(cint(frappe.db.get_value("User", user, "enabled", for_update=True)))
 
 
-def advance_credential(name: str, result, *, sign_count_hard_fail: bool = False) -> None:
+def advance_credential(
+	name: str, result, *, sign_count_hard_fail: bool = False, error=frappe.AuthenticationError
+) -> None:
 	"""Persist the upward-only sign-count, refreshed backup state, and last-used
 	bookkeeping after a successful assertion.
 
@@ -103,13 +109,13 @@ def advance_credential(name: str, result, *, sign_count_hard_fail: bool = False)
 	verified against stale state before any session or grant is minted."""
 	current = frappe.db.get_value("WebAuthn Credential", name, ["sign_count"], as_dict=True, for_update=True)
 	if not current:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise error(_("Passkey could not be verified."))
 	klass = policy.classify_sign_count(cint(current.sign_count), cint(result.new_sign_count))
 	if klass == policy.SIGN_COUNT_REPLAY:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise error(_("Passkey could not be verified."))
 	regression = klass == policy.SIGN_COUNT_REGRESSION
 	if regression and sign_count_hard_fail:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise error(_("Passkey could not be verified."))
 	values = {
 		"sign_count": policy.sign_count_to_store(cint(current.sign_count), cint(result.new_sign_count)),
 		"backup_state": int(result.backup_state),

@@ -26,9 +26,9 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   **that**, never on message text) plus, for the 401 retry contracts, structured keys
   at the **top level** of the body. Codes: `CeremonyExpired` (401),
   `UnknownCredential` (401), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
-  (401), `ConfirmationFailed` (401 — a confirmation or password re-auth was refused; the
-  session stays signed in, so the user can retry), `PasskeyServedByCore` (417 — the app has
-  stood down for native core).
+  (401), `CeremonyFailed` (401 — a signed-in user's registration, confirmation or password
+  re-auth was refused; the session stays signed in, so the user can retry),
+  `PasskeyServedByCore` (417 — the app has stood down for native core).
 - **Auth / CSRF**: authenticated endpoints need a logged-in session **and**
   `X-Frappe-CSRF-Token: <frappe.csrf_token>` on the POST. Guest login endpoints are
   CSRF-exempt but bound to an `HttpOnly` `passkey_binder` cookie the server sets on
@@ -206,8 +206,8 @@ Rate limit: **20 / 3600 s / user**.
   ```
   The `signal` block feeds the optional WebAuthn Signal API
   (`signalAllAcceptedCredentials` / `signalCurrentUserDetails`).
-- **Errors**: `401 CeremonyExpired`; `AuthenticationError` (already registered /
-  could-not-verify).
+- **Errors**: `401 CeremonyExpired`; `CeremonyFailed` (401 — already registered /
+  could-not-verify; the user stays signed in).
 
 ---
 

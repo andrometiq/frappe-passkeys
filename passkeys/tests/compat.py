@@ -18,6 +18,7 @@ __all__ = [
 	"arrange_clean_login_policy",
 	"arrange_mode_floor",
 	"flush_settings_cache",
+	"is_signed_out_by_frappe",
 ]
 
 
@@ -45,6 +46,29 @@ def flush_settings_cache():
 	"""
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 	frappe.cache.delete_value("document_cache::Passkey Settings::Passkey Settings")
+
+
+def is_signed_out_by_frappe(exc) -> bool:
+	"""Run ``exc`` through Frappe's real request error handler and report whether it
+	deletes the session cookie."""
+	from frappe.app import handle_exception
+	from frappe.auth import CookieManager, LoginManager
+	from frappe.utils import set_request
+
+	set_request(method="POST", path="/api/method/passkeys.error_probe")
+	frappe.local.cookie_manager = CookieManager()
+	frappe.local.form_dict = frappe._dict()
+	frappe.local.response = frappe._dict()
+	sid = frappe.session.sid
+	frappe.local.login_manager = LoginManager.__new__(LoginManager)
+	try:
+		raise exc
+	except frappe.AuthenticationError:
+		handle_exception(exc)  # inside ``except``: the handler formats the live traceback
+	finally:
+		del frappe.local.login_manager
+		frappe.session.sid = sid
+	return "sid" in frappe.local.cookie_manager.to_delete
 
 
 def arrange_mode_floor(testcase):
