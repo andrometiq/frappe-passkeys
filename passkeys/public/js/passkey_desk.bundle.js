@@ -790,6 +790,13 @@
 				if (!d._acted) { d._acted = true; recordEnforcementDefer(b, enf); }
 			});
 		}
+		// Bootstrap 4 drops hide() during a show transition (e.g. the reopen above), so an
+		// exit taken mid-animation closes once the modal has settled.
+		if (d.$wrapper && d.$wrapper.on) {
+			d.$wrapper.on("shown.bs.modal", function () {
+				if (d._acted) d.hide();
+			});
+		}
 		d.show();
 	}
 

@@ -80,8 +80,10 @@ function makeDialogClass() {
 		instances.push(this);
 	}
 	Dialog.prototype.show = function () { this.shown = true; this.hidden = false; this.showCount = (this.showCount || 0) + 1; };
-	// Bootstrap fires hide.bs.modal, then hidden.bs.modal once the modal is gone.
+	// Bootstrap fires hide.bs.modal, then hidden.bs.modal once the modal is gone. Like
+	// Bootstrap 4, hide() is a no-op while a show transition is running.
 	Dialog.prototype.hide = function () {
+		if (this.isTransitioning) return;
 		this.hidden = true;
 		(this._wrap["hide.bs.modal"] || []).slice().forEach((fn) => fn());
 		(this._wrap["hidden.bs.modal"] || []).slice().forEach((fn) => fn());
@@ -215,6 +217,19 @@ test("desk enforce: a blocking gate stays closed once the user takes an exit", (
 	escapeLink(d).click(); // Degrade escape (the incapable claim was already recorded above)
 	assert.strictEqual(d.hidden, true, "an explicit exit is not undone by the re-open guard");
 	assert.strictEqual(d.showCount, 1);
+});
+
+test("desk enforce: an exit taken during the gate's show animation still closes it", () => {
+	Dialog.instances.length = 0;
+	mod.showEnforceDialog({ enforcement: { incapable_policy: "degrade" } }, { blocking: true, graceRemaining: 0 });
+	const d = Dialog.instances.at(-1);
+	d.isTransitioning = true; // the reopen animation after a route change
+	escapeLink(d).click();
+	assert.strictEqual(d.hidden, false, "Bootstrap discarded the hide mid-transition");
+	d.isTransitioning = false;
+	(d._wrap["shown.bs.modal"] || []).forEach((fn) => fn());
+	assert.strictEqual(d.hidden, true, "the gate closes once the show transition settles");
+	assert.strictEqual(d.showCount, 1, "the closed gate does not reopen itself");
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));

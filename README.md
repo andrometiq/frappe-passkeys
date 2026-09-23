@@ -16,7 +16,7 @@
 	<img src=".github/screenshots/login.png" alt="The Frappe login page with a Sign in with a passkey button" width="400" />
 </div>
 
-> A passkey leaves nothing to phish, reuse, or leak: the private key never leaves the user's device,
+> A passkey leaves nothing to phish, reuse, or leak: your server never receives the private key,
 > and the browser signs only for your site's real domain. Read the short, illustrated explainer:
 > **[Why passkeys are safer, and when they aren't](https://andrometiq.github.io/frappe-passkeys/why-passkeys.html)**
 > ([source](docs/why-passkeys.html)).
