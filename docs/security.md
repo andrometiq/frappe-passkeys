@@ -45,8 +45,9 @@ enforcement of the "no cross-origin iframe ceremonies" rule.
 completes only when the authenticator actually verified the user (UV bit set)
 **and** that credential's UV was initialized with a second factor — a bare UV
 assertion against an uninitialized credential is routed to a one-time
-password-backed setup step, never straight to a session. Action confirmation
-always requires UV. A second-factor assertion after a correct password does not:
+password-backed setup step, never straight to a session. A passkey action
+confirmation always requires UV (a password confirmation, where the action allows
+one, is a separate method). A second-factor assertion after a correct password does not:
 the password already proved knowledge, and the passkey adds possession. UV is read
 from the assertion, never assumed.
 
@@ -104,7 +105,8 @@ passkey, and a successful verified passkey resets the same consecutive-failure s
 `@passkey_protected` primitive is single-use, ~180 s, and bound to
 `user + session + action + payload`, where the payload is the values of the arguments named in
 `bind_params` (naming a `**kwargs` parameter binds the whole mapping). Arguments left out of
-`bind_params` are not bound. By default the user may confirm with a password instead of a passkey;
+`bind_params` are not bound. A call whose bound values cannot be derived unambiguously from the
+signature is refused before any grant is consumed. By default the user may confirm with a password instead of a passkey;
 `allow_password_fallback=False` requires a passkey. Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload

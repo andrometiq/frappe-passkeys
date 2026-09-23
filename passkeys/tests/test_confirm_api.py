@@ -492,33 +492,64 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		)
 
 	def test_binding_the_kwargs_parameter_binds_the_whole_mapping(self):
-		user = self._user()
-		auth = self._enroll(user)
-		frappe.set_user(user)
-
-		@confirm.passkey_protected(action="myapp.pay-mapping", bind_params=["kwargs"])
 		def pay(**kwargs):
 			return kwargs
 
+		self._assert_whole_mapping_is_bound(pay, "myapp.pay-mapping", {})
+
+	def test_positional_only_name_collision_binds_the_whole_mapping(self):
+		# ``context`` is positional-only, so a ``context=`` keyword lands in
+		# ``**kwargs``; ``Signature.bind`` rejects that call before Python 3.14.
+		def pay(context=None, /, **kwargs):
+			return kwargs
+
+		self._assert_whole_mapping_is_bound(pay, "myapp.pay-collision", {"context": 0})
+
+	def _assert_whole_mapping_is_bound(self, fn, action, extra):
+		user = self._user()
+		auth = self._enroll(user)
+		frappe.set_user(user)
+		pay = confirm.passkey_protected(action=action, bind_params=["kwargs"])(fn)
+
 		fingerprints = {}
 		for amount in (10, 999):
-			self._request("/api/method/myapp.pay-mapping")
+			self._request(f"/api/method/{action}")
 			with self.assertRaises(PasskeyConfirmationRequired):
-				pay(amount=amount)
+				pay(**extra, amount=amount)
 			fingerprints[amount] = frappe.local.response.get("payload_fingerprint")
-		self.assertEqual(fingerprints[10], session.payload_hash({"kwargs": {"amount": 10}}))
+		self.assertEqual(fingerprints[10], session.payload_hash({"kwargs": {**extra, "amount": 10}}))
 		self.assertNotEqual(fingerprints[10], fingerprints[999])
 
 		def grant_for_amount_10(sign_count):
-			begun = self._begin("myapp.pay-mapping", payload_hash=fingerprints[10])
+			begun = self._begin(action, payload_hash=fingerprints[10])
 			assertion = self._assert(auth, begun["options"], sign_count=sign_count)
 			return self._verify(begun["state_id"], assertion)["grant"]
 
-		self._request("/api/method/myapp.pay-mapping", grant_header=grant_for_amount_10(1))
+		self._request(f"/api/method/{action}", grant_header=grant_for_amount_10(1))
 		with self.assertRaises(PasskeyConfirmationRequired):
-			pay(amount=999)
-		self._request("/api/method/myapp.pay-mapping", grant_header=grant_for_amount_10(2))
-		self.assertEqual(pay(amount=10), {"amount": 10})
+			pay(**extra, amount=999)
+		self._request(f"/api/method/{action}", grant_header=grant_for_amount_10(2))
+		self.assertEqual(pay(**extra, amount=10), {**extra, "amount": 10})
+
+	def test_ambiguous_or_unbindable_call_is_refused_before_consume(self):
+		user = self._user()
+		frappe.set_user(user)
+
+		@confirm.passkey_protected(action="myapp.pay-ambiguous", bind_params=["context"])
+		def pay(context=None, /, **kwargs):
+			return context
+
+		# ``context`` would bind to both the positional default and a ``**kwargs`` key.
+		for call in (lambda: pay(context=5), lambda: pay(1, 2)):
+			token = session.mint_action_grant(
+				user, "myapp.pay-ambiguous", session.payload_hash({"context": None}), method="passkey"
+			)
+			self._request("/api/method/myapp.pay-ambiguous", grant_header=token)
+			with self.assertRaises(PasskeyConfirmationRequired):
+				call()
+			self.assertIsNone(frappe.local.response.get("payload_fingerprint"))
+			self.assertEqual(frappe.local.response.get("methods"), [])
+			self.assertTrue(session.consume_action_grant(user, "myapp.pay-ambiguous", {"context": None}))
 
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()

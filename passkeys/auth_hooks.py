@@ -216,9 +216,9 @@ def guard_system_settings(doc, method=None):
 	Settings entirely. The runtime 2FA desync that a console edit can still create
 	is surfaced by the leg-1 daily observation log (``passkeys.passkey``).
 
-	Both halves lock the Passkey Settings rows first and read every value they
-	compare with a locking read, so a concurrent Passkey Settings save serializes
-	or deadlocks instead of each save approving the other's stale state
+	Every compared value is read with a locking read. Frappe has already locked
+	System Settings before ``validate``, so a concurrent Passkey Settings save
+	serializes or deadlocks (one aborts) instead of approving stale state
 	(docs/security.md)."""
 	if install.dormant():
 		return  # dormant-shell: core owns the floors — silent no-op

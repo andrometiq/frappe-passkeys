@@ -64,8 +64,8 @@ Frappe v15, v16, and develop.
 - **Custom UIs.** Build your own screens with the markup-free `frappe.passkeys.headless`
   JavaScript API, or call the REST endpoints from a native or single-page app.
 
-- **Secure by default.** Every login mode ships off. Passwordless sign-in and action confirmations
-  require user verification (a PIN or biometric); a passkey used as the second factor after a
+- **Secure by default.** Every login mode ships off. Passwordless sign-in and passkey action
+  confirmations require user verification (a PIN or biometric); a passkey used as the second factor after a
   password does not. A repeated non-zero signature counter is always rejected, and a counter
   regression flags the passkey and emails its owner (or is rejected, if you choose). Relying Party ID and origins come from pinned
   configuration, never from request headers. Guest endpoints are rate-limited per IP and signed-in

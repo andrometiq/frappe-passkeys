@@ -359,7 +359,7 @@
     </div>
     <div class="prose">
       <p>A password or a one-time code is different. You can type it into any page, and a convincing fake will take it. That is the big one, because “two-factor” codes are no exception: SMS codes, authenticator apps and “Approve?” taps are all things a fooled user can hand to the wrong site.</p>
-      <p><strong>Breaches: nothing worth stealing is stored.</strong> The server keeps only public keys, and a public key cannot sign anyone in. There is no password hash to crack at leisure.</p>
+      <p><strong>Breaches: the passkey leaves nothing worth stealing.</strong> For each passkey the server keeps only a public key, and a public key cannot sign anyone in. A passkey-only account has no password hash to crack at leisure.</p>
       <p>Each passkey is also unique to one site. A leak at one place is worthless everywhere else, so the password reuse that powers “credential stuffing” is gone.</p>
       <p>Here is where the common sign-in methods sit. One hard line divides them. Below it, you hand over something an attacker can catch and reuse. Above it, your device signs a one-time challenge and hands over nothing.</p>
     </div>
@@ -378,7 +378,7 @@
       <figcaption>The verdict column is the whole game. Below the line, every method hands over something typeable or tappable that a fake site can catch and reuse.</figcaption>
     </figure>
 
-    <p class="takeaway"><span class="tk">In short</span> A fake site can't even ask for your passkey. A server breach leaks only public keys, which are worthless to an attacker.</p>
+    <p class="takeaway"><span class="tk">In short</span> A fake site can't even ask for your passkey. From a server breach, a passkey leaks only its public half, which is worthless to an attacker.</p>
   </section>
 
   <!-- 3. Bank vs Google -->

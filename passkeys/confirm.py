@@ -253,7 +253,7 @@ def passkey_protected(
 
 		@functools.wraps(fn)
 		def wrapper(*args, **kwargs):
-			params = _bound_params(fn, args, kwargs, policy_.bind_params)
+			params = _bound_params(fn, args, kwargs, policy_)
 			_publish_action_policy(policy_)
 			_consume_or_raise(policy_, params)
 			return fn(*args, **kwargs)
@@ -276,25 +276,41 @@ def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
 	_raise_confirmation_required(policy_.action, params, policy_)
 
 
-def _bound_params(fn, args, kwargs, bind_params) -> dict:
+def _bound_params(fn, args, kwargs, policy_: ActionPolicy) -> dict:
 	"""Extract the declared ``bind_params`` from the call, robust to positional
 	or keyword passing (frappe delivers whitelisted args as kwargs, but bind the
 	signature so ``bind_params`` is order-independent). Names that reach a
 	``**kwargs`` parameter are read from it; naming the ``**kwargs`` parameter
-	itself binds the whole mapping."""
+	itself binds the whole mapping. A call that cannot be bound unambiguously is
+	refused before any grant is consumed."""
+	bind_params = policy_.bind_params
 	if not bind_params:
 		return {}
 	signature = inspect.signature(fn)
+	parameters = signature.parameters.values()
+	var_keyword = next((p.name for p in parameters if p.kind is p.VAR_KEYWORD), None)
+	# A keyword matching a positional-only name lands in ``**kwargs`` at call
+	# time, but ``Signature.bind`` rejects it before Python 3.14; route it by hand.
+	positional_only = {p.name for p in parameters if p.kind is p.POSITIONAL_ONLY}
+	routed = {k: v for k, v in kwargs.items() if k in positional_only} if var_keyword else {}
+	if any(name in routed for name in bind_params):
+		_refuse_unbindable_call(policy_.action)
 	try:
-		bound = signature.bind_partial(*args, **kwargs)
-		bound.apply_defaults()
-		source = dict(bound.arguments)
+		bound = signature.bind_partial(*args, **{k: v for k, v in kwargs.items() if k not in routed})
 	except TypeError:
-		source = dict(kwargs)
-	for parameter in signature.parameters.values():
-		if parameter.kind is parameter.VAR_KEYWORD:
-			source = {**source.get(parameter.name, {}), **source}
+		_refuse_unbindable_call(policy_.action)
+	bound.apply_defaults()
+	source = dict(bound.arguments)
+	if var_keyword:
+		mapping = {**source.get(var_keyword, {}), **routed}
+		source = {**mapping, **source, var_keyword: mapping}
 	return {k: source.get(k) for k in bind_params}
+
+
+def _refuse_unbindable_call(action: str) -> None:
+	# No fingerprint and no methods: nothing the client confirms can match a
+	# payload the server cannot derive from the signature.
+	session._raise_confirmation_required(action, methods=[])
 
 
 def _raise_confirmation_required(action: str, params: dict, policy_: ActionPolicy) -> None:

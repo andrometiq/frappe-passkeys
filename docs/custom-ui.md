@@ -270,7 +270,9 @@ binds its whole mapping. `allow_password_fallback` defaults to `True`, which let
 their password; set it to `False`, as above, to require a passkey.
 
 `display_params` must be a subset of `bind_params`, and every `bind_params` name must be a parameter
-of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. Undeclared
+of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. A call that
+cannot be bound unambiguously (for example a keyword that collides with a positional-only bound
+parameter) is refused with `PasskeyConfirmationRequired` and no payload fingerprint. Undeclared
 arguments are never returned to the client. The server emits `action_label` and `parameter_summary`, translating labels and rendering
 booleans/nulls as safe display values. These fields are presentation only: the grant remains bound
 to the canonical server-side payload fingerprint. Call the method with:
