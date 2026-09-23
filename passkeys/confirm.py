@@ -47,7 +47,7 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 from passkeys import ceremony, policy, session, state
-from passkeys.errors import CeremonyExpired, refuse_if_core_native
+from passkeys.errors import CeremonyExpired, ConfirmationFailed, refuse_if_core_native
 
 # ---------------------------------------------------------------------------
 # Per-action policy registry. A protected call publishes its policy to the
@@ -205,8 +205,9 @@ def passkey_protected(
 	    dialog all key on this string.
 	bind_params:
 	    The subset of the method's arguments the confirmation commits to. The
-	    grant is bound to ``sha256(canonical_json({k: value for k in bind_params}))``
-	    — a grant minted for ``payment_id="PAY-1"`` cannot authorize ``"PAY-2"``.
+	    grant is bound to ``sha256(canonical_json(payload))`` of the bound values
+	    (rule: docs/security.md) — a grant minted for ``payment_id="PAY-1"``
+	    cannot authorize ``"PAY-2"``.
 	    Omit for actions with no payload (the empty payload still binds action +
 	    session).
 	allow_password_fallback:
@@ -277,34 +278,38 @@ def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
 
 
 def _bound_params(fn, args, kwargs, policy_: ActionPolicy) -> dict:
-	"""Extract the declared ``bind_params`` from the call, robust to positional
-	or keyword passing (frappe delivers whitelisted args as kwargs, but bind the
-	signature so ``bind_params`` is order-independent). Names that reach a
-	``**kwargs`` parameter are read from it; naming the ``**kwargs`` parameter
-	itself binds the whole mapping. A call that cannot be bound unambiguously is
-	refused before any grant is consumed."""
-	bind_params = policy_.bind_params
-	if not bind_params:
-		return {}
+	"""Bind the whole call to ``fn``'s signature and return the payload the grant
+	commits to; rule in docs/security.md ("Action-confirmation grants"). A call
+	that does not bind, or a bound name that could mean two values, is refused
+	before any grant is looked up."""
 	signature = inspect.signature(fn)
-	parameters = signature.parameters.values()
-	var_keyword = next((p.name for p in parameters if p.kind is p.VAR_KEYWORD), None)
-	# A keyword matching a positional-only name lands in ``**kwargs`` at call
-	# time, but ``Signature.bind`` rejects it before Python 3.14; route it by hand.
-	positional_only = {p.name for p in parameters if p.kind is p.POSITIONAL_ONLY}
-	routed = {k: v for k, v in kwargs.items() if k in positional_only} if var_keyword else {}
-	if any(name in routed for name in bind_params):
-		_refuse_unbindable_call(policy_.action)
+	parameters = signature.parameters
+	var_keyword = next((p.name for p in parameters.values() if p.kind is p.VAR_KEYWORD), None)
+	# Before Python 3.14 ``bind`` rejects a keyword named like a positional-only
+	# parameter although ``**kwargs`` absorbs it at call time; route it there by hand.
+	routed = {
+		name: value
+		for name, value in kwargs.items()
+		if var_keyword and name in parameters and parameters[name].kind is inspect.Parameter.POSITIONAL_ONLY
+	}
 	try:
-		bound = signature.bind_partial(*args, **{k: v for k, v in kwargs.items() if k not in routed})
+		bound = signature.bind(*args, **{name: value for name, value in kwargs.items() if name not in routed})
 	except TypeError:
 		_refuse_unbindable_call(policy_.action)
 	bound.apply_defaults()
-	source = dict(bound.arguments)
+	arguments = bound.arguments
+	extra = {**arguments.get(var_keyword, {}), **routed}
 	if var_keyword:
-		mapping = {**source.get(var_keyword, {}), **routed}
-		source = {**mapping, **source, var_keyword: mapping}
-	return {k: source.get(k) for k in bind_params}
+		arguments[var_keyword] = extra
+	payload = {}
+	for name in policy_.bind_params:
+		if name in parameters:
+			if name in extra:  # positional-only, *args or **kwargs name also passed as a keyword
+				_refuse_unbindable_call(policy_.action)
+			payload[name] = arguments[name]
+		elif name in extra:
+			payload[name] = extra[name]
+	return payload
 
 
 def _refuse_unbindable_call(action: str) -> None:
@@ -383,7 +388,7 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
 	if not rp_id:
-		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
+		raise ConfirmationFailed(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
 	ceremony.enforce_request_host(origins)
 
@@ -457,7 +462,7 @@ def verify_confirmation(state_id: str, credential: object):
 		raise CeremonyExpired(_("That took too long — please try again."))
 	# sid + user binding: a ceremony minted for another session/user is unusable.
 	if record.get("user") != user or record.get("sid") != frappe.session.sid:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise ConfirmationFailed(_("Passkey could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	ceremony.enforce_request_host(record.get("origins") or [])
@@ -480,7 +485,7 @@ def verify_confirmation(state_id: str, credential: object):
 	# UV bit MUST be 1 for a confirmation — a wire-`preferred` downgrade or
 	# a non-UV authenticator cannot mint an action grant.
 	if not result.user_verified:
-		raise frappe.AuthenticationError(_("Please verify it's you to confirm this action."))
+		raise ConfirmationFailed(_("Please verify it's you to confirm this action."))
 	# uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
 	# MUST NOT be relied upon as a verification factor. The false→true flip is
 	# allowed iff a password accompanied this session (a password/reauth-seeded
@@ -490,7 +495,7 @@ def verify_confirmation(state_id: str, credential: object):
 	if uv_flip_pending:
 		window = session.get_window(user)
 		if not (window and window.get("seeded_by") in ("password", "reauth")):
-			raise frappe.AuthenticationError(
+			raise ConfirmationFailed(
 				_("Passkey confirmation could not be completed. Re-authenticate and begin again.")
 			)
 
@@ -542,18 +547,18 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 	# longer re-auth for management once the user holds ≥1 passkey — only the
 	# passkey grant counts. Refuse before touching the password oracle at all.
 	if not _password_reauth_allowed(user):
-		raise frappe.AuthenticationError(
+		raise ConfirmationFailed(
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
 		)
 
 	# Claim atomically before checking the password: the limit-th attempt passes;
 	# the next is refused without touching the oracle.
 	if state.claim_password_attempt(user) > state.PASSWORD_FAILURE_LIMIT:
-		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
+		raise ConfirmationFailed(_("Too many attempts. Please try again later."))
 	try:
 		check_password(user, pwd)
 	except frappe.AuthenticationError:
-		raise frappe.AuthenticationError(_("That password didn't match — try again."))
+		raise ConfirmationFailed(_("That password didn't match — try again."))
 	state.clear_password_failures(user)
 
 	if action:
@@ -561,9 +566,7 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 		policy_ = get_action_policy(action)
 		if not policy_.allow_password_fallback:
 			# passkey-only assurance action — no password grant is ever minted.
-			raise frappe.AuthenticationError(
-				_("This action requires a passkey — a password can't confirm it.")
-			)
+			raise ConfirmationFailed(_("This action requires a passkey — a password can't confirm it."))
 		if not payload_fingerprint:
 			frappe.throw(_("Missing confirmation payload."), frappe.ValidationError)
 		token = session.mint_action_grant(user, action, str(payload_fingerprint), method="password")
@@ -615,12 +618,12 @@ def _resolve_payload_hash(params, payload_hash) -> str:
 def _resolve_ceremony_credential(record, credential, user):
 	cred_id = credential.get("id") or credential.get("rawId")
 	if not cred_id:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise ConfirmationFailed(_("Passkey could not be verified."))
 	sha = hashlib.sha256(ceremony.b64url_decode(cred_id)).hexdigest()
 	if sha not in set(record.get("allow_sha256") or []):
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise ConfirmationFailed(_("Passkey could not be verified."))
 	if not ceremony.lock_enabled_user(user):
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise ConfirmationFailed(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",
 		{"credential_id_sha256": sha},
@@ -629,7 +632,7 @@ def _resolve_ceremony_credential(record, credential, user):
 		for_update=True,
 	)
 	if not cred or cred.user != user or not cint(cred.enabled):
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+		raise ConfirmationFailed(_("Passkey could not be verified."))
 	return cred
 
 

@@ -211,7 +211,8 @@ authentication account without a local hash marker, requires core to re-authenti
 
 This is a **per-user** switch (on the user's WebAuthn User Handle row), not a
 site setting. It disables password / email-link / social first-factor login for
-that one user — they must sign in with a passkey. It is the released-branch lever
+that one user — they must sign in with a passkey. An existing password hash is kept, just
+unusable for sign-in while the switch is on. It is the released-branch lever
 for "no passwords for this account"; the site-wide equivalent needs the
 self-hoster override in [`operations.md`](operations.md).
 

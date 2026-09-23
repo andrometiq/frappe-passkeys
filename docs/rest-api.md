@@ -26,7 +26,9 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   **that**, never on message text) plus, for the 401 retry contracts, structured keys
   at the **top level** of the body. Codes: `CeremonyExpired` (401),
   `UnknownCredential` (401), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
-  (401), `PasskeyServedByCore` (417 — the app has stood down for native core).
+  (401), `ConfirmationFailed` (401 — a confirmation or password re-auth was refused; the
+  session stays signed in, so the user can retry), `PasskeyServedByCore` (417 — the app has
+  stood down for native core).
 - **Auth / CSRF**: authenticated endpoints need a logged-in session **and**
   `X-Frappe-CSRF-Token: <frappe.csrf_token>` on the POST. Guest login endpoints are
   CSRF-exempt but bound to an `HttpOnly` `passkey_binder` cookie the server sets on

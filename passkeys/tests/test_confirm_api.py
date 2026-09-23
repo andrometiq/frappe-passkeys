@@ -19,6 +19,7 @@ from frappe.utils.password import update_password
 
 from passkeys import confirm, session, state
 from passkeys.api import registration
+from passkeys.errors import ConfirmationFailed
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
@@ -551,6 +552,87 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			self.assertEqual(frappe.local.response.get("methods"), [])
 			self.assertTrue(session.consume_action_grant(user, "myapp.pay-ambiguous", {"context": None}))
 
+	def _grant_for(self, user, action, payload):
+		token = session.mint_action_grant(user, action, session.payload_hash(payload), method="passkey")
+		self._request(f"/api/method/{action}", grant_header=token)
+		return token
+
+	def _assert_refused_unbindable(self, call):
+		with self.assertRaises(PasskeyConfirmationRequired):
+			call()
+		self.assertIsNone(frappe.local.response.get("payload_fingerprint"))
+		self.assertEqual(frappe.local.response.get("methods"), [])
+
+	def test_absent_kwargs_key_and_explicit_none_do_not_share_a_grant(self):
+		user = self._user()
+		frappe.set_user(user)
+		action = "myapp.pay-presence"
+
+		@confirm.passkey_protected(action=action, bind_params=["amount"])
+		def pay(**kwargs):
+			return kwargs.get("amount", 10)
+
+		self._grant_for(user, action, {})
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay(amount=None)
+		self.assertEqual(
+			frappe.local.response.get("payload_fingerprint"), session.payload_hash({"amount": None})
+		)
+
+		self._grant_for(user, action, {"amount": None})
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay()
+		self.assertEqual(frappe.local.response.get("payload_fingerprint"), session.payload_hash({}))
+
+		self._grant_for(user, action, {})
+		self.assertEqual(pay(), 10)
+		self._grant_for(user, action, {"amount": None})
+		self.assertIsNone(pay(amount=None))
+
+	def test_variadic_name_passed_as_a_keyword_is_refused_before_consume(self):
+		user = self._user()
+		frappe.set_user(user)
+		action = "myapp.pay-variadic"
+
+		@confirm.passkey_protected(action=action, bind_params=["args", "kwargs"])
+		def pay(*args, **kwargs):
+			return args, kwargs
+
+		# ``args=10`` / ``kwargs=10`` land in the mapping, so the declared name means two values.
+		for call in (lambda: pay(args=10), lambda: pay(kwargs=10)):
+			self._grant_for(user, action, {"args": (), "kwargs": {}})
+			self._assert_refused_unbindable(call)
+			self.assertTrue(session.consume_action_grant(user, action, {"args": (), "kwargs": {}}))
+
+	def test_call_missing_a_required_argument_leaves_the_grant_usable(self):
+		user = self._user()
+		frappe.set_user(user)
+		action = "myapp.pay-kwonly"
+
+		@confirm.passkey_protected(action=action, bind_params=["amount"])
+		def pay(*, amount):
+			return amount
+
+		self._grant_for(user, action, {"amount": None})
+		self._assert_refused_unbindable(pay)
+		self.assertIsNone(pay(amount=None))  # the same grant still authorizes a valid call
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay(amount=None)  # ...exactly once
+
+	def test_unbindable_call_is_refused_before_consume_without_bind_params(self):
+		user = self._user()
+		frappe.set_user(user)
+		action = "myapp.ship-unbound"
+
+		@confirm.passkey_protected(action=action)
+		def ship(order):
+			return order
+
+		self._grant_for(user, action, {})
+		for call in (ship, lambda: ship(order="ORD-1", carrier="x"), lambda: ship("ORD-1", "ORD-2")):
+			self._assert_refused_unbindable(call)
+		self.assertEqual(ship(order="ORD-1"), "ORD-1")
+
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()
 		auth = self._enroll(user)
@@ -578,6 +660,36 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def _reauth(self, pwd, *, action=None, payload_fingerprint=None):
 		self._request("/api/method/passkeys.confirm.reauth_password")
 		return confirm.reauth_password(pwd, action=action, payload_fingerprint=payload_fingerprint)
+
+	def _is_signed_out_by_frappe(self, exc) -> bool:
+		"""Run ``exc`` through Frappe's real request error handler and report whether
+		it deletes the session cookie."""
+		from frappe.app import handle_exception
+		from frappe.auth import LoginManager
+
+		self._request("/api/method/passkeys.confirm.reauth_password")
+		sid = frappe.session.sid
+		frappe.local.login_manager = LoginManager.__new__(LoginManager)
+		try:
+			raise exc
+		except frappe.AuthenticationError:
+			handle_exception(exc)  # inside ``except``: the handler formats the live traceback
+		finally:
+			del frappe.local.login_manager
+			frappe.session.sid = sid
+		return "sid" in frappe.local.cookie_manager.to_delete
+
+	def test_wrong_reauth_password_keeps_the_session_and_a_retry_succeeds(self):
+		user = self._user(with_password=True)
+		frappe.set_user(user)
+		state.clear_sudo_window(self.sid)
+		with self.assertRaises(ConfirmationFailed) as ctx:
+			self._reauth("not-" + PWD)
+		self.assertFalse(self._is_signed_out_by_frappe(ctx.exception))
+		# control: the same handler signs out on the bare class
+		self.assertTrue(self._is_signed_out_by_frappe(frappe.AuthenticationError()))
+		self.assertTrue(self._reauth(PWD).get("seeded"))
+		self.assertTrue(session.has_management_sudo(user))
 
 	def test_reauth_no_action_seeds_sudo_window(self):
 		user = self._user(with_password=True)

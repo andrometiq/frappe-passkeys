@@ -146,3 +146,45 @@ class TestEndpoints(IntegrationTestCase):
 		self._set(passkey_ios_team_id="", passkey_ios_bundle_id="")
 		with self.assertRaises(frappe.DoesNotExistError):
 			well_known.apple_app_site_association()
+
+	def _save(self, **values):
+		settings = frappe.get_doc("Passkey Settings")
+		settings.update(values)
+		settings.save(ignore_permissions=True)
+		flush_settings_cache()
+
+	def test_malformed_values_are_refused_on_save(self):
+		self._set(
+			passkey_android_package_name="",
+			passkey_android_cert_fingerprints="",
+			passkey_ios_team_id="",
+			passkey_ios_bundle_id="",
+		)
+		cases = (
+			{"passkey_android_cert_fingerprints": f"{FINGERPRINT}\nAB:CD:EF:01"},
+			{"passkey_ios_team_id": "abcde12345"},
+			{"passkey_ios_team_id": "ABCDE1234"},
+			{"passkey_ios_bundle_id": "example"},
+			{"passkey_ios_bundle_id": "com.example app"},
+		)
+		for values in cases:
+			with self.subTest(values=values), self.assertRaises(frappe.ValidationError):
+				self._save(**values)
+			self.assertFalse(frappe.db.get_single_value("Passkey Settings", next(iter(values))))
+
+	def test_valid_values_save_and_are_served(self):
+		self._save(
+			passkey_android_package_name=PACKAGE,
+			passkey_android_cert_fingerprints=f"{FINGERPRINT.replace(':', '').lower()}\n",
+			passkey_ios_team_id=TEAM_ID,
+			passkey_ios_bundle_id=BUNDLE_ID,
+		)
+		self._assert_json_response(
+			well_known.apple_app_site_association(), {"webcredentials": {"apps": [f"{TEAM_ID}.{BUNDLE_ID}"]}}
+		)
+		self.assertEqual(
+			json.loads(well_known.assetlinks().get_data(as_text=True))[0]["target"][
+				"sha256_cert_fingerprints"
+			],
+			[FINGERPRINT],
+		)

@@ -102,6 +102,24 @@ def build_apple_app_site_association(settings) -> dict | None:
 	return {"webcredentials": {"apps": [f"{team}.{bundle}"]}}
 
 
+def validate_association_settings(settings) -> None:
+	"""Refuse association values the builders would drop or serve malformed."""
+	lines = (settings.get("passkey_android_cert_fingerprints") or "").splitlines()
+	for number, line in enumerate(lines, start=1):
+		if line.strip() and not _fingerprints(line):
+			frappe.throw(
+				_(
+					"Android fingerprint on line {0} is not a SHA-256 certificate fingerprint (64 hex characters, colons optional)."
+				).format(number)
+			)
+	team = (settings.get("passkey_ios_team_id") or "").strip()
+	if team and not re.fullmatch(r"[A-Z0-9]{10}", team):
+		frappe.throw(_("iOS Team ID must be 10 uppercase letters or digits, for example ABCDE12345."))
+	bundle = (settings.get("passkey_ios_bundle_id") or "").strip()
+	if bundle and not re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+", bundle):
+		frappe.throw(_("iOS Bundle ID must be in reverse-DNS form, for example com.example.app."))
+
+
 def _fingerprints(raw) -> list[str]:
 	"""Normalize the configured SHA-256 fingerprints to uppercase colon-grouped hex
 	(``AB:CD:…``), one per non-empty line, de-duplicated. A valid fingerprint is

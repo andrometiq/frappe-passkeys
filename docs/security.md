@@ -103,10 +103,14 @@ passkey, and a successful verified passkey resets the same consecutive-failure s
 
 **Action-confirmation grants are tightly bound.** A grant from the
 `@passkey_protected` primitive is single-use, ~180 s, and bound to
-`user + session + action + payload`, where the payload is the values of the arguments named in
-`bind_params` (naming a `**kwargs` parameter binds the whole mapping). Arguments left out of
-`bind_params` are not bound. A call whose bound values cannot be derived unambiguously from the
-signature is refused before any grant is consumed. By default the user may confirm with a password instead of a passkey;
+`user + session + action + payload`. Before any grant is read, the call is bound to the full
+signature; a call that would not bind (a missing or unexpected argument) is refused and no grant
+is consumed. The payload holds each name in `bind_params`: a named parameter binds its value
+(defaults applied), a `*args` / `**kwargs` parameter binds the whole tuple / mapping, and any other
+name binds that key of the `**kwargs` mapping only when the call passes it, so `pay()` and
+`pay(amount=None)` never share a grant. A bound name that also arrives as a `**kwargs` key (a
+positional-only, `*args` or `**kwargs` name passed by keyword) is ambiguous and refused. Arguments
+left out of `bind_params` are not bound. By default the user may confirm with a password instead of a passkey;
 `allow_password_fallback=False` requires a passkey. Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload

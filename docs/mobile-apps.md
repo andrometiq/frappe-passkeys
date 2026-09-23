@@ -87,7 +87,8 @@ These four fields generate the two well-known files (section 2):
 Use Google's **Play app-signing** SHA-256 fingerprint (same certificate as the
 Trusted App Origin hash — two representations of one cert). A file is served only when
 its inputs are complete (both Android fields, or both iOS fields); otherwise that path
-returns 404.
+returns 404. Saving refuses a fingerprint line that is not 64 hex characters, a Team ID that is
+not 10 uppercase letters or digits, and a Bundle ID that is not reverse-DNS.
 
 ## 2. Serve the two association files
 

@@ -18,6 +18,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Site-bound, HMAC-authenticated credential exports with atomic private-file writes and strict
   restore validation.
 - Explicit action labels and safe parameter summaries for passkey confirmation dialogs.
+- A refused confirmation or password re-auth raises `ConfirmationFailed` (401) and keeps the user
+  signed in, so they can retry.
+- Server-side format checks for the Android fingerprint, iOS Team ID and iOS Bundle ID fields.
 - Shared, site-scoped action policy publication for deterministic confirmation across workers.
 - Pinned-input release CI, data-bearing lifecycle checks, JavaScript unit gates, secret scanning,
   and a separate moving-upstream compatibility workflow whose failures remain visible.

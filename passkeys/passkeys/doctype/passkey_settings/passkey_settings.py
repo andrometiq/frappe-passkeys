@@ -6,7 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from passkeys import policy, state
+from passkeys import policy, state, well_known
 from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
@@ -21,6 +21,7 @@ class PasskeySettings(Document):
 		else:
 			self._validate_inactive_origins()
 		self._validate_reauth_window()
+		well_known.validate_association_settings(self)
 		self._validate_second_factor_floor()
 		self._validate_enrollment_policy()
 		self._warn_risky_combinations()

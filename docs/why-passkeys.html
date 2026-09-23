@@ -359,7 +359,7 @@
     </div>
     <div class="prose">
       <p>A password or a one-time code is different. You can type it into any page, and a convincing fake will take it. That is the big one, because “two-factor” codes are no exception: SMS codes, authenticator apps and “Approve?” taps are all things a fooled user can hand to the wrong site.</p>
-      <p><strong>Breaches: the passkey leaves nothing worth stealing.</strong> For each passkey the server keeps only a public key, and a public key cannot sign anyone in. A passkey-only account has no password hash to crack at leisure.</p>
+      <p><strong>Breaches: the passkey leaves nothing worth stealing.</strong> For each passkey the server keeps only a public key, and a public key cannot sign anyone in. The passkey itself gives an attacker nothing to crack. If the account ever had a password, its hash stays on the server: passkey-only stops that password from signing in but does not delete it.</p>
       <p>Each passkey is also unique to one site. A leak at one place is worthless everywhere else, so the password reuse that powers “credential stuffing” is gone.</p>
       <p>Here is where the common sign-in methods sit. One hard line divides them. Below it, you hand over something an attacker can catch and reuse. Above it, your device signs a one-time challenge and hands over nothing.</p>
     </div>
