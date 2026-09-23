@@ -337,7 +337,7 @@
     </div>
     <div class="prose">
       <ul>
-        <li>The <strong>private key</strong> <strong>never reaches the site</strong>. Signing in proves you hold it, without ever sending it. On a security key or a device-bound passkey it stays in secure hardware, such as a Secure Enclave or TPM; a synced passkey moves between your own devices only through your provider's end-to-end encrypted sync.</li>
+        <li>The <strong>private key</strong> <strong>never reaches the site</strong>. Signing in proves you hold it, without ever sending it. Where it lives is up to your device and provider: a security key keeps it in dedicated hardware, most phones and laptops use a Secure Enclave or TPM, and a synced passkey travels only through your provider's end-to-end encrypted sync (or a share you choose to make).</li>
         <li>Your <strong>fingerprint or PIN</strong> unlocks that key <em>on the device</em>. It is never sent to the site either. The site learns only that a real person unlocked this device.</li>
         <li>The site keeps only the matching <strong>public key</strong>. It is <strong>safe to leak</strong>.</li>
       </ul>
