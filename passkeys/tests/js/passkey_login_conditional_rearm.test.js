@@ -160,6 +160,7 @@ function primeConditional() {
 	mod.state.conditionalAbort = null;
 	mod.state.conditionalEnabled = true;
 	mod.state.busyModal = false;
+	mod.state.rebeginInFlight = null;
 	mod.state.modes.first_factor = false;
 }
 
@@ -301,4 +302,87 @@ test("bfcache pageshow spends the restored state and re-arms conditional UI from
 	await tick();
 	assert.strictEqual(mod.state.login.stateId, "pageshow-sid");
 	assert.strictEqual(mod.state.login.spent, false);
+});
+
+test("two quick clicks during an in-flight begin send one begin_login and open WebAuthn once", async () => {
+	primeConditional();
+	mod.state.login.markSpent("sid-under-test");
+	const begun = deferred();
+	let fetchCalls = 0;
+	global.fetch = function () { fetchCalls += 1; return begun.promise; };
+	const gets = [];
+	installNavigator({
+		credentials: {
+			get(options) { gets.push(options); return new Promise(() => {}); },
+		},
+	});
+
+	mod.onButtonClick();
+	mod.onButtonClick();
+	assert.strictEqual(fetchCalls, 1, "the second click shares the pending begin");
+
+	begun.resolve(beginResponse("single-flight-sid", "Bg"));
+	await tick();
+	await tick();
+
+	assert.strictEqual(fetchCalls, 1);
+	assert.strictEqual(gets.length, 1, "one gesture for one begin");
+	assert.strictEqual(mod.state.login.stateId, "single-flight-sid");
+});
+
+test("a click during the automatic re-arm's begin shares it and keeps the re-arm budget spent", async () => {
+	primeConditional();
+	const begins = [];
+	global.fetch = function () { const d = deferred(); begins.push(d); return d.promise; };
+	const gets = [];
+	installNavigator({
+		credentials: {
+			get(options) {
+				gets.push(options);
+				return Promise.reject(new DOMException("missing passkey", "NotAllowedError"));
+			},
+		},
+	});
+
+	mod.onButtonClick(); // fresh state: get() fails at once and the failure re-arms
+	await tick();
+	assert.strictEqual(gets.length, 1);
+	assert.strictEqual(begins.length, 1, "the visible failure started one automatic re-arm");
+
+	mod.onButtonClick(); // state still spent: the click joins the pending re-arm begin
+	assert.strictEqual(begins.length, 1, "the click did not start a second begin");
+
+	begins[0].resolve(beginResponse("rearm-sid", "Bw"));
+	await tick();
+	await tick();
+	await tick();
+
+	assert.strictEqual(gets.length, 2, "the joined click opened WebAuthn on the re-armed state");
+	assert.strictEqual(begins.length, 1, "the second failure found the budget spent and did not re-arm");
+	assert.strictEqual(mod.state.login.rearmCount, 1);
+	assert.strictEqual(mod.state.login.spent, true, "the next click will re-begin");
+});
+
+test("a joined click aborts conditional UI a sharing re-arm started before opening WebAuthn", async () => {
+	primeConditional();
+	mod.state.login.markSpent("sid-under-test");
+	const begun = deferred();
+	global.fetch = function () { return begun.promise; };
+	const gets = [];
+	installNavigator({
+		credentials: {
+			get(options) { gets.push(options); return new Promise(() => {}); },
+		},
+	});
+
+	mod.onButtonClick();
+	let isAborted = false;
+	mod.state.conditionalAbort = { abort() { isAborted = true; } }; // a re-arm's conditional get()
+	begun.resolve(beginResponse("abort-sid", "CA"));
+	await tick();
+	await tick();
+
+	assert.strictEqual(isAborted, true, "Chromium rejects a modal get() that overlaps a conditional one");
+	assert.strictEqual(mod.state.conditionalAbort, null);
+	assert.strictEqual(gets.length, 1);
 });

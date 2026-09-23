@@ -40,6 +40,7 @@
 		conditionalEnabled: false, // capability decision for this login-page surface
 		sfInterceptor: null, // the document capture-phase submit listener
 		busyModal: false, // a modal get()/create() is in flight
+		rebeginInFlight: null, // the pending re-begin promise, shared by concurrent callers
 	};
 
 	// -------------------------------------------------------------- boot glue
@@ -230,6 +231,7 @@
 		// pre-modal liveness — if the held state is spent or stale, re-begin FIRST,
 		// then run the single get() (one gesture, not two failures).
 		var proceed = function () {
+			if (state.busyModal) return; // a click that joined a shared re-begin already opened get()
 			var stateId = state.login.stateId;
 			var options = state.login.options;
 			if (!stateId || !options) {
@@ -246,6 +248,7 @@
 				return;
 			}
 			state.busyModal = true;
+			abortConditional(); // a re-arm sharing this re-begin may have started conditional UI
 			var restore = C.captureFocus(document);
 			// Stage 1 — the authenticator/browser sheet is up (before/around get()).
 			applyLoginStatus("waiting");
@@ -271,16 +274,21 @@
 		}
 	}
 
-	// re-begin: fetch a fresh state_id + options WITHOUT running any gesture.
+	// re-begin: fetch a fresh state_id + options WITHOUT running any gesture. Single-flight:
+	// a caller arriving while one is pending shares it, so a click never races an automatic
+	// re-arm (or another click) with a second begin_login.
 	function rebegin() {
-		return beginLogin().then(function (cfg) {
+		if (state.rebeginInFlight) return state.rebeginInFlight;
+		state.rebeginInFlight = beginLogin().then(function (cfg) {
+			state.rebeginInFlight = null;
 			if (cfg && cfg.enabled && cfg.modes && cfg.modes.first_factor && cfg.state_id && cfg.options) {
 				state.modes = cfg.modes;
 				state.login.adopt(cfg.state_id, cfg.options, Date.now());
 				return true;
 			}
 			return false;
-		}, function () { return false; });
+		}, function () { state.rebeginInFlight = null; return false; });
+		return state.rebeginInFlight;
 	}
 
 	// ------------------------------------------------------ verify (first factor)

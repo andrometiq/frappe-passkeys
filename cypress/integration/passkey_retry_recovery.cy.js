@@ -78,6 +78,11 @@ chromium_only("passkey login retry recovery", () => {
 		cy.window().its("__passkey_modal_get_calls").should("eq", 1);
 		cy.get("#passkey-login-status").should("contain", "No passkey was used");
 		cy.wait("@begin").its("response.statusCode").should("be.within", 200, 299);
+		// The response lands before the page adopts it; click only once the re-arm is held.
+		cy.window().its("frappe._passkey_login._state.login").should((login) => {
+			expect(login.spent, "re-armed state adopted").to.equal(false);
+			expect(login.rearmCount, "automatic re-arm budget spent").to.equal(1);
+		});
 
 		cy.get("#passkey-login-btn").click();
 		cy.window().its("__passkey_modal_get_calls").should("eq", 2);
