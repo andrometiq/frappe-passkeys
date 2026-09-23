@@ -1,10 +1,10 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""RP ID / origin policy (folds into ``frappe/passkey.py``).
-The UV / sign-count / BE-BS matrices arrive with the ceremony
-engine. Validation happens at settings-save time from pinned configuration —
-never on a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
+"""RP ID / origin policy and the UV / sign-count / BE-BS matrices (folds into
+``frappe/passkey.py``). RP/origin validation happens at settings-save time from pinned
+configuration, never on a guest-request path and never from ``Host``/``X-Forwarded-*``
+headers."""
 
 import importlib.util
 import re

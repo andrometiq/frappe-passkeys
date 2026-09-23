@@ -18,13 +18,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import aaguid, policy, session, state
-from passkeys.passkey import (
-	CeremonyExpired,
-	_enforce_request_host,
-	_require_credential_dict,
-	refuse_if_core_native,
-)
+from passkeys import aaguid, ceremony, policy, session, state
+from passkeys.errors import CeremonyExpired, refuse_if_core_native
 
 REGISTRATION_INSERT_SAVEPOINT = "passkey_registration_insert"
 
@@ -41,17 +36,13 @@ def begin_registration(flow: str = "explicit"):
 	window: explicit needs any sudo window (weak-login only bootstraps a
 	first credential); conditional-create needs a **password**-seeded window
 	(the just-typed password is the freshness proof)."""
-	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
-	from passkeys import engine
-
+	refuse_if_core_native()
+	user = session.require_authed_user()
+	_refuse_impersonated_session()
 	if flow not in ("explicit", "conditional_create"):
 		frappe.throw(_("Unknown registration flow."), frappe.ValidationError)
-
-	user = frappe.session.user
-	if user in ("Guest", ""):
-		raise frappe.AuthenticationError(_("Not permitted."))
-	_refuse_impersonated_session()
 	state.rate_limit_user("begin_registration", 20, 3600)  # 20/hr/user
+	from passkeys import engine
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)
@@ -61,7 +52,7 @@ def begin_registration(flow: str = "explicit"):
 	if not rp_id:
 		frappe.throw(_("Passkeys are not configured for this site."), frappe.ValidationError)
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	_enforce_request_host(origins)
+	ceremony.enforce_request_host(origins)
 
 	credentials = _user_credentials(user)
 	_enforce_max_per_user(settings, credentials)
@@ -108,17 +99,15 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 	Consumes the single-use challenge before verifying; the
 	global ``credential_id_sha256`` unique index is the final arbiter of both
 	duplicate registration and cross-account hijack."""
-	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
-	from passkeys import engine
-
-	# 20/hr/user — BEFORE the single-use consume, so a rate-limited
-	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
-	state.rate_limit_user("verify_registration", 20, 3600)
+	refuse_if_core_native()
 	session.require_authed_user()
 	_refuse_impersonated_session()
+	# Before the single-use consume, so a rate-limited call never burns the live ceremony.
+	state.rate_limit_user("verify_registration", 20, 3600)  # 20/hr/user
+	from passkeys import engine
 
 	error_message = _("Passkey registration could not be verified.")
-	credential = _require_credential_dict(credential, error_message)
+	credential = ceremony.require_credential_dict(credential, error_message)
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":
 		raise CeremonyExpired(_("That took too long — please try again."))
@@ -127,7 +116,7 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)  # ladder step 3b: mid-ceremony disable fails closed
-	_enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [])
 
 	flow = record.get("flow", "explicit")
 	result = engine.verify_registration(
@@ -184,7 +173,7 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 			"user_handle": handle.handle,
 			"credential_ids": _enabled_credential_ids(record["user"]),
 			# name/display_name let the client fire signalCurrentUserDetails alongside
-			# signalAllAcceptedCredentials (F2), so a freshly-enrolled passkey's provider label
+			# signalAllAcceptedCredentials, so a freshly-enrolled passkey's provider label
 			# matches the RP from the start.
 			"name": record["user"],
 			"display_name": frappe.db.get_value("User", record["user"], "full_name") or record["user"],

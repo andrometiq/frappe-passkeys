@@ -9,12 +9,16 @@ adoption nudge. Mirrors the login-shim ``website_context`` test idiom
 (``test_dormancy.test_website_context_appends_no_login_bundle``); the dormant no-op
 leg lives with the other hook no-ops in ``test_dormancy.py``."""
 
+from unittest.mock import patch
+
 import frappe
 
+from passkeys import boot
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
+from passkeys.www import passkeys as passkeys_page
 from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
 
 RP_ID = "example.com"
@@ -133,3 +137,19 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		self.assertEqual(ctx.web_include_js, list(PORTAL_JS))  # unchanged — no duplicates
 		self.assertEqual(ctx.web_include_css, list(PORTAL_CSS))
 		self.assertNotIn("passkeys", ctx.boot)  # short-circuited before the boot build
+
+	# (f) The enforcement preview evaluates every enabled user's roles; only the Desk
+	#     boot (the Passkey Settings form) needs it, so portal renders never compute it,
+	#     even for a System Manager.
+	def test_portal_render_skips_the_settings_preview_for_system_manager(self):
+		frappe.set_user("Administrator")
+		with patch.object(boot, "_would_be_blocked_count") as preview:
+			ctx = self._ctx()
+			portal_nudge.website_context(ctx)
+			page = passkeys_page.get_context(frappe._dict(boot={}))
+			desk = frappe._dict()
+			boot.extend_bootinfo(bootinfo=desk)
+		self.assertEqual(ctx.boot["passkeys"]["settings_context"], {})
+		self.assertEqual(page.passkeys["settings_context"], {})
+		self.assertEqual(preview.call_count, 1)  # the Desk boot only
+		self.assertIn("would_be_blocked_count", desk.passkeys["settings_context"])

@@ -7,7 +7,7 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 from passkeys import policy, state
-from passkeys.passkey import refuse_if_core_native
+from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
 )
@@ -209,7 +209,7 @@ def get_resolved_rp_id() -> dict:
 	Read-only and System-Manager-gated (the settings form is admin-only). Follows the
 	app endpoint idioms: ``refuse_if_core_native`` first (dormant-shell 417) and a
 	per-user rate limit."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("get_resolved_rp_id", 30, 60)  # 30/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -232,7 +232,7 @@ def get_security_posture() -> dict:
 	guest login copy — the rows are deliberately concrete about the exact setting to
 	change. Follows the app endpoint idioms: ``refuse_if_core_native`` first (dormant
 	417) and a per-user rate limit."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("get_security_posture", 30, 60)  # 30/min/user
 	from passkeys import posture

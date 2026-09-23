@@ -24,6 +24,7 @@ from frappe import _
 from frappe.utils import cint, now
 
 from passkeys import install, state
+from passkeys.errors import PasskeyConfirmationRequired
 
 # Built-in action for the app's own management surface.
 MANAGE_ACTION = "passkeys.manage"
@@ -359,8 +360,6 @@ def _raise_confirmation_required(
 	"""Emit the typed-error wire contract: structured keys ride
 	``frappe.local.response`` (survive into the JSON error body); clients match
 	on ``exc_type`` only."""
-	from passkeys.passkey import PasskeyConfirmationRequired
-
 	frappe.local.response["action"] = action
 	frappe.local.response["payload_fingerprint"] = payload_fingerprint
 	frappe.local.response["methods"] = methods

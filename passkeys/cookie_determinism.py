@@ -8,19 +8,9 @@ Frappe re-issues ``Set-Cookie: sid`` on **every** response
 ``HTTPRequest.__init__``) to slide the cookie expiry forward. On a UI-test
 site that behaviour is a race generator: the browser's cookie jar is rewritten
 by whichever response happens to arrive last, not by what the test last did.
-A slow response to a request sent under a *previous* auth state lands late and
-
-- re-installs a still-valid ``sid`` after the test logged out and cleared
-  cookies, so ``/login`` 301s back to the desk (observed as the CI-only
-  ``passkey_a11y`` failures — the screenshot shows the desk, with straggler
-  ``getpage`` XHRs landing 200 in the failed test's own command log), or
-- re-installs ``sid=Guest`` right after a login minted a fresh session, so the
-  next request runs as Guest (observed as the CI-only ``passkey_second_factor``
-  failure — ``cy.request`` sent ``cookie: sid=Guest`` straight after a 200
-  ``verify_second_factor``).
-
-Both reproduce deterministically in ``cypress/integration/sid_reseed_race.cy.js``
-via a deliberately slow guest endpoint — no loaded CI runner required.
+A slow response to a request sent under a *previous* auth state can re-install a
+still-valid ``sid`` after logout, or ``sid=Guest`` right after a fresh login.
+``cypress/integration/sid_reseed_race.cy.js`` reproduces both deterministically.
 
 When the ``passkeys_deterministic_test_cookies`` site flag is set, the
 ``after_request`` hook below drops the *pending* sid re-seed while it is still

@@ -8,9 +8,8 @@ Authenticated, JSON bodies only. Identity is resolved strictly from
 authorized by the ownership ladder with a **uniform not-found** so an
 attacker learns nothing about other users' credentials.
 
-This module carries no ceremony, so it does not import ``webauthn``. The
-passkey-verified re-auth that mints management grants is the Phase-5 confirm
-ceremony; here the sudo window is the live gate for mutations.
+No ceremony runs here, so no ``webauthn``. Mutations are gated on the sudo window;
+the grants that seed it come from ``confirm.py``.
 """
 
 import frappe
@@ -18,11 +17,7 @@ from frappe import _
 from frappe.utils import cint
 
 from passkeys import aaguid, session, state
-
-# dormant-shell guard. Imported from passkey.py, which is webauthn-free at
-# module scope (the crypto engine is imported lazily inside its ceremony bodies),
-# so this management module stays webauthn-free at import time.
-from passkeys.passkey import refuse_if_core_native
+from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_login_floor,
 	lock_passkey_mode_floor,
@@ -40,7 +35,7 @@ CREDENTIAL_DOCTYPE = "WebAuthn Credential"
 def list_credentials():
 	"""Return the caller's own credentials for the management cards. A
 	read — not sudo-gated; ownership is implicit (filtered to the session user)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("list_credentials", 60, 60)  # 60/min/user
 	rows = frappe.get_all(
@@ -85,7 +80,7 @@ def list_credentials():
 def rename_credential(name: str, label: str | None):
 	"""Rename the caller's own credential. Display-only, so no sudo gate;
 	the DocType label sanitizer is applied before the narrow column update."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
 	doc = _own_credential(user, name)
@@ -111,7 +106,7 @@ def delete_credential(name: str):
 	re-seeds it. Refuses to drop the last passkey-capable credential of a
 	``passkey_only_login`` user (or under site ``disable_user_pass_login``), the
 	endpoint enforcement of the handle-row floor."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("delete_credential", 10, 3600)  # 10/hr/user
 	session.require_management_sudo(user)
@@ -159,18 +154,15 @@ def set_passkey_only_login(enabled: object):
 	password-minted grant — a password must never be sufficient to disable the
 	"password is not sufficient" flag. Enable additionally requires ≥2 enabled
 	passkeys (the ≥1 floor binds every writer via the handle-row ``validate``)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("set_passkey_only_login", 20, 3600)  # 20/hr/user
 	enabled_int = cint(enabled)
 	payload = {"enabled": bool(enabled_int)}
 	if not session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, payload):
-		# Passkey-grade re-auth only — no sudo/password fallback offered.
-		# The 401 MUST carry the SERVER-computed fingerprint of THIS payload:
-		# the client echoes it verbatim into begin_confirmation, which binds the
-		# minted grant's payload_hash to it, and the retry's consume recomputes the
-		# same payload_hash({"enabled": bool}) — omitting it here shipped a None
-		# fingerprint, so the grant could never match and the toggle never succeeded.
+		# Passkey-grade re-auth only — no sudo/password fallback offered. The 401 must
+		# carry the server-computed fingerprint of this payload: the client echoes it
+		# into begin_confirmation, and the retry's consume recomputes the same hash.
 		session._raise_confirmation_required(
 			session.SET_PASSKEY_ONLY_ACTION,
 			methods=["passkey"],

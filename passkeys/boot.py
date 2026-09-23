@@ -22,7 +22,7 @@ import json
 import frappe
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
-from passkeys import notifications, policy
+from passkeys import notifications, policy, session
 from passkeys.install import DEFAULTS_PARENT, dormant
 
 # record_nudge event vocabulary.
@@ -332,7 +332,7 @@ def build_enforcement(user: str, settings, credential_count: int, nudge_state: d
 	}
 
 
-def build_passkeys_boot(user: str) -> dict:
+def build_passkeys_boot(user: str, *, include_settings_context: bool = False) -> dict:
 	"""The desk/portal boot payload the management + nudge + settings surfaces read.
 	Server state only — no client-supplied value is echoed. This is the single
 	contract both the Desk boot flag and the portal ``/passkeys`` controller expose:
@@ -357,10 +357,10 @@ def build_passkeys_boot(user: str) -> dict:
 	    (see :func:`build_enforcement`); the post-login interstitial reads ``blocking`` the way the banner reads
 	    ``nudge_state.eligible``.
 	  * ``settings_context``   — ``{core_two_factor_auth, disable_user_pass_login,
-	    passkey_only_user_count, would_be_blocked_count}`` for the cross-flag banners +
-	    the report-only enforcement preview; System-Manager-only
-	    (empty for everyone else — the settings form is admin-only, and the passkey-only
-	    user count is not shipped to every Desk boot).
+	    passkey_only_user_count, would_be_blocked_count}`` for the Passkey Settings form.
+	    Only the Desk boot asks for it (``include_settings_context``), and only a System
+	    Manager gets it; portal renders and everyone else get ``{}``, because the preview
+	    count evaluates every enabled user's roles.
 	  * ``rp_id``              — the resolved RP ID for ``signalAllAcceptedCredentials``.
 	"""
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -386,7 +386,7 @@ def build_passkeys_boot(user: str) -> dict:
 		"conditional_create": bool(cint(settings.passkey_conditional_create)),
 		"upsell_eligible": upsell_eligible(user, settings, state),
 		"enforcement": build_enforcement(user, settings, credential_count, state),
-		"settings_context": _settings_context(user, settings),
+		"settings_context": _settings_context(user, settings) if include_settings_context else {},
 		"rp_id": policy.resolve_rp_id(settings),
 	}
 
@@ -432,9 +432,7 @@ def _would_be_blocked_count(settings) -> int:
 
 
 def _post_login_method(user: str) -> str | None:
-	from passkeys import session as pk_session
-
-	window = pk_session.get_window(user)
+	window = session.get_window(user)
 	return window.get("seeded_by") if window else None
 
 
@@ -454,6 +452,6 @@ def extend_bootinfo(bootinfo=None):
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return
-		bootinfo.passkeys = build_passkeys_boot(user)
+		bootinfo.passkeys = build_passkeys_boot(user, include_settings_context=True)
 	except Exception:
 		frappe.log_error(title="passkeys: extend_bootinfo failed")

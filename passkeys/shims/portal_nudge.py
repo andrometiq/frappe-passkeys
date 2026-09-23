@@ -1,44 +1,14 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""``update_website_context`` shim — delivers the portal enrollment-nudge bundle on
-**every authenticated website render**, not only ``/passkeys``. ``passkey_portal.bundle.js`` is mandated "on authenticated web pages when
-enabled (portal nudge + the ``/passkeys`` page component; self-gates further at
-runtime)": a portal-only user who never opens ``/passkeys`` would otherwise never
-see the enrollment nudge, killing the adoption lever for them. The page
-controller (``www/passkeys.py``) keeps delivering the bundle page-scoped on
-``/passkeys`` itself; this shim carries it to the *other* authenticated portal
-pages.
+"""``update_website_context`` shim: delivers the portal bundle (the same set
+``/passkeys`` ships) to every authenticated portal page, so portal-only users who never
+open ``/passkeys`` still see the enrollment nudge. The bundle self-gates: cards only on
+``#passkey-portal-root``, elsewhere just the nudge, which obeys the server cadence verdict.
 
-**Same bundle, self-gating:** we append the identical
-``www.passkeys.PORTAL_JS`` / ``PORTAL_CSS`` set the ``/passkeys`` page ships — one
-bundle, not a parallel nudge-only build. ``passkey_portal.bundle.js`` requires both
-``frappe.passkeys_common`` and ``frappe.passkeys_manage_common`` globals (its
-top-level guard bails without them), so the two common files ride along. The bundle
-then self-gates client-side: it renders the management cards only where a
-``#passkey-portal-root`` mount exists (i.e. ``/passkeys``) and, everywhere else,
-runs only ``maybeNudgeBanner`` — which itself no-ops unless the server's cadence
-verdict (``frappe.boot.passkeys.nudge_state.eligible``) says show. A
-nudge-ineligible page therefore does ~zero extra work over the cached static assets.
-
-**Boot bridge:** website renders build ``frappe.boot`` from
-``website/utils.get_boot_data()``, which does **not** run ``extend_bootinfo`` and so
-carries no ``passkeys`` key (that path is Desk-only; ``/passkeys`` bridges it in its
-own template). The nudge reads the server cadence verdict off
-``frappe.boot.passkeys``, so this shim injects ``build_passkeys_boot(user)`` into
-``context.boot`` — the SAME single contract the Desk boot flag and the ``/passkeys``
-controller expose (``boot.build_passkeys_boot``). ``base.html`` renders
-``context.boot`` into ``frappe.boot``.
-
-**Cheap on every render:** the hook fires on EVERY website render, so the
-gate is ordered cheapest-first — dormant (cached) → Guest (free, in-memory) →
-already-delivered on ``/passkeys`` (free list check) → any-mode-enabled (one cached
-settings read, shared with the login shim). Only an authenticated user on a
-passkey-enabled site reaches ``build_passkeys_boot`` (a handful of indexed reads —
-the same cost the Desk already pays per boot). Guests and disabled sites pay at most
-one cached read. Import-clean (no ``webauthn``, directly or transitively — every leg
-of ``build_passkeys_boot`` is webauthn-free by construction) and
-exception-hardened: a failure here degrades to a nudge-less page, never a broken one.
+Website boot (``get_boot_data``) has no ``extend_bootinfo``, so this shim bridges
+``build_passkeys_boot(user)`` into ``context.boot``. Gates run cheapest-first because
+every website render calls it; it is webauthn-free and exception-hardened.
 """
 
 import frappe

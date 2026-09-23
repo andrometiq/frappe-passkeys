@@ -1,20 +1,14 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Whitelisted passkey endpoints (folds into ``frappe/passkey.py`` on the core
-merge). This module holds the typed-error wire contract, the
-first-factor passwordless login ceremony (`begin_login`/`verify_login`), the
-uv-setup step-up (`complete_uv_setup`), the guest translations endpoint, and
-the User cascade.
+"""Whitelisted login endpoints (folds into ``frappe/passkey.py`` on the core merge):
+passwordless login (`begin_login`/`verify_login`), the uv-setup step-up, the
+password + passkey second factor, the guest translations catalog, the management
+data endpoints, and the User cascade.
 
-``webauthn`` (via ``passkeys.engine``) is imported **lazily inside the ceremony
-endpoint bodies** (hook-path import discipline): this module is imported by
-``session.py`` and ``api/registration.py`` at their top level, so a broken
-crypto wheel must never reach import time. ``policy``/``state`` are webauthn-free
-and safe to import at module scope."""
+``webauthn`` (via ``passkeys.engine``) is imported lazily inside the ceremony
+endpoint bodies, so a broken crypto wheel never reaches import time."""
 
-import base64
-import binascii
 import hashlib
 import hmac
 import json
@@ -24,52 +18,22 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
-from passkeys import install, policy, session, state
+from passkeys import boot, ceremony, install, policy, session, state
+
+# Re-exported: callers and tests import the typed errors from this module too.
+from passkeys.errors import (
+	CeremonyExpired,
+	PasskeyConfirmationRequired,
+	PasskeyServedByCore,
+	UnknownCredential,
+	UVSetupRequired,
+	refuse_if_core_native,
+)
 
 # Attempt cap for the failed-passkey second-factor retry: a leg-2
 # verify failure re-arms a fresh state up to this many attempts, then falls back
 # to the password form. Core-OTP parity (a wrong token doesn't destroy tmp_id).
 SECOND_FACTOR_MAX_ATTEMPTS = state.SECOND_FACTOR_MAX_ATTEMPTS
-
-# Typed-error wire contract: every typed error is an exception class —
-# frappe's `report_error` emits the class name as `exc_type`, which is the wire
-# value clients match on. Structured payloads ride `frappe.local.response`
-# keys set before raising, never the translated message text.
-
-
-class CeremonyExpired(frappe.AuthenticationError):
-	"""Single-use state consumed, expired, evicted, or never existed."""
-
-
-class UnknownCredential(frappe.AuthenticationError):
-	"""Assertion references no known credential; feeds the Signal API."""
-
-
-class UVSetupRequired(frappe.AuthenticationError):
-	"""UV=1 assertion against a credential with uv_initialized=0."""
-
-
-class PasskeyConfirmationRequired(frappe.AuthenticationError):
-	"""A `@passkey_protected` action needs a fresh confirmation grant."""
-
-
-class PasskeyServedByCore(frappe.ValidationError):
-	"""Every app endpoint refuses when core serves passkeys natively."""
-
-	http_status_code = 417
-
-
-def refuse_if_core_native() -> None:
-	"""Dormant-shell contract: the canonical FIRST guard on every whitelisted
-	app endpoint. The moment core serves passkeys natively the app raises the typed
-	417 so the two implementations never mint sessions or mutate credentials in
-	parallel ("every app endpoint raises typed PasskeyServedByCore"). Every
-	endpoint module — confirm.py, passkey.py, api/registration.py, api/credentials.py
-	— routes through THIS one helper (no duplicated switch logic), and it rides the
-	shared ``install.dormant`` switch so the first guarded surface hit also emits the
-	one-time uninstall advisory."""
-	if install.dormant():
-		raise PasskeyServedByCore(_("This site serves passkeys natively."))
 
 
 def cascade_delete_user_artifacts(doc, method=None):
@@ -81,8 +45,6 @@ def cascade_delete_user_artifacts(doc, method=None):
 	deletion site-wide."""
 	if install.dormant():
 		return
-	from passkeys import boot
-
 	for doctype in ("WebAuthn Credential", "WebAuthn User Handle"):
 		frappe.db.delete(doctype, {"user": doc.name})
 	boot.clear_user_state(doc.name)
@@ -107,8 +69,6 @@ def rename_user_artifacts(doc, method=None, old=None, new=None, merge=False):
 	"""
 	if install.dormant() or not old or not new or old == new:
 		return
-	from passkeys import boot
-
 	boot.rename_user_state(old, new, merge)
 
 
@@ -128,7 +88,7 @@ def begin_login():
 	Always answers 200 with the mode flags (the bundle's only config channel);
 	``state_id`` + ``options`` + binder cookie are minted **only** when
 	``login_with_passkey`` is on (enablement matrix)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first_factor = bool(cint(settings.login_with_passkey))
 	second_factor = bool(cint(settings.passkey_as_second_factor))
@@ -147,7 +107,7 @@ def begin_login():
 		# Mode on but unconfigured — fail closed uniformly (fail-closed arm).
 		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	_enforce_request_host(origins)
+	ceremony.enforce_request_host(origins)
 
 	options, challenge_b64 = engine.build_authentication_options(
 		rp_id=rp_id,
@@ -182,10 +142,10 @@ def verify_login(state_id: str, credential: object):
 	``post_login`` (``message: "Logged In"``, ``home_page``) stays at the top
 	level — the client redirects via the returned ``home_page`` only, never a
 	hardcoded ``/app`` or ``/desk``."""
-	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
+	refuse_if_core_native()
 	from passkeys import engine
 
-	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
+	credential = ceremony.require_credential_dict(credential, _("Passkey could not be verified."))
 
 	# Step numbers follow the shared ceremony-ladder convention used by registration.py.
 	# 1. atomic single-use consume; a login state can never be a register state
@@ -203,7 +163,7 @@ def verify_login(state_id: str, credential: object):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	# 4. request host ∈ the origins bound at begin
-	_enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [])
 
 	# 6. resolve the account: userHandle is REQUIRED for discoverable login
 	response_block = credential.get("response") or {}
@@ -212,7 +172,7 @@ def verify_login(state_id: str, credential: object):
 	if not user_handle or not cred_id:
 		raise UnknownCredential(_("Passkey could not be verified."))
 
-	sha = hashlib.sha256(_b64url_decode(cred_id)).hexdigest()
+	sha = hashlib.sha256(ceremony.b64url_decode(cred_id)).hexdigest()
 	# Resolve only enough unlocked data to choose the User row that starts the
 	# global lock order. Preserve the public UnknownCredential contract when the
 	# id itself is absent; every ownership/mapping mismatch remains uniform.
@@ -223,7 +183,7 @@ def verify_login(state_id: str, credential: object):
 	if not candidate:
 		raise UnknownCredential(_("Passkey could not be verified."))
 	lock_user = handle_user or candidate.user
-	if not _lock_enabled_user(lock_user):
+	if not ceremony.lock_enabled_user(lock_user):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	locked_handle_user = frappe.db.get_value(
 		"WebAuthn User Handle", {"handle": user_handle}, "user", for_update=True
@@ -287,10 +247,8 @@ def verify_login(state_id: str, credential: object):
 				"binder_sha256": record.get("binder_sha256"),
 				"new_sign_count": result.new_sign_count,
 				"sign_count_to_store": result.sign_count_to_store,
-				# SEC-2: carry the regression signal — this leg does NOT call
-				# _advance_credential (the sole flag+notify site), so complete_uv_setup
-				# must re-apply the flag; without it a clone's first-UV=1 regression
-				# is lost under the default soft policy.
+				# This leg does not advance the credential; complete_uv_setup re-derives
+				# the counter class from the locked row and applies the flag.
 				"sign_count_regression": bool(result.sign_count_regression),
 				"backup_state": int(result.backup_state),
 			}
@@ -300,7 +258,7 @@ def verify_login(state_id: str, credential: object):
 
 	# 12. SESSION — flag before login_as: the veto exemption for a
 	# passkey_only_login=1 user, and the "passkey" sudo-window classification.
-	_advance_credential(
+	ceremony.advance_credential(
 		cred.name,
 		result,
 		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
@@ -329,7 +287,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	``frappe.local.flags.passkey_login`` before ``login_as`` so a
 	``passkey_only_login=1`` user repairing a conditional-create credential does
 	not trip their own veto mid-repair."""
-	refuse_if_core_native()  # dormant-shell (before the password-check import)
+	refuse_if_core_native()
 	from frappe.utils.password import check_password
 
 	record = state.get_uv_setup(setup_id)
@@ -338,16 +296,16 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	if not state.binder_matches(record.get("binder_sha256")):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
+	settings = frappe.get_cached_doc("Passkey Settings")
+	if not cint(settings.login_with_passkey):  # mode re-check, before any attempt is spent
+		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+
 	user = record["user"]
 	_require_login_attempt_allowed(user)
 	# Claim atomically before checking the password: the limit-th attempt passes;
 	# the next is refused without touching the oracle.
 	if state.claim_password_attempt(user) > state.PASSWORD_FAILURE_LIMIT:
 		raise frappe.AuthenticationError(_("Too many attempts. Please try again later."))
-
-	settings = frappe.get_cached_doc("Passkey Settings")
-	if not cint(settings.login_with_passkey):  # verify-side mode re-check
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	try:
 		check_password(user, pwd)
@@ -364,7 +322,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 
 	# Lock User before Credential and keep both locks through mutation + session
 	# minting. A disabled user or a revoked/reassigned credential fails closed.
-	if not _lock_enabled_user(user):
+	if not ceremony.lock_enabled_user(user):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	credential = record.get("credential")
@@ -398,11 +356,11 @@ def complete_uv_setup(setup_id: str, pwd: str):
 		"sign_count": policy.sign_count_to_store(cint(cred.sign_count), asserted_count),
 		"backup_state": cint(record.get("backup_state")),
 		"last_used_at": now_datetime(),
-		"last_used_ip": _request_ip(),
+		"last_used_ip": ceremony.request_ip(),
 	}
-	newly_flagged = _apply_sign_count_flag(credential, regression, values)
+	newly_flagged = ceremony.apply_sign_count_flag(credential, regression, values)
 	frappe.db.set_value("WebAuthn Credential", credential, values, update_modified=False)
-	_notify_if_newly_flagged(credential, newly_flagged)
+	ceremony.notify_if_newly_flagged(credential, newly_flagged)
 
 	frappe.local.flags.passkey_login = True
 	_mint_session(user)
@@ -412,15 +370,9 @@ def complete_uv_setup(setup_id: str, pwd: str):
 # ===========================================================================
 # Second factor (password → passkey step-up)
 #
-# Modeled on core's LDAP alternate-flow precedent (authenticate by our own
-# means → optionally run core's 2FA overlay → post_login), speaking core's own
-# two-request `verification` + `tmp_id` envelope so the wire is byte-compatible
-# with a future native core implementation. ZERO monkeypatch: the endpoints are
-# whitelisted, the floor is structural (core 2FA kept ON), and the session
-# is minted only through the one `_mint_session` (login_as → post_login) choke
-# point. Method paths are pinned by the committed login bundle
-# (`passkeys.passkey.login_with_password` / `.verify_second_factor` /
-# `.fallback_to_otp`).
+# Core's LDAP alternate-flow shape (authenticate → optional 2FA overlay → post_login)
+# speaking core's `verification` + `tmp_id` envelope. Sessions are minted only through
+# `_mint_session`. The login bundle pins these method paths.
 # ===========================================================================
 
 
@@ -442,7 +394,7 @@ def login_with_password(usr: str, pwd: str):
 	Returns ``None`` and sets the envelope on ``frappe.local.response`` (core's
 	own idiom — ``authenticate_for_2factor`` does the same), so ``verification``
 	and ``tmp_id`` land at the JSON top level where the bundle reads them."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	from frappe.twofactor import authenticate_for_2factor, should_run_2fa
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -482,7 +434,7 @@ def login_with_password(usr: str, pwd: str):
 		return None
 
 	# 5. dispatch (priority order): passkey leg → core OTP → plain login.
-	credentials = _enabled_credentials(user)
+	credentials = ceremony.enabled_credentials(user)
 	if credentials:
 		_dispatch_passkey_second_factor(user, pwd, credentials, settings, should_run_2fa(user))
 		return None
@@ -490,9 +442,7 @@ def login_with_password(usr: str, pwd: str):
 		# No credential: hand off to core's OTP. `usr`/`pwd` MUST still be present
 		# in `frappe.form_dict` — `cache_2fa_data` reads `pwd` from there
 		# (`twofactor.py:94-96`); popping it first caches None and breaks core's
-		# leg 2 for every passkey-less user (the confirmed bug). Core restores
-		# the pair under its own `tmp_id`, so leg 2 completes with zero app
-		# involvement on every branch.
+		# leg 2. Core restores the pair under its own `tmp_id`.
 		authenticate_for_2factor(user)
 		return None
 	# Neither passkey nor OTP: plain login (the LDAP finish). Flag it as an app
@@ -523,7 +473,7 @@ def _dispatch_passkey_second_factor(user, pwd, credentials, settings, run_2fa):
 	if not rp_id:
 		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	_enforce_request_host(origins)
+	ceremony.enforce_request_host(origins)
 
 	allow_otp_fallback = bool(cint(settings.passkey_2fa_allow_otp_fallback))
 	fallback = bool(run_2fa and allow_otp_fallback)
@@ -583,10 +533,10 @@ def verify_second_factor(state_id: str, credential: object):
 	the presence of those body keys. This keeps retry and OTP fallback alive
 	without weakening single-use consume (a wrong passkey must not burn the only
 	2FA state)."""
-	refuse_if_core_native()  # dormant-shell (before the crypto engine import)
+	refuse_if_core_native()
 	from passkeys import engine
 
-	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
+	credential = ceremony.require_credential_dict(credential, _("Passkey could not be verified."))
 
 	# atomic single-use consume; a second-factor state can never be anything else
 	record = state.consume_ceremony(state_id)
@@ -600,7 +550,7 @@ def verify_second_factor(state_id: str, credential: object):
 	settings = frappe.get_cached_doc("Passkey Settings")
 	if not cint(settings.passkey_as_second_factor):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	_enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [])
 	_require_login_attempt_allowed(record.get("user"))
 
 	# everything from credential membership onward burns the state on rejection,
@@ -621,7 +571,7 @@ def verify_second_factor(state_id: str, credential: object):
 
 	# bookkeeping + the flip (password co-present ⇒ a UV=1 assertion may
 	# initialize a uv_initialized=0 credential).
-	_advance_credential(
+	ceremony.advance_credential(
 		cred.name,
 		result,
 		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
@@ -643,11 +593,11 @@ def _verify_second_factor_assertion(record, credential, engine, settings):
 	cred_id = credential.get("id") or credential.get("rawId")
 	if not cred_id:
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	sha = hashlib.sha256(_b64url_decode(cred_id)).hexdigest()
+	sha = hashlib.sha256(ceremony.b64url_decode(cred_id)).hexdigest()
 	# membership in the ceremony's own allow-list (identified second factor)
 	if sha not in set(record.get("allow_sha256") or []):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	if not _lock_enabled_user(record["user"]):
+	if not ceremony.lock_enabled_user(record["user"]):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",
@@ -752,7 +702,7 @@ def fallback_to_otp(state_id: str):
 	and the stored ``pwd`` into ``frappe.form_dict`` and hand off to core's own
 	``authenticate_for_2factor`` — core's OTP UI and core's leg 2 then complete
 	natively."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	from frappe.twofactor import authenticate_for_2factor
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -795,16 +745,6 @@ def _record_fallback_used(user: str) -> None:
 
 	notifications.record_risk_event(
 		notifications.RISK_FALLBACK_USED, user, f"OTP fallback taken by passkey holder {user}"
-	)
-
-
-def _enabled_credentials(user: str) -> list:
-	"""The user's enabled credentials (id + sha + transports) for the leg-1
-	allow-list. Empty ⇒ the user has no passkey second factor."""
-	return frappe.get_all(
-		"WebAuthn Credential",
-		filters={"user": user, "enabled": 1},
-		fields=["credential_id", "credential_id_sha256", "transports"],
 	)
 
 
@@ -884,11 +824,8 @@ def get_app_translations(version: str | None = None):
 	Wraps ``get_translations_from_apps`` scoped to this app only; the bundle
 	merges it into ``frappe._messages`` without clobbering the Web-Form / core
 	catalog. ``version`` remains an accepted compatibility argument, but the
-	request language is not URL-keyed, so every response is non-cacheable.
-
-	Rate-limited like the sibling page-load-coupled guest endpoints (30/min/IP,
-	as ``begin_login``)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	request language is not URL-keyed, so every response is non-cacheable."""
+	refuse_if_core_native()
 	from frappe.translate import get_translations_from_apps
 
 	lang = getattr(frappe.local, "lang", None) or "en"
@@ -916,7 +853,7 @@ def get_signal_data():
 	only). The desk/portal bundle fires the signal fire-and-forget in-session so a
 	deleted credential is pruned from the browser's autofill list. Identity is
 	strictly ``frappe.session.user``; no client param selects the account."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("get_signal_data", 60, 60)  # 60/min/user
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -925,7 +862,7 @@ def get_signal_data():
 	credential_ids = frappe.get_all(
 		"WebAuthn Credential", filters={"user": user, "enabled": 1}, pluck="credential_id"
 	)
-	# name/display_name feed signalCurrentUserDetails (F2), keeping the provider's stored
+	# name/display_name feed signalCurrentUserDetails, keeping the provider's stored
 	# account-chooser label in sync when the user later edits full_name/email. name mirrors
 	# the WebAuthn userName set at registration (the login id); display_name the userDisplayName.
 	full_name = frappe.db.get_value("User", user, "full_name") or user
@@ -944,11 +881,9 @@ def record_nudge(event: str):
 	``event`` ∈ {``shown``, ``declined``, ``opt_out``}. The
 	counters are **server-side per-user** so a three-browser user gets N prompts
 	total (not 3N); capability checks stay client-side."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("record_nudge", 30, 3600)  # 30/hr/user
-	from passkeys import boot
-
 	return {"nudge_state": boot.record_nudge_event(user, event)}
 
 
@@ -960,10 +895,10 @@ def record_enforcement(event: str):
 	the site's Incapable Device Policy is ``Block + Notify Admin``, raises the admin
 	advisory. The grace counter is **server-side per-user** so a multi-browser user has
 	one shared grace budget; capability detection stays client-side."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("record_enforcement", 30, 3600)  # 30/hr/user
-	from passkeys import boot, notifications
+	from passkeys import notifications
 
 	if event not in boot.ENFORCE_EVENTS:
 		frappe.throw(_("Unknown enforcement event."), frappe.ValidationError)
@@ -995,65 +930,6 @@ def _mint_session(user: str) -> None:
 	``frappe.local.flags.passkey_login`` must already be set by the caller so
 	``seed_sudo_window`` classifies the window as passkey."""
 	_request_login_manager().login_as(user)
-
-
-def _advance_credential(name: str, result, *, sign_count_hard_fail: bool = False) -> None:
-	"""Persist the upward-only sign-count, refreshed backup state, and last-used
-	bookkeeping after a successful assertion.
-
-	The verifier normally already holds this credential row. Re-reading it with
-	``FOR UPDATE`` also protects callers added later: a duplicate assertion that
-	was verified against stale state is reclassified before any session or grant
-	is minted.
-	"""
-	current = frappe.db.get_value("WebAuthn Credential", name, ["sign_count"], as_dict=True, for_update=True)
-	if not current:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	klass = policy.classify_sign_count(cint(current.sign_count), cint(result.new_sign_count))
-	if klass == policy.SIGN_COUNT_REPLAY:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	regression = klass == policy.SIGN_COUNT_REGRESSION
-	if regression and sign_count_hard_fail:
-		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	values = {
-		"sign_count": policy.sign_count_to_store(cint(current.sign_count), cint(result.new_sign_count)),
-		"backup_state": int(result.backup_state),
-		"last_used_at": now_datetime(),
-		"last_used_ip": _request_ip(),
-	}
-	newly_flagged = _apply_sign_count_flag(name, regression, values)
-	frappe.db.set_value("WebAuthn Credential", name, values, update_modified=False)
-	_notify_if_newly_flagged(name, newly_flagged)
-
-
-def _lock_enabled_user(user: str) -> bool:
-	"""Lock the account row that anchors every authentication lock sequence."""
-	return bool(cint(frappe.db.get_value("User", user, "enabled", for_update=True)))
-
-
-def _apply_sign_count_flag(name: str, regression: bool, values: dict) -> bool:
-	"""Fold a sign-count regression into a pending credential-write ``values`` dict
-	and report whether this is the unflagged→flagged rising edge. Shared by
-	:func:`_advance_credential` and the uv-setup completion (SEC-2) so both advance
-	sites flag identically — the uv-setup login leg was the SOLE advance for its
-	assertion yet dropped the flag entirely before this factoring."""
-	if not regression:
-		return False
-	values["flagged"] = 1
-	values["flagged_reason"] = "sign_count_regression"
-	return not cint(frappe.db.get_value("WebAuthn Credential", name, "flagged"))
-
-
-def _notify_if_newly_flagged(name: str, newly_flagged: bool) -> None:
-	"""Fire the out-of-band "passkey flagged" notice on the unflagged→flagged
-	edge only (a repeatedly-regressing credential does not re-spam the owner)."""
-	if not newly_flagged:
-		return
-	from passkeys import notifications
-
-	row = frappe.db.get_value("WebAuthn Credential", name, ["user", "label"], as_dict=True)
-	if row:
-		notifications.notify_credential_flagged(row.user, row.label, "sign_count_regression")
 
 
 def _track_verify_failure(user: str | None) -> None:
@@ -1105,76 +981,3 @@ def _track_verify_success(user: str | None) -> None:
 			tracker.add_success_attempt()
 	except Exception:
 		frappe.log_error(title="passkeys: login-success tracking failed")
-
-
-# ---------------------------------------------------------------------------
-# guest-ceremony helpers
-# ---------------------------------------------------------------------------
-
-
-def _enforce_request_host(origins: list) -> None:
-	"""Fail-closed host membership. No-ops without an HTTP request
-	(direct-call unit paths) — the library's ``expected_origin`` check against
-	clientDataJSON is the binding enforcement; this is the ops-diagnosable
-	pre-check that also powers the begin-side uniform 401."""
-	origin = _request_origin()
-	if origin is None:
-		return
-	if origin not in origins:
-		# One structured log on EVERY host-mismatch refusal. Previously
-		# only the registration path logged; begin_login / begin_confirmation / the
-		# verify legs (which route here, and via confirm.py's delegating shim) were
-		# silent. The list contains only configured exact origins, never an origin
-		# inferred from the RP ID. Ops-diagnosable; the wire answer stays uniform.
-		frappe.log_error(
-			title="passkeys: request host not in configured origins",
-			message=f"request origin {origin} not in {origins}",
-		)
-		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
-
-
-def _request_origin() -> str | None:
-	request = getattr(frappe.local, "request", None)
-	headers = getattr(request, "headers", None) if request is not None else None
-	return headers.get("Origin") if headers is not None else None
-
-
-def _request_ip() -> str | None:
-	return getattr(frappe.local, "request_ip", None)
-
-
-def _b64url_decode(value: str) -> bytes:
-	"""Base64url-decode a credential id (tolerating stripped padding). A malformed
-	value raises the uniform ``AuthenticationError`` — never a raw
-	``binascii.Error`` / ``ValueError`` / ``TypeError`` (C5): those would escape as
-	a 500, breaking the uniform-401 contract. Critically, in
-	``verify_second_factor`` this call runs AFTER the single-use state consume,
-	inside a ``try`` that catches only ``AuthenticationError`` — so a raw exception
-	would burn the 2FA state with NO re-arm; raising ``AuthenticationError`` here
-	routes a garbage id through the existing re-arm path instead."""
-	try:
-		return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-	except (binascii.Error, ValueError, TypeError) as exc:
-		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
-
-
-def _require_credential_dict(value, message):
-	try:
-		parsed = json.loads(value) if isinstance(value, str) else value
-	except (json.JSONDecodeError, ValueError) as exc:
-		raise frappe.AuthenticationError(message) from exc
-	# JSON request bodies may already be decoded, so validate the final value.
-	if not isinstance(parsed, dict):
-		raise frappe.AuthenticationError(message)
-	response = parsed.get("response")
-	if not isinstance(response, dict):
-		raise frappe.AuthenticationError(message)
-	try:
-		client_data_json = response.get("clientDataJSON")
-		client_data = base64.urlsafe_b64decode(client_data_json + "=" * (-len(client_data_json) % 4))
-		decoded = json.loads(client_data)
-	except (binascii.Error, TypeError, ValueError) as exc:
-		raise frappe.AuthenticationError(message) from exc
-	if not isinstance(decoded, dict):
-		raise frappe.AuthenticationError(message)
-	return parsed

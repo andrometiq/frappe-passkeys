@@ -46,19 +46,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
-from passkeys import policy, session, state
-from passkeys.passkey import (
-	CeremonyExpired,
-	_advance_credential,
-	_b64url_decode,
-	_enabled_credentials,
-	_enforce_request_host,
-	_lock_enabled_user,
-	_require_credential_dict,
-)
-from passkeys.passkey import (
-	refuse_if_core_native as _refuse_if_core_native,
-)
+from passkeys import ceremony, policy, session, state
+from passkeys.errors import CeremonyExpired, refuse_if_core_native
 
 # ---------------------------------------------------------------------------
 # Per-action policy registry. A protected call publishes its policy to the
@@ -274,9 +263,7 @@ def passkey_protected(
 
 
 def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
-	user = frappe.session.user
-	if not user or user in ("Guest", ""):
-		raise frappe.AuthenticationError(_("Not permitted."))
+	user = session.require_authed_user()
 	if session.consume_action_grant(
 		user,
 		policy_.action,
@@ -326,7 +313,7 @@ def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 	"""Authoritative per-user subset of ``["passkey", "password", "sudo"]`` the
 	dialog may offer for this action (begin-response ``methods``)."""
 	methods = []
-	if _enabled_credentials(user):
+	if ceremony.enabled_credentials(user):
 		methods.append("passkey")
 	if policy_.allow_password_fallback and _password_reauth_allowed(user):
 		methods.append("password")
@@ -367,7 +354,7 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	requests ``userVerification: "required"``; ``methods`` is the
 	authoritative per-user subset of ``["passkey","password","sudo"]``. Raises
 	417 ``PasskeyServedByCore`` when core serves passkeys natively."""
-	_refuse_if_core_native()
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("begin_confirmation", 30, 300)  # 30/5 min/user
 	action = _require_action(action)
@@ -380,9 +367,9 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	if not rp_id:
 		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
-	_enforce_request_host(origins)
+	ceremony.enforce_request_host(origins)
 
-	creds = _enabled_credentials(user)
+	creds = ceremony.enabled_credentials(user)
 	options, challenge_b64 = engine.build_authentication_options(
 		rp_id=rp_id,
 		allow_credentials=[
@@ -439,13 +426,13 @@ def verify_confirmation(state_id: str, credential: object):
 	``{grant: "<token>"}`` — the single-use, 180 s, user+sid+action+payload
 	bound, ``passkey``-method grant. Any failure raises the uniform typed error;
 	the client never re-POSTs an assertion."""
-	_refuse_if_core_native()
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("verify_confirmation", 30, 300)  # 30/5 min/user
 
 	from passkeys import engine
 
-	credential = _require_credential_dict(credential, _("Passkey could not be verified."))
+	credential = ceremony.require_credential_dict(credential, _("Passkey could not be verified."))
 
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
@@ -455,7 +442,7 @@ def verify_confirmation(state_id: str, credential: object):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
-	_enforce_request_host(record.get("origins") or [])
+	ceremony.enforce_request_host(record.get("origins") or [])
 
 	# resolve the asserted credential: must belong to the user AND be a member of
 	# THIS ceremony's allow-list (the StrongKey credential-substitution defence).
@@ -490,7 +477,7 @@ def verify_confirmation(state_id: str, credential: object):
 			)
 
 	# sign-count policy applies (upward-only store + flag/hard-fail).
-	_advance_credential(
+	ceremony.advance_credential(
 		cred.name,
 		result,
 		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
@@ -526,18 +513,10 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 	  and even if it did not, its consumer rejects any non-passkey method.
 
 	``check_password`` + a per-user failure tracker + the app throttle guard the
-	password oracle. Raises 417 when core is native.
-
-	.. note::
-	   The frozen spec pins ``reauth_password`` as *"reaches only the sudo
-	   window"* yet also requires an ``allow_password_fallback`` action-grant with a
-	   ``password``-method grant whose minting endpoint it never names. Rather than
-	   invent a new whitelist name, this endpoint's params are **extended**
-	   (``{pwd, action?, payload_fingerprint?}``): the bare-``pwd`` sudo-seed case is
-	   unchanged; ``action`` present adds the action-grant path."""
+	password oracle. Raises 417 when core is native."""
 	from frappe.utils.password import check_password
 
-	_refuse_if_core_native()
+	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("reauth_password", 5, 300)  # 5/5 min/user
 
@@ -619,10 +598,10 @@ def _resolve_ceremony_credential(record, credential, user):
 	cred_id = credential.get("id") or credential.get("rawId")
 	if not cred_id:
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	sha = hashlib.sha256(_b64url_decode(cred_id)).hexdigest()
+	sha = hashlib.sha256(ceremony.b64url_decode(cred_id)).hexdigest()
 	if sha not in set(record.get("allow_sha256") or []):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	if not _lock_enabled_user(user):
+	if not ceremony.lock_enabled_user(user):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",

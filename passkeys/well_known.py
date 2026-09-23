@@ -35,7 +35,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from werkzeug.wrappers import Response
 
-from passkeys.passkey import refuse_if_core_native
+from passkeys.errors import refuse_if_core_native
 
 # assetlinks.json relations: get_login_creds is the one that shares credentials
 # between the site and the app; handle_all_urls is App Links / deep-linking —
@@ -53,7 +53,7 @@ def assetlinks():
 	statement list built from settings; 404 when the package name / fingerprints are
 	not both configured. Front it with reverse-proxy caching in production — it is a
 	public, static-equivalent file (the per-IP rate limit here is only a DoS backstop)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	payload = build_assetlinks(frappe.get_cached_doc("Passkey Settings"))
 	if payload is None:
 		raise frappe.DoesNotExistError(_("assetlinks.json is not configured."))
@@ -66,7 +66,7 @@ def apple_app_site_association():
 	"""iOS App Site Association (``/.well-known/apple-app-site-association``). Emits the
 	``webcredentials`` document built from settings; 404 when the Team ID / Bundle ID
 	are not both configured."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	payload = build_apple_app_site_association(frappe.get_cached_doc("Passkey Settings"))
 	if payload is None:
 		raise frappe.DoesNotExistError(_("apple-app-site-association is not configured."))

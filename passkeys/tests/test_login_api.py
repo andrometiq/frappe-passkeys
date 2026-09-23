@@ -727,6 +727,25 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")  # no session minted
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 
+	def test_complete_uv_setup_mode_off_does_not_spend_a_password_attempt(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		self.addCleanup(state.clear_password_failures, user)
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+		self.addCleanup(state.consume_uv_setup, setup_id)
+
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
+		flush_settings_cache()
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaisesRegex(frappe.AuthenticationError, "Passkey could not be verified"):
+			passkey.complete_uv_setup(setup_id, "wrong-password")
+		self.assertEqual(state.get_counter(state.PASSWORD_FAILURE_PREFIX + user), 0)
+		self.assertIsNotNone(state.get_uv_setup(setup_id))
+
 	def test_complete_uv_setup_allows_limit_then_throttles_limit_plus_one(self):
 		user = self._user()
 		auth, _ = self._enroll(user, uv=False)

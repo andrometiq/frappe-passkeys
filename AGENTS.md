@@ -13,9 +13,9 @@ it does not repeat what `CONTRIBUTING.md` says.
 
 ## Main Rules
 
-- Put real behavior in the domain modules (`engine`, `policy`, `state`, `posture`, `confirm`,
-  `session`, `install`) and the DocType controllers. Keep the whitelisted endpoints (`passkey.py`,
-  `api/`), the Frappe hooks (`hooks.py`), and the client bundles (`public/js/*.bundle.js`) thin:
+- Put real behavior in the domain modules (`engine`, `ceremony`, `policy`, `state`, `posture`,
+  `confirm`, `session`, `install`, `errors`) and the DocType controllers. Keep the whitelisted
+  endpoints (`passkey.py`, `api/`), the Frappe hooks (`hooks.py`), and the client bundles (`public/js/*.bundle.js`) thin:
   parse, authorize, then delegate.
 - **Hook-path import discipline is mandatory.** Any module reachable from an every-request hook
   chain — `on_login`, `on_session_creation`, `on_logout`, `after_request`, `extend_bootinfo`,
@@ -44,7 +44,11 @@ it does not repeat what `CONTRIBUTING.md` says.
 - `passkeys/passkey.py`: guest-facing first-factor passwordless login (`begin_login` /
   `verify_login`), the password+passkey second-factor flow (`login_with_password` /
   `verify_second_factor` / `fallback_to_otp`), the uv-setup step-up, the guest translations
-  endpoint, and the User cascade. Carries the typed-error wire contract.
+  endpoint, and the User cascade.
+- `passkeys/errors.py`: the typed-error wire contract (exception classes + HTTP statuses) and the
+  dormancy guard `refuse_if_core_native`.
+- `passkeys/ceremony.py`: shared ceremony primitives used by every ceremony endpoint (request
+  host/origin checks, credential resolve-and-lock, sign-count advance). `webauthn`-free.
 - `passkeys/api/registration.py`: authenticated, sudo-gated registration ceremony endpoints.
 - `passkeys/api/credentials.py`: a user's own credential management (list / rename / delete) and the
   per-user `passkey_only_login` switch. Identity comes only from `frappe.session.user`.
@@ -84,7 +88,8 @@ The app is layered, not an object graph. Respect the layers:
    files and the translations catalog; `allow_guest` only where a guest ceremony needs it), typed
    errors out. Parse, authorize,
    rate-limit, delegate — no crypto orchestration inline.
-2. **Domain** — `engine` (verify), `policy` (RP/origin), `state` (single-use store), `posture`
+2. **Domain** — `engine` (verify), `ceremony` (shared ceremony steps), `errors` (typed errors),
+   `policy` (RP/origin), `state` (single-use store), `posture`
    (verdict), `confirm` / `session` (grants + sudo window), `install` (guards). New behavior lives
    here.
 3. **Persistence** — the four DocTypes. `Passkey Settings` is the single owner of the enable flags

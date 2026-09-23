@@ -65,7 +65,6 @@ HOOK_KEYS = {
     "update_website_context",
 }
 DORMANCY_MARKERS = {
-    "_refuse_if_core_native",
     "dormant",
     "is_core_native",
     "refuse_if_core_native",

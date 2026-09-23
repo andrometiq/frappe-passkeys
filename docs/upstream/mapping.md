@@ -14,7 +14,7 @@ Use four outcomes during that review:
 
 | App surface | Proposed core owner | Review checklist |
 |---|---|---|
-| `passkeys/passkey.py`, `engine.py`, `state.py`, `policy.py` | Native passkey service | Preserve exact origins, binder, UV, counter/backup flags, keyed password version, one-time state, uniform errors, and locked verification. |
+| `passkeys/passkey.py`, `ceremony.py`, `errors.py`, `engine.py`, `state.py`, `policy.py` | Native passkey service | Preserve exact origins, binder, UV, counter/backup flags, keyed password version, one-time state, uniform typed errors (`errors.py` class names are the wire `exc_type`), and locked verification (User row before Credential row). |
 | `passkeys/api/registration.py`, `api/credentials.py` | User credential service | Preserve session-derived identity, global credential uniqueness, registration cap locks, ownership, last-credential floor, and passkey-only grant policy. |
 | `passkeys/confirm.py`, `session.py` | Core re-auth/confirmation service | Preserve single-use user+session+action+payload grants, consume-before-action, password fallback policy, and `display_label`/`display_params`. |
 | `passkeys/auth_hooks.py` | Core login completion | Preserve alternate-path veto, one-time OTP marker, narrow Administrator exemption, and two-factor floor. Do not depend on app-only request flags without a native replacement. |

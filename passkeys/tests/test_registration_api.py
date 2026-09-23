@@ -103,6 +103,33 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		result = registration.verify_registration(begun["state_id"], credential)
 		self.assertTrue(result["name"])
 
+	def test_unauthenticated_calls_are_refused_before_argument_checks_and_rate_limits(self):
+		for endpoint in ("begin_registration", "verify_registration"):
+			key = f"{state.RATE_LIMIT_PREFIX}{endpoint}:Guest"
+			state.clear_counter(key)
+			self.addCleanup(state.clear_counter, key)
+		frappe.set_user("Guest")
+		with self.assertRaises(frappe.AuthenticationError):
+			registration.begin_registration(flow="bogus")
+		with self.assertRaises(frappe.AuthenticationError):
+			registration.verify_registration("state", {"response": {}})
+		for endpoint in ("begin_registration", "verify_registration"):
+			self.assertEqual(state.get_counter(f"{state.RATE_LIMIT_PREFIX}{endpoint}:Guest"), 0)
+
+	def test_impersonated_call_does_not_spend_the_users_rate_limit(self):
+		user = self._user()
+		frappe.set_user(user)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		for endpoint in ("begin_registration", "verify_registration"):
+			self.addCleanup(state.clear_counter, f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}")
+		with self.assertRaises(frappe.PermissionError):
+			registration.begin_registration(flow="explicit")
+		with self.assertRaises(frappe.PermissionError):
+			registration.verify_registration("state", {"response": {}})
+		for endpoint in ("begin_registration", "verify_registration"):
+			self.assertEqual(state.get_counter(f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}"), 0)
+
 	def test_malformed_credential_envelope_is_rejected_before_consume(self):
 		user = self._user()
 		begun, good, _auth = self._register(user, seed="malformed-envelope")

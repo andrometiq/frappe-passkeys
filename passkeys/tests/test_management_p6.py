@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import frappe
 
-from passkeys import confirm, notifications, passkey, state
+from passkeys import ceremony, confirm, notifications, state
 from passkeys.api import credentials
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
@@ -92,11 +92,11 @@ class NotificationTest(_Base):
 			backup_state=False,
 			sign_count_regression=True,
 		)
-		passkey._advance_credential(cred.name, result)
+		ceremony.advance_credential(cred.name, result)
 		flagged_mails = [m for m in self.sent if "flag" in m["subject"].lower()]
 		self.assertEqual(len(flagged_mails), 1)
 		# a second regressed assertion must NOT re-spam (already flagged)
-		passkey._advance_credential(cred.name, result)
+		ceremony.advance_credential(cred.name, result)
 		self.assertEqual(len([m for m in self.sent if "flag" in m["subject"].lower()]), 1)
 
 	def test_fallback_risk_event_emails_under_its_own_knob(self):

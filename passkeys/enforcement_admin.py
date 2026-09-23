@@ -25,7 +25,7 @@ from frappe.utils import cint
 
 from passkeys import boot, state
 from passkeys.boot import EXEMPT_ROLE
-from passkeys.passkey import refuse_if_core_native
+from passkeys.errors import refuse_if_core_native
 
 _ENFORCING_POLICIES = ("Enforce", "Enforce After Date")
 
@@ -93,7 +93,7 @@ def admin_enforcement_view(user: str) -> dict:
 def get_user_enforcement_admin(user: str) -> dict:
 	"""Read the per-user enforcement admin view-model (exemption + grace state). System-
 	Manager-only + rate-limited; dormant-shell 417 the moment core serves passkeys."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("get_user_enforcement_admin", 60, 60)  # 60/min/user
 	return admin_enforcement_view(_require_user(user))
@@ -107,7 +107,7 @@ def set_user_exemption(user: str, exempt: object) -> dict:
 	from the user — the marker role stays in place. System-Manager-only + rate-limited.
 	Returns the refreshed admin view-model
 	(``exempt`` / ``in_scope`` reflect the change)."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("set_user_exemption", 30, 3600)  # 30/hr/user
 	user = _require_user(user)
@@ -129,7 +129,7 @@ def reset_enforcement_grace(user: str) -> dict:
 	``record_enforcement`` writes and ``build_enforcement`` reads — no parallel state.
 	System-Manager-only + rate-limited. Returns the refreshed admin view-model with
 	``grace_remaining`` back at ``grace_total``."""
-	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
+	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("reset_enforcement_grace", 30, 3600)  # 30/hr/user
 	user = _require_user(user)

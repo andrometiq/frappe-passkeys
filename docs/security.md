@@ -165,7 +165,11 @@ session exists. Every authenticated endpoint instead uses a **per-user** app
 counter (a session-user-keyed cache token), because core's IP keying would 429 a
 whole NAT'd office off one busy user and can't attribute abuse to an account. A
 guest ceremony can never reach the per-user endpoints, so the two classes don't
-overlap.
+overlap. Authenticated endpoints check the session (and refuse an impersonated
+registration) before they count a call, so an unauthenticated request never spends a
+user's budget; the counter still runs before any single-use state is consumed.
+`complete_uv_setup` re-checks that passwordless login is on before it spends a
+password attempt.
 
 *Guest / pre-session endpoints — core `@rate_limit`, IP-keyed:*
 

@@ -425,12 +425,8 @@ def build_posture() -> dict:
 
 def _adoption_counts() -> tuple[int, int]:
 	"""``(passkey_only_count, login_user_count)`` for the adoption row, counted over the
-	SAME eligible population — enabled Users excluding Administrator and Guest.
-
-	The denominator ``m`` always excluded Administrator/Guest and disabled users, but the
-	numerator ``n`` used to count ``passkey_only_login`` handles over ALL users, so an
-	Administrator or a disabled user with a passkey-only handle could push ``n`` above
-	``m`` (n > m). Joining the handle count to the same eligible User set keeps n <= m."""
+	SAME eligible population — enabled Users excluding Administrator and Guest — so the
+	numerator can never exceed the denominator."""
 	from frappe.query_builder.functions import Count
 
 	User = frappe.qb.DocType("User")
