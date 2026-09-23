@@ -45,7 +45,7 @@
 		var f = window.frappe;
 		var token = f && (f.csrf_token || (f.boot && f.boot.csrf_token) || (f.session && f.session.csrf_token));
 		if (token && token !== "None") h["X-Frappe-CSRF-Token"] = token;
-		if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
+		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
 		return h;
 	}
 	function unwrap(body) { return C.unwrapMessage(body); }
@@ -608,7 +608,7 @@
 		var g = el("span", "passkey-icon"); g.setAttribute("aria-hidden", "true"); g.innerHTML = C.iconSvg(iconName, "icon icon-sm"); b.appendChild(g);
 		b.addEventListener("click", on); return b;
 	}
-	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) {} return String(v); }
+	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) { /* fall back to the raw value */ } return String(v); }
 
 	// --------------------------------------------------------------- boot
 	// Web pages on v15/v16 carry no app strings: merge the catalog before the first paint.

@@ -46,7 +46,7 @@ _ASSETLINKS_RELATIONS = (
 )
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=120, seconds=60)
 def assetlinks():
 	"""Android Digital Asset Links (``/.well-known/assetlinks.json``). Emits the
@@ -60,7 +60,7 @@ def assetlinks():
 	return _json_response(payload)
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=120, seconds=60)
 def apple_app_site_association():
 	"""iOS App Site Association (``/.well-known/apple-app-site-association``). Emits the

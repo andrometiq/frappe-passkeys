@@ -103,7 +103,7 @@ def begin_registration(flow: str = "explicit"):
 
 
 @frappe.whitelist(methods=["POST"])
-def verify_registration(state_id: str, credential, label: str | None = None):
+def verify_registration(state_id: str, credential: object, label: str | None = None):
 	"""Verify a creation response and persist a ``WebAuthn Credential`` row.
 	Consumes the single-use challenge before verifying; the
 	global ``credential_id_sha256`` unique index is the final arbiter of both

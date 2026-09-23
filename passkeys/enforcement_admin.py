@@ -100,7 +100,7 @@ def get_user_enforcement_admin(user: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_user_exemption(user: str, exempt) -> dict:
+def set_user_exemption(user: str, exempt: object) -> dict:
 	"""Exempt / un-exempt ONE user from passkey enrollment enforcement, via the dedicated
 	role. Idempotent (double-click safe): on exempt, lazily create the role and assign it
 	to the user (no duplicate Has Role row); on un-exempt, remove ONLY the role assignment

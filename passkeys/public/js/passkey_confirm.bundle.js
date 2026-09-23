@@ -40,7 +40,7 @@
 		var f = window.frappe;
 		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
 		if (token) h["X-Frappe-CSRF-Token"] = token; // authed POSTs require CSRF
-		if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
+		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
 		return h;
 	}
 

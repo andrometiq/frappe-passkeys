@@ -153,7 +153,7 @@ def _guard_last_credential(user: str, doc) -> None:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_passkey_only_login(enabled):
+def set_passkey_only_login(enabled: object):
 	"""Toggle the caller's per-user password-login disable. Gated on a
 	single-use **passkey grant only**: never a sudo window, never a
 	password-minted grant — a password must never be sufficient to disable the

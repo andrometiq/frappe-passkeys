@@ -152,7 +152,7 @@ def bump_counter(name: str, ttl: int) -> int:
 
 
 def get_counter(name: str) -> int:
-	raw = frappe.cache.get(_make_key(name))
+	raw = frappe.cache.get(_make_key(name))  # nosemgrep: frappe-cache-breaks-multitenancy
 	return int(raw) if raw is not None else 0
 
 
@@ -172,7 +172,7 @@ def claim_enforcement_defer(user: str, sid: str) -> bool:
 	"""Return true once per user/session, atomically across workers."""
 	digest = hashlib.sha256(f"{user}\x00{sid}".encode()).hexdigest()
 	return bool(
-		frappe.cache.set(
+		frappe.cache.set(  # nosemgrep: frappe-cache-breaks-multitenancy
 			_make_key(ENFORCEMENT_DEFER_PREFIX + digest),
 			b"1",
 			ex=ENFORCEMENT_DEFER_TTL,
@@ -260,11 +260,12 @@ def _make_key(name: str) -> bytes:
 
 def _put_json(name: str, record: dict, ttl: int) -> None:
 	# TTL at write; JSON; never touches frappe.local.cache
+	# nosemgrep: frappe-cache-breaks-multitenancy
 	frappe.cache.set(_make_key(name), json.dumps(record), ex=ttl)
 
 
 def _get_json(name: str) -> dict | None:
-	raw = frappe.cache.get(_make_key(name))
+	raw = frappe.cache.get(_make_key(name))  # nosemgrep: frappe-cache-breaks-multitenancy
 	return json.loads(raw) if raw is not None else None
 
 

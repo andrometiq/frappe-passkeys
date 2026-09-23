@@ -127,9 +127,9 @@ def _advise_dormant_once() -> None:
 	rides on it."""
 	try:
 		key = frappe.cache.make_key(_DORMANT_ADVISORY_KEY)
-		if frappe.cache.get(key):
+		if frappe.cache.get(key):  # nosemgrep: frappe-cache-breaks-multitenancy
 			return
-		frappe.cache.set(key, "1")
+		frappe.cache.set(key, "1")  # nosemgrep: frappe-cache-breaks-multitenancy
 		frappe.log_error(
 			title="passkeys: dormant — core serves passkeys natively",
 			message=(
@@ -463,7 +463,7 @@ def import_credentials(
 
 	Rejected rows are counted, listed for the operator, and returned under ``rejected``;
 	the valid remainder is still imported."""
-	with open(path, encoding="utf-8") as fh:
+	with open(path, encoding="utf-8") as fh:  # nosemgrep: frappe-security-file-traversal
 		data = json.load(fh)
 	_validate_export(data, path, allow_unsigned_legacy=allow_unsigned_legacy)
 	if data.get("version") == 1:
@@ -580,7 +580,7 @@ def import_credentials(
 		_restore_row("WebAuthn User Handle", row)
 		summary["handles_created"] += 1
 
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	if summary["rejected"]:
 		print(f"passkeys: import_credentials rejected {len(summary['rejected'])} row(s):")

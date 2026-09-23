@@ -48,7 +48,7 @@ def validate_webauthn_importable() -> None:
 			exc.stderr,
 		)
 	except OSError as exc:
-		_raise_webauthn_import_error(_("the Python child process could not start: {0}").format(exc))
+		_raise_webauthn_import_error(_("the Python child process could not start: {0}").format(str(exc)))
 	if result.returncode:
 		_raise_webauthn_import_error(
 			_("the dependency check exited with status {0}").format(result.returncode), result.stderr

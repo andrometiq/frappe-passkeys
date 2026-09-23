@@ -82,7 +82,7 @@
 		var f = window.frappe;
 		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
 		if (token) h["X-Frappe-CSRF-Token"] = token;
-		if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
+		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
 		return h;
 	}
 	function unwrap(body) { return C.unwrapMessage(body); }
@@ -639,7 +639,7 @@
 		// decision point instead of an arbitrary settle timer. Inert in production.
 		try {
 			document.documentElement.setAttribute("data-passkeys-nudge-evaluated", "true");
-		} catch (e) {}
+		} catch (e) { /* test signal only */ }
 	}
 
 	function maybeNudge() {
@@ -899,7 +899,7 @@
 		}
 		window.location.href = "/api/method/logout";
 	}
-	function clearUpsellFlag() { try { if (window.localStorage) localStorage.removeItem(M.UPSELL_FLAG_KEY); } catch (e) {} }
+	function clearUpsellFlag() { try { if (window.localStorage) localStorage.removeItem(M.UPSELL_FLAG_KEY); } catch (e) { /* storage unavailable */ } }
 	function announce(msg) { C.announce(document, msg); }
 	function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
 	function primaryButton(label, on) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-primary btn-sm passkey-btn"; b.textContent = label; b.addEventListener("click", on); return b; }
@@ -918,7 +918,7 @@
 	}
 	function fmtDate(v) {
 		if (!v) return "—";
-		try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) {}
+		try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) { /* fall back to the raw value */ }
 		return String(v);
 	}
 	function escapeHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }

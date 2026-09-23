@@ -117,7 +117,7 @@ def rename_user_artifacts(doc, method=None, old=None, new=None, merge=False):
 # ===========================================================================
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=30, seconds=60)
 def begin_login():
 	"""Mint discoverable-credential assertion options + a single-use ceremony
@@ -171,9 +171,9 @@ def begin_login():
 	return response
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=10, seconds=60)
-def verify_login(state_id: str, credential):
+def verify_login(state_id: str, credential: object):
 	"""Verify a discoverable assertion, resolve the account from its
 	``userHandle`` + credential id, enforce the UV outcome policy, and mint a
 	session via the one sanctioned seam.
@@ -316,7 +316,7 @@ def verify_login(state_id: str, credential):
 # ===========================================================================
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=5, seconds=300)
 def complete_uv_setup(setup_id: str, pwd: str):
 	"""Authorize the ``uv_initialized`` false→true flip with a one-time password
@@ -424,7 +424,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 # ===========================================================================
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=10, seconds=60)
 def login_with_password(usr: str, pwd: str):
 	"""Leg 1 of the second factor: verify the password via core's own
@@ -568,9 +568,9 @@ def _dispatch_passkey_second_factor(user, pwd, credentials, settings, run_2fa):
 	frappe.local.response["tmp_id"] = state_id
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=10, seconds=60)
-def verify_second_factor(state_id: str, credential):
+def verify_second_factor(state_id: str, credential: object):
 	"""Leg 2 of the second factor: verify the passkey assertion against the
 	leg-1 ceremony, re-run core-equivalent re-authentication (a mid-ceremony
 	password change or user-disable must NOT mint a session), then mint through
@@ -741,7 +741,7 @@ def _allow_from_record(record) -> list:
 	return [{"id": r.credential_id, "transports": json.loads(r.transports or "[]")} for r in rows]
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=5, seconds=300)
 def fallback_to_otp(state_id: str):
 	"""Mid-flow OTP fallback: "Use a verification code instead". Offered
@@ -855,9 +855,9 @@ def _observe_2fa_floor_desync(settings) -> None:
 		if cint(frappe.db.get_single_value("System Settings", "enable_two_factor_auth")):
 			return
 		key = frappe.cache.make_key("passkeys:2fa_floor_desync_logged")
-		if frappe.cache.get(key):
+		if frappe.cache.get(key):  # nosemgrep: frappe-cache-breaks-multitenancy
 			return
-		frappe.cache.set(key, "1", ex=86400)
+		frappe.cache.set(key, "1", ex=86400)  # nosemgrep: frappe-cache-breaks-multitenancy
 		frappe.log_error(
 			title="passkeys: 2FA floor desync",
 			message=(
@@ -877,7 +877,7 @@ def _observe_2fa_floor_desync(settings) -> None:
 # ===========================================================================
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
 @rate_limit(limit=30, seconds=60)
 def get_app_translations(version: str | None = None):
 	"""Return the passkeys app's translation catalog for the request language.

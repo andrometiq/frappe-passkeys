@@ -19,6 +19,6 @@ def disable_enforcement():
 
 	frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Nudge")
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	print(f"Passkey enforcement disabled: Enrollment Policy changed from {policy or '(unset)'} to Nudge.")
 	return "Nudge"

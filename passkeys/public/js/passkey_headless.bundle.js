@@ -57,7 +57,7 @@
 			var f = win.frappe;
 			var token = f && (f.csrf_token || (f.boot && f.boot.csrf_token) || (f.session && f.session.csrf_token));
 			if (token && token !== "None") h["X-Frappe-CSRF-Token"] = token; // authed POSTs need CSRF; guests exempt
-			if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) h[k] = extra[k];
+			if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
 			return h;
 		}
 		// Raw fetch so the caller owns the 401 body (the sudo/confirm retry contract)

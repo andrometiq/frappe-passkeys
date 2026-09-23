@@ -1046,7 +1046,7 @@
 
 	var CODE_SET = {};
 	(function () {
-		for (var k in CONFIRM_CODES) if (CONFIRM_CODES.hasOwnProperty(k)) CODE_SET[CONFIRM_CODES[k]] = true;
+		for (var k in CONFIRM_CODES) if (Object.prototype.hasOwnProperty.call(CONFIRM_CODES, k)) CODE_SET[CONFIRM_CODES[k]] = true;
 	})();
 
 	return {

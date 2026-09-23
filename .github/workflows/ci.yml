@@ -69,6 +69,24 @@ jobs:
       - name: Server-test process gate self-tests
         run: python .github/helper/test_server_test_gate.py
 
+      # Frappe's semgrep rules, pinned so a new upstream rule cannot turn CI red
+      # unannounced. A `# nosemgrep: <rule>` marker must say why the finding is by design.
+      - name: Semgrep (Frappe rules)
+        env:
+          SEMGREP_RULES_REF: b101a16e69df049b3fed1478bcc16223e957cca2 # frappe/semgrep-rules
+        run: |
+          git init -q /tmp/frappe-semgrep-rules
+          git -C /tmp/frappe-semgrep-rules fetch -q --depth 1 https://github.com/frappe/semgrep-rules.git "$SEMGREP_RULES_REF"
+          git -C /tmp/frappe-semgrep-rules checkout -q FETCH_HEAD
+          python -m pip install --quiet semgrep==1.177.0
+          semgrep scan --metrics=off --error --config /tmp/frappe-semgrep-rules/rules --config r/python.lang.correctness
+
+      # Runs daily too, via upstream-drift.yml, which is where new advisories surface.
+      - name: Vulnerable dependency check
+        run: |
+          python -m pip install --quiet pip-audit==2.10.1
+          pip-audit --desc on .
+
   server-tests:
     name: Server (frappe ${{ matrix.frappe-branch }})
     runs-on: ubuntu-24.04

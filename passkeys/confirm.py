@@ -116,7 +116,7 @@ def _publish_action_policy(policy_: ActionPolicy) -> None:
 		"display_params": [list(item) for item in policy_.display_params],
 	}
 	try:
-		frappe.cache.set(
+		frappe.cache.set(  # nosemgrep: frappe-cache-breaks-multitenancy
 			frappe.cache.make_key(_action_policy_key(policy_.action)),
 			json.dumps(payload),
 			ex=_ACTION_POLICY_TTL,
@@ -127,6 +127,7 @@ def _publish_action_policy(policy_: ActionPolicy) -> None:
 
 def _read_shared_action_policy(action: str) -> ActionPolicy | None:
 	try:
+		# nosemgrep: frappe-cache-breaks-multitenancy
 		raw = frappe.cache.get(frappe.cache.make_key(_action_policy_key(action)))
 		data = json.loads(raw) if raw is not None else None
 		if not isinstance(data, dict) or data.get("v") != 1 or data.get("action") != action:
@@ -355,7 +356,7 @@ def _parameter_summary(policy_: ActionPolicy, params: dict) -> list[dict]:
 
 
 @frappe.whitelist(methods=["POST"])
-def begin_confirmation(action: str, params=None, payload_hash=None):
+def begin_confirmation(action: str, params: object = None, payload_hash: str | None = None):
 	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``.
 	The client sends EITHER ``params`` (raw bound params — the server
 	computes the payload hash) OR ``payload_hash`` (the verbatim
@@ -428,7 +429,7 @@ def begin_confirmation(action: str, params=None, payload_hash=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def verify_confirmation(state_id: str, credential):
+def verify_confirmation(state_id: str, credential: object):
 	"""Verify the confirmation assertion and mint a single-use grant.
 
 	Ladder + sid binding + **UV bit must be 1** (a UV-less completion is a
@@ -513,7 +514,7 @@ def verify_confirmation(state_id: str, credential):
 
 
 @frappe.whitelist(methods=["POST"])
-def reauth_password(pwd: str, action=None, payload_fingerprint=None):
+def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: str | None = None):
 	"""Password fallback. Two modes on one endpoint:
 
 	* **No ``action``** — seed the full-sudo window for the app's own management

@@ -255,4 +255,4 @@ def _site_label() -> str:
 
 
 def _ip_suffix(ip: str | None) -> str:
-	return _(" (from IP {0})").format(ip) if ip else ""
+	return " " + _("(from IP {0})").format(ip) if ip else ""
