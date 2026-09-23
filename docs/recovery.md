@@ -54,10 +54,15 @@ Options, cheapest first:
 1. Temporarily turn *Allow OTP Fallback for Passkey Second Factor* **on** in
    Passkey Settings, have the user complete with a one-time code, let them
    re-enroll a passkey, then turn it back off.
-2. Or use core's own two-factor recovery for that user (reset their OTP / 2FA per
-   your normal Frappe 2FA process), then have them re-enroll.
+2. Or a System Manager disables the lost passkey: open **WebAuthn Credential**,
+   filter by the user, untick *Enabled* on each lost credential, and save. That also
+   revokes the lost authenticator. With no enabled credential left, the user's
+   password step hands them to core OTP; once in, they re-enroll a passkey. (If the
+   user also has *Passkey Only Login*, clear it first — Scenario A.) Resetting the
+   user's core 2FA alone does not work: the enrolled-user passkey requirement still
+   applies.
 
-Core OTP must be entered through this app's `fallback_to_otp` handoff. That flow creates the
+In option 1, core OTP must be entered through this app's `fallback_to_otp` handoff. That flow creates the
 short-lived, one-time marker the final login hook requires; sending OTP directly through another
 core path does not bypass the enrolled-user passkey requirement.
 

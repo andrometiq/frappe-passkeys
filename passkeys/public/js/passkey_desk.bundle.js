@@ -747,7 +747,12 @@
 	// are enrolling, the incapable escape and sign-out. "Remind me later" shows the real
 	// remaining grace count.
 	function showEnforceDialog(b, enf) {
-		var d = new frappe.ui.Dialog({ title: t(M.COPY.enforceTitle), size: "small" });
+		// `static` stops Esc, backdrop clicks and the close-X; `keep_open` survives the desk
+		// container's page switch.
+		var d = new frappe.ui.Dialog({
+			title: t(M.COPY.enforceTitle), size: "small",
+			static: !!enf.blocking, keep_open: !!enf.blocking,
+		});
 		var body = d.$body ? d.$body.get(0) : null;
 		if (body) {
 			body.appendChild(el("p", "passkey-nudge-body", t(M.COPY.enforceBody)));
@@ -771,7 +776,13 @@
 			}
 			body.appendChild(actions);
 		}
-		makeStaticIfBlocking(d, enf.blocking);
+		// The router hides any open dialog on every route change, ignoring static/keep_open,
+		// so a blocking gate re-opens itself until the user takes one of its exits.
+		if (enf.blocking && d.$wrapper && d.$wrapper.on) {
+			d.$wrapper.on("hidden.bs.modal", function () {
+				if (!d._acted) d.show();
+			});
+		}
 		// Dismissing a non-blocking gate is "Remind me later": it spends one grace login.
 		// `_acted` stops a double count after the explicit link.
 		if (!enf.blocking && d.$wrapper && d.$wrapper.on) {
@@ -814,19 +825,6 @@
 			d._acted = true;
 			d.hide();
 		}
-	}
-
-	// Static backdrop, no keyboard dismiss, no close-X. Best-effort across Frappe versions.
-	function makeStaticIfBlocking(d, blocking) {
-		if (!blocking) return;
-		try {
-			if (d.$wrapper && d.$wrapper.modal) {
-				d.$wrapper.attr("data-backdrop", "static").attr("data-keyboard", "false");
-			}
-		} catch (e) { /* noop */ }
-		try {
-			if (d.header && d.header.find) d.header.find(".btn-modal-close, .modal-actions .close").hide();
-		} catch (e) { /* noop */ }
 	}
 
 	// ------------------------------------------------------------ small utils

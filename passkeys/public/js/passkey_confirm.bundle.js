@@ -86,6 +86,8 @@
 		var restoreFocus = C.captureFocus(document);
 		var focusRestored = false;
 		var liveRegionSeeded = false;
+		// A wrong-password message survives the prompt's re-render until the next submit.
+		var passwordMessage = "";
 		function restoreCapturedFocus() {
 			if (focusRestored) return;
 			focusRestored = true;
@@ -235,7 +237,8 @@
 						'<button type="button" class="btn btn-primary passkey-confirm-pwgo">' +
 							esc(t("Confirm")) + '</button>',
 						'</div>',
-						'<div class="passkey-confirm-msg" aria-live="assertive"></div>',
+						'<div class="passkey-confirm-msg" role="alert" aria-live="assertive">' +
+							esc(passwordMessage) + '</div>',
 						'</div>',
 					].join("");
 					setContent(html);
@@ -246,6 +249,7 @@
 					function submit() {
 						var v = input ? input.value : "";
 						if (input) input.value = "";
+						passwordMessage = "";
 						resolve(v);
 					}
 					if (go) go.addEventListener("click", submit);
@@ -261,6 +265,7 @@
 			},
 
 			passwordError: function (msg) {
+				passwordMessage = msg;
 				var el = bodyEl();
 				var box = el && el.querySelector(".passkey-confirm-msg");
 				if (box) box.textContent = msg;

@@ -79,10 +79,12 @@ function makeDialogClass() {
 		this.shown = false; this.hidden = false;
 		instances.push(this);
 	}
-	Dialog.prototype.show = function () { this.shown = true; };
+	Dialog.prototype.show = function () { this.shown = true; this.hidden = false; this.showCount = (this.showCount || 0) + 1; };
+	// Bootstrap fires hide.bs.modal, then hidden.bs.modal once the modal is gone.
 	Dialog.prototype.hide = function () {
 		this.hidden = true;
 		(this._wrap["hide.bs.modal"] || []).slice().forEach((fn) => fn());
+		(this._wrap["hidden.bs.modal"] || []).slice().forEach((fn) => fn());
 	};
 	Dialog.instances = instances;
 	return Dialog;
@@ -160,6 +162,32 @@ function escapeLink(d) {
 	return findButton(d._body, (b) => labels.includes(b.textContent));
 }
 
+test("desk enforce: a blocking gate is built static + keep_open and re-opens when the router hides it", () => {
+	Dialog.instances.length = 0;
+	mod.showEnforceDialog({ enforcement: { incapable_policy: "block_notify" } }, { blocking: true, graceRemaining: 0 });
+	const d = Dialog.instances.at(-1);
+	// Frappe's Esc handler skips `static` dialogs; container.change_to skips `keep_open` ones.
+	assert.strictEqual(d.opts.static, true, "Esc / backdrop / close-X must not dismiss a blocking gate");
+	assert.strictEqual(d.opts.keep_open, true, "a desk page switch must not hide a blocking gate");
+	assert.strictEqual(d.showCount, 1);
+	d.hide(); // frappe.ui.hide_open_dialog() on a route change hides it regardless of static/keep_open
+	assert.strictEqual(d.hidden, false, "the blocking gate is back on screen after a forced hide");
+	assert.strictEqual(d.showCount, 2);
+});
+
+test("desk enforce: a non-blocking gate stays dismissible", () => {
+	fetchLog.length = 0;
+	Dialog.instances.length = 0;
+	mod.showEnforceDialog({}, { blocking: false, graceRemaining: 4 }); // a grace count no other test defers
+	const d = Dialog.instances.at(-1);
+	assert.ok(!d.opts.static, "a gate with grace left can be dismissed with Esc");
+	assert.ok(!d.opts.keep_open, "a gate with grace left closes on navigation");
+	d.hide();
+	assert.strictEqual(d.hidden, true, "a dismissed non-blocking gate stays closed");
+	assert.strictEqual(d.showCount, 1);
+	assert.strictEqual(deferCount(), 1, "the dismissal still spends one grace login");
+});
+
 test("desk enforce: the blocking gate's escape is labelled by what it does under each policy", () => {
 	fetchLog.length = 0;
 	Dialog.instances.length = 0;
@@ -178,6 +206,15 @@ test("desk enforce: the blocking gate's escape is labelled by what it does under
 	contact.click();
 	assert.strictEqual(notify.hidden, false, "Block + Notify Admin keeps the gate up");
 	assert.ok(findNode(notify._body, (n) => n.textContent === M.COPY.enforceBlockedNotice), "the admin-notified notice is shown");
+});
+
+test("desk enforce: a blocking gate stays closed once the user takes an exit", () => {
+	Dialog.instances.length = 0;
+	mod.showEnforceDialog({ enforcement: { incapable_policy: "degrade" } }, { blocking: true, graceRemaining: 0 });
+	const d = Dialog.instances.at(-1);
+	escapeLink(d).click(); // Degrade escape (the incapable claim was already recorded above)
+	assert.strictEqual(d.hidden, true, "an explicit exit is not undone by the re-open guard");
+	assert.strictEqual(d.showCount, 1);
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
