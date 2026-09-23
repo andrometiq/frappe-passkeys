@@ -211,9 +211,8 @@ Cypress.Commands.add("server_logout", (attempt = 0) =>
 // on the SERVER store, so one re-presented stale sid sends a login-page spec
 // to the desk (the passkey_a11y CI failure). After the wipe every such sid is
 // inert no matter which jar layer or straggler response re-presents it. The
-// helper is flag-gated server-side (passkeys_deterministic_test_cookies, or
-// developer_mode + allow_tests): on an unflagged site this fails LOUDLY here
-// rather than letting specs flake downstream.
+// helper is gated server-side on developer_mode + allow_tests: on any other
+// site this fails LOUDLY here rather than letting specs flake downstream.
 //
 // CSRF is fetched FRESH via GET /desk on the same cy.request jar as the POST,
 // never from the loaded page's window: the window token belongs to the page's

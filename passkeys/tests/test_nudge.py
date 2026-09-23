@@ -10,10 +10,10 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_to_date, now_datetime
 
-from passkeys import boot, passkey
+from passkeys import boot, notifications, passkey
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_user
+from passkeys.tests.factories import make_handle, make_user
 
 _NUDGE_KNOBS = (
 	"passkey_enrollment_policy",
@@ -166,60 +166,89 @@ class NudgeCadenceTest(IntegrationTestCase):
 			"defvalue",
 			frappe.as_json({"declines": 2, "opt_out": 1, "last_shown": None}),
 		)
-		self.assertEqual(boot.get_nudge_state(user)["opt_out"], 0)  # cache is still stale
 		result = boot.record_nudge_event(user, "shown")
 		self.assertEqual(result["opt_out"], 1)
 		self.assertEqual(result["declines"], 3)
 		self.assertEqual(boot.get_nudge_state(user), result)
 
+	def _seed_state(self, user, marker="marker"):
+		boot.record_nudge_event(user, "opt_out")
+		boot.record_enforcement_defer(user)
+		frappe.db.set_default(notifications.incapable_notify_key(user), marker, parent=DEFAULTS_PARENT)
+		return self._state(user)
+
+	def _state(self, user):
+		return [boot.get_default_value(key) for key in boot.get_user_state_keys(user)]
+
 	def test_user_rename_moves_all_default_state(self):
 		old = self._user()
 		new = f"renamed-{old}"
 		self.addCleanup(frappe.delete_doc, "User", new, force=1, ignore_permissions=True)
-		boot.record_nudge_event(old, "opt_out")
-		boot.record_enforcement_event(old, "defer")
-		frappe.db.set_default(f"{old}_passkey_incapable_notified", "marker", parent=DEFAULTS_PARENT)
-		expected = {
-			suffix: frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT)
-			for suffix in passkey.USER_DEFAULT_SUFFIXES
-		}
+		expected = self._seed_state(old)
 		frappe.rename_doc("User", old, new)
-		for suffix, value in expected.items():
-			self.assertEqual(frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT), value)
-			self.assertIsNone(frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT))
-			self.assertFalse(
-				frappe.db.exists("DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{old}_{suffix}"})
-			)
+		self.assertEqual(self._state(new), expected)
+		self.assertEqual(self._state(old), [None, None, None])
+
+	def test_case_only_user_rename_keeps_default_state(self):
+		# utf8mb4_unicode_ci matches both spellings to one row, so a copy-then-delete
+		# rename would delete the state it meant to carry.
+		old = self._user()
+		new = old.capitalize()
+		expected = self._seed_state(old)
+		frappe.rename_doc("User", old, new)
+		self.assertEqual(frappe.db.get_value("User", new, "name"), new)
+		self.assertEqual(self._state(new), expected)
+		self.assertEqual(
+			frappe.get_all(
+				"DefaultValue",
+				filters={"parent": DEFAULTS_PARENT, "defkey": ("in", boot.get_user_state_keys(new))},
+				pluck="defkey",
+				order_by="defkey",
+			),
+			sorted(boot.get_user_state_keys(new)),
+		)
 
 	def test_user_merge_preserves_target_default_state(self):
 		old, new = self._user(), self._user()
-		boot.record_nudge_event(old, "shown")
-		boot.record_nudge_event(new, "opt_out")
-		boot.record_enforcement_event(old, "defer")
-		boot.record_enforcement_event(new, "defer")
-		boot.record_enforcement_event(new, "defer")
-		for user in (old, new):
-			frappe.db.set_default(f"{user}_passkey_incapable_notified", user, parent=DEFAULTS_PARENT)
-		expected = {
-			suffix: frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT)
-			for suffix in passkey.USER_DEFAULT_SUFFIXES
-		}
+		self._seed_state(old, marker=old)
+		boot.record_nudge_event(new, "shown")
+		boot.record_enforcement_defer(new)
+		boot.record_enforcement_defer(new)
+		frappe.db.set_default(notifications.incapable_notify_key(new), new, parent=DEFAULTS_PARENT)
+		expected = self._state(new)
 		frappe.rename_doc("User", old, new, merge=True)
-		for suffix, value in expected.items():
-			self.assertEqual(frappe.db.get_default(f"{new}_{suffix}", parent=DEFAULTS_PARENT), value)
-			self.assertIsNone(frappe.db.get_default(f"{old}_{suffix}", parent=DEFAULTS_PARENT))
+		self.assertEqual(self._state(new), expected)
+		self.assertEqual(self._state(old), [None, None, None])
 
 	def test_user_merge_carries_state_when_target_has_none(self):
 		old, new = self._user(), self._user()
-		boot.record_nudge_event(old, "opt_out")
-		boot.record_enforcement_event(old, "defer")
-		frappe.db.set_default(f"{old}_passkey_incapable_notified", "marker", parent=DEFAULTS_PARENT)
+		expected = self._seed_state(old)
 		frappe.rename_doc("User", old, new, merge=True)
-		self.assertEqual(boot.get_nudge_state(new)["opt_out"], 1)
-		self.assertEqual(boot.get_enforcement_state(new)["grace_used"], 1)
-		self.assertEqual(
-			frappe.db.get_default(f"{new}_passkey_incapable_notified", parent=DEFAULTS_PARENT), "marker"
-		)
+		self.assertEqual(self._state(new), expected)
+		self.assertEqual(self._state(old), [None, None, None])
+
+	def test_merging_two_enrolled_users_is_refused_clearly(self):
+		old, new = self._user(), self._user()
+		make_handle(old)
+		make_handle(new)
+		with self.assertRaisesRegex(frappe.ValidationError, "both users have passkeys"):
+			frappe.rename_doc("User", old, new, merge=True)
+		self.assertTrue(frappe.db.exists("User", old))
+		self.assertEqual(frappe.db.count("WebAuthn User Handle", {"user": ("in", [old, new])}), 2)
+
+	def test_state_reads_never_fall_back_to_a_scrubbed_key(self):
+		# frappe.db.get_default falls back to scrub(key): "mary-jane@x" would read
+		# "mary_jane@x"'s row.
+		hyphen = f"mary-jane-{frappe.generate_hash(length=6)}@example.com"
+		underscore = hyphen.replace("-", "_")
+		for key, value in (
+			(f"{underscore}_passkey_nudge", '{"declines": 0, "opt_out": 1}'),
+			(f"{underscore}_passkey_enforce", '{"grace_used": 5}'),
+		):
+			frappe.db.set_default(key, value, parent=DEFAULTS_PARENT)
+			self.addCleanup(frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": key})
+		self.assertEqual(boot.get_nudge_state(hyphen)["opt_out"], 0)
+		self.assertEqual(boot.get_enforcement_state(hyphen)["grace_used"], 0)
 
 	def test_dormant_rename_leaves_defaults_untouched(self):
 		old, new = self._user(), self._user()

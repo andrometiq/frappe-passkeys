@@ -136,13 +136,14 @@ doc_events = {
 	"User": {
 		# Without this cascade, Link integrity blocks User deletion.
 		"on_trash": "passkeys.passkey.cascade_delete_user_artifacts",
+		"before_rename": "passkeys.passkey.refuse_enrolled_user_merge",
 		"after_rename": "passkeys.passkey.rename_user_artifacts",
 	},
 	"System Settings": {
-		# Reverse half of the two-way 2FA floor: refuse flipping
-		# enable_two_factor_auth 1→0 while passkey_as_second_factor is on. The
-		# forward half lives in the Passkey Settings validator. Import-clean —
-		# guard_system_settings never imports webauthn.
+		# Reverse halves of the Passkey Settings floors: refuse flipping
+		# enable_two_factor_auth 1→0 while passkey_as_second_factor is on, and
+		# disable_user_pass_login 0→1 while it is the only passkey mode.
+		# Import-clean — guard_system_settings never imports webauthn.
 		"validate": "passkeys.auth_hooks.guard_system_settings",
 	},
 }

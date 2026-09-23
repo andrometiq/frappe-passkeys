@@ -120,12 +120,12 @@
 			"Your organization requires a passkey to keep signing in. It only takes a " +
 			"moment — use your fingerprint, face, screen lock, or a security key.",
 		enforceRemindLater: "Remind me later ({0} sign-ins left)",
-			enforceCantSetUp: "I can't set one up here",
-			enforceBlockedNotice:
-				"We've let your administrator know. Please contact them to finish signing in.",
-			enforceRetry: "Try passkey setup again",
-			enforceSignOut: "Sign out",
-			enforceContactAdmin: "Contact administrator",
+		enforceCantSetUp: "I can't set one up here",
+		enforceBlockedNotice:
+			"We've let your administrator know. Please contact them to finish signing in.",
+		enforceRetry: "Try passkey setup again",
+		enforceSignOut: "Sign out",
+		enforceContactAdmin: "Contact administrator",
 		// admin enforcement-recovery (User-form Passkeys section, System-Manager-only)
 		enforceAdminHeading: "Passkey enrollment enforcement",
 		enforceAdminExempt: "Exempt from passkey enforcement",
@@ -142,11 +142,11 @@
 		enforceAdminFailed: "Couldn't update enforcement for this user — please try again.",
 		// passkey-only switch
 		passkeyOnlyLabel: "Passwordless login only",
-			passkeyOnlyHelp:
-				"Turn off password sign-in for your account. Needs at least two passkeys so a " +
-				"lost device never locks you out.",
-			passkeyOnlyNeedsTwo:
-				"Add at least two enabled passkeys before turning off password sign-in.",
+		passkeyOnlyHelp:
+			"Turn off password sign-in for your account. Needs at least two passkeys so a " +
+			"lost device never locks you out.",
+		passkeyOnlyNeedsTwo:
+			"Add at least two enabled passkeys before turning off password sign-in.",
 		// settings banners — keyed; args filled by the matrix
 		rpIdOneWayDoor:
 			"Changing the RP ID invalidates every existing passkey. This cannot be undone.",

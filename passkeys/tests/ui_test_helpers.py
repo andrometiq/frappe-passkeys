@@ -433,22 +433,14 @@ def confirm_probe_failing(token=None):
 	frappe.throw("intentional post-consume failure (A-F20 probe)", frappe.ValidationError)
 
 
-def _require_deterministic_test_site(caller: str) -> None:
-	"""Shared gate for the guest-callable helpers: require the deterministic-cookie
-	site flag OR a developer_mode+allow_tests site. ``_guard``'s ``only_for`` is
-	useless here — the callers are deliberately Guest — and the looser half exists
-	so a control run can exercise the raw races with the hook off. ``cint`` on
-	every read — `set-config <flag> 0` without --parse stores the STRING "0",
-	and a bare-truthy read would keep these guest endpoints enabled while the
-	operator believes the flag is off (mirrors ``cookie_determinism.py``)."""
-	if not (
-		cint(frappe.conf.get("passkeys_deterministic_test_cookies"))
-		or (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests")))
-	):
-		frappe.throw(
-			f"{caller} requires the passkeys_deterministic_test_cookies site flag",
-			frappe.ValidationError,
-		)
+def _require_developer_test_site(caller: str) -> None:
+	"""Shared gate for the guest-callable helpers: require a developer_mode + allow_tests
+	site. ``_guard``'s ``only_for`` is useless here — the callers are deliberately
+	Guest. ``cint`` on every read — `set-config <flag> 0` without --parse stores the
+	STRING "0", and a bare-truthy read would keep these guest endpoints enabled while
+	the operator believes the flag is off."""
+	if not (cint(frappe.conf.get("developer_mode")) and cint(frappe.conf.get("allow_tests"))):
+		frappe.throw(f"{caller} requires a developer_mode + allow_tests site", frappe.ValidationError)
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -469,7 +461,7 @@ def clear_all_test_sessions() -> dict:
 	Guest-callable (the second documented ``allow_guest`` helper after
 	:func:`slow_guest_echo`; POST-only, so the whitelist guardrail still holds):
 	the caller has just cleared its cookies, so ``only_for`` would see Guest.
-	Safety = the same flag gate as ``slow_guest_echo`` plus a body that can only
+	Safety = the same site gate as ``slow_guest_echo`` plus a body that can only
 	log users out. Uses core's ``delete_session`` (DB row + cache entry +
 	commit) because session resolution reads the CACHE first
 	(``frappe/sessions.py``) — both stores must go. The final
@@ -477,7 +469,7 @@ def clear_all_test_sessions() -> dict:
 	(``Session.update`` via ``request.after_response``) from re-seeding the
 	wiped store out of its in-memory session copy on the cache-miss path
 	(``_update_in_cache`` forces a write-back even for a fresh session)."""
-	_require_deterministic_test_site("clear_all_test_sessions")
+	_require_developer_test_site("clear_all_test_sessions")
 	from frappe.sessions import delete_session
 
 	# Counted at entry so a caller can PROBE the substrate: a second call's
@@ -523,11 +515,10 @@ def slow_guest_echo(delay: float = 1.5) -> dict:
 	race being pinned is precisely "a request sent under a previous auth state
 	responds late", so the spec must fire it as Guest (and as a plain GET —
 	an authenticated test-jar POST would be rejected for a missing CSRF token
-	before reaching the handler). Instead of :func:`_guard` it is gated on the
-	deterministic-cookie site flag OR a developer_mode+allow_tests site — the
-	looser half exists so a control run can reproduce the race with the hook
-	off; the sleep is capped so even a misconfigured site is not a useful
-	stall primitive."""
-	_require_deterministic_test_site("slow_guest_echo")
+	before reaching the handler). Instead of :func:`_guard` it is gated on a
+	developer_mode + allow_tests site (so a control run can reproduce the race
+	with the deterministic-cookie hook off); the sleep is capped so even a
+	misconfigured site is not a useful stall primitive."""
+	_require_developer_test_site("slow_guest_echo")
 	time.sleep(min(float(delay), 5.0))
 	return {"ok": 1, "user": frappe.session.user}

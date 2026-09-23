@@ -74,12 +74,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Frappe's unreleased `develop` tip breaks itself (whitelist/CSRF churn we cannot
-    # fix). On the scheduled/dispatched upstream-drift run, let the develop-tip leg fail
-    # visibly without failing the workflow, so churn we do not own stops paging. Gate on
-    # the event (always defined) — `inputs.upstream_tips` is only declared for
-    # workflow_call, so referencing it here startup-fails a plain push. push/PR runs hit
-    # neither branch and keep every tip a hard gate; only the drift is a non-push event.
-    continue-on-error: ${{ github.event_name != 'push' && github.event_name != 'pull_request' && matrix.frappe-branch == 'develop' }}
+    # fix). Only on the Upstream Drift run (a reusable call, so `github.workflow` is the
+    # caller's name) may the develop-tip leg fail visibly without failing the workflow.
+    # Every push, PR and directly dispatched run keeps every leg a hard gate.
+    continue-on-error: ${{ github.workflow == 'Upstream Drift' && matrix.frappe-branch == 'develop' }}
     strategy:
       fail-fast: false
       matrix:
@@ -163,10 +161,8 @@ jobs:
     name: UI (frappe ${{ matrix.frappe-branch }})
     runs-on: ubuntu-24.04
     timeout-minutes: 50
-    # See server-tests: the develop-tip leg is non-gating on the non-push drift run, so
-    # Frappe's unreleased whitelist/CSRF churn stops paging. version-15/version-16 tips
-    # stay hard gates; pinned push/PR CI is unaffected.
-    continue-on-error: ${{ github.event_name != 'push' && github.event_name != 'pull_request' && matrix.frappe-branch == 'develop' }}
+    # See server-tests: only the Upstream Drift run may tolerate a failing develop-tip leg.
+    continue-on-error: ${{ github.workflow == 'Upstream Drift' && matrix.frappe-branch == 'develop' }}
     strategy:
       fail-fast: false
       matrix:

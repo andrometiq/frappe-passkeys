@@ -47,12 +47,23 @@ release.
 ### Fixed
 
 - Concurrent nudge events preserve opt-out, and enforcement deferrals read current grace state.
-- Nudges count only after rendering, failed opt-out saves show an error, and both login modes
-  being off suppresses nudge and upsell eligibility.
+- Per-user nudge and grace state is read by exact key from the database, so a user without a row
+  no longer reads a look-alike user's state (`mary-jane@` vs `mary_jane@`).
+- Nudges count only after rendering, and both login modes being off suppresses nudge and upsell
+  eligibility. A failed "Don't ask again" keeps the prompt open with a visible error so the user
+  can retry.
 - Incapable devices under Degrade to Nudge share the ordinary cap, cooldown and opt-out on
-  Desk and portal. User renames preserve nudge, grace and notification state; merges keep target values.
+  Desk and portal; the settings form now shows those two fields under Enforce + Degrade to Nudge.
+- User renames preserve nudge, grace and notification state, including case-only renames; merges
+  keep target values. Merging two users who both have passkeys is refused with a clear message
+  instead of a database duplicate-entry error.
 - Stale hybrid upsell hints are consumed even when capped and cleared on login initialization.
-- Failed silent conditional creation falls back to the eligible visible nudge, except on abort.
+- Conditional creation falls back to the eligible visible nudge whenever it does not end in a
+  server-verified credential (including a rejected verify or a network error), except on abort.
+- The portal is localized, and headless `login()` resolves `{ok: false, reason: "network"}` when
+  `begin_login` itself fails instead of rejecting.
+- A manually dispatched CI run no longer tolerates a failing pinned develop leg; only the scheduled
+  upstream-drift run may.
 - Server CI rejects failed, empty, or unrecognized test summaries even when the framework test
   command exits successfully.
 - Enabling either login mode now checks the actual ceremony-engine imports in an isolated process,
@@ -77,7 +88,16 @@ release.
   role exemption. This matches industry practice and Frappe core's removal of the Administrator 2FA
   exemption.
 - Test-only WebAuthn helpers require a test runner, or a System Manager on a site with both
-  `developer_mode` and `allow_tests` enabled; all helper endpoints are POST-only.
+  `developer_mode` and `allow_tests` enabled. The two guest-callable UI-test helpers (session wipe
+  and a capped slow echo) require both flags too; the deterministic-cookie flag alone no longer
+  enables them. Every helper except the slow echo is POST-only.
+- An impersonated session can no longer register a passkey, so an Administrator impersonating a
+  user cannot leave behind a credential that user never created.
+- System Settings refuses to disable username/password login while Passkey as Second Factor is
+  the only passkey mode (the Passkey Settings side already refused the same combination).
+- `@passkey_protected` rejects `bind_params` names missing from the decorated function's
+  signature at decoration time, and reads bound names passed through `**kwargs`; previously both
+  bound `None`, so one grant covered any payload.
 - Assertion counters are reclassified under row locks before sessions or grants are minted,
   rejecting duplicate nonzero counter replays.
 - Credential import refuses unsigned files by default, modified or cross-site v2 files,

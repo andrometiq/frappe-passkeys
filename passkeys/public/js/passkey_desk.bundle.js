@@ -645,7 +645,7 @@
 	function maybeNudge() {
 		var b = boot();
 		if (!b) return; // no bootinfo contract yet ⇒ safe no-op (server dependency)
-		Promise.all([C.detectCapabilities({ window: window }), probeConditionalCreate()]).then(function (r) {
+		return Promise.all([C.detectCapabilities({ window: window }), probeConditionalCreate()]).then(function (r) {
 			var caps = r[0];
 			var clientCaps = {
 				supported: caps.supported,
@@ -670,7 +670,7 @@
 			// silent conditional create (no dialog) — Firefox has none, so the visible
 			// nudge is its whole story
 			var d = M.nudgeDecision(b, clientCaps, Date.now());
-			if (d.allowConditionalCreate) { conditionalCreate(function () { if (d.showNudge) showNudgeDialog(b, false); }); return; }
+			if (d.allowConditionalCreate) return conditionalCreate(function () { if (d.showNudge) showNudgeDialog(b, false); });
 			if (d.showNudge) showNudgeDialog(b, false);
 		}).then(markNudgeEvaluated, markNudgeEvaluated);
 	}
@@ -689,8 +689,21 @@
 		var titleKey = isUpsell ? M.COPY.upsellTitle : M.COPY.nudgeTitle;
 		var bodyKey = isUpsell ? M.COPY.upsellBody : M.COPY.nudgeBody;
 		var d = new frappe.ui.Dialog({ title: t(titleKey), size: "small" });
-		var act = function (event) { if (d._acted) return; d._acted = true; if (event) recordNudge(event); d.hide(); };
+		var act = function (event) { if (d._acted) return; d._acted = true; recordNudge(event); d.hide(); };
 		var body = d.$body ? d.$body.get(0) : null;
+		var optingOut = false, error = null;
+		// Opt-out is permanent, so the dialog stays until the server has saved it; a
+		// failure is shown in place and the buttons stay usable for a retry.
+		var optOut = function () {
+			if (d._acted || optingOut) return;
+			optingOut = true;
+			recordNudge(M.NUDGE_EVENTS.OPT_OUT).then(function (res) {
+				optingOut = false;
+				if (res && res.ok) { d._acted = true; d.hide(); return; }
+				if (!error) { error = el("p", "passkey-nudge-error"); error.setAttribute("role", "alert"); body.appendChild(error); }
+				error.textContent = t(M.COPY.nudgeSaveFailed);
+			});
+		};
 		if (body) {
 			body.appendChild(el("p", "passkey-nudge-body", t(bodyKey)));
 			var actions = el("div", "passkey-nudge-actions");
@@ -699,7 +712,7 @@
 				d._acted = true; d.hide(); triggerAdd({});
 			}));
 			actions.appendChild(linkButton(t(M.COPY.nudgeLater), function () { act(M.NUDGE_EVENTS.DECLINED); }));
-			actions.appendChild(linkButton(t(M.COPY.nudgeNever), function () { act(M.NUDGE_EVENTS.OPT_OUT); }));
+			actions.appendChild(linkButton(t(M.COPY.nudgeNever), optOut));
 			body.appendChild(actions);
 		}
 		// Esc / backdrop dismiss = "Not now" semantics: the modal's hide event
@@ -732,10 +745,11 @@
 			}).then(function (cred) {
 				_conditionalCreateAbort = null;
 				if (!cred) return;
-				upgraded = true;
 				var payload = C.registrationResponseToJSON(cred);
 				return post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (v) {
-					if (v && v.ok) fireSignal(unwrap(v.body));
+					if (!v || !v.ok) return;
+					upgraded = true;
+					fireSignal(unwrap(v.body));
 				});
 			});
 		}).then(function () {
@@ -746,16 +760,9 @@
 		});
 	}
 
+	// Resolves the response, or null on a transport failure (never rejects).
 	function recordNudge(event) {
-		function failed() {
-			if (event === M.NUDGE_EVENTS.OPT_OUT && frappe.show_alert) {
-				frappe.show_alert({ message: t(M.COPY.nudgeSaveFailed), indicator: "red" });
-			}
-		}
-		return post(METHODS.recordNudge, { event: event }).then(function (res) {
-			if (!res || !res.ok) failed();
-			return res;
-		}, failed);
+		return post(METHODS.recordNudge, { event: event }).catch(function () { return null; });
 	}
 
 	// ------------------------------------------------------ enforcement gate

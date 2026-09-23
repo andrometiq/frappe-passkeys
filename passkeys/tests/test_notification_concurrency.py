@@ -29,7 +29,7 @@ class IncapableNotificationConcurrencyTest(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		frappe.db.delete(
 			"DefaultValue",
-			{"parent": DEFAULTS_PARENT, "defkey": notifications._incapable_notify_key(self.user)},
+			{"parent": DEFAULTS_PARENT, "defkey": notifications.incapable_notify_key(self.user)},
 		)
 		frappe.delete_doc("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.commit()
@@ -37,7 +37,7 @@ class IncapableNotificationConcurrencyTest(IntegrationTestCase):
 	def _marker(self):
 		return frappe.db.get_value(
 			"DefaultValue",
-			{"parent": DEFAULTS_PARENT, "defkey": notifications._incapable_notify_key(self.user)},
+			{"parent": DEFAULTS_PARENT, "defkey": notifications.incapable_notify_key(self.user)},
 			"defvalue",
 		)
 
@@ -70,7 +70,7 @@ class IncapableNotificationConcurrencyTest(IntegrationTestCase):
 				# check must be a locking read after the User lock, not this stale view.
 				frappe.db.get_value(
 					"DefaultValue",
-					{"parent": DEFAULTS_PARENT, "defkey": notifications._incapable_notify_key(self.user)},
+					{"parent": DEFAULTS_PARENT, "defkey": notifications.incapable_notify_key(self.user)},
 					"defvalue",
 				)
 				barrier.wait(timeout=10)

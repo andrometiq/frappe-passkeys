@@ -210,11 +210,11 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_deferrals_spend_the_grace_budget_then_block(self):
 		user = self._user()
 		self.assertEqual(self._verdict(user)["grace_remaining"], 3)
-		boot.record_enforcement_event(user, "defer")
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
+		boot.record_enforcement_defer(user)
 		self.assertEqual(self._verdict(user)["grace_remaining"], 1)
 		self.assertFalse(self._verdict(user)["blocking"])
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 0)
 		self.assertTrue(v["blocking"])
@@ -228,18 +228,18 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertEqual(self._verdict(user)["grace_remaining"], 5)
 		# Three deferrals: a hardcoded-3 budget would already be blocking here — it must not.
 		for _ in range(3):
-			boot.record_enforcement_event(user, "defer")
+			boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 2)
 		self.assertFalse(v["blocking"])
 		self.assertEqual(v["reason"], "grace")
 		# Fourth deferral: still one grace login left — not yet blocking.
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 1)
 		self.assertFalse(v["blocking"])
 		# Fifth (the configured boundary) spends the last grace login → the verdict flips.
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 0)
 		self.assertTrue(v["blocking"])
@@ -269,7 +269,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 					passkey_enforce_after=enforce_after,
 				)
 				user = self._user()
-				boot.record_enforcement_event(user, "defer")
+				boot.record_enforcement_defer(user)
 				frappe.set_user(user)
 				with (
 					patch.object(state, "claim_enforcement_defer") as claim_defer,
@@ -319,7 +319,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_record_enforcement_does_not_defer_after_grace_is_exhausted(self):
 		self._set(passkey_enforce_grace_logins=1)
 		user = self._user()
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		frappe.set_user(user)
 		with patch.object(state, "claim_enforcement_defer") as claim_defer:
 			result = passkey.record_enforcement("defer")
@@ -446,7 +446,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def test_defer_reads_current_database_state(self):
 		user = self._user()
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)
 		frappe.db.set_value(
 			"DefaultValue",
@@ -454,8 +454,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 			"defvalue",
 			frappe.as_json({"grace_used": 2}),
 		)
-		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)  # cache is still stale
-		self.assertEqual(boot.record_enforcement_event(user, "defer")["grace_used"], 3)
+		self.assertEqual(boot.record_enforcement_defer(user)["grace_used"], 3)
 		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 3)
 
 	def test_degrade_nudge_uses_ordinary_thresholds(self):

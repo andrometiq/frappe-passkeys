@@ -117,6 +117,15 @@ test("verifyLogin(): UVSetupRequired surfaces the top-level setup_id", async () 
 	assert.strictEqual(r.setupId, "uvs-1");
 });
 
+test("login(): a begin_login transport failure resolves reason:'network' (never rejects)", async () => {
+	const post = makePost({ [LM.begin_login]: [new Error("offline")] });
+	let gestured = false;
+	const h = H.createHeadless(base({ post, getAssertion: () => { gestured = true; return Promise.resolve(ASSERTION); } }));
+	const r = await h.login();
+	assert.deepStrictEqual(r, { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" });
+	assert.strictEqual(gestured, false, "no gesture without fresh options");
+});
+
 test("verifyLogin(): a transport failure resolves reason:'network' (never rejects)", async () => {
 	const post = makePost({ [LM.verify_login]: [new Error("offline")] });
 	const h = H.createHeadless(base({ post, getAssertion: () => Promise.resolve(ASSERTION) }));

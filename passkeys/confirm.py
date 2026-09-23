@@ -254,6 +254,12 @@ def passkey_protected(
 	register_action(policy_)
 
 	def decorator(fn):
+		parameters = inspect.signature(fn).parameters
+		if not any(parameter.kind is parameter.VAR_KEYWORD for parameter in parameters.values()):
+			unknown = [name for name in bound_names if name not in parameters]
+			if unknown:
+				raise ValueError(f"bind_params not in the signature of {fn.__qualname__}: {unknown}")
+
 		@functools.wraps(fn)
 		def wrapper(*args, **kwargs):
 			params = _bound_params(fn, args, kwargs, policy_.bind_params)
@@ -284,15 +290,20 @@ def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
 def _bound_params(fn, args, kwargs, bind_params) -> dict:
 	"""Extract the declared ``bind_params`` from the call, robust to positional
 	or keyword passing (frappe delivers whitelisted args as kwargs, but bind the
-	signature so ``bind_params`` is order-independent)."""
+	signature so ``bind_params`` is order-independent). Names that reach a
+	``**kwargs`` parameter are read from it."""
 	if not bind_params:
 		return {}
+	signature = inspect.signature(fn)
 	try:
-		bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+		bound = signature.bind_partial(*args, **kwargs)
 		bound.apply_defaults()
-		source = bound.arguments
+		source = dict(bound.arguments)
 	except TypeError:
-		source = kwargs
+		source = dict(kwargs)
+	for parameter in signature.parameters.values():
+		if parameter.kind is parameter.VAR_KEYWORD:
+			source.update(source.pop(parameter.name, {}))
 	return {k: source.get(k) for k in bind_params}
 
 

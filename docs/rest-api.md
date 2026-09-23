@@ -314,8 +314,9 @@ fallback). Rate limit: **5 / 300 s / user**.
   credential_ids}` for the caller so a client can drive the WebAuthn Signal API.
   Rate limit: 60 / 60 s / user. Source: `passkeys/passkey.py:get_signal_data`.
 - **`passkeys.passkey.record_nudge`** — folds an enrollment-nudge event
-  (`"shown"` / `"declined"` / `"opt_out"`) into per-user cadence state; best-effort
-  telemetry, safe to omit. Rate limit: 30 / 3600 s / user.
+  (`"shown"` / `"declined"` / `"opt_out"`) into per-user cadence state. `shown` counts toward the
+  prompt cap (send it only after the prompt renders) and `opt_out` stops future prompts, so the
+  cadence depends on both. Rate limit: 30 / 3600 s / user.
 - **`passkeys.passkey.record_enforcement`** — records `"defer"` or `"incapable"`. A defer consumes
   at most one grace login per user/session, atomically across tabs/workers, while the server's
   current verdict allows grace. Events from exempt, out-of-scope, or already-enrolled users

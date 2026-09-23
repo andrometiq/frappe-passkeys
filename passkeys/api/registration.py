@@ -50,6 +50,7 @@ def begin_registration(flow: str = "explicit"):
 	user = frappe.session.user
 	if user in ("Guest", ""):
 		raise frappe.AuthenticationError(_("Not permitted."))
+	_refuse_impersonated_session()
 	state.rate_limit_user("begin_registration", 20, 3600)  # 20/hr/user
 
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -114,6 +115,7 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 	# call never burns the caller's live ceremony (same ordering as verify_confirmation).
 	state.rate_limit_user("verify_registration", 20, 3600)
 	session.require_authed_user()
+	_refuse_impersonated_session()
 
 	error_message = _("Passkey registration could not be verified.")
 	credential = _require_credential_dict(credential, error_message)
@@ -193,6 +195,14 @@ def verify_registration(state_id: str, credential, label: str | None = None):
 # ---------------------------------------------------------------------------
 # gates
 # ---------------------------------------------------------------------------
+
+
+def _refuse_impersonated_session() -> None:
+	"""An impersonating Administrator must never leave behind a credential the user
+	did not create (the impersonated session is weak-seeded, so it would otherwise
+	qualify for the first-enrollment bootstrap)."""
+	if (frappe.session.get("data") or {}).get("impersonated_by"):
+		raise frappe.PermissionError(_("Passkeys cannot be registered while impersonating a user."))
 
 
 def _require_any_login_mode(settings) -> None:

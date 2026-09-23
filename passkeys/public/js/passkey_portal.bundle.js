@@ -541,29 +541,37 @@
 		C.detectCapabilities({ window: window }).then(decide).catch(function () {});
 	}
 	function renderNudgeBanner() {
-		if (document.getElementById("passkey-portal-nudge")) return;
-		var host = mountRoot || document.querySelector(".page_content, main, body");
+		// /passkeys is the enrolment page itself: its empty state already offers the add.
+		if (isPasskeyPage || document.getElementById("passkey-portal-nudge")) return;
+		var host = document.querySelector(".page_content, main, body");
 		if (!host) return;
 		var bar = el("div", "passkey-nudge-banner"); bar.id = "passkey-portal-nudge"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", t(M.COPY.nudgeTitle));
 		bar.appendChild(el("strong", "passkey-nudge-title", t(M.COPY.nudgeTitle)));
 		bar.appendChild(el("span", "passkey-nudge-copy", t(M.COPY.nudgeBody)));
 		var acts = el("span", "passkey-nudge-acts");
-		acts.appendChild(primary(t(M.COPY.nudgeCta), function () { if (mountRoot) addPasskey(); else location.href = "/passkeys"; }));
+		var optingOut = false, error = null;
+		acts.appendChild(primary(t(M.COPY.nudgeCta), function () { location.href = "/passkeys"; }));
 		acts.appendChild(link(t(M.COPY.nudgeLater), function () { recordNudge(M.NUDGE_EVENTS.DECLINED); bar.remove(); }));
-		acts.appendChild(link(t(M.COPY.nudgeNever), function () { recordNudge(M.NUDGE_EVENTS.OPT_OUT); bar.remove(); }));
+		// Opt-out is permanent, so the banner stays until the server has saved it; a
+		// failure is shown in place and the buttons stay usable for a retry.
+		acts.appendChild(link(t(M.COPY.nudgeNever), function () {
+			if (optingOut) return;
+			optingOut = true;
+			recordNudge(M.NUDGE_EVENTS.OPT_OUT).then(function (res) {
+				optingOut = false;
+				if (res && res.ok) { bar.remove(); return; }
+				if (!error) { error = el("p", "passkey-nudge-error"); error.setAttribute("role", "alert"); bar.appendChild(error); }
+				error.textContent = t(M.COPY.nudgeSaveFailed);
+			});
+		}));
 		bar.appendChild(acts);
 		host.insertBefore(bar, host.firstChild);
 		recordNudge(M.NUDGE_EVENTS.SHOWN);
 	}
 
+	// Resolves the response, or null on a transport failure (never rejects).
 	function recordNudge(event) {
-		function failed() {
-			if (event === M.NUDGE_EVENTS.OPT_OUT) setPortalStatus(t(M.COPY.nudgeSaveFailed), "error");
-		}
-		return post(METHODS.recordNudge, { event: event }).then(function (res) {
-			if (!res || !res.ok) failed();
-			return res;
-		}, failed);
+		return post(METHODS.recordNudge, { event: event }).catch(function () { return null; });
 	}
 
 	// --------------------------------------------------------------- utils
@@ -603,8 +611,11 @@
 	function fmtDate(v) { if (!v) return "—"; try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) {} return String(v); }
 
 	// --------------------------------------------------------------- boot
-	if (isPasskeyPage) render();
-	maybeEnforceOrNudge();
+	// Web pages on v15/v16 carry no app strings: merge the catalog before the first paint.
+	C.loadAppTranslations().then(function () {
+		if (isPasskeyPage) render();
+		maybeEnforceOrNudge();
+	});
 
 	// Node-only test seam (UMD-lite, mirrors passkey_login.bundle.js): expose the
 	// enforcement interstitial + modal builder so `node --test` can pin the defer-on-Esc

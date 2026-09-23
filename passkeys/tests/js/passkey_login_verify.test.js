@@ -191,8 +191,10 @@ test("verify: the finalizer does NOT overwrite a specific typed-401 state (remov
 });
 
 test("login boot clears a stale hybrid upsell flag before sign-in", async () => {
-	localStorage.setItem("passkey_upsell_add_local", "1");
+	const M = require("../../public/js/passkey_manage_common.bundle.js");
+	assert.strictEqual(mod.UPSELL_FLAG_KEY, M.UPSELL_FLAG_KEY, "login mirrors the desk/portal upsell key");
+	localStorage.setItem(M.UPSELL_FLAG_KEY, "1");
 	window.frappe._passkey_login.boot();
-	assert.strictEqual(localStorage.getItem("passkey_upsell_add_local"), null);
+	assert.strictEqual(localStorage.getItem(M.UPSELL_FLAG_KEY), null);
 	await tick();
 });

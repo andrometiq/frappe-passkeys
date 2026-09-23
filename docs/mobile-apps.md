@@ -249,7 +249,7 @@ calls. Names and shapes are the app's actual whitelisted methods.
 **Management (authenticated):** `passkeys.api.credentials.list_credentials`,
 `rename_credential(name, label)`, `delete_credential(name)` (sudo-gated),
 `set_passkey_only_login(enabled)`; `passkeys.passkey.get_signal_data`,
-`record_nudge`; `passkeys.passkey.get_app_translations` (guest GET; login-UI i18n).
+`record_nudge`; `passkeys.passkey.get_app_translations` (guest GET; login and portal i18n; skipped on English pages).
 
 Every endpoint returns a typed `PasskeyServedByCore` (HTTP 417) only after core explicitly advertises
 `FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Mere

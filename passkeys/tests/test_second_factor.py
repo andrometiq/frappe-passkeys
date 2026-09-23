@@ -636,6 +636,23 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# the floor still holds
 		self.assertEqual(frappe.db.get_single_value("System Settings", "enable_two_factor_auth"), 1)
 
+	def test_floor_reverse_system_settings_refuses_disabling_passwords_when_sf_only(self):
+		# SF is the only passkey mode (setUp): enrolled users would have no login path left
+		original = frappe.db.get_single_value("System Settings", "login_with_email_link")
+		self.addCleanup(frappe.db.set_single_value, "System Settings", "login_with_email_link", original)
+		ss = frappe.get_doc("System Settings")
+		ss.login_with_email_link = 1  # core requires a surviving login path first
+		ss.disable_user_pass_login = 1
+		with self.assertRaisesRegex(frappe.ValidationError, "only passkey mode"):
+			ss.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_single_value("System Settings", "disable_user_pass_login"), 0)
+		self._set_passkey_setting("login_with_passkey", 1)
+		ss = frappe.get_doc("System Settings")
+		ss.login_with_email_link = 1
+		ss.disable_user_pass_login = 1
+		ss.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_single_value("System Settings", "disable_user_pass_login"), 1)
+
 	# ======================================================================
 	# C5 — a malformed credential id is a uniform 401 + re-arm (not a 500)
 	# ======================================================================

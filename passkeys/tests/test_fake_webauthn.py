@@ -221,11 +221,11 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		# must fire it as a Guest AND as a GET — an authenticated POST straggler
 		# is CSRF-rejected before it reaches the handler, and the race it pins is
 		# precisely a late-arriving cross-auth-state response. It is safe despite
-		# that: flag-gated (see test_slow_guest_echo_is_flag_gated), a capped
+		# that: gated on developer_mode + allow_tests (test_slow_guest_echo_is_flag_gated), a capped
 		# no-op with no side effects, exposing nothing beyond the caller's own
 		# session user. clear_all_test_sessions is also guest-callable (the
 		# caller has just cleared its cookies) but stays POST-only, so it is NOT
-		# an exception here; its safety is the same flag gate + a body that can
+		# an exception here; its safety is the same site gate + a body that can
 		# only log users out. EVERY other test helper must stay POST-only +
 		# admin-only. This asserts that invariant structurally (the set of
 		# non-POST-only helpers is exactly the documented exceptions) so it
@@ -263,32 +263,34 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		)
 
 	def test_slow_guest_echo_is_flag_gated(self):
-		# The one guest-callable helper must be inert on any site that lacks the
-		# deterministic-cookie flag (and lacks developer_mode+allow_tests), so it
-		# can never be a guest-reachable stall primitive off the test bench.
+		# The one guest-callable GET helper must be inert off a developer_mode +
+		# allow_tests site — the deterministic-cookie flag alone does not open it.
 		with patch.dict(
 			frappe.conf,
-			{"passkeys_deterministic_test_cookies": 0, "developer_mode": 0, "allow_tests": 0},
+			{"passkeys_deterministic_test_cookies": 1, "developer_mode": 0, "allow_tests": 0},
 		):
-			with self.assertRaisesRegex(frappe.ValidationError, "passkeys_deterministic_test_cookies"):
+			with self.assertRaisesRegex(frappe.ValidationError, "developer_mode"):
 				ui_test_helpers.slow_guest_echo(delay=0)
 
 	def test_clear_all_test_sessions_is_flag_gated(self):
-		# The session-wipe helper is guest-callable; off a flagged test site it
-		# must refuse, so a production site can never be mass-logged-out by a
-		# guest POST. The STRING "0" case is load-bearing: `set-config <flag> 0`
-		# without --parse stores a string, and a bare-truthy gate would keep the
-		# endpoint enabled while the operator believes the flag is off.
+		# The session-wipe helper is guest-callable; off a developer_mode + allow_tests
+		# site it must refuse, so a production site can never be mass-logged-out by a
+		# guest POST — not even one that carries the deterministic-cookie flag. The
+		# STRING "0" case is load-bearing: `set-config <flag> 0` without --parse stores
+		# a string, and a bare-truthy gate would keep the endpoint enabled.
 		for off in (0, "0"):
-			with self.subTest(flag=off):
-				with patch.dict(
-					frappe.conf,
-					{"passkeys_deterministic_test_cookies": off, "developer_mode": off, "allow_tests": off},
-				):
-					with self.assertRaisesRegex(
-						frappe.ValidationError, "passkeys_deterministic_test_cookies"
+			for other in (1, off):
+				with self.subTest(off=off, other=other):
+					with patch.dict(
+						frappe.conf,
+						{
+							"passkeys_deterministic_test_cookies": 1,
+							"developer_mode": other,
+							"allow_tests": off,
+						},
 					):
-						ui_test_helpers.clear_all_test_sessions()
+						with self.assertRaisesRegex(frappe.ValidationError, "developer_mode"):
+							ui_test_helpers.clear_all_test_sessions()
 
 	def test_clear_all_test_sessions_wipes_db_and_cache(self):
 		# A live server session must be dead in BOTH stores after the wipe —
@@ -309,7 +311,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.addCleanup(frappe.cache.hdel, "session", sid)
 		self.addCleanup(frappe.cache.hdel, "session", orphan)
-		with patch.dict(frappe.conf, {"passkeys_deterministic_test_cookies": 1}):
+		with patch.dict(frappe.conf, {"developer_mode": 1, "allow_tests": 1}):
 			out = ui_test_helpers.clear_all_test_sessions()
 		self.assertEqual(out["remaining"], 0)
 		self.assertGreaterEqual(out["cache_purged"], 2)

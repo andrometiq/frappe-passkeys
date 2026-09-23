@@ -38,6 +38,7 @@ function fakeEl(tag) {
 		removeEventListener(type, fn) { const a = node._listeners[type]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
 		dispatch(type, ev) { (node._listeners[type] || []).slice().forEach((fn) => fn(ev || {})); },
 		click() { node.dispatch("click", {}); },
+		classList: { add(c) { node.className += " " + c; } },
 		focus() {},
 		querySelector() { return null; },
 		querySelectorAll() { return []; },
@@ -217,20 +218,77 @@ test("portal: Degrade renders directly using enforcement cadence", async () => {
 	delete frappeObj.boot;
 });
 
-test("portal opt-out failures are announced when no management status root exists", async () => {
-	const announce = C.announce;
-	const messages = [];
-	C.announce = (doc, msg) => messages.push(msg);
+function nudgeError() {
+	return findNode(document.body, (n) => (n.className || "").includes("passkey-nudge-error"));
+}
+
+test("portal opt-out keeps the banner until saved; a failure shows a visible alert and stays retryable", async () => {
 	try {
-		for (const outcome of [false, true, "reject"]) {
-			messages.length = 0;
+		for (const outcome of [true, false, "reject"]) {
 			global.document = bannerDoc();
-			global.fetch = () => outcome === "reject" ? Promise.reject(new Error("offline")) :
-				Promise.resolve({ ok: outcome, json: () => Promise.resolve({}) });
+			let settle;
+			global.fetch = () => new Promise((resolve, reject) => {
+				settle = () => outcome === "reject" ? reject(new Error("offline")) :
+					resolve({ ok: outcome, json: () => Promise.resolve({}) });
+			});
 			mod.renderNudgeBanner();
-			findButton(document.body, (b) => b.textContent === M.COPY.nudgeNever).click();
+			settle(); // SHOWN
+			const never = findButton(document.body, (b) => b.textContent === M.COPY.nudgeNever);
+			never.click();
+			never.click(); // a double click while saving sends nothing more
+			assert.ok(document.getElementById("passkey-portal-nudge"), "banner stays while the opt-out is in flight");
+			settle();
 			await tick();
-			assert.deepStrictEqual(messages, outcome === true ? [] : [M.COPY.nudgeSaveFailed]);
+			if (outcome === true) {
+				assert.strictEqual(document.getElementById("passkey-portal-nudge"), null, outcome);
+				continue;
+			}
+			assert.ok(document.getElementById("passkey-portal-nudge"), "banner stays after a failed opt-out");
+			assert.strictEqual(nudgeError().getAttribute("role"), "alert");
+			assert.strictEqual(nudgeError().textContent, M.COPY.nudgeSaveFailed);
+			global.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+			never.click(); // retry succeeds
+			await tick();
+			assert.strictEqual(document.getElementById("passkey-portal-nudge"), null, "retry removes the banner");
 		}
-	} finally { global.fetch = normalFetch; C.announce = announce; }
+	} finally { global.fetch = normalFetch; }
+});
+
+const detectCapabilities = C.detectCapabilities;
+function bootPortal(passkeys) {
+	frappeObj.boot = { passkeys };
+	C.detectCapabilities = () => Promise.resolve({ supported: true, uvpaa: true });
+	delete require.cache[require.resolve("../../public/js/passkey_portal.bundle.js")];
+	return require("../../public/js/passkey_portal.bundle.js");
+}
+
+test("portal /passkeys page shows no nudge banner (its own render would wipe a counted banner)", async () => {
+	global.document = bannerDoc();
+	const root = fakeEl("div");
+	root.id = "passkey-portal-root";
+	document.body.appendChild(root);
+	fetchLog.length = 0;
+	try {
+		bootPortal({ enabled: true, credential_count: 0, nudge_state: { eligible: true } });
+		await tick();
+		assert.strictEqual(document.getElementById("passkey-portal-nudge"), null);
+		assert.strictEqual(fetchLog.filter((f) => f.url.includes("record_nudge")).length, 0, "nothing counted");
+	} finally { C.detectCapabilities = detectCapabilities; delete frappeObj.boot; }
+});
+
+test("portal boot merges the app catalog before its first paint", async () => {
+	global.document = bannerDoc();
+	window.__ = (str) => (frappeObj._messages && frappeObj._messages[str]) || str;
+	global.fetch = (url, opts) => url.includes("get_app_translations")
+		? Promise.resolve({ ok: true, json: () => Promise.resolve({ message: { [M.COPY.nudgeTitle]: "Connexion plus rapide" } }) })
+		: normalFetch(url, opts);
+	try {
+		bootPortal({ enabled: true, credential_count: 0, nudge_state: { eligible: true } });
+		await tick();
+		const title = findNode(document.body, (n) => n.className === "passkey-nudge-title");
+		assert.strictEqual(title.textContent, "Connexion plus rapide");
+	} finally {
+		global.fetch = normalFetch; C.detectCapabilities = detectCapabilities;
+		delete frappeObj.boot; delete frappeObj._messages; delete window.__;
+	}
 });

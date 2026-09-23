@@ -168,7 +168,7 @@ def record_enforcement_incapable(user: str) -> None:
 		frappe.log_error(title="passkeys: enforcement-incapable email failed")
 
 
-def _incapable_notify_key(user: str) -> str:
+def incapable_notify_key(user: str) -> str:
 	return f"{user}_passkey_incapable_notified"
 
 
@@ -178,7 +178,7 @@ def _incapable_notified_recently(user: str) -> bool:
 	never permanently silence the advisory)."""
 	raw = frappe.db.get_value(
 		"DefaultValue",
-		{"parent": DEFAULTS_PARENT, "defkey": _incapable_notify_key(user)},
+		{"parent": DEFAULTS_PARENT, "defkey": incapable_notify_key(user)},
 		"defvalue",
 		for_update=True,
 	)
@@ -194,7 +194,7 @@ def _incapable_notified_recently(user: str) -> bool:
 def _mark_incapable_notified(user: str) -> None:
 	"""Stamp the dedup window marker (twofactor-style ``DefaultValue`` under
 	``__passkeys``, swept on uninstall) after an advisory is dispatched."""
-	frappe.db.set_default(_incapable_notify_key(user), now_datetime().isoformat(), parent=DEFAULTS_PARENT)
+	frappe.db.set_default(incapable_notify_key(user), now_datetime().isoformat(), parent=DEFAULTS_PARENT)
 
 
 def _system_manager_emails() -> list[str]:

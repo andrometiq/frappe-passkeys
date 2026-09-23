@@ -19,7 +19,8 @@ This matters for every backup, restore, and deploy.
 - Per-user enrollment-nudge state, enforcement grace counters and incapable-device
   notification markers (default-value rows under the `__passkeys` parent). User renames
   carry these values forward; merges retain each existing target value and otherwise
-  carry the source value. The old keys are removed.
+  carry the source value. The old keys are removed. Merging two users who both have a
+  WebAuthn User Handle is refused: delete the source user's passkeys and handle first.
 
 **Ephemeral — in Redis, TTL-expiring, deliberately not durable:**
 

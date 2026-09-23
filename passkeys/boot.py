@@ -7,21 +7,22 @@ Folds into ``frappe/passkey.py`` on the core merge.
 **Hook-path import discipline:** ``extend_bootinfo`` fires on **every**
 Desk boot, so this module MUST NOT import ``webauthn`` (directly or
 transitively). It imports only ``frappe`` plus the lightweight
-:mod:`passkeys.install` and :mod:`passkeys.policy` modules, all webauthn-free.
+:mod:`passkeys.install`, :mod:`passkeys.notifications` and :mod:`passkeys.policy`
+modules, all webauthn-free.
 
-Nudge state is stored **exactly the twofactor way**: site-wide
-``DefaultValue`` rows with a user-prefixed key under a dedicated parent —
-``get_default("{user}_passkey_nudge", parent="__passkeys")`` — never
-user-parented ``frappe.defaults`` rows and never on the lazily-created handle
-row (a decline must be recordable before any credential exists). Uninstall
-deletes every ``parent="__passkeys"`` row (``install.before_uninstall``)."""
+Per-user state is stored the twofactor way: site-wide ``DefaultValue`` rows with
+a user-prefixed key (``{user}_passkey_nudge``) under the dedicated ``__passkeys``
+parent — never user-parented ``frappe.defaults`` rows and never on the
+lazily-created handle row (a decline must be recordable before any credential
+exists). Rows are read by exact key (:func:`get_default_value`). Uninstall deletes
+every ``parent="__passkeys"`` row (``install.before_uninstall``)."""
 
 import json
 
 import frappe
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
-from passkeys import policy
+from passkeys import notifications, policy
 from passkeys.install import DEFAULTS_PARENT, dormant
 
 # record_nudge event vocabulary.
@@ -42,6 +43,15 @@ EXEMPT_ROLE = "Passkey Enforcement Exempt"
 PRIVILEGED_ROLES = {"System Manager"}
 
 
+def get_default_value(key: str, *, for_update: bool = False) -> str | None:
+	"""Read one ``__passkeys`` row by its exact key, from the database. Never
+	``frappe.db.get_default``: it is cache-served, and on a miss it falls back to
+	``scrub(key)``, so ``mary-jane@x`` would read ``mary_jane@x``'s row."""
+	return frappe.db.get_value(
+		"DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": key}, "defvalue", for_update=for_update
+	)
+
+
 def _nudge_key(user: str) -> str:
 	return f"{user}_passkey_nudge"
 
@@ -49,7 +59,7 @@ def _nudge_key(user: str) -> str:
 def get_nudge_state(user: str) -> dict:
 	"""The user's ``{declines, last_shown, opt_out}`` nudge blob. Absent or
 	malformed ⇒ a fresh zero-state (never raises — a bad row must not brick boot)."""
-	return _parse_nudge_state(frappe.db.get_default(_nudge_key(user), parent=DEFAULTS_PARENT))
+	return _parse_nudge_state(get_default_value(_nudge_key(user)))
 
 
 def _parse_nudge_state(raw) -> dict:
@@ -81,14 +91,7 @@ def record_nudge_event(user: str, event: str) -> dict:
 	if event not in NUDGE_EVENTS:
 		frappe.throw(frappe._("Unknown nudge event."), frappe.ValidationError)
 	frappe.db.get_value("User", user, "name", for_update=True)
-	state = _parse_nudge_state(
-		frappe.db.get_value(
-			"DefaultValue",
-			{"parent": DEFAULTS_PARENT, "defkey": _nudge_key(user)},
-			"defvalue",
-			for_update=True,
-		)
-	)
+	state = _parse_nudge_state(get_default_value(_nudge_key(user), for_update=True))
 	if event == "shown":
 		state["declines"] = cint(state.get("declines")) + 1
 		state["last_shown"] = now_datetime().isoformat()
@@ -129,7 +132,7 @@ def get_enforcement_state(user: str) -> dict:
 	have deferred since coming in scope. Stored the twofactor way (site-wide
 	``DefaultValue`` under ``__passkeys``), exactly like the nudge state, so a decline
 	is recordable before any credential exists. Absent/malformed ⇒ a fresh zero-state."""
-	return _parse_enforcement_state(frappe.db.get_default(_enforce_key(user), parent=DEFAULTS_PARENT))
+	return _parse_enforcement_state(get_default_value(_enforce_key(user)))
 
 
 def _parse_enforcement_state(raw) -> dict:
@@ -148,47 +151,45 @@ def _save_enforcement_state(user: str, state: dict) -> None:
 	frappe.db.set_default(_enforce_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
 
 
-def record_enforcement_event(user: str, event: str) -> dict:
-	"""Fold a ``record_enforcement`` event into the user's grace state. ``defer``
-	("Remind me later") spends one grace login. The endpoint claims a per-session
+def record_enforcement_defer(user: str) -> dict:
+	"""Spend one grace login ("Remind me later"). The endpoint claims a per-session
 	idempotency key first; the User lock serializes writers and the locking
-	DefaultValue read bypasses cached state and stale transaction snapshots.
-	``incapable`` records no counter (the endpoint handles the admin advisory).
-	Returns the new state."""
-	if event not in ENFORCE_EVENTS:
-		frappe.throw(frappe._("Unknown enforcement event."), frappe.ValidationError)
-	if event == "defer":
-		frappe.db.get_value("User", user, "name", for_update=True)
-		state = _parse_enforcement_state(
-			frappe.db.get_value(
-				"DefaultValue",
-				{"parent": DEFAULTS_PARENT, "defkey": _enforce_key(user)},
-				"defvalue",
-				for_update=True,
-			)
-		)
-	else:
-		state = get_enforcement_state(user)
-	if event == "defer":
-		state["grace_used"] = cint(state.get("grace_used")) + 1
+	DefaultValue read bypasses stale transaction snapshots. Returns the new state."""
+	frappe.db.get_value("User", user, "name", for_update=True)
+	state = _parse_enforcement_state(get_default_value(_enforce_key(user), for_update=True))
+	state["grace_used"] += 1
 	_save_enforcement_state(user, state)
 	return state
 
 
 def clear_enforcement_state(user: str) -> None:
 	"""Drop the user's ``{user}_passkey_enforce`` grace blob so their budget is full
-	again (``get_enforcement_state`` then serves the fresh zero-state). Deleting the row —
-	rather than writing ``grace_used = 0`` — is the canonical reset: absent ≡ zero-state,
-	and it leaves no stale row behind. This clears EXACTLY the key
-	``record_enforcement_event`` writes and ``build_enforcement`` reads; the separate
-	incapable-advisory dedup marker (``notifications``) is not a grace counter and is left
-	untouched. The admin grace-reset endpoint is the only caller.
-
-	Uses ``frappe.defaults.clear_default`` (not a raw ``db.delete``) so the delete ALSO
-	busts the site-defaults cache — ``get_default`` is cache-served under the same parent,
-	so a raw row delete would leave a stale ``grace_used`` reading behind (the mirror of why
-	``_save_enforcement_state`` goes through ``set_default``)."""
+	again (absent ≡ zero-state). The incapable-advisory dedup marker is not a grace
+	counter and is left untouched. The admin grace-reset endpoint is the only caller."""
 	frappe.defaults.clear_default(_enforce_key(user), parent=DEFAULTS_PARENT)
+
+
+def get_user_state_keys(user: str) -> tuple[str, ...]:
+	"""Every per-user ``__passkeys`` key; the User delete and rename cascades walk this."""
+	return (_nudge_key(user), _enforce_key(user), notifications.incapable_notify_key(user))
+
+
+def clear_user_state(user: str) -> None:
+	frappe.db.delete(
+		"DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": ("in", list(get_user_state_keys(user)))}
+	)
+
+
+def rename_user_state(old: str, new: str, merge: bool) -> None:
+	"""Move ``old``'s rows to ``new`` in place; a merge keeps each row the target
+	already has. In place, not copy-then-delete: the site collation is case- and
+	accent-insensitive, so after a case-only rename both keys match the same row."""
+	for old_key, new_key in zip(get_user_state_keys(old), get_user_state_keys(new), strict=True):
+		old_row = {"parent": DEFAULTS_PARENT, "defkey": old_key}
+		if merge and get_default_value(new_key) is not None:
+			frappe.db.delete("DefaultValue", old_row)
+		else:
+			frappe.db.set_value("DefaultValue", old_row, "defkey", new_key, update_modified=False)
 
 
 def _cadence_ok(settings, state: dict) -> bool:

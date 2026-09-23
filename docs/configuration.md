@@ -55,14 +55,16 @@ nudge and conditional-create knobs tune the softer rungs; the separate
 | **Enrollment Policy** (`passkey_enrollment_policy`) | Nudge | The adoption-ladder rung, a Select of four values. **Off** — never prompt. **Nudge** — show a dismissible "set up a passkey" prompt after login to users who have none, capped by the two nudge knobs below. **Enforce** — in-scope users must register a passkey to keep using the app (recovery stays available). **Enforce After Date** — behaves as *Nudge* until the date in *Enforce After*, then becomes *Enforce*. Enforce is a **post-login interstitial**: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block. |
 | **Enforce After** (`passkey_enforce_after`) | *blank* | Only shown, and required, when the policy is *Enforce After Date*. Enforcement begins on this date, evaluated against the server clock on every request; before it the policy behaves as *Nudge*, and a past date behaves as an immediate *Enforce*. |
 | **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops (applies to *Nudge*, to *Enforce After Date* before its date, and to incapable devices under *Degrade to Nudge*). Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
-| **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. |
+| **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. Applies wherever Maximum Nudge Prompts applies. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. Off: only the explicit nudge/enroll flow creates passkeys. |
 
 Nudges and the post-hybrid upsell are disabled when both passkey login modes are off.
-A prompt counts only after the Desk dialog is shown or the portal banner is inserted.
-"Don't ask again" persists per user; a failed save displays an error so the user can retry.
-If conditional creation finishes without a credential, the eligible visible nudge appears;
-an aborted or still-pending attempt does not trigger it. The post-hybrid upsell hint is
+A prompt counts only after the Desk dialog is shown or the portal banner is inserted. The portal
+banner is not shown on /passkeys, which is itself the enrolment page. "Don't ask again" keeps the
+prompt open until the server has saved the choice; if the save fails, an error appears in the prompt
+and the user can retry. If conditional creation does not end in a server-verified credential (none
+created, verify rejected, or a network error), the eligible visible nudge appears; an aborted or
+still-pending attempt does not. The post-hybrid upsell hint is
 consumed on evaluation, even when capped, and cleared when the login page initializes.
 
 ## Enforcement Scope
@@ -200,7 +202,7 @@ authentication account without a local hash marker, requires core to re-authenti
 | An enrolled second-factor user uses password, email link, social/OAuth, LDAP, or another core login path | The final login is vetoed unless this app completed passkey verification or issued and then consumed the one-time OTP fallback marker. This includes an enrolled Administrator. |
 | A Passkey-Only user with Login With Email Link on | The email-link path is closed for that user; only their passkey gets them in. |
 | OTP fallback off and a passkey holder loses their authenticator | No self-service downgrade — admin recovery only (see [`recovery.md`](recovery.md)). |
-| "Passkey as Second Factor" on together with "Disable Username/Password Login" (core) | A dead combination for enrolled users — the app's password leg has nothing to run against, and alternate login completions are final-vetoed. Keep "Login with Passkey" on as their usable route or do not enable this combination. The save proceeds with an orange warning. |
+| "Passkey as Second Factor" on together with "Disable Username/Password Login" (core) | A dead combination for enrolled users — the app's password leg has nothing to run against, and alternate login completions are final-vetoed. Refused at save, from either settings page, while "Passkey as Second Factor" is the only passkey mode. With "Login with Passkey" also on, the save proceeds with an orange warning. |
 | Change notifications off while a login mode is on | The save proceeds with an orange warning: this weakens the main defence against registration hijack. |
 
 ## Per-user "Passkey Only Login"

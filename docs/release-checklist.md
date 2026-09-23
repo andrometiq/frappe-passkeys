@@ -34,7 +34,8 @@ and deployment target being released. Record evidence in the release or change t
 - [ ] Review every authentication and confirmation endpoint for authorization, HTTP method, CSRF,
       rate limiting, session binding, origin binding, one-time state, and uniform failure behavior.
 - [ ] Verify test-only endpoints are unavailable unless the test runner is active, or the caller is a
-      System Manager and both `developer_mode` and `allow_tests` are enabled.
+      System Manager and both `developer_mode` and `allow_tests` are enabled (the two guest-callable
+      UI-test helpers need both flags, whatever the caller).
 - [ ] Re-run concurrency tests for sign counters, registration caps, credential deletion, passkey-only
       flags, settings mode changes, and grace accounting.
 - [ ] Review dependency changes and published security advisories for Frappe, `webauthn`,

@@ -185,7 +185,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 	def test_reset_restores_full_grace_budget(self):
 		user = self._user()
 		for _ in range(3):
-			boot.record_enforcement_event(user, "defer")
+			boot.record_enforcement_defer(user)
 		self.assertTrue(boot.build_enforcement(user, self._settings(), 0)["blocking"])
 
 		view = enforcement_admin.reset_enforcement_grace(user)
@@ -202,7 +202,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 
 	def test_reset_is_idempotent(self):
 		user = self._user()
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		enforcement_admin.reset_enforcement_grace(user)
 		# second reset on an already-clean counter is a no-op, still full budget
 		view = enforcement_admin.reset_enforcement_grace(user)
@@ -214,7 +214,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 	def test_view_reports_satisfied_and_grace(self):
 		user = self._user()
 		make_credential(user)
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		view = enforcement_admin.get_user_enforcement_admin(user)
 		self.assertTrue(view["in_scope"])
 		self.assertEqual(view["credential_count"], 1)

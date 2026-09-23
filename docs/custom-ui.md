@@ -51,8 +51,8 @@ building blocks it (and you, if you go lower-level) are built on.
 | `setPasswordlessOnly(enabled)` | `{passkey_only_login}` | Turn password login off/on for the account. Passkey re-auth only. |
 | `confirm(action, params)` / `call(method, args)` | grant / result | Proxies to `frappe.passkeys.confirm` / `.call`. |
 
-**Login result shape** — `login()` and `verifyLogin()` never throw on a server
-refusal; they resolve one of:
+**Login result shape** — `login()` and `verifyLogin()` never reject on a server refusal or a
+transport failure; they resolve one of:
 
 ```js
 { ok: true,  redirect }                                   // signed in — navigate to redirect (or reload)
@@ -219,7 +219,7 @@ const C = frappe.passkeys_common;
 const engine = C.createConfirmEngine({
   post: (method, body, headers) => fetch("/api/method/" + method, {
     method: "POST", credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": frappe.csrf_token },
+    headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": frappe.csrf_token, ...headers },
     body: JSON.stringify(body || {}),
   }).then((r) => r.json().then((body) => ({ ok: r.ok, status: r.status, body }))),
   runGesture: (opts) => navigator.credentials
@@ -253,8 +253,9 @@ def release_payment(payment_id, amount):
     ...
 ```
 
-`display_params` must be a subset of `bind_params`; undeclared arguments are never returned to the
-client. The server emits `action_label` and `parameter_summary`, translating labels and rendering
+`display_params` must be a subset of `bind_params`, and every `bind_params` name must be a parameter
+of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. Undeclared
+arguments are never returned to the client. The server emits `action_label` and `parameter_summary`, translating labels and rendering
 booleans/nulls as safe display values. These fields are presentation only: the grant remains bound
 to the canonical server-side payload fingerprint. Call the method with:
 

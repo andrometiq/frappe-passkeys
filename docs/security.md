@@ -117,7 +117,8 @@ method's consumer remains the final method and payload authority.
 surface (add/delete passkeys). It is seeded by a fresh interactive login or a
 password / passkey re-auth. A "weak" login (email link, social) seeds only the
 restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
-management power.
+management power. An impersonated session (Administrator "Impersonate") cannot register a passkey
+at all, so impersonation never leaves behind a credential the user did not create.
 
 Password classification and OTP-fallback acceptance follow command dispatch precedence. A truthy
 `cmd` must be exactly `login`; only a request without a diverting command may rely on the canonical

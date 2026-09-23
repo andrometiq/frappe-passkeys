@@ -471,6 +471,26 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 				display_params={"secret": "Secret"},
 			)
 
+	def test_bind_params_must_name_function_parameters(self):
+		decorator = confirm.passkey_protected(action="myapp.misbound", bind_params=["payment_id"])
+		with self.assertRaisesRegex(ValueError, "payment_id"):
+			decorator(lambda payment=None: payment)
+
+	def test_bind_params_resolve_through_kwargs(self):
+		user = self._user()
+		frappe.set_user(user)
+
+		@confirm.passkey_protected(action="myapp.pay", bind_params=["amount"])
+		def pay(**kwargs):
+			return kwargs
+
+		self._request("/api/method/myapp.pay")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay(amount=10)
+		self.assertEqual(
+			frappe.local.response.get("payload_fingerprint"), session.payload_hash({"amount": 10})
+		)
+
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()
 		auth = self._enroll(user)

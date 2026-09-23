@@ -233,6 +233,9 @@
 
 		function MM() { return (typeof _MM === "function" ? _MM() : _MM) || {}; }
 		function unwrap(body) { return C.unwrapMessage(body); }
+		function networkFailure() {
+			return { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" };
+		}
 		function err(code, msg) {
 			var e = new Error(code);
 			e.code = code;
@@ -295,16 +298,14 @@
 				};
 				if (kind === "uv_setup_required") out.setupId = b.setup_id || null;
 				return out;
-			}, function () {
-				return { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" };
-			});
+			}, networkFailure);
 		}
 
 		// Batteries-included first-factor login: beginLogin -> getAssertion (modal by
 		// default; pass {mediation:"conditional", signal} for autofill) -> verifyLogin.
 		// A get() rejection maps through the DOMException taxonomy to a structured
 		// gesture result (statusState reuses loginStatusForDomCode). Resolves the same
-		// shape family as verifyLogin plus:
+		// shape family as verifyLogin (a begin transport failure is reason:"network") plus:
 		//   { ok:false, reason:"disabled" }                    — mode off / unconfigured
 		//   { ok:false, reason:"gesture", code, message, statusState }
 		function login(opts) {
@@ -325,7 +326,7 @@
 							};
 						}
 					);
-			});
+			}, networkFailure);
 		}
 
 		// Complete the one-time UV-initialization repair returned by verifyLogin as
@@ -348,9 +349,7 @@
 					message: C.serverMessages(b) || null,
 					statusState: C.loginStatusForServerKind(kind),
 				};
-			}, function () {
-				return { ok: false, reason: "network", kind: "network", status: 0, message: null, statusState: "failed" };
-			});
+			}, networkFailure);
 		}
 
 		// ------------------------------------------------------ registration

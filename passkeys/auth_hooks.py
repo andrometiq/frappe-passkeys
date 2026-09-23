@@ -201,24 +201,43 @@ def _request_is_core_method(method_dotted_path: str) -> bool:
 
 
 def guard_system_settings(doc, method=None):
-	"""System Settings ``validate``: the reverse half of the two-way 2FA floor.
-	The Passkey Settings validator refuses enabling
-	``passkey_as_second_factor`` while core ``enable_two_factor_auth`` is off;
-	this guard refuses the *other* direction — flipping ``enable_two_factor_auth``
-	**1 → 0** while ``passkey_as_second_factor`` is on — which would silently
-	evaporate the required defence-in-depth backstop. The final login veto still
-	fails closed for enrolled users, but the configuration would be unsupported.
+	"""System Settings ``validate``: the reverse halves of the Passkey Settings floors.
+	Refuses flipping ``enable_two_factor_auth`` **1 → 0** while
+	``passkey_as_second_factor`` is on (it would evaporate the required
+	defence-in-depth backstop), and flipping ``disable_user_pass_login`` **0 → 1**
+	while Passkey as Second Factor is the only passkey mode (enrolled users would
+	have no login path left — ``PasskeySettings._validate_second_factor_floor`` is the
+	forward half).
 
-	Only the genuine 1→0 transition is blocked: an already-off value staying off
-	cannot make the floor any weaker, and blocking every save on an
-	already-desynced site (a raw ``db_set``/console edit — console-bypass
-	posture) would deadlock System Settings entirely. The runtime desync that a
-	console edit can still create is surfaced by the leg-1 daily observation log
-	(``passkeys.passkey``)."""
+	Only the genuine transitions are blocked: a value staying put cannot make a
+	floor weaker, and blocking every save on an already-desynced site (a raw
+	``db_set``/console edit — console-bypass posture) would deadlock System
+	Settings entirely. The runtime 2FA desync that a console edit can still create
+	is surfaced by the leg-1 daily observation log (``passkeys.passkey``)."""
 	if install.dormant():
-		return  # dormant-shell: core owns the 2FA floor — silent no-op
-	new_value = cint(doc.enable_two_factor_auth)
-	if new_value:
+		return  # dormant-shell: core owns the floors — silent no-op
+	_guard_password_login_floor(doc)
+	_guard_two_factor_floor(doc)
+
+
+def _guard_password_login_floor(doc) -> None:
+	if not cint(doc.disable_user_pass_login):
+		return
+	if cint(frappe.db.get_single_value("System Settings", "disable_user_pass_login")):
+		return  # already on — not a 0→1 flip
+	modes = frappe.db.get_singles_dict("Passkey Settings")
+	if not cint(modes.passkey_as_second_factor) or cint(modes.login_with_passkey):
+		return
+	frappe.throw(
+		_(
+			"Cannot disable username/password login while Passkey as Second Factor is the only passkey mode: enrolled users would have no way to sign in. Enable Login with Passkey or turn off Passkey as Second Factor in Passkey Settings first."
+		),
+		frappe.ValidationError,
+	)
+
+
+def _guard_two_factor_floor(doc) -> None:
+	if cint(doc.enable_two_factor_auth):
 		return  # staying on / turning on — nothing to guard
 	old_value = policy.lock_core_2fa_floor()
 	if not old_value:

@@ -72,9 +72,6 @@ def refuse_if_core_native() -> None:
 		raise PasskeyServedByCore(_("This site serves passkeys natively."))
 
 
-USER_DEFAULT_SUFFIXES = ("passkey_nudge", "passkey_enforce", "passkey_incapable_notified")
-
-
 def cascade_delete_user_artifacts(doc, method=None):
 	"""User on_trash: drop the user's credential, handle, and Defaults rows.
 
@@ -84,10 +81,23 @@ def cascade_delete_user_artifacts(doc, method=None):
 	deletion site-wide."""
 	if install.dormant():
 		return
+	from passkeys import boot
+
 	for doctype in ("WebAuthn Credential", "WebAuthn User Handle"):
 		frappe.db.delete(doctype, {"user": doc.name})
-	for suffix in USER_DEFAULT_SUFFIXES:
-		frappe.defaults.clear_default(f"{doc.name}_{suffix}", parent=install.DEFAULTS_PARENT)
+	boot.clear_user_state(doc.name)
+
+
+def refuse_enrolled_user_merge(doc, method=None, old=None, new=None, merge=False):
+	"""User before_rename: a merge would re-point both users' handle rows at one user and
+	fail on the handle's unique index; refuse it with a clear message instead."""
+	if merge and frappe.db.count("WebAuthn User Handle", {"user": ("in", [old, new])}) > 1:
+		frappe.throw(
+			_(
+				"Cannot merge {0} into {1}: both users have passkeys. Delete the passkeys and the WebAuthn User Handle of {0} first."
+			).format(old, new),
+			frappe.ValidationError,
+		)
 
 
 def rename_user_artifacts(doc, method=None, old=None, new=None, merge=False):
@@ -97,13 +107,9 @@ def rename_user_artifacts(doc, method=None, old=None, new=None, merge=False):
 	"""
 	if install.dormant() or not old or not new or old == new:
 		return
-	for suffix in USER_DEFAULT_SUFFIXES:
-		old_key, new_key = f"{old}_{suffix}", f"{new}_{suffix}"
-		value = frappe.db.get_default(old_key, parent=install.DEFAULTS_PARENT)
-		target = frappe.db.get_default(new_key, parent=install.DEFAULTS_PARENT) if merge else None
-		if value is not None and target is None:
-			frappe.db.set_default(new_key, value, parent=install.DEFAULTS_PARENT)
-		frappe.defaults.clear_default(old_key, parent=install.DEFAULTS_PARENT)
+	from passkeys import boot
+
+	boot.rename_user_state(old, new, merge)
 
 
 # ===========================================================================
@@ -971,7 +977,7 @@ def record_enforcement(event: str):
 	if event == "defer":
 		if not state.claim_enforcement_defer(user, frappe.session.sid):
 			return {"enforcement_state": boot.get_enforcement_state(user)}
-		return {"enforcement_state": boot.record_enforcement_event(user, event)}
+		return {"enforcement_state": boot.record_enforcement_defer(user)}
 	if verdict["incapable_policy"] == "block_notify":
 		notifications.record_enforcement_incapable(user)
 	return {"enforcement_state": boot.get_enforcement_state(user)}

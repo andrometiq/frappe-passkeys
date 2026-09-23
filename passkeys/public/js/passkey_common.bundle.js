@@ -44,6 +44,30 @@
 		Object.assign(frappeRef._messages, catalog);
 	}
 
+	// Fetch this app's catalog and merge it (web pages on v15/v16 ship no app strings;
+	// on develop also await core's catalog). Never rejects: English is the fallback.
+	function loadAppTranslations() {
+		var f = window.frappe || {};
+		var noop = function () {};
+		var core = f._translations_loaded && typeof f._translations_loaded.then === "function"
+			? f._translations_loaded.catch(noop) : null;
+		// base.html stamps <html lang> with the request language: English needs no catalog.
+		var lang = typeof document !== "undefined" && document.documentElement && document.documentElement.lang;
+		var app = lang === "en" ? null : fetch("/api/method/passkeys.passkey.get_app_translations", {
+			method: "GET",
+			cache: "no-store",
+			headers: { Accept: "application/json" },
+			credentials: "same-origin",
+		})
+			.then(function (r) { return r.ok ? r.json() : null; })
+			.then(function (payload) {
+				var catalog = payload && (payload.message || payload);
+				if (catalog && typeof catalog === "object") mergeAppTranslations(window.frappe, catalog);
+			})
+			.catch(noop);
+		return Promise.all([core, app]);
+	}
+
 	// ------------------------------------------------------------- base64url
 	function b64urlToBytes(b64url) {
 		var b64 = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
@@ -1028,6 +1052,7 @@
 	return {
 		t: t,
 		mergeAppTranslations: mergeAppTranslations,
+		loadAppTranslations: loadAppTranslations,
 		b64urlToBytes: b64urlToBytes,
 		bytesToB64url: bytesToB64url,
 		parseRequestOptionsFromJSON: parseRequestOptionsFromJSON,

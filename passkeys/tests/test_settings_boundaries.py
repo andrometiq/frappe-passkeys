@@ -366,7 +366,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		doc.flags.ignore_validate = True
 		doc.save()
 		flush_settings_cache()
-		# record_enforcement_event (set_default) commits mid-test; commit the restore + the
+		# record_enforcement_defer (set_default) commits mid-test; commit the restore + the
 		# addCleanup user/DefaultValue deletes so no enforce state leaks onward.
 		frappe.db.commit()
 
@@ -399,7 +399,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		self.assertFalse(v["blocking"])
 		self.assertEqual(v["reason"], "grace")
 
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 0)
 		self.assertTrue(v["blocking"])
@@ -408,8 +408,8 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		# grace_used (2) > grace_total (1) — max(0, total-used) clamps remaining to 0.
 		self._set(passkey_enforce_grace_logins=1)
 		user = self._user()
-		boot.record_enforcement_event(user, "defer")
-		boot.record_enforcement_event(user, "defer")
+		boot.record_enforcement_defer(user)
+		boot.record_enforcement_defer(user)
 		v = self._verdict(user)
 		self.assertEqual(v["grace_remaining"], 0)
 		self.assertTrue(v["blocking"])
@@ -552,9 +552,12 @@ class EnrollmentFieldVisibilityTest(IntegrationTestCase):
 	ship-time declaration evaluated client-side, so this asserts the meta the form drives
 	off of directly."""
 
-	# The form exposes these knobs under Nudge / Enforce After Date. Their stored
-	# values also govern incapable-device nudges under Enforce + Degrade.
-	NUDGE_DEPENDS_ON = 'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'
+	# Visible wherever the nudge cadence applies: Nudge, Enforce After Date, and the
+	# incapable-device nudge under Enforce + Degrade to Nudge.
+	NUDGE_DEPENDS_ON = (
+		'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'
+		' || (doc.passkey_enrollment_policy == "Enforce" && doc.passkey_enforce_incapable == "Degrade to Nudge")'
+	)
 
 	def _field(self, fieldname):
 		return frappe.get_meta("Passkey Settings").get_field(fieldname)
@@ -564,7 +567,7 @@ class EnrollmentFieldVisibilityTest(IntegrationTestCase):
 			self.assertEqual(
 				self._field(fieldname).depends_on,
 				self.NUDGE_DEPENDS_ON,
-				f"{fieldname} must be visible only under Nudge / Enforce After Date",
+				f"{fieldname} must be visible wherever the nudge cadence applies",
 			)
 
 	def test_grace_logins_stays_reachable_under_enforce(self):

@@ -209,6 +209,12 @@
 	justify-content: flex-end;
 }
 
+.passkey-nudge-error {
+	flex-basis: 100%;
+	margin: 0.5rem 0 0;
+	color: var(--red-700, #b32d2d);
+}
+
 /* --------------------------------------------------------- portal page */
 .passkey-portal-page {
 	max-width: 42rem;
@@ -329,6 +335,9 @@
 [data-theme="dark"] .passkey-nudge-banner {
 	background: var(--blue-900, #16273c);
 	border-color: var(--blue-700, #2b6cb0);
+}
+[data-theme="dark"] .passkey-nudge-error {
+	color: #f5a3a3; /* red-700 is unreadable on the dark banner */
 }
 
 /* --------------------------------------------------------------------------

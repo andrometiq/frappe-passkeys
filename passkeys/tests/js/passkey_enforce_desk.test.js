@@ -164,23 +164,44 @@ test("desk nudge: SHOWN follows show, and a constructor failure spends nothing",
 	} finally { frappeObj.ui.Dialog = Dialog; global.fetch = normalFetch; }
 });
 
-test("desk nudge: failed opt-out alerts, successful opt-out and other events stay silent", async () => {
-	const alerts = [];
-	frappeObj.show_alert = (alert) => alerts.push(alert);
+function findClass(root, cls) {
+	if (!root) return null;
+	if ((root.className || "").includes(cls)) return root;
+	for (const c of root.children) { const f = findClass(c, cls); if (f) return f; }
+	return null;
+}
+
+test("desk opt-out keeps the dialog until saved; a failure shows a visible alert and stays retryable", async () => {
 	try {
-		for (const outcome of [false, true, "reject"]) {
-			alerts.length = 0;
-			global.fetch = () => outcome === "reject" ? Promise.reject(new Error("offline")) :
-				Promise.resolve({ ok: outcome, json: () => Promise.resolve({}) });
+		for (const outcome of [true, false, "reject"]) {
+			let settle = () => {};
+			global.fetch = (url, opts) => {
+				let body = {};
+				try { body = JSON.parse(opts.body); } catch (e) { /* ignore */ }
+				if (body.event !== M.NUDGE_EVENTS.OPT_OUT) return normalFetch(url, opts);
+				return new Promise((resolve, reject) => {
+					settle = () => outcome === "reject" ? reject(new Error("offline")) :
+						resolve({ ok: outcome, status: outcome ? 200 : 500, json: () => Promise.resolve({}) });
+				});
+			};
 			mod.showNudgeDialog({}, false);
-			findButton(Dialog.instances.at(-1)._body, (b) => b.textContent === M.COPY.nudgeNever).click();
+			const d = Dialog.instances.at(-1);
+			const never = findButton(d._body, (b) => b.textContent === M.COPY.nudgeNever);
+			never.click();
+			assert.strictEqual(d.hidden, false, "dialog stays while the opt-out is in flight");
+			settle();
 			await tick();
-			assert.deepStrictEqual(alerts, outcome === true ? [] : [{ message: M.COPY.nudgeSaveFailed, indicator: "red" }]);
-			alerts.length = 0;
-			await mod.recordNudge(M.NUDGE_EVENTS.DECLINED);
-			assert.deepStrictEqual(alerts, []);
+			if (outcome === true) { assert.strictEqual(d.hidden, true); continue; }
+			assert.strictEqual(d.hidden, false, "dialog stays after a failed opt-out");
+			const error = findClass(d._body, "passkey-nudge-error");
+			assert.strictEqual(error.getAttribute("role"), "alert");
+			assert.strictEqual(error.textContent, M.COPY.nudgeSaveFailed);
+			global.fetch = normalFetch;
+			never.click(); // retry succeeds
+			await tick();
+			assert.strictEqual(d.hidden, true, "retry closes the dialog");
 		}
-	} finally { global.fetch = normalFetch; delete frappeObj.show_alert; }
+	} finally { global.fetch = normalFetch; }
 });
 
 test("desk upsell: consumes the flag even when server cadence caps it", async () => {
@@ -224,11 +245,11 @@ test("desk conditional create: unsuccessful attempts fall back once, abort and c
 		conditional_create: true, post_login_method: "password",
 	} };
 	try {
-		for (const outcome of ["NotAllowedError", "AbortError", "credential", "null", "begin_failed", "bad_options", "network"]) {
+		for (const outcome of ["NotAllowedError", "AbortError", "credential", "null", "begin_failed", "bad_options", "network", "verify_failed", "verify_network"]) {
 			Dialog.instances.length = 0;
 			fetchLog.length = 0;
 			global.navigator = { credentials: { create: () => {
-				if (outcome === "credential") return Promise.resolve({ toJSON: () => ({ id: "created" }) });
+				if (["credential", "verify_failed", "verify_network"].includes(outcome)) return Promise.resolve({ toJSON: () => ({ id: "created" }) });
 				if (outcome === "null") return Promise.resolve(null);
 				return Promise.reject(Object.assign(new Error(outcome), { name: outcome }));
 			} } };
@@ -239,15 +260,42 @@ test("desk conditional create: unsuccessful attempts fall back once, abort and c
 						options: outcome === "bad_options" ? null : {}, state_id: "state",
 					} }) });
 				}
+				if (url.includes("verify_registration") && outcome === "verify_network") return Promise.reject(new Error("offline"));
+				if (url.includes("verify_registration") && outcome === "verify_failed") {
+					return Promise.resolve({ ok: false, status: 417, json: () => Promise.resolve({}) });
+				}
 				if (url.includes("record_nudge")) assert.strictEqual(Dialog.instances.at(-1).shown, true);
 				return normalFetch(url, opts);
 			};
-			mod.maybeNudge();
-			await tick();
+			let dialogsWhenEvaluated = null;
+			document.documentElement.setAttribute = (k) => {
+				if (k === "data-passkeys-nudge-evaluated") dialogsWhenEvaluated = Dialog.instances.length;
+			};
+			await mod.maybeNudge();
 			const expected = ["AbortError", "credential"].includes(outcome) ? 0 : 1;
 			assert.strictEqual(Dialog.instances.length, expected, outcome);
 			assert.strictEqual(shownCount(), expected, outcome);
+			assert.strictEqual(dialogsWhenEvaluated, expected, "evaluated marker waits for the fallback: " + outcome);
 			if (outcome === "credential") assert.ok(fetchLog.some((f) => f.url.includes("verify_registration")));
 		}
 	} finally { global.fetch = normalFetch; delete window.PublicKeyCredential; delete frappeObj.boot; }
+});
+
+test("desk conditional create: a throwing fallback is contained and still marks evaluation", async () => {
+	window.PublicKeyCredential = { getClientCapabilities: () => Promise.resolve({ conditionalCreate: true }) };
+	frappeObj.boot = { passkeys: {
+		nudge_state: { eligible: true }, upsell_eligible: false,
+		conditional_create: true, post_login_method: "password",
+	} };
+	global.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) }); // begin fails
+	frappeObj.ui.Dialog = function () { throw new Error("render failed"); };
+	let evaluated = false;
+	document.documentElement.setAttribute = (k) => { if (k === "data-passkeys-nudge-evaluated") evaluated = true; };
+	try {
+		await mod.maybeNudge(); // resolves: no unhandled rejection
+		assert.strictEqual(evaluated, true);
+	} finally {
+		frappeObj.ui.Dialog = Dialog; global.fetch = normalFetch;
+		delete window.PublicKeyCredential; delete frappeObj.boot;
+	}
 });

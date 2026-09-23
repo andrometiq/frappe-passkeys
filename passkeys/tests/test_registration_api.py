@@ -295,6 +295,21 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 
+	def test_impersonated_session_cannot_register(self):
+		# Impersonation seeds a weak window, which would otherwise pass the
+		# first-enrollment bootstrap for a user with no passkey.
+		user = self._user()
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		flush_settings_cache()
+		begun, credential, _auth = self._register(user, seeded_by="weak")
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		with self.assertRaises(frappe.PermissionError):
+			registration.begin_registration(flow="explicit")
+		with self.assertRaises(frappe.PermissionError):
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
+
 	def test_weak_bootstrap_race_after_consume_is_terminal(self):
 		user = self._user()
 		frappe.set_user(user)

@@ -27,9 +27,10 @@
 		verify_second_factor: "passkeys.passkey.verify_second_factor",
 		fallback_to_otp: "passkeys.passkey.fallback_to_otp",
 		get_signal_data: "passkeys.passkey.get_signal_data",
-		app_translations: "passkeys.passkey.get_app_translations",
 	};
 	var HINT_KEY = "passkey_used_here"; // localStorage promote-only hint
+	// Mirrors passkey_manage_common UPSELL_FLAG_KEY (not loaded on /login); a node spec pins equality.
+	var UPSELL_FLAG_KEY = "passkey_upsell_add_local";
 	var STATUS_ID = "passkey-login-status"; // the app-owned visible staged-status element
 	var SLOW_MS = 4000; // slow-connection "still working" escalation while verifying
 	var BOOTED = false;
@@ -50,12 +51,10 @@
 	function boot() {
 		if (BOOTED) return; // idempotent injection guard (login_rendered is one-shot)
 		BOOTED = true;
-		try { if (window.localStorage) localStorage.removeItem("passkey_upsell_add_local"); } catch (e) { /* ignore */ }
+		try { if (window.localStorage) localStorage.removeItem(UPSELL_FLAG_KEY); } catch (e) { /* ignore */ }
 		C.ensureLiveRegion(document);
 		// merge our own guest translation catalog (REQUIRED on v15/v16), then start.
-		loadAppTranslations()
-			.catch(noop) // English fallback is acceptable; never block boot
-			.then(start);
+		C.loadAppTranslations().then(start);
 	}
 
 	// listen once + DOMContentLoaded fallback (the event is one-shot)
@@ -76,34 +75,6 @@
 		state.busyModal = false;
 		state.login.markSpent();
 		if (state.modes.first_factor) rebeginAndRearm();
-	}
-
-	// ---------------------------------------------------------- i18n loader
-	// Fetch the app guest translations endpoint and MERGE (never clobber) into
-	// frappe._messages. On develop, also await frappe._translations_loaded so the
-	// core catalog is in place before our first translated paint.
-	function loadAppTranslations() {
-		var jobs = [];
-		if (window.frappe && window.frappe._translations_loaded &&
-			typeof window.frappe._translations_loaded.then === "function") {
-			jobs.push(window.frappe._translations_loaded.catch(noop));
-		}
-		var appJob = fetch(methodUrl(API.app_translations), {
-			method: "GET",
-			cache: "no-store",
-			headers: { Accept: "application/json" },
-			credentials: "same-origin",
-		})
-			.then(function (r) { return r.ok ? r.json() : null; })
-			.then(function (payload) {
-				var catalog = payload && (payload.message || payload);
-				if (catalog && typeof catalog === "object") {
-					C.mergeAppTranslations(window.frappe, catalog);
-				}
-			})
-			.catch(noop);
-		jobs.push(appJob);
-		return Promise.all(jobs);
 	}
 
 	// ------------------------------------------------------------- main start
@@ -731,7 +702,7 @@
 		// device" for the post-login surface. We stash a hint the desk/portal bundle reads.
 		try {
 			if (attachment === "cross-platform" && window.localStorage) {
-				localStorage.setItem("passkey_upsell_add_local", "1");
+				localStorage.setItem(UPSELL_FLAG_KEY, "1");
 			}
 		} catch (e) { /* ignore */ }
 		// signalAllAcceptedCredentials is best-effort; the desk bundle refreshes it in-session.
@@ -1022,7 +993,7 @@
 			onPageShow: onPageShow,
 			secondFactorWebAuthnAvailable: secondFactorWebAuthnAvailable,
 			showSecondFactorUnavailable: showSecondFactorUnavailable,
-			loadAppTranslations: loadAppTranslations,
+			UPSELL_FLAG_KEY: UPSELL_FLAG_KEY,
 		};
 	}
 })();

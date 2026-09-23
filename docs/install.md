@@ -145,11 +145,14 @@ silently — if the UI looks stale after an upgrade, run
 
 `bench migrate` runs the app's `after_migrate` hook, which removes an obsolete
 development-build System Settings customization, syncs the User-form passkey section, and
-applies any pending `patches.txt` migrations. The current patch folds a legacy
+applies any pending `patches.txt` migrations. The current patches fold a legacy
 site's `passkey_enrollment_nudge` boolean into the `passkey_enrollment_policy`
-adoption ladder and seeds the break-glass exempt role; it is idempotent and never
-clobbers a policy an administrator has already chosen. No settings are otherwise
-changed by an upgrade; enabled modes stay enabled.
+adoption ladder, remove legacy role-wide enforcement exemptions, and turn on
+"Always Enforce for Privileged Users" where it was never set. They are idempotent and never
+clobber a choice an administrator has already made. Migration creates no exemption: exempt an
+individual user from the Passkeys section of their User form, or use the console recovery in
+[`recovery.md`](recovery.md). No settings are otherwise changed by an upgrade; enabled modes stay
+enabled.
 
 Do not promote an upgrade from this command sequence alone. Complete the
 [release checklist](release-checklist.md), including candidate-specific CI, a database and private
@@ -221,16 +224,23 @@ passkeys:   from passkeys.install import import_credentials; import_credentials(
   be sensitive. Protect and retain the file like the matching site backup; the matching
   `encryption_key` is required to verify it.
 
-**Restore (reinstall on the same site).** Reinstall the app, then replay the file:
+**Restore (reinstall on the same site).** The export carries no Passkey Settings, and a passkey
+only works under the RP ID it was created for. Before uninstalling, record the site's Passkey RP
+ID, Passkey Origins and Trusted App Origins. Reinstall the app, restore those values through a
+validated settings save, then replay the file:
 
 ```bash
 bench --site <site> install-app passkeys
 bench --site <site> console
 >>> import frappe
->>> # If the export contains passkey-only users, enable a passkey login mode FIRST —
->>> # otherwise the restore refuses (those users would be locked out) and, if the site
->>> # had none enabled, no passkey login could work post-restore anyway:
->>> frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+>>> settings = frappe.get_single("Passkey Settings")
+>>> settings.passkey_rp_id = "<the recorded RP ID; blank if it was blank>"
+>>> settings.passkey_origins = "<the recorded origins, one per line>"
+>>> settings.passkey_app_origins = "<the recorded trusted app origins, if any>"
+>>> # Enable a passkey login mode before importing passkey-only users — otherwise the
+>>> # restore refuses (those users would be locked out):
+>>> settings.login_with_passkey = 1
+>>> settings.save()
 >>> frappe.db.commit()
 >>> from passkeys.install import import_credentials
 >>> import_credentials("sites/<site>/private/files/passkeys-credentials-<timestamp>.json")
@@ -238,14 +248,16 @@ bench --site <site> console
 ```
 
 The enable-a-mode step is only required when the export carries *Passkey Only Login* users; for a
-plain restore it is harmless (re-enabling the mode you were already running). By default,
+plain restore it is harmless (re-enabling the mode you were already running). The RP ID and origins
+are not optional: under a different RP ID every restored passkey fails to authenticate. By default,
 `import_credentials` requires **both passkey tables to be empty**. This makes an
 accidental import into a live credential set fail before merging anything. `allow_existing=True` is
 an explicit, operator-reviewed merge mode, not an idempotency convenience: inspect handle ownership
 and credential conflicts before using it. Matching rows are skipped, inconsistent or disabled-user
 rows are rejected and reported, and valid rows may still be imported. Signature counters are
 restored verbatim (never reset to zero), and credentials are restored before handles. On a clean,
-same-site restore, authenticators users still hold continue to match the restored public keys.
+same-site restore under the original RP ID, authenticators users still hold continue to match the
+restored public keys.
 
 App builds before export schema v2 wrote unsigned version-1 files. They remain recoverable, but the
 importer refuses them by default because their integrity cannot be established. After comparing the
