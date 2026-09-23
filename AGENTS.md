@@ -135,10 +135,9 @@ spaces. These rules apply to any change here:
 ## Working Rules
 
 - Read `CONTRIBUTING.md` for setup, commit style, and the browserless WebAuthn test mode. The
-  branch model is its: `develop` is the PR target; `version-15` / `version-16` are the released
-  lines. A change reaches a released line as a clean cherry-pick verified per branch — say
-  `needs backport` in the PR if you can't do it yourself. The three branches share one
-  feature-detecting codebase and differ only in the pinned `__version__` — never write
+  branch model is its: every change lands on `develop`; `version-15` / `version-16` are
+  `develop` plus one version-number commit, moved forward at release (never cherry-picked,
+  never force-pushed). The three branches share one feature-detecting codebase — never write
   version-forked logic.
 - Before a bug fix, find the root cause first — don't loosen a test to match new behavior.
 - Run the gates before pushing (exact invocations in `CONTRIBUTING.md` and `.github/workflows/ci.yml`):

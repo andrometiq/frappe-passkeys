@@ -70,16 +70,27 @@ invariants keep it safe:
 ## Branches
 
 The code is a single feature-detecting codebase; the branches mirror `frappe/frappe` so users
-install the line that matches their Frappe version, and they differ only in the pinned `__version__`.
+install the line that matches their Frappe version.
 
 | Branch | For |
 | --- | --- |
-| `develop` | New features, and the default target for pull requests. |
-| `version-16` | Fixes that must ship to the Frappe v16 line. |
-| `version-15` | Fixes that must ship to the Frappe v15 line. |
+| `develop` | All changes, and the target for every pull request. |
+| `version-16` | The Frappe v16 line: `develop` plus one commit that sets its version number. |
+| `version-15` | The Frappe v15 line: `develop` plus one commit that sets its version number. |
 
-Open features against `develop`. If a fix needs to reach a released line, target the matching
-`version-*` branch (or say so in the PR so it can be backported). Don't commit directly to `develop`.
+Open every pull request against `develop`; changes are tested against Frappe v15, v16 and
+`develop` in CI. A release moves the version branches forward to `develop` (maintainers do this;
+it never needs a force-push):
+
+```bash
+git merge -s ours version-15 version-16 -m "chore: join release lines"   # on develop, keeps develop's tree
+git checkout -B version-15 develop   # then set __version__ = "15.x.y" and commit "chore(release): 15.x.y"
+git checkout -B version-16 develop   # then set __version__ = "16.x.y" and commit "chore(release): 16.x.y"
+git push origin develop version-15 version-16
+```
+
+If a line ever needs code that a feature check in `develop` cannot express, it stops following
+`develop` and takes its own fix commits instead.
 
 ## Commit messages
 
@@ -132,6 +143,11 @@ test counts and commit hashes that become stale as soon as the tree changes.
 `pre-commit` is the style gate: **Ruff** (import sort, lint, format) for Python plus the standard
 whitespace / JSON / TOML / YAML hooks. Run `pre-commit run --all-files` before pushing — CI checks
 formatting and does not fix it for you.
+
+CI also runs Semgrep with Frappe's rules. A `# nosemgrep: <rule>` marker must sit on a line that
+really is safe (for example a guest endpoint that is rate-limited and verifies a signature); say why
+in the PR. Whitelisted parameters that the function validates itself are hinted `object`: a narrower
+hint makes Frappe coerce or reject the value before the endpoint's own fail-closed check runs.
 
 ## License
 

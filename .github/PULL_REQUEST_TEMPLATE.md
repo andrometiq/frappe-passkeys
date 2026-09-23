@@ -1,8 +1,5 @@
 <!-- Thanks for contributing! See CONTRIBUTING.md for the full guide. -->
 
-**Which branch should this merge into?**
-<!-- develop for features; version-15 / version-16 for fixes to a released line -->
-
 **What does this change, and why?**
 <!-- Describe the change and the problem it solves. Link the issue: Closes #123 -->
 
