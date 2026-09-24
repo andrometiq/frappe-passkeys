@@ -1,16 +1,13 @@
-// passkey_login.bundle.js — /login: conditional UI, the explicit button, cross-device,
-// the password->passkey second factor and the uv-setup step-up.
-//
-// Loaded AFTER passkey_common.bundle.js (frappe.passkeys_common) and frappe-web.bundle.js
-// (window.__). Boots once on login_rendered, with a DOMContentLoaded fallback. Any JS
-// failure leaves the core password form untouched.
-//
+// /login: conditional UI, the explicit button, cross-device, the password -> passkey second
+// factor and the uv-setup step-up. Loads after passkey_common and frappe-web.bundle.js;
+// boots once on login_rendered (DOMContentLoaded fallback). Any failure leaves the core
+// password form untouched.
 // eslint-env browser
 (function () {
 	"use strict";
 
 	var C = window.frappe && window.frappe.passkeys_common;
-	if (!C) return; // common helpers absent -> no-op, password form untouched
+	if (!C) return;
 	var t = C.t;
 	var escapeHtml = C.escapeHtml;
 
@@ -22,44 +19,41 @@
 		login_with_password: "passkeys.passkey.login_with_password",
 		verify_second_factor: "passkeys.passkey.verify_second_factor",
 		fallback_to_otp: "passkeys.passkey.fallback_to_otp",
-		get_signal_data: "passkeys.passkey.get_signal_data",
 	};
 	var HINT_KEY = "passkey_used_here"; // localStorage promote-only hint
 	// Mirrors passkey_manage_common UPSELL_FLAG_KEY (not loaded on /login); a node spec pins equality.
 	var UPSELL_FLAG_KEY = "passkey_upsell_add_local";
-	var STATUS_ID = "passkey-login-status"; // the app-owned visible staged-status element
-	var SLOW_MS = 4000; // slow-connection "still working" escalation while verifying
+	var STATUS_ID = "passkey-login-status";
+	var SLOW_MS = 4000; // "still verifying" escalation on a slow connection
 	var BOOTED = false;
 
-	// bundle-scoped runtime state
 	var state = {
 		modes: { first_factor: false, second_factor: false },
 		login: new C.CeremonyState({ ttlMs: 300000 }),
-		status: new C.LoginStatus(), // the visible staged-status machine
-		slowTimer: null, // setTimeout handle for the slow-connection escalation
+		status: new C.LoginStatus(),
+		slowTimer: null,
 		conditionalAbort: null, // AbortController for the pending conditional get()
-		conditionalEnabled: false, // capability decision for this login-page surface
-		sfInterceptor: null, // the document capture-phase submit listener
-		busyModal: false, // a modal get()/create() is in flight
-		rebeginInFlight: null, // the pending re-begin promise, shared by concurrent callers
+		conditionalEnabled: false,
+		sfInterceptor: null, // the capture-phase submit listener
+		busyModal: false, // a modal get() is in flight
+		rebeginInFlight: null, // the pending re-begin, shared by concurrent callers
 	};
 
 	// -------------------------------------------------------------- boot glue
 	function boot() {
-		if (BOOTED) return; // idempotent injection guard (login_rendered is one-shot)
+		if (BOOTED) return;
 		BOOTED = true;
 		try { if (window.localStorage) localStorage.removeItem(UPSELL_FLAG_KEY); } catch (e) { /* ignore */ }
 		C.ensureLiveRegion(document);
-		// merge our own guest translation catalog (REQUIRED on v15/v16), then start.
+		// Web pages on v15/v16 ship no app strings: merge the catalog first.
 		C.loadAppTranslations().then(start);
 	}
 
-	// listen once + DOMContentLoaded fallback (the event is one-shot)
+	// login_rendered, else (a custom template) DOMContentLoaded.
 	document.addEventListener("login_rendered", boot, { once: true });
 	window.addEventListener("pageshow", onPageShow);
 	if (document.readyState === "loading") {
 		document.addEventListener("DOMContentLoaded", function () {
-			// only if login_rendered never fired (e.g. custom template)
 			setTimeout(function () { if (!BOOTED) boot(); }, 0);
 		});
 	} else {
@@ -77,8 +71,6 @@
 	// ------------------------------------------------------------- main start
 	function start() {
 		detect().then(function (caps) {
-			// One begin_login POST — the bundle's only config channel. NEVER via login.call;
-			// swallow every failure (429/5xx/network) => no-op, password form untouched.
 			beginLogin().then(function (cfg) {
 				if (!cfg || !cfg.enabled) {
 					removeSelf();
@@ -94,8 +86,8 @@
 					if (cfg.state_id && cfg.options) {
 						state.login.adopt(cfg.state_id, cfg.options, Date.now());
 					}
-					ensureStatusEl(); // app-owned visible status (never core's develop-only banner)
-					// Conditional UI FIRST (only if not explicitly unavailable).
+					ensureStatusEl();
+					// Conditional UI first, unless explicitly unavailable.
 					state.conditionalEnabled = caps.conditionalMediation !== false;
 					if (state.conditionalEnabled) {
 						startConditional();
@@ -124,25 +116,18 @@
 	function startConditional() {
 		// Overlapping get() calls make the browser abort one; the open modal owns the authenticator.
 		if (!state.conditionalEnabled || state.busyModal) return;
+		// A selector miss (a core redesign) skips conditional UI; the button still works.
 		var input = C.resolveIdentifierInput(document);
-		if (input) {
-			// the one-token seam: username -> "username webauthn"
-			var ac = input.getAttribute("autocomplete") || "username";
-			if (ac.indexOf("webauthn") === -1) {
-				input.setAttribute("autocomplete", (ac + " webauthn").trim());
-			}
-		} else {
-			// input-selector miss (core redesign): skip autocomplete patch AND conditional
-			// get(); keep the explicit button. DOM-contract CI is the drift alarm.
-			return;
-		}
+		if (!input) return;
+		var ac = input.getAttribute("autocomplete") || "username";
+		if (ac.indexOf("webauthn") === -1) input.setAttribute("autocomplete", (ac + " webauthn").trim());
 		if (!navigator.credentials || typeof navigator.credentials.get !== "function") return;
 		var stateId = state.login.stateId;
 		var options = state.login.options;
 		if (!stateId || !options) return;
 
 		abortConditional();
-		var controller = newAbortController();
+		var controller = new AbortController();
 		state.conditionalAbort = controller;
 		var publicKey;
 		try {
@@ -150,18 +135,17 @@
 		} catch (e) { state.login.markSpent(stateId); return; }
 
 		navigator.credentials
-			.get({ mediation: "conditional", publicKey: publicKey, signal: controller ? controller.signal : undefined })
+			.get({ mediation: "conditional", publicKey: publicKey, signal: controller.signal })
 			.then(function (cred) {
 				state.conditionalAbort = null;
 				runVerify(cred, { source: "conditional" }, stateId);
 			})
 			.catch(function (err) {
 				state.conditionalAbort = null;
-				// AbortError is expected (we aborted for a modal get / re-begin) -> ignore.
+				// We abort it for a modal get or a re-begin. Other failures stay silent: the
+				// user made no gesture yet.
 				if (err && err.name === "AbortError") return;
 				state.login.markSpent(stateId);
-				// A conditional failure is silent by design (no user gesture yet); a stale
-				// challenge re-arms conditional via the verify path only.
 			});
 	}
 
@@ -174,9 +158,9 @@
 
 	// ------------------------------------------------------- explicit button
 	function mountButton(caps) {
-		if (document.getElementById("passkey-login-btn")) return; // idempotent
+		if (document.getElementById("passkey-login-btn")) return;
 		var target = C.resolveButtonMount(document);
-		if (!target) return; // no mount => skip button; conditional UI still works
+		if (!target) return;
 
 		var btn = document.createElement("button");
 		btn.type = "button";
@@ -189,12 +173,12 @@
 			'<span class="passkey-label"></span>';
 		btn.querySelector(".passkey-label").textContent = t("Sign in with a passkey");
 
-		// promote-only hint: never gates visibility, may reorder to the top
+		// The used-here hint only moves the button to the top; it never hides it.
 		var promote = false;
 		try { promote = window.localStorage && localStorage.getItem(HINT_KEY) === "1"; } catch (e) { /* ignore */ }
 
 		if (target.mode === "actions" || target.mode === "providers") {
-			// insert as the FIRST alternative-method button (FIDO principle 8)
+			// First among the alternative sign-in methods (FIDO UX principle 8).
 			var firstAlt = target.mount.querySelector(".btn-login-option, .social-logins, .btn-ldap-login");
 			if (firstAlt && !promote) {
 				target.mount.insertBefore(btn, firstAlt);
@@ -220,9 +204,8 @@
 	}
 
 	// ------------------------------------------- modal get() with pre-freshness
+	// A spent or stale state is replaced BEFORE the gesture: one gesture, not two failures.
 	function modalGet(ctx) {
-		// pre-modal liveness — if the held state is spent or stale, re-begin FIRST,
-		// then run the single get() (one gesture, not two failures).
 		var proceed = function () {
 			if (state.busyModal) return; // a click that joined a shared re-begin already opened get()
 			var stateId = state.login.stateId;
@@ -243,7 +226,6 @@
 			state.busyModal = true;
 			abortConditional(); // a re-arm sharing this re-begin may have started conditional UI
 			var restore = C.captureFocus(document);
-			// Stage 1 — the authenticator/browser sheet is up (before/around get()).
 			applyLoginStatus("waiting");
 			navigator.credentials
 				.get({ publicKey: publicKey })
@@ -256,7 +238,7 @@
 					state.busyModal = false;
 					restore();
 					state.login.markSpent(stateId);
-					onCeremonyError(err, ctx);
+					onCeremonyError(err);
 				});
 		};
 
@@ -267,8 +249,7 @@
 		}
 	}
 
-	// re-begin: fetch a fresh state_id + options WITHOUT running any gesture. Single-flight:
-	// a caller arriving while one is pending shares it, so a click never races an automatic
+	// Fetch a fresh state without a gesture. Single-flight: a click never races an automatic
 	// re-arm (or another click) with a second begin_login.
 	function rebegin() {
 		if (state.rebeginInFlight) return state.rebeginInFlight;
@@ -298,20 +279,14 @@
 		state.login.markSpent(stateId);
 		var payload = { state_id: stateId, credential: JSON.stringify(assertion) };
 
-		// Stage 2 — server round-trip. Arm the slow-connection escalation on a timer.
 		applyLoginStatus("verifying");
 		armSlowTimer();
 
-		// Only 200 and the typed 401s have app handlers; a plain 401, 417/429/5xx or a
-		// transport failure would leave the surface stuck on "Verifying…". The finalizer runs
-		// once for every outcome no handler `claimed` (claimed paths, like the ceremony_expired
-		// re-arm, own their lifecycle): clear the timer and, if still mid-progress, show "failed".
+		// Only 200 and the typed 401s have handlers. Any other outcome (plain 401, 417/429/5xx,
+		// transport failure) must not leave "Verifying…" up, so an unclaimed settle is "failed".
 		var claimed = false;
-		var settled = false;
 		function finishVerify() {
-			if (settled) return; // idempotent — a promise settles once, but guard regardless
-			settled = true;
-			if (claimed) return; // an app handler already owns (and painted) this outcome
+			if (claimed) return;
 			clearSlowTimer();
 			var s = state.status.state;
 			if (s === "verifying" || s === "verifying_slow" || s === "waiting") {
@@ -321,8 +296,7 @@
 
 		var call = frappeCall(API.verify_login, payload, composedHandlers({
 			on401: function (data) { claimed = true; clearSlowTimer(); handleFirstFactor401(data, ctx, attachment, cred); },
-			// Stage 3 — the resolved "You're in" beat, painted BEFORE core's redirect runs
-			// (onSuccessEarly is invoked ahead of base's 200 handler; see composedHandlers).
+			// "You're in", painted before core's 200 handler starts the redirect.
 			onSuccessEarly: function () { claimed = true; clearSlowTimer(); applyLoginStatus("success"); },
 			onSuccess: function () {
 				rememberHint();
@@ -331,24 +305,19 @@
 		}));
 
 		// frappe.call's thenable settles after the statusCode handler on every outcome.
-		if (call && typeof call.then === "function") {
-			call.then(finishVerify, finishVerify);
-		}
+		call.then(finishVerify, finishVerify);
 	}
 
 	function handleFirstFactor401(data, ctx, attachment, cred) {
 		var kind = C.mapServerExcType(data && data.exc_type);
 		if (kind === "ceremony_expired") {
-			// re-begin + ONE fresh ceremony, at most once. NEVER re-POST.
+			// At most one fresh ceremony; an assertion is never re-POSTed.
 			if (state.login.canRearm()) {
 				rebegin().then(function (ok) {
 					if (!ok) { neutralFail(); return; }
 					state.login.markRearm();
-					if (ctx.source === "button") {
-						modalGet(ctx);
-					} else {
-						startConditional(); // silent re-arm of conditional UI
-					}
+					if (ctx.source === "button") modalGet(ctx);
+					else startConditional();
 				});
 			} else {
 				neutralFail();
@@ -356,25 +325,23 @@
 			return;
 		}
 		if (kind === "unknown_credential") {
-			// On the device but no longer on the server: show a distinct state and tell the
-			// provider to prune it.
+			// On the device but gone from the server: say so and ask the provider to prune it.
 			signalUnknownCredential(cred);
-			applyLoginStatus(C.loginStatusForServerKind(kind)); // -> "removed"
+			applyLoginStatus(C.loginStatusForServerKind(kind));
 			rearmAfterVisibleFailure();
 			return;
 		}
 		if (kind === "uv_setup_required") {
-			applyLoginStatus("idle"); // hand the surface to the password step-up dialog
+			applyLoginStatus("idle"); // the password step-up dialog takes over
 			openUvSetup(data && data.setup_id);
 			return;
 		}
-		// unknown typed error / plain 401 -> re-arm once so the user is never dead-ended
+		// Re-arm once so the user is never dead-ended.
 		neutralFail();
 		rearmAfterVisibleFailure();
 	}
 
-	// after any user-visible failure that spent the state, re-begin once to re-arm
-	// conditional UI + the button (bounded; never a loop).
+	// After a visible failure that spent the state, re-begin once (bounded, never a loop).
 	function rearmAfterVisibleFailure() {
 		if (!state.login.canRearm()) return;
 		rebegin().then(function (ok) {
@@ -391,7 +358,7 @@
 		var dlg = buildDialog({
 			titleText: t("Finish setting up this passkey"),
 			bodyHtml:
-				'<p>' + escapeHtml(t("Confirm your password once to finish setting up this passkey.")) + '</p>' +
+				"<p>" + escapeHtml(t("Confirm your password once to finish setting up this passkey.")) + "</p>" +
 				'<div class="form-group"><label class="form-label" for="passkey-uv-pwd">' +
 				escapeHtml(t("Password")) + '</label>' +
 				'<input type="password" id="passkey-uv-pwd" class="form-control" autocomplete="current-password"></div>' +
@@ -411,15 +378,14 @@
 								setDialogError(root, t("That didn't work — check your password and try again."));
 							}
 						},
-						onSuccess: function () { rememberHint(); close(); /* base 200 redirects */ },
+						onSuccess: function () { rememberHint(); close(); }, // core's 200 handler redirects
 					})
 				);
 			},
 			onClose: restore,
 		});
 		openDialog(dlg);
-		var pwdInput = dlg.root.querySelector("#passkey-uv-pwd");
-		if (pwdInput) pwdInput.focus();
+		dlg.root.querySelector("#passkey-uv-pwd").focus();
 	}
 
 	// ----------------------------------------- second factor interception
@@ -427,18 +393,17 @@
 		if (state.sfInterceptor) return;
 		state.sfInterceptor = function (event) {
 			var form = event.target && event.target.closest && event.target.closest(".form-login");
-			if (!form) return; // not the login form
-			// ANY JS error => remove the listener and let the native submit proceed.
+			if (!form) return;
+			// Any error removes the listener and lets this submit proceed natively.
 			try {
 				var usr = valueOf("#login_email");
 				var pwd = valueOf("#login_password");
-				if (!usr || !pwd) return; // let core validate empty fields natively
+				if (!usr || !pwd) return; // core validates empty fields
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				loginWithPassword(usr, pwd);
 			} catch (e) {
 				removeSecondFactorInterception();
-				// do not preventDefault on this pass: let the browser submit natively
 			}
 		};
 		document.addEventListener("submit", state.sfInterceptor, true); // capture phase
@@ -456,22 +421,17 @@
 	function loginWithPassword(usr, pwd) {
 		announce(t("Verifying…"));
 		frappeCall(API.login_with_password, { usr: usr, pwd: pwd }, composedHandlers({
-			// 200 wrapper (below) already pre-inspects verification.method === "Passkey".
-			on401: function (data) {
-				// mode-off or bad-credential -> let core's painter show it
-				coreDelegate401(data);
-			},
+			on401: coreDelegate401, // mode off or bad credentials: core's painter
 			onSuccess: function (data) {
+				// Core's 200 handler already covers Logged In / OTP / SMS / Email.
 				if (data && data.verification && data.verification.method === "Passkey") {
 					driveSecondFactor(data);
 				}
-				// else: base 200 handler already handled Logged In / OTP App / SMS / Email
 			},
 		}));
 	}
 
-	// leg 2: modal get() with the server's RequestOptionsJSON (UV discouraged) ->
-	// verify_second_factor. Re-arm (fresh state in the 401 body) + OTP fallback.
+	// Leg 2: a modal get() -> verify_second_factor, with server re-arm and OTP fallback.
 	function driveSecondFactor(env) {
 		var verification = env.verification || {};
 		var tmpId = env.tmp_id;
@@ -489,9 +449,8 @@
 			typeof navigator.credentials.get === "function");
 	}
 
-	// Unsupported WebAuthn is a terminal routing decision, not a ceremony error. If the
-	// server authorized OTP fallback, make that the primary action immediately. Otherwise
-	// show an explicit recovery state with a route back to the login form.
+	// No WebAuthn is a routing decision, not a ceremony error: OTP when the server allows it,
+	// else an explicit way back to the login form.
 	function showSecondFactorUnavailable(stateId, fallbackOtp) {
 		var restore = C.captureFocus(document);
 		var canUseOtp = fallbackOtp === true || fallbackOtp === 1;
@@ -503,11 +462,7 @@
 			primaryText: canUseOtp ? t("Use a verification code") : t("Back to sign in"),
 			onPrimary: canUseOtp
 				? function (root, close) { requestOtpFallback(stateId, root, close); }
-				: function (root, close) {
-					void root;
-					close();
-					if (window.location && typeof window.location.reload === "function") window.location.reload();
-				},
+				: function (root, close) { close(); window.location.reload(); },
 			onClose: restore,
 		});
 		openDialog(dlg);
@@ -533,7 +488,7 @@
 			root._passkeyOtpPending = false;
 			setDialogError(root, t("Couldn't open verification-code sign-in. Return to sign in or contact your administrator."));
 		}
-		if (call && typeof call.then === "function") call.then(finish, finish);
+		call.then(finish, finish);
 	}
 
 	function runSecondFactorCeremony(stateId, options, fallbackOtp) {
@@ -553,7 +508,6 @@
 			onPrimary: function (root, close, ctxState) {
 				if (ctxState.ceremonyPending) return;
 				ctxState.ceremonyPending = true;
-				var handled = false;
 				announce(t("Waiting for your passkey."));
 				Promise.resolve()
 					.then(function () {
@@ -565,45 +519,35 @@
 						return navigator.credentials.get({ publicKey: publicKey });
 					})
 					.then(function (cred) {
-						var assertion = C.authAssertionToJSON(cred);
+						var handled = false;
+						function settle(message) {
+							handled = true;
+							ctxState.ceremonyPending = false;
+							if (message) setDialogError(root, message);
+						}
 						var call = frappeCall(API.verify_second_factor,
-							{ state_id: ctxState.stateId, credential: JSON.stringify(assertion) },
+							{ state_id: ctxState.stateId, credential: JSON.stringify(C.authAssertionToJSON(cred)) },
 							composedHandlers({
 								on401: function (d) {
-									handled = true;
-									ctxState.ceremonyPending = false;
-									var k = C.mapServerExcType(d && d.exc_type);
-									if (k === "ceremony_expired") {
-										// server re-armed: fresh state in the 401 body
-										var fresh = reArmedFrom(d);
-										if (fresh) {
-											ctxState.stateId = fresh.stateId;
-											try {
-												publicKey = C.parseRequestOptionsFromJSON(fresh.options, window.PublicKeyCredential);
-											} catch (e2) { /* keep old */ }
-											setDialogError(root, t("That didn't work — try your passkey again."));
-										} else {
-											close(); coreDelegate401(d);
-										}
-									} else {
-										setDialogError(root, t("That passkey couldn't be verified — try again."));
-									}
+									var expired = C.mapServerExcType(d && d.exc_type) === "ceremony_expired";
+									var freshOptions = d && d.verification && d.verification.options;
+									if (!expired) return settle(t("That passkey couldn't be verified — try again."));
+									// The server re-armed: a fresh state rides in the 401 body.
+									if (!d.state_id || !freshOptions) { settle(); close(); coreDelegate401(d); return; }
+									ctxState.stateId = d.state_id;
+									try {
+										publicKey = C.parseRequestOptionsFromJSON(freshOptions, window.PublicKeyCredential);
+									} catch (e) { /* keep the old options */ }
+									settle(t("That didn't work — try your passkey again."));
 								},
-								on429: function () {
-									handled = true;
-									ctxState.ceremonyPending = false;
-									setDialogError(root, t("Too many attempts. Wait a moment, then try again."));
-								},
-								onSuccess: function () { handled = true; rememberHint(); close(); /* base 200 redirects */ },
+								on429: function () { settle(t("Too many attempts. Wait a moment, then try again.")); },
+								onSuccess: function () { handled = true; rememberHint(); close(); }, // core redirects
 							})
 						);
 						function finish() {
-							if (handled) return;
-							ctxState.ceremonyPending = false;
-							setDialogError(root, t("That passkey couldn't be verified — try again."));
+							if (!handled) settle(t("That passkey couldn't be verified — try again."));
 						}
-						if (call && typeof call.then === "function") return call.then(finish, finish);
-						ctxState.ceremonyPending = false;
+						return call.then(finish, finish);
 					})
 					.catch(function (err) {
 						ctxState.ceremonyPending = false;
@@ -625,18 +569,8 @@
 		openDialog(dlg);
 	}
 
-	function reArmedFrom(data) {
-		if (!data) return null;
-		var sid = data.state_id || data.tmp_id ||
-			(data.verification && data.verification.tmp_id);
-		var opts = data.verification && data.verification.options;
-		if (sid && opts) return { stateId: sid, options: opts };
-		return null;
-	}
-
 	// ------------------------------------------------------- signals (fire-and-forget)
-	// Ask the provider to prune the credential the server just rejected. The payload
-	// builder skips it when the assertion had no userHandle, so a live passkey is never hidden.
+	// Ask the provider to prune the credential the server just rejected.
 	function signalUnknownCredential(cred) {
 		if (!window.PublicKeyCredential ||
 			typeof window.PublicKeyCredential.signalUnknownCredential !== "function") return;
@@ -650,14 +584,10 @@
 		} catch (e) { /* Firefox absent, etc. */ }
 	}
 
-	// The Relying Party ID for signal calls: the begin_login options carry it; else the
-	// boot payload; else the current host (all resolve to the same registrable domain).
+	// The begin_login options carry the RP ID; the host is the fallback.
 	function resolveRpId() {
-		var opts = state.login && state.login.options;
-		if (opts && opts.rpId) return opts.rpId;
-		var b = window.frappe && window.frappe.boot && window.frappe.boot.passkeys;
-		if (b && b.rp_id) return b.rp_id;
-		return (window.location && window.location.hostname) || null;
+		var opts = state.login.options;
+		return (opts && opts.rpId) || window.location.hostname;
 	}
 
 	// A cross-device assertion flags "add a passkey to this device" for the desk/portal bundle.
@@ -670,39 +600,36 @@
 	}
 
 	// ---------------------------------------------------- frappe.call plumbing
-	// Composed handler set: {...login.login_handlers, 200: wrapped, 401: app, 429: app}
-	// so core paints Logged In / OTP / Password Reset natively while typed passkey errors
-	// (exc_type) route to us and unknown types delegate back to core's painter.
+	// core's login.login_handlers with 200/401/429 wrapped: core still paints Logged In /
+	// OTP / Password Reset, typed passkey errors route to us, anything else back to core.
 	function composedHandlers(app) {
 		var base = (window.login && window.login.login_handlers) || {};
 		var merged = {};
 		for (var code in base) { if (Object.prototype.hasOwnProperty.call(base, code)) merged[code] = base[code]; }
 
 		var base200 = base[200];
-		merged[200] = function (data /*, textStatus, xhr */) {
-			// pre-inspect for the Passkey second-factor branch core doesn't know yet
+		merged[200] = function (data) {
+			// Core does not know the Passkey verification method: never let it paint one.
 			if (data && data.verification && data.verification.method === "Passkey") {
 				if (app.onSuccess) app.onSuccess(data);
-				return; // do NOT let base paint an unknown verification.method
+				return;
 			}
-			// onSuccessEarly paints "You're in" before core's 200 handler starts the redirect.
 			if (app.onSuccessEarly) { try { app.onSuccessEarly(data); } catch (e) { /* never block core */ } }
 			if (base200) { try { base200(data); } catch (e) { /* core handler */ } }
 			if (app.onSuccess) app.onSuccess(data);
 		};
 
-		merged[401] = function (xhr /*, textStatus, errorThrown */) {
+		merged[401] = function (xhr) {
 			var data = (xhr && xhr.responseJSON) || {};
 			var kind = C.mapServerExcType(data.exc_type);
 			if (kind !== "unknown" && app.on401) {
 				app.on401(data);
 			} else if (base[401]) {
-				base[401](xhr, data); // core's "Invalid credentials" painter
+				base[401](xhr, data);
 			}
 		};
 
 		merged[429] = function (xhr) {
-			// degrade rules: show core's throttle copy, never crash
 			if (base[429]) base[429](xhr, (xhr && xhr.responseJSON) || {});
 			if (app.on429) app.on429((xhr && xhr.responseJSON) || {});
 		};
@@ -725,7 +652,7 @@
 	}
 
 	// --------------------------------------------------------------- dialog a11y
-	// role=dialog + aria-labelledby, focus trap, Esc = dismiss, focus returns to invoker.
+	// role=dialog + aria-labelledby, focus trap, Esc dismisses, focus returns to the invoker.
 	function buildDialog(cfg) {
 		var overlay = document.createElement("div");
 		overlay.className = "passkey-dialog-overlay";
@@ -794,10 +721,8 @@
 	function openDialog(dlg) {
 		(document.body || document.documentElement).appendChild(dlg.overlay);
 		document.addEventListener("keydown", dlg.onKey, true);
-		// Initial focus belongs on the primary action unless a caller has already
-		// placed it on a more useful control (the UV-repair password input does so
-		// immediately after openDialog). Do not let this deferred callback steal
-		// focus after the first typed character.
+		// Focus the primary action unless the caller already focused a field (the uv-setup
+		// password), so this deferred call never steals focus mid-typing.
 		setTimeout(function () {
 			if (dlg.root.contains(document.activeElement)) return;
 			if (dlg.primary) dlg.primary.focus();
@@ -811,12 +736,10 @@
 	}
 
 	// ----------------------------------------------------------- error paths / UX
-	function onCeremonyError(err, ctx) {
-		var m = C.mapDomException(err);
-		// user cancel/timeout (indistinguishable) / not-supported / etc. — a distinct visible
-		// state + the untouched form, then re-arm once so the user is never dead-ended.
-		applyLoginStatus(C.loginStatusForDomCode(m.code));
-		rearmAfterVisibleFailure(ctx);
+	// A visible state over the untouched form, then one re-arm so the user is never stuck.
+	function onCeremonyError(err) {
+		applyLoginStatus(C.loginStatusForDomCode(C.mapDomException(err).code));
+		rearmAfterVisibleFailure();
 	}
 
 	function neutralFail() {
@@ -824,9 +747,12 @@
 	}
 
 	// ------------------------------------------------- visible staged status surface
-	// The app's own status element: core's .login-error-banner exists only on develop.
+	// The app's own status element (core's .login-error-banner exists only on develop),
+	// just above the login actions; without a mount the aria-live region still covers AT.
 	function ensureStatusEl() {
 		if (document.getElementById(STATUS_ID)) return;
+		var target = C.resolveButtonMount(document);
+		if (!target) return;
 		var el = document.createElement("div");
 		el.id = STATUS_ID;
 		el.className = "passkey-status";
@@ -834,25 +760,14 @@
 		el.innerHTML =
 			'<span class="passkey-status__icon" aria-hidden="true"></span>' +
 			'<span class="passkey-status__text"></span>';
-		// Place it just above the login card's action group (or the form) so it reads
-		// prominently; a miss still leaves the aria-live region covering AT users.
-		var target = C.resolveButtonMount(document);
-		if (target && target.mount && target.mount.parentNode) {
-			target.mount.parentNode.insertBefore(el, target.mount);
-		} else if (target && target.mount) {
-			target.mount.insertBefore(el, target.mount.firstChild);
-		} else {
-			var form = document.querySelector(".form-login");
-			if (form && form.parentNode) form.parentNode.insertBefore(el, form);
-			else (document.body || document.documentElement).appendChild(el);
-		}
+		target.mount.parentNode.insertBefore(el, target.mount);
 	}
 
 	function statusEl() { return document.getElementById(STATUS_ID); }
 
-	// The single chokepoint: advance the machine, paint the element and announce the same text.
+	// The one chokepoint: advance the machine, paint the element, announce the same text.
 	function applyLoginStatus(stateName) {
-		if (stateName !== "verifying") clearSlowTimer(); // any resolution stops the escalation
+		if (stateName !== "verifying") clearSlowTimer();
 		var view = state.status.to(stateName);
 		var text = view.text ? t(view.text) : "";
 		var el = statusEl();
@@ -868,7 +783,7 @@
 				if (textEl) textEl.textContent = text;
 			}
 		}
-		if (view.visible && text) announce(text); // lockstep aria-live announcement
+		if (view.visible && text) announce(text);
 	}
 
 	function armSlowTimer() {
@@ -892,10 +807,9 @@
 	function rememberHint() { try { if (window.localStorage) localStorage.setItem(HINT_KEY, "1"); } catch (e) { /* ignore */ } }
 	function removeSelf() { removeSecondFactorInterception(); abortConditional(); clearSlowTimer(); var s = document.getElementById(STATUS_ID); if (s && s.parentNode) s.parentNode.removeChild(s); var b = document.getElementById("passkey-login-btn"); if (b && b.parentNode) b.parentNode.removeChild(b); }
 	function valueOf(sel) { var el = document.querySelector(sel); return el ? (el.value || "").trim() : ""; }
-	function newAbortController() { return (typeof AbortController === "function") ? new AbortController() : null; }
 	function noop() {}
 
-	// expose a tiny surface for the DOM-contract Cypress job to assert against
+	// For the Cypress specs.
 	window.frappe = window.frappe || {};
 	window.frappe._passkey_login = { boot: boot, _state: state, API: API, applyLoginStatus: applyLoginStatus };
 

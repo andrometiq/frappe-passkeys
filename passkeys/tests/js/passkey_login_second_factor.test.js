@@ -108,3 +108,25 @@ test("second factor: a cancelled passkey prompt is announced once", async () => 
 	assert.ok(message, "the error is painted in the dialog");
 	assert.strictEqual(announced.filter((m) => m === message).length, 1, "announced exactly once");
 });
+
+test("second factor: an expired ceremony adopts the server's re-armed state for the retry", async () => {
+	const states = [];
+	install({
+		credentialsGet: () => Promise.resolve({ toJSON: () => ({ id: "cred-1" }) }),
+		call: (opts) => {
+			states.push(opts.args.state_id);
+			if (states.length > 1) return Promise.resolve({});
+			const body = { exc_type: "CeremonyExpired", state_id: "fresh-state", verification: { options: OPTIONS } };
+			opts.statusCode[401]({ responseJSON: body });
+			return Promise.reject(body);
+		},
+	});
+	mod.runSecondFactorCeremony("stale-state", OPTIONS, false);
+	const { root, primary } = lastDialog();
+	primary.click();
+	await tick(); await tick(); await tick();
+	assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, "That didn't work — try your passkey again.");
+	primary.click();
+	await tick(); await tick(); await tick();
+	assert.deepStrictEqual(states, ["stale-state", "fresh-state"]);
+});
