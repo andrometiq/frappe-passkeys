@@ -11,115 +11,52 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Added
 
-- Final-login enforcement for enrolled passkey second-factor users, including alternate core login
-  paths and a one-time, user-bound OTP fallback handoff.
-- Database serialization for credential verification, UV completion, registration caps,
-  passkey-only account floors, and passkey-mode changes.
-- Site-bound, HMAC-authenticated credential exports with atomic private-file writes and strict
-  restore validation.
-- Explicit action labels and safe parameter summaries for passkey confirmation dialogs.
-- `@passkey_protected` requires a passkey by default; confirming with a password is an explicit
-  per-action opt-in (`allow_password_fallback=True`). **Integrators:** pass it on any custom action
-  that should still accept a password.
-- A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps
-  the user signed in, so they can retry.
-- Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a
-  signed-in browser session; a request authenticated by an API key or OAuth token is refused with
-  `BrowserSessionRequired` (403), so it can never open a sudo window or obtain a confirmation grant.
-  Token-authenticated API requests are not subject to passkey sign-in checks, as with Frappe's
-  two-factor authentication.
-- Server-side format checks for the Android fingerprint, iOS Team ID and iOS Bundle ID fields.
-- Shared, site-scoped action policy publication for deterministic confirmation across workers.
-- Pinned-input release CI, data-bearing lifecycle checks, JavaScript unit gates, secret scanning,
-  and a separate moving-upstream compatibility workflow whose failures remain visible.
-- Private security-reporting policy.
-
-### Changed
-
-- The Passkey Settings form is reorganized into Login Modes, Relying Party, Mobile Apps,
-  Enrollment, Security, and Notifications tabs.
-- Role-wide enforcement exemptions are removed in favor of per-user temporary exemptions and
-  console recovery.
-- RP IDs no longer imply trust in `https://<rp_id>`. Only a compatible configured `host_name`
-  origin and explicitly listed Passkey Origins are accepted. **Action required before upgrading an
-  already-enabled site:** confirm `host_name` or an explicit Passkey Origin resolves within the RP
-  ID scope first, or the resolved origin set can become empty and every ceremony fails closed (a
-  generic sign-in error for users, with a structured log line for operators) until the settings
-  are fixed — see the [upgrade note](docs/install.md#upgrade).
-- Administrator remains exempt from the per-user passkey-only password veto, but an Administrator
-  enrolled in passkey second-factor mode must complete that factor.
-- Passkey second-factor ceremonies detect password changes between legs without normally retaining
-  the password in ceremony state.
-- Enforcement deferrals are idempotent per user session.
-- Android certificate fingerprints must contain exactly 64 hexadecimal characters.
-- Native-core dormancy now requires an explicit handover capability marker; module presence alone
-  cannot silence an installed app.
-- Browser management, confirmation, headless, portal, recovery, and unsupported-device states now
-  use the same server-owned contracts.
-
-### Fixed
-
-- Concurrent nudge events preserve opt-out, and enforcement deferrals read current grace state.
-- Per-user nudge and grace state is read by exact key from the database, so a user without a row
-  no longer reads a look-alike user's state (`mary-jane@` vs `mary_jane@`).
-- Nudges count only after rendering, and both login modes being off suppresses nudge and upsell
-  eligibility. A failed "Don't ask again" keeps the prompt open with a visible error so the user
-  can retry.
-- Incapable devices under Degrade to Nudge share the ordinary cap, cooldown and opt-out on
-  Desk and portal; the settings form now shows those two fields under Enforce + Degrade to Nudge.
-- User renames preserve nudge, grace and notification state, including case-only renames; merges
-  keep target values. Merging two users who both have passkeys is refused with a clear message
-  instead of a database duplicate-entry error.
-- Stale hybrid upsell hints are consumed even when capped and cleared on login initialization.
-- Conditional creation falls back to the eligible visible nudge whenever it does not end in a
-  server-verified credential (including a rejected verify or a network error), except on abort.
-- The portal is localized, and headless `login()` resolves `{ok: false, reason: "network"}` when
-  `begin_login` itself fails instead of rejecting.
-- A manually dispatched CI run no longer tolerates a failing pinned develop leg; only the scheduled
-  upstream-drift run may.
-- Server CI rejects failed, empty, or unrecognized test summaries even when the framework test
-  command exits successfully.
-- Enabling either login mode now checks the actual ceremony-engine imports in an isolated process,
-  catching installed but broken crypto dependencies without importing them into login hooks.
-- Registration on browsers without native credential JSON serialization now sends an attestation
-  response for explicit, headless, and conditional enrollment.
-- Enforcement reporting respects the current server verdict, and concurrent incapable-device
-  reports no longer send duplicate administrator advisories within the notification window.
-- Guest translation catalogs are not reused from an earlier request language.
-- First-factor passkey retries now replace spent or near-expiry ceremonies before prompting,
-  preserve each gesture's exact state/options pair, and recover across repeated failures and bfcache
-  restores without a page reload.
+- Passwordless sign-in with discoverable passkeys: username-field autofill (conditional UI), a
+  "Sign in with a passkey" button, and cross-device sign-in by QR code.
+- Passkey as a second factor after the password, in Frappe's own two-factor flow, with an optional
+  one-time-code fallback.
+- `@passkey_protected` for any whitelisted method: a single-use confirmation grant bound to the
+  user, session, action and the arguments listed in `bind_params`. A passkey is required unless an
+  action opts in with `allow_password_fallback=True`. Dialogs show an explicit action label and only
+  the parameters declared safe to display.
+- Enrollment nudges with a prompt cap and cooldown, and enrollment enforcement for all users or
+  selected roles, with grace logins, per-user exemptions and an admin grace reset.
+- Self-service management at `/passkeys` and on the User form, including a per-user passkey-only
+  sign-in switch.
+- A security-posture panel on Passkey Settings, console recovery commands, and site-bound,
+  HMAC-signed credential export and restore.
+- Android Digital Asset Links and iOS `apple-app-site-association` files for native apps.
+- The `frappe.passkeys.headless` JavaScript API and documented REST endpoints for custom UIs.
+- A French translation.
 
 ### Security
 
-- Core-login classification respects command dispatch precedence: an email-link or other diverted
-  request cannot obtain password-grade management sudo or consume an OTP fallback marker merely
-  by using the login URL.
-- First-factor verification failures now collapse to the uniform `AuthenticationError` wire type
-  instead of exposing the engine's cause class to guests.
-- Privileged users (`System Manager`) are now inside enforcement scope by default, with no standing
-  role exemption. This matches industry practice and Frappe core's removal of the Administrator 2FA
-  exemption.
-- Test-only WebAuthn helpers require a test runner, or a System Manager on a site with both
-  `developer_mode` and `allow_tests` enabled. The two guest-callable UI-test helpers (session wipe
-  and a capped slow echo) require both flags too; the deterministic-cookie flag alone no longer
-  enables them. Every helper except the slow echo is POST-only.
-- An impersonated session can no longer register a passkey, so an Administrator impersonating a
-  user cannot leave behind a credential that user never created.
-- System Settings refuses to disable username/password login while Passkey as Second Factor is
-  the only passkey mode (the Passkey Settings side already refused the same combination). Both
-  sides, and the two-factor floor, check each other under row locks, so concurrent saves of the two
-  settings pages cannot together commit an unsafe combination.
-- `@passkey_protected` rejects `bind_params` names missing from the decorated function's
-  signature at decoration time, and reads bound names passed through `**kwargs`; previously both
-  bound `None`, so one grant covered any payload. Naming the `**kwargs` parameter itself binds the
-  whole mapping.
-- The second factor and action confirmation refuse an assertion whose returned `userHandle`
-  belongs to someone other than the user the ceremony was started for (WebAuthn L3 §7.2).
-- Assertion counters are reclassified under row locks before sessions or grants are minted,
-  rejecting duplicate nonzero counter replays.
-- Credential import refuses unsigned, modified or cross-site files, structurally inconsistent
-  rows, and unreviewed live-data merges.
+- Every login mode ships off. The RP ID and origins come from pinned configuration — a `host_name`
+  origin within the RP ID scope plus explicitly listed Passkey Origins — never from request
+  headers, and an RP ID never implies trust in `https://<rp_id>`.
+- Passwordless sign-in and action confirmation require user verification; a credential first
+  registered without it needs the password once before it can sign in alone.
+- A repeated non-zero signature counter is always rejected; a regression flags the passkey and
+  emails its owner, or is rejected when so configured. Counters are reclassified under row locks
+  before any session or grant is minted.
+- When the user is known before the ceremony, a returned `userHandle` must belong to that user
+  (WebAuthn L3 §7.2), and the credential must be in that ceremony's allow-list.
+- Enrolled second-factor users are held at the final login hook on every core login path, not
+  only on the login page; the one-time-code fallback is a single-use, user-bound handoff.
+- Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a
+  signed-in browser session; API-key or OAuth requests get `BrowserSessionRequired` (403) and never
+  open a sudo window or obtain a grant. Token-authenticated API requests are not subject to passkey
+  sign-in checks, as with Frappe's two-factor authentication.
+- A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps
+  the user signed in; guest sign-in failures share one uniform error type.
+- An impersonated session cannot register a passkey.
+- Passkey Settings and System Settings check each other's floors under row locks, so concurrent
+  saves cannot together disable the two-factor backstop or every login path.
+- Guest endpoints are rate-limited per IP and signed-in endpoints per user. Test-only helpers need a
+  test runner, or a System Manager on a site with `developer_mode` and `allow_tests`.
+- Native-core handover requires an explicit capability marker; module presence alone never silences
+  the app.
+- Private security reporting (see `SECURITY.md`).
 
 [Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.0...develop
 [15.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.0
