@@ -25,7 +25,7 @@ chromium_only("passkey enrollment nudge — cadence", () => {
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.purge_server_passkeys(USER); // credential_count must be 0 for the nudge
-		cy.call(CONFIGURE_NUDGE, { enrollment_nudge: 1, max_prompts: 3, cooldown_days: 30, conditional_create: 0 });
+		cy.call(CONFIGURE_NUDGE, { max_prompts: 3, cooldown_days: 30, conditional_create: 0 });
 	});
 
 	after(() => {

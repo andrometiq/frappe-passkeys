@@ -146,10 +146,10 @@ test("desk enforce: the explicit 'Remind me later' records ONE defer and its fol
 	Dialog.instances.length = 0;
 	mod.showEnforceDialog({}, { blocking: false, graceRemaining: 3 });
 	const d = Dialog.instances[Dialog.instances.length - 1];
-	const link = findButton(d._body, (b) => (b.className || "").includes("btn-link"));
-	assert.ok(link, "the 'Remind me later' link is present while grace remains");
+	const later = findButton(d._body, (b) => (b.className || "").includes("btn-default"));
+	assert.ok(later, "the 'Remind me later' button is present while grace remains");
 
-	link.click(); // records DEFER, then hides — the hide handler must see _acted and no-op
+	later.click(); // records DEFER, then hides — the hide handler must see _acted and no-op
 	assert.strictEqual(deferCount(), 1, "exactly one defer from the explicit action (the hide handler does not double it)");
 });
 

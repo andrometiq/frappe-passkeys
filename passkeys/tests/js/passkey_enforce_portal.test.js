@@ -121,10 +121,10 @@ test("portal enforce: the explicit 'Remind me later' records ONE defer and its f
 	global.document = makeDoc();
 	mod.showEnforceModal({}, { blocking: false, graceRemaining: 3 });
 	const overlay = global.document.body.children[global.document.body.children.length - 1];
-	const link = findButton(overlay, (b) => (b.className || "").includes("btn-link"));
-	assert.ok(link, "the 'Remind me later' link is present while grace remains");
+	const later = findButton(overlay, (b) => (b.className || "").includes("btn-default"));
+	assert.ok(later, "the 'Remind me later' button is present while grace remains");
 
-	link.click(); // records DEFER, sets _settled, closes — onClose must see _settled and no-op
+	later.click(); // records DEFER, sets _settled, closes — onClose must see _settled and no-op
 	assert.strictEqual(deferCount(), 1, "exactly one defer from the explicit action (onClose does not double it)");
 });
 

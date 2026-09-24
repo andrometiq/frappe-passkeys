@@ -504,6 +504,44 @@ def clear_all_test_sessions() -> dict:
 	return {"cleared": len(sids), "cache_purged": cache_purged, "remaining": remaining}
 
 
+@frappe.whitelist(methods=["POST"])
+def set_test_translation(source: str, translated: str, language: str = "de") -> dict:
+	"""Insert or update one Translation row so a Cypress spec can prove the guest
+	catalog follows the request language. Removed by :func:`clear_test_translation`."""
+	_guard()
+	language = (language or "").strip()
+	source = (source or "").strip()
+	translated = translated or ""
+	if not language or not source or not translated:
+		frappe.throw("language, source, and translated are required", frappe.ValidationError)
+	name = frappe.db.get_value("Translation", {"language": language, "source_text": source}, "name")
+	if name:
+		frappe.db.set_value("Translation", name, "translated_text", translated)
+	else:
+		doc = frappe.get_doc(
+			{
+				"doctype": "Translation",
+				"language": language,
+				"source_text": source,
+				"translated_text": translated,
+			}
+		)
+		doc.insert(ignore_permissions=True)
+		name = doc.name
+	frappe.db.commit()
+	return {"name": name}
+
+
+@frappe.whitelist(methods=["POST"])
+def clear_test_translation(name: str) -> dict:
+	"""Delete a Translation row created by :func:`set_test_translation`."""
+	_guard()
+	if name and frappe.db.exists("Translation", name):
+		frappe.delete_doc("Translation", name, force=1, ignore_permissions=True)
+		frappe.db.commit()
+	return {"ok": 1}
+
+
 @frappe.whitelist(allow_guest=True)
 def slow_guest_echo(delay: float = 1.5) -> dict:
 	"""A deliberately slow no-op, used by ``sid_reseed_race.cy.js`` to make the

@@ -419,30 +419,31 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertIsInstance(count, int)
 		self.assertGreaterEqual(count, 1)  # at least our zero-credential test user
 
-	def test_preview_reuses_runtime_scope_for_administrator_and_automatic_roles(self):
-		settings = frappe._dict(
-			passkey_enforce_scope="Selected Roles",
-			passkey_enforce_roles=[frappe._dict(role="All")],
-			passkey_enforce_privileged_always=1,
+	def test_administrator_scope_uses_assigned_roles_not_every_role(self):
+		# get_roles("Administrator") returns every Role. Once the exempt marker
+		# exists, that used to mark Administrator exempt and in every selected role.
+		enforcement_admin._ensure_exempt_role()
+		self.assertFalse(
+			frappe.db.exists(
+				"Has Role",
+				{"parent": "Administrator", "parenttype": "User", "role": boot.EXEMPT_ROLE},
+			)
 		)
+		self.assertTrue(self._verdict("Administrator")["in_scope"])
+		self.assertFalse(enforcement_admin.admin_enforcement_view("Administrator")["exempt"])
 
-		def get_all(doctype, **kwargs):
-			if doctype == "WebAuthn Credential":
-				return []
-			if doctype == "User":
-				return ["Administrator", "Guest", "user@example.com"]
-			raise AssertionError(f"Unexpected bulk read: {doctype}")
+		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=0)
+		self._set_enforced_roles("Sales User")
+		self.assertFalse(
+			frappe.db.exists(
+				"Has Role", {"parent": "Administrator", "parenttype": "User", "role": "Sales User"}
+			)
+		)
+		self.assertFalse(self._verdict("Administrator")["in_scope"])
 
-		roles = {
-			"Administrator": ["Administrator", "All"],
-			"Guest": ["Guest", "All"],
-			"user@example.com": ["All"],
-		}
-		with (
-			patch("passkeys.boot.frappe.get_all", side_effect=get_all),
-			patch("passkeys.boot.frappe.get_roles", side_effect=lambda user: roles[user]),
-		):
-			self.assertEqual(boot._would_be_blocked_count(settings), 2)
+		self._set(passkey_enforce_privileged_always=1)
+		self.assertTrue(self._verdict("Administrator")["in_scope"])
+		self.assertTrue(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
 
 	def test_defer_reads_current_database_state(self):
 		user = self._user()

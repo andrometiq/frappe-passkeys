@@ -30,6 +30,7 @@ _LOCKED = {
 	"enforcement_effective": "enforce",
 	"sign_count_hard_fail": True,
 	"reauth_window": 600,
+	"administrator_has_enabled_passkey": True,
 }
 
 
@@ -66,6 +67,7 @@ class ClassifyPostureTest(IntegrationTestCase):
 		row = next(r for r in result["rows"] if r["code"] == "password_login")
 		self.assertEqual(row["severity"], "high")
 		self.assertTrue(row["detectable"])
+		self.assertIn("does not cover Administrator", row["recommendation"])
 		# password reset + adoption ride along once password sign-in is a bypass
 		self.assertIn("password_reset", _codes(result))
 		self.assertIn("adoption", _codes(result))
@@ -165,6 +167,42 @@ class ClassifyPostureTest(IntegrationTestCase):
 		strong = posture.classify_posture(_ctx(sign_count_hard_fail=True, reauth_window=600))
 		self.assertNotIn("sign_count_soft", _codes(strong))
 		self.assertNotIn("reauth_window", _codes(strong))
+
+	def test_administrator_password_row_when_second_factor_leaves_admin_on_password(self):
+		shown = posture.classify_posture(
+			_ctx(
+				first_factor=False,
+				second_factor=True,
+				password_login_enabled=True,
+				core_2fa_enabled=True,
+				administrator_has_enabled_passkey=False,
+			)
+		)
+		row = next(r for r in shown["rows"] if r["code"] == "administrator_password")
+		self.assertEqual(row["severity"], "medium")
+		self.assertIn("named System Manager", row["recommendation"])
+		self.assertIn("notify_admin_access_to_system_manager", row["recommendation"])
+		self.assertIsNone(row["bypass_label"])
+
+	def test_administrator_password_row_hidden_when_covered_or_password_off(self):
+		covered = _ctx(
+			first_factor=False,
+			second_factor=True,
+			password_login_enabled=True,
+			core_2fa_enabled=True,
+			administrator_has_enabled_passkey=True,
+		)
+		password_off = _ctx(
+			first_factor=False,
+			second_factor=True,
+			password_login_enabled=False,
+			core_2fa_enabled=True,
+			administrator_has_enabled_passkey=False,
+		)
+		second_off = _ctx(password_login_enabled=True, administrator_has_enabled_passkey=False)
+		for ctx in (covered, password_off, second_off):
+			with self.subTest(ctx=ctx):
+				self.assertNotIn("administrator_password", _codes(posture.classify_posture(ctx)))
 
 	def test_every_row_carries_the_full_contract(self):
 		result = posture.classify_posture(

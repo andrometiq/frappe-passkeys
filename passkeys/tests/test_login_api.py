@@ -393,13 +393,38 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	# guest translations endpoint
 	# ======================================================================
 
+	def _translation_fixture(self, language, translated):
+		source = "Sign in with a passkey"
+		name = (
+			frappe.get_doc(
+				{
+					"doctype": "Translation",
+					"language": language,
+					"source_text": source,
+					"translated_text": translated,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		self.addCleanup(frappe.delete_doc, "Translation", name, force=1, ignore_permissions=True)
+		return source
+
 	def test_translations_endpoint_serves_app_strings_for_guest(self):
+		source = self._translation_fixture("de", "TEST-ONLY passkey sign-in")
 		frappe.set_user("Guest")
 		self._request("/api/method/passkeys.passkey.get_app_translations")
-		frappe.local.lang = "fr"
+		frappe.local.lang = "de"
 		catalog = passkey.get_app_translations()
-		self.assertIsInstance(catalog, dict)
-		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
+		self.assertEqual(catalog.get(source), "TEST-ONLY passkey sign-in")
+
+	def test_translations_endpoint_omits_fixture_for_another_language(self):
+		source = self._translation_fixture("de", "TEST-ONLY passkey sign-in")
+		frappe.set_user("Guest")
+		self._request("/api/method/passkeys.passkey.get_app_translations")
+		frappe.local.lang = "es"
+		catalog = passkey.get_app_translations()
+		self.assertNotEqual(catalog.get(source), "TEST-ONLY passkey sign-in")
 
 	def test_translations_responses_are_not_cacheable(self):
 		from werkzeug.datastructures import Headers
@@ -411,18 +436,25 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.local.response_headers.get("Cache-Control"), "private, no-store")
 
 	def test_translations_follow_each_request_language(self):
+		de_source = self._translation_fixture("de", "TEST-ONLY de passkey")
+		es_source = self._translation_fixture("es", "TEST-ONLY es passkey")
+		self.assertEqual(de_source, es_source)
 		frappe.set_user("Guest")
 		self._request("/api/method/passkeys.passkey.get_app_translations")
 		with patch(
 			"frappe.translate.get_translations_from_apps",
-			side_effect=lambda lang, apps: {"language": lang, "apps": apps},
+			side_effect=lambda lang, apps: {"catalog_language": lang, "apps": ",".join(apps)},
 		) as get_translations:
-			frappe.local.lang = "fr"
-			french = passkey.get_app_translations()
 			frappe.local.lang = "de"
 			german = passkey.get_app_translations()
-		self.assertEqual(french, {"language": "fr", "apps": ["passkeys"]})
-		self.assertEqual(german, {"language": "de", "apps": ["passkeys"]})
+			frappe.local.lang = "es"
+			spanish = passkey.get_app_translations()
+		self.assertEqual(german["catalog_language"], "de")
+		self.assertEqual(german["apps"], "passkeys")
+		self.assertEqual(german[de_source], "TEST-ONLY de passkey")
+		self.assertNotIn("TEST-ONLY es passkey", german.values())
+		self.assertEqual(spanish["catalog_language"], "es")
+		self.assertEqual(spanish[es_source], "TEST-ONLY es passkey")
 		self.assertEqual(get_translations.call_count, 2)
 
 	def test_translations_endpoint_is_rate_limited(self):

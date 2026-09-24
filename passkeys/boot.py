@@ -178,13 +178,28 @@ def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
 	return _cadence_ok(settings, state)
 
 
+def assigned_roles(user: str) -> set[str]:
+	"""Roles on the user's Has Role rows.
+
+	``frappe.get_roles("Administrator")`` returns every Role, so the exempt marker
+	or a selected role would match Administrator as soon as the Role exists."""
+	return set(
+		frappe.get_all(
+			"Has Role",
+			filters={"parent": user, "parenttype": "User"},
+			pluck="role",
+		)
+	)
+
+
 def _user_in_enforce_scope(user: str, settings) -> bool:
 	"""The exemption marker role wins; then privileged roles when that safeguard is on;
-	then Selected Roles; otherwise All Users."""
-	roles = set(frappe.get_roles(user))
+	then Selected Roles; otherwise All Users. Administrator is privileged."""
+	roles = assigned_roles(user)
 	if EXEMPT_ROLE in roles:
 		return False
-	if cint(settings.passkey_enforce_privileged_always) and roles & PRIVILEGED_ROLES:
+	privileged = user == "Administrator" or bool(roles & PRIVILEGED_ROLES)
+	if cint(settings.passkey_enforce_privileged_always) and privileged:
 		return True
 	if settings.passkey_enforce_scope == "Selected Roles":
 		target = {row.role for row in (settings.passkey_enforce_roles or [])}

@@ -69,11 +69,6 @@
 	cursor: progress;
 }
 
-.passkey-confirm-usepw {
-	padding-left: 0;
-	padding-right: 0;
-}
-
 .passkey-confirm-pwlabel {
 	display: block;
 	margin: 0 0 0.25rem;

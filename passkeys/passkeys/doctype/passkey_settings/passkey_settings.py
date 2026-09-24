@@ -212,7 +212,6 @@ def get_resolved_rp_id() -> dict:
 	return {
 		"rp_id": rp_id,
 		"configured_site_origin": policy.resolve_site_origin(rp_id or ""),
-		"host_name_configured": bool((frappe.conf.get("host_name") or "").strip()),
 	}
 
 

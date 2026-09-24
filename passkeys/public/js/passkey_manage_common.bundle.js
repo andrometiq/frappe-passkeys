@@ -678,7 +678,7 @@
 		return node;
 	}
 
-	// kind: "primary" | "link".
+	// kind: "primary" | "default" (Frappe secondary).
 	function button(kind, label, onClick) {
 		var node = el("button", "btn btn-" + kind + " btn-sm passkey-btn", label);
 		node.type = "button";

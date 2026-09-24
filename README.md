@@ -170,6 +170,10 @@ treated as a safe handover, so the app stays active rather than yield to a parti
 Bug reports, fixes, and features are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the branch
 model, commit-message conventions, and how to run the test suites.
 
+## Roadmap
+
+Next planned feature: Secure Payment Confirmation (SPC) for `@passkey_protected` actions. The browser shows the payee and amount in its own dialog, and the signature covers them. SPC works today in Chrome and Edge (desktop and Android), not in Safari, Firefox, or any iOS browser. Elsewhere the current confirmation flow is the fallback. A per-action option will make SPC mandatory; unsupported browsers are then told which browsers support it.
+
 ## License
 
 [MIT](LICENSE)

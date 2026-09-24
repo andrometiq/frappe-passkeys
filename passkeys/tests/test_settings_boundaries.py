@@ -454,7 +454,6 @@ class ResolvedRpIdEndpointTest(IntegrationTestCase):
 		out = get_resolved_rp_id()
 		self.assertEqual(out["rp_id"], "site.example.org")
 		self.assertEqual(out["configured_site_origin"], "https://site.example.org")
-		self.assertTrue(out["host_name_configured"])
 
 	def test_host_name_origin_is_browser_canonical(self):
 		self._set_rp_id("")
@@ -469,7 +468,6 @@ class ResolvedRpIdEndpointTest(IntegrationTestCase):
 		out = get_resolved_rp_id()
 		self.assertIsNone(out["rp_id"])
 		self.assertIsNone(out["configured_site_origin"])
-		self.assertFalse(out["host_name_configured"])
 
 
 class EnrollmentPolicyValidatorTest(IntegrationTestCase):

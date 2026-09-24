@@ -91,7 +91,6 @@ chromium_only("registration serialization fallback", () => {
 		cy.visit_desk(USER);
 		cy.setup_passkey_settings();
 		cy.call(CONFIGURE_NUDGE, {
-			enrollment_nudge: 1,
 			max_prompts: 3,
 			cooldown_days: 30,
 			conditional_create: 1,

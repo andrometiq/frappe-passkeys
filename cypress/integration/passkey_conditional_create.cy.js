@@ -35,7 +35,6 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 		// conditional_create ON, nudge ON — the silent-create branch takes precedence
 		// over the visible nudge (maybeNudge).
 		cy.call(CONFIGURE_NUDGE, {
-			enrollment_nudge: 1,
 			max_prompts: 3,
 			cooldown_days: 30,
 			conditional_create: 1,

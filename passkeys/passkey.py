@@ -549,13 +549,15 @@ def get_app_translations():
 	"""This app's translation catalog for the request language. The language is not in
 	the URL, so the response is never cacheable."""
 	refuse_if_core_native()
-	from frappe.translate import get_translations_from_apps
+	from frappe.translate import get_translations_from_apps, get_user_translations
 
 	# Frappe v15 has no response_headers; the client also fetches with no-store.
 	headers = getattr(frappe.local, "response_headers", None)
 	if headers is not None:
 		headers.set("Cache-Control", "private, no-store")
-	return get_translations_from_apps(getattr(frappe.local, "lang", None) or "en", apps=["passkeys"])
+	lang = getattr(frappe.local, "lang", None) or "en"
+	# Site Translation rows let an operator add a language without a shipped CSV.
+	return {**get_translations_from_apps(lang, apps=["passkeys"]), **get_user_translations(lang)}
 
 
 # ===========================================================================

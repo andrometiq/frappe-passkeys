@@ -27,7 +27,6 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   HMAC-signed credential export and restore.
 - Android Digital Asset Links and iOS `apple-app-site-association` files for native apps.
 - The `frappe.passkeys.headless` JavaScript API and documented REST endpoints for custom UIs.
-- A French translation.
 
 ### Security
 

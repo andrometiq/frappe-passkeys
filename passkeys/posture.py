@@ -54,6 +54,7 @@ def classify_posture(ctx: dict) -> dict:
 	enforcement = ctx.get("enforcement_effective") or "off"
 	hard_fail = bool(ctx.get("sign_count_hard_fail"))
 	reauth_window = cint(ctx.get("reauth_window"))
+	administrator_has_passkey = bool(ctx.get("administrator_has_enabled_passkey"))
 
 	rows = []
 	pw_is_bypass = first and pw_enabled and not second
@@ -88,7 +89,8 @@ def classify_posture(ctx: dict) -> dict:
 				_("Any user can sign in with a username and password instead of a passkey."),
 				_(
 					"Turn on 'Disable Username/Password Login' in System Settings to remove it "
-					"site-wide, or set 'Passwordless login only' per user (needs 2+ passkeys)."
+					"site-wide, or set 'Passwordless login only' on a user who is not Administrator "
+					"(needs 2+ passkeys). That per-user flag does not cover Administrator."
 				),
 				bypass_label=_("password sign-in"),
 			)
@@ -257,6 +259,25 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
+	if pw_enabled and second and not administrator_has_passkey:
+		rows.append(
+			_row(
+				"administrator_password",
+				"medium",
+				_("Administrator can still sign in with only a password."),
+				_(
+					"Password login is allowed, Passkey as Second Factor is on, and Administrator "
+					"has no enabled passkey. The per-user passwordless flag does not apply to Administrator."
+				),
+				_(
+					"Use named System Manager accounts day to day. Enrol a passkey for Administrator "
+					"with 'Passkey as Second Factor' on. Restrict Administrator by IP (User → Restrict IP). "
+					"Set notify_admin_access_to_system_manager in site config to be emailed when "
+					"Administrator logs in. Keep a strong, vaulted password."
+				),
+			)
+		)
+
 	if reauth_window > _REAUTH_WINDOW_NOTICE_THRESHOLD:
 		rows.append(
 			_row(
@@ -374,6 +395,9 @@ def build_posture() -> dict:
 			"enforcement_effective": boot.policy_effective(settings),
 			"sign_count_hard_fail": bool(cint(settings.passkey_sign_count_hard_fail)),
 			"reauth_window": cint(settings.passkey_reauth_window),
+			"administrator_has_enabled_passkey": bool(
+				frappe.db.exists("WebAuthn Credential", {"user": "Administrator", "enabled": 1})
+			),
 		}
 	)
 

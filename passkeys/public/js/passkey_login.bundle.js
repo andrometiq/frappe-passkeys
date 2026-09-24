@@ -696,7 +696,7 @@
 
 		var cancel = document.createElement("button");
 		cancel.type = "button";
-		cancel.className = "btn btn-sm btn-link btn-block passkey-dialog-cancel";
+		cancel.className = "btn btn-sm btn-default btn-block passkey-dialog-cancel";
 		cancel.textContent = t("Not now");
 		cancel.addEventListener("click", close);
 		actions.appendChild(cancel);

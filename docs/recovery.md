@@ -12,6 +12,14 @@ an Administrator who explicitly enrolled an enabled credential while Passkey as 
 active is protected like any other enrolled user. Try Administrator when those conditions do not
 apply; otherwise use the console path from the start.
 
+If the web login is unavailable but a shell on the bench is not, open Desk already signed in as Administrator:
+
+```bash
+bench --site <site> browse --user Administrator
+```
+
+That session is break-glass. It does not turn off Administrator's password. Frappe has no switch for that; see [Hardening Administrator](security.md#hardening-administrator).
+
 ---
 
 ## Scenario A — a user set "Passkey Only Login" and lost all their passkeys

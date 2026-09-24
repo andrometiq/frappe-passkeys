@@ -380,8 +380,8 @@
 		var actions = el("div", "passkey-nudge-actions");
 		// The CTA runs under the fresh-login sudo window: no re-prompt.
 		actions.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { d._acted = true; d.hide(); triggerAdd({}); }));
-		actions.appendChild(M.button("link", t(M.COPY.nudgeLater), function () { act(M.NUDGE_EVENTS.DECLINED); }));
-		actions.appendChild(M.button("link", t(M.COPY.nudgeNever), optOut));
+		actions.appendChild(M.button("default", t(M.COPY.nudgeLater), function () { act(M.NUDGE_EVENTS.DECLINED); }));
+		actions.appendChild(M.button("default", t(M.COPY.nudgeNever), optOut));
 		body.appendChild(actions);
 		// Esc / backdrop dismissal means "Not now"; hide.bs.modal catches every route.
 		d.$wrapper.on("hide.bs.modal", function () { if (!d._acted) { d._acted = true; recordNudge(M.NUDGE_EVENTS.DECLINED); } });
@@ -431,7 +431,7 @@
 		// Runs under the fresh-login sudo window; the gate stays open until enrollment succeeds.
 		actions.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { enforceCreate(d); }));
 		if (!enf.blocking) {
-			actions.appendChild(M.button("link", M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]), function () {
+			actions.appendChild(M.button("default", M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]), function () {
 				d._acted = true; events.recordEnforcementDefer(b, enf); d.hide();
 			}));
 			// Any other dismissal is also "Remind me later"; `_acted` stops a double count.
@@ -441,10 +441,10 @@
 		} else {
 			// Only Block + Notify Admin notifies an administrator.
 			var notifiesAdmin = (b.enforcement || {}).incapable_policy === "block_notify";
-			actions.appendChild(M.button("link", t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp), function () {
+			actions.appendChild(M.button("default", t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp), function () {
 				onEnforceCantSetUp(b, d, body);
 			}));
-			actions.appendChild(M.button("link", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
+			actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
 			// The router hides any open dialog on a route change, ignoring static/keep_open,
 			// so a blocking gate re-opens itself until the user takes one of its exits.
 			d.$wrapper.on("hidden.bs.modal", function () { if (!d._acted) d.show(); });
@@ -484,7 +484,7 @@
 		body.appendChild(notice);
 		var actions = el("div", "passkey-nudge-actions");
 		actions.appendChild(M.button("primary", t(M.COPY.enforceRetry), function () { enforceCreate(d); }));
-		actions.appendChild(M.button("link", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
+		actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
 		body.appendChild(actions);
 	}
 

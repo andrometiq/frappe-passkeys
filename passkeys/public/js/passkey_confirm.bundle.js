@@ -91,7 +91,7 @@
 						'<button type="button" class="btn btn-primary passkey-confirm-passkey" autofocus>' +
 							esc(t("Confirm with passkey")) + '</button>',
 						opts.canPassword
-							? '<button type="button" class="btn btn-link passkey-confirm-usepw">' +
+							? '<button type="button" class="btn btn-default btn-sm passkey-confirm-usepw">' +
 								esc(t("Use your password instead")) + '</button>'
 							: "",
 						'</div>',

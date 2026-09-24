@@ -118,7 +118,7 @@
 			resolve(value);
 		}
 		function cancelLink() {
-			return M.button("link", t("Cancel"), function () { if (modal) modal.close(); });
+			return M.button("default", t("Cancel"), function () { if (modal) modal.close(); });
 		}
 		return {
 			chooseMethod: function (opts) {
@@ -129,7 +129,7 @@
 					appendConfirmationContext(modal.body, opts);
 					modal.actions.appendChild(M.button("primary", t("Confirm with passkey"), function () { settle(resolve, "passkey"); }));
 					if (opts.canPassword) {
-						modal.actions.appendChild(M.button("link", t("Use your password instead"), function () { settle(resolve, "password"); }));
+						modal.actions.appendChild(M.button("default", t("Use your password instead"), function () { settle(resolve, "password"); }));
 					}
 					modal.actions.appendChild(cancelLink());
 					modal.open();
@@ -208,7 +208,7 @@
 			var addRow = el("div", "passkey-card-add-row");
 			addRow.appendChild(M.button("primary", t(M.COPY.addButton), addPasskey));
 			// For changes made on another device while the page is open.
-			addRow.appendChild(M.button("link", t("Reload"), function () { render(); }));
+			addRow.appendChild(M.button("default", t("Reload"), function () { render(); }));
 			mountRoot.appendChild(addRow);
 			mountRoot.appendChild(M.passkeyOnlyRow(payload, confirmPasskeyOnly));
 		});
@@ -230,7 +230,7 @@
 				else setPortalStatus((err && err.message) || t("Couldn't change passwordless login."), "error");
 			}).then(render);
 		}));
-		modal.actions.appendChild(M.button("link", t("Cancel"), modal.close));
+		modal.actions.appendChild(M.button("default", t("Cancel"), modal.close));
 		modal.open();
 	}
 
@@ -252,7 +252,7 @@
 				setPortalStatus(err.message || t("Couldn't rename the passkey."), "error");
 			});
 		}));
-		modal.actions.appendChild(M.button("link", t("Cancel"), modal.close));
+		modal.actions.appendChild(M.button("default", t("Cancel"), modal.close));
 		modal.open();
 		setTimeout(function () { input.focus(); }, 0);
 	}
@@ -271,7 +271,7 @@
 				setPortalStatus((err && err.message) || t("Couldn't remove the passkey."), "error");
 			});
 		}));
-		modal.actions.appendChild(M.button("link", t("Cancel"), modal.close));
+		modal.actions.appendChild(M.button("default", t("Cancel"), modal.close));
 		modal.open();
 	}
 
@@ -326,7 +326,7 @@
 		modal.body.appendChild(el("p", "", t(M.COPY.enforceBody)));
 		modal.actions.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { enforceCreate(modal); }));
 		if (!enf.blocking) {
-			modal.actions.appendChild(M.button("link", M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]), function () {
+			modal.actions.appendChild(M.button("default", M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]), function () {
 				events.recordEnforcementDefer(b, enf);
 				modal._settled = true;
 				modal.close();
@@ -334,10 +334,10 @@
 		} else {
 			// Only Block + Notify Admin notifies an administrator.
 			var notifiesAdmin = (b.enforcement || {}).incapable_policy === "block_notify";
-			modal.actions.appendChild(M.button("link", t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp), function () {
+			modal.actions.appendChild(M.button("default", t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp), function () {
 				onEnforceCantSetUp(b, modal);
 			}));
-			modal.actions.appendChild(M.button("link", t(M.COPY.enforceSignOut), signOut));
+			modal.actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), signOut));
 		}
 		modal.open();
 	}
@@ -363,7 +363,7 @@
 		modal.body.appendChild(notice);
 		modal.actions.innerHTML = "";
 		modal.actions.appendChild(M.button("primary", t(M.COPY.enforceRetry), function () { enforceCreate(modal); }));
-		modal.actions.appendChild(M.button("link", t(M.COPY.enforceSignOut), signOut));
+		modal.actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), signOut));
 	}
 
 	// ------------------------------------------------------- portal nudge banner
@@ -382,10 +382,10 @@
 		var acts = el("span", "passkey-nudge-acts");
 		var optingOut = false, error = null;
 		acts.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { location.href = "/passkeys"; }));
-		acts.appendChild(M.button("link", t(M.COPY.nudgeLater), function () { recordNudge(M.NUDGE_EVENTS.DECLINED); bar.remove(); }));
+		acts.appendChild(M.button("default", t(M.COPY.nudgeLater), function () { recordNudge(M.NUDGE_EVENTS.DECLINED); bar.remove(); }));
 		// Opt-out is permanent, so the banner stays until the server has saved it; a failure
 		// is shown in place and the buttons stay usable for a retry.
-		acts.appendChild(M.button("link", t(M.COPY.nudgeNever), function () {
+		acts.appendChild(M.button("default", t(M.COPY.nudgeNever), function () {
 			if (optingOut) return;
 			optingOut = true;
 			recordNudge(M.NUDGE_EVENTS.OPT_OUT).then(function (res) {

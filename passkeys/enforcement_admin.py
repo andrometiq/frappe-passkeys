@@ -55,14 +55,13 @@ def admin_enforcement_view(user: str) -> dict:
 	settings = frappe.get_cached_doc("Passkey Settings")
 	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
 	verdict = boot.build_enforcement(user, settings, credential_count)
-	roles = set(frappe.get_roles(user))
 	return {
 		"user": user,
 		"policy": verdict["policy"],
 		"effective": verdict["effective"],
 		"enforcing": settings.passkey_enrollment_policy in _ENFORCING_POLICIES,
 		"in_scope": verdict["in_scope"],
-		"exempt": EXEMPT_ROLE in roles,
+		"exempt": EXEMPT_ROLE in boot.assigned_roles(user),
 		"grace_used": cint(boot.get_enforcement_state(user)["grace_used"]),
 		"grace_total": cint(verdict["grace_total"]),
 		"grace_remaining": cint(verdict["grace_remaining"]),
@@ -88,7 +87,7 @@ def set_user_exemption(user: str, exempt: object) -> dict:
 	state.rate_limit_user("set_user_exemption", 30, 3600)
 	user = _require_user(user)
 	user_doc = frappe.get_doc("User", user)
-	has_role = EXEMPT_ROLE in set(frappe.get_roles(user))
+	has_role = EXEMPT_ROLE in boot.assigned_roles(user)
 	if _coerce_bool(exempt):
 		_ensure_exempt_role()
 		if not has_role:

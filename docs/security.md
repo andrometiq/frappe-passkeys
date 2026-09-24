@@ -88,6 +88,12 @@ Administrator exemption. Passkey enrollment enforcement likewise keeps `System M
 scope by default; recovery uses a temporary per-user marker role or the operator-only console helper,
 never a standing administrator-role exemption.
 
+## Hardening Administrator
+
+Frappe core has no switch that disables Administrator's password. Administrator is break-glass: the per-user "Passwordless login only" flag does not apply, and a password still works while site-wide password login is on and Administrator has no enabled passkey under Passkey as Second Factor.
+
+Use named System Manager accounts day to day. Enrol a passkey for Administrator with Passkey as Second Factor on. Restrict Administrator by IP (User → Restrict IP). Set `notify_admin_access_to_system_manager` in site config so System Managers are emailed when Administrator logs in. Keep a strong, vaulted password. Console recovery is in [`recovery.md`](recovery.md).
+
 **Password rotation is checked at the session boundary.** Every password-to-passkey ceremony stores
 a keyed, non-reversible version of the password hash at leg one and compares it with the current
 version before minting a session. A password change during the ceremony fails closed. The marker
