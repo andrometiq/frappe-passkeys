@@ -135,6 +135,8 @@ the reverse-proxy, RP ID, and origin requirements.
   `bench console` commands.
 - [**Security**](docs/security.md): the security model in operator terms: what the app enforces,
   what it trusts, residual risks, and disclosure.
+- [**WebAuthn Level 3 support**](docs/webauthn-l3.md): which WebAuthn L3 relying-party steps and
+  browser features the app supports, where each is handled, and what is not supported yet.
 - [**Security policy**](SECURITY.md): how to report a vulnerability privately.
 - [**Changelog**](CHANGELOG.md): what changed in each release.
 - [**Upstream proposal**](docs/upstream/): a design and validation checklist for adopting passkeys
