@@ -40,11 +40,11 @@ Frappe v15, v16, and develop.
   two-factor flow. Users can fall back to a one-time code if the site allows it.
 
 - **Confirmation for sensitive actions.** Decorate any whitelisted method with
-  `@passkey_protected` and it runs only after a fresh confirmation. By default a user may confirm
-  with their password instead of a passkey; pass `allow_password_fallback=False` to require a
-  passkey. Each confirmation is single-use, expires in about three minutes, and is bound to the
-  user, the session, the action, and the values of the arguments you list in `bind_params`. This
-  suits approvals such as releasing a bank payment.
+  `@passkey_protected` and it runs only after a fresh passkey confirmation. Pass
+  `allow_password_fallback=True` to also let a user confirm with their password. Each
+  confirmation is single-use, expires in about three minutes, and is bound to the user, the
+  session, the action, and the values of the arguments you list in `bind_params`. This suits
+  approvals such as releasing a bank payment.
   See [Custom UI](docs/custom-ui.md#action-confirmation-for-your-own-methods).
 
 - **Enrollment nudges and enforcement.** Prompt users without a passkey to create one, with a

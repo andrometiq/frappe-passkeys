@@ -110,8 +110,9 @@ is consumed. The payload holds each name in `bind_params`: a named parameter bin
 name binds that key of the `**kwargs` mapping only when the call passes it, so `pay()` and
 `pay(amount=None)` never share a grant. A bound name that also arrives as a `**kwargs` key (a
 positional-only, `*args` or `**kwargs` name passed by keyword) is ambiguous and refused. Arguments
-left out of `bind_params` are not bound. By default the user may confirm with a password instead of a passkey;
-`allow_password_fallback=False` requires a passkey. Tokens are returned once and stored
+left out of `bind_params` are not bound. A protected action requires a passkey by default; a
+password confirmation is accepted only when the action opts in with `allow_password_fallback=True`.
+Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload
 hash is always computed server-side with a pinned canonicalization — the client

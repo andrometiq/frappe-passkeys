@@ -18,6 +18,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Site-bound, HMAC-authenticated credential exports with atomic private-file writes and strict
   restore validation.
 - Explicit action labels and safe parameter summaries for passkey confirmation dialogs.
+- `@passkey_protected` requires a passkey by default; confirming with a password is an explicit
+  per-action opt-in (`allow_password_fallback=True`).
 - A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps
   the user signed in, so they can retry.
 - Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a

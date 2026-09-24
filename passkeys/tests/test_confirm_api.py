@@ -686,6 +686,25 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertTrue(out.get("seeded"))
 		self.assertTrue(session.has_management_sudo(user))
 
+	def test_protected_action_requires_a_passkey_by_default(self):
+		user = self._user(with_password=True)
+		sign_in(user)
+		calls = []
+
+		@confirm.passkey_protected(action="myapp.default-assurance", bind_params=["amount"])
+		def pay(amount=None):
+			calls.append(amount)
+
+		fingerprint = session.payload_hash({"amount": 50})
+		self.assertNotIn("password", self._begin("myapp.default-assurance", params={"amount": 50})["methods"])
+		with self.assertRaises(CeremonyFailed):
+			self._reauth(PWD, action="myapp.default-assurance", payload_fingerprint=fingerprint)
+		token = session.mint_action_grant(user, "myapp.default-assurance", fingerprint, method="password")
+		self._request("/api/method/myapp.default-assurance", grant_header=token)
+		with self.assertRaises(PasskeyConfirmationRequired):
+			pay(amount=50)
+		self.assertEqual(calls, [])
+
 	def test_reauth_with_action_mints_password_grant_for_that_action_only(self):
 		user = self._user(with_password=True)
 		sign_in(user)

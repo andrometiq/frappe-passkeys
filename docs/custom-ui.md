@@ -259,7 +259,6 @@ The same engine gates any of *your* whitelisted methods. The optional `display_l
     bind_params=["payment_id", "amount"],
     display_label="Release payment",
     display_params={"payment_id": "Payment", "amount": "Amount"},
-    allow_password_fallback=False,
 )
 def release_payment(payment_id, amount):
     ...
@@ -267,8 +266,8 @@ def release_payment(payment_id, amount):
 
 Only the arguments named in `bind_params` are bound to the grant: a named parameter binds its value
 (defaults applied), naming the `*args` / `**kwargs` parameter binds the whole tuple / mapping, and any
-other name binds that `**kwargs` key only when the call passes it. `allow_password_fallback` defaults to `True`, which lets a user confirm with
-their password; set it to `False`, as above, to require a passkey.
+other name binds that `**kwargs` key only when the call passes it. A protected action requires a
+passkey by default; set `allow_password_fallback=True` to also let a user confirm with their password.
 
 `display_params` must be a subset of `bind_params`, and every `bind_params` name must be a parameter
 of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. A call that does

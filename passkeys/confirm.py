@@ -64,7 +64,7 @@ class ActionPolicy:
 
 	action: str
 	bind_params: tuple = field(default_factory=tuple)
-	allow_password_fallback: bool = True
+	allow_password_fallback: bool = False
 	allow_sudo_window: bool = False
 	display_label: str | None = None
 	display_params: tuple = field(default_factory=tuple)
@@ -183,12 +183,12 @@ def passkey_protected(
 	action: str,
 	*,
 	bind_params: list | tuple | None = None,
-	allow_password_fallback: bool = True,
+	allow_password_fallback: bool = False,
 	allow_sudo_window: bool = False,
 	display_label: str | None = None,
 	display_params: dict[str, str] | None = None,
 ):
-	"""Require a fresh confirmation (a passkey, or a password when the policy allows)
+	"""Require a fresh passkey confirmation (or a password, when the action opts in)
 	before a whitelisted method runs.
 
 	Put this **below** ``@frappe.whitelist`` on any sensitive server method::
@@ -211,10 +211,10 @@ def passkey_protected(
 	    Omit for actions with no payload (the empty payload still binds action +
 	    session).
 	allow_password_fallback:
-	    ``True`` (default) — the primitive is a universal re-auth API; a user with
-	    no passkey may satisfy the gate by re-entering their password (the dialog
-	    upsells passkey creation). ``False`` — passkey-only assurance: a
-	    password-minted grant is refused for this action.
+	    ``False`` (default) — passkey assurance: a password-minted grant is refused
+	    for this action. ``True`` — an explicit opt-in to universal re-auth: a user
+	    with no passkey may satisfy the gate by re-entering their password (the
+	    dialog upsells passkey creation).
 	allow_sudo_window:
 	    ``True`` — a live full-sudo window (a fresh interactive login or a prior
 	    confirmation) satisfies the gate without a new gesture (GitHub-sudo
