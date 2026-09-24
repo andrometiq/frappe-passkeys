@@ -71,13 +71,18 @@ def configure_login(
 ) -> dict:
 	"""Point Passkey Settings at the UI-test site's RP ID + origin and toggle the
 	login modes. Values are written directly so the ``http://*.localhost`` origin
-	is accepted regardless of the enable-time HTTPS validator (see module docstring)."""
+	is accepted regardless of the enable-time HTTPS validator (see module docstring).
+	Enrollment starts neutral (nobody required, no nudge) so the default System
+	Manager gate does not cover Desk; the nudge specs opt in via :func:`configure_nudge`."""
 	_guard()
 	values = {
 		"passkey_rp_id": rp_id,
 		"passkey_origins": origin,
 		"login_with_passkey": cint(login_with_passkey),
 		"passkey_as_second_factor": cint(passkey_as_second_factor),
+		"passkey_enforce_scope": "No one",
+		"passkey_enforce_privileged_always": 0,
+		"passkey_everyone_else": "Off",
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
