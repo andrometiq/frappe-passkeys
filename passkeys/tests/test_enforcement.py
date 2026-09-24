@@ -13,7 +13,7 @@ from frappe.utils import add_to_date, cint, now_datetime, nowdate
 from passkeys import boot, enforcement_admin, notifications, passkey, state
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
 
@@ -61,7 +61,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		# enqueues + commits), which durably commits the modes-on Passkey Settings write
 		# past the runner's per-test savepoint rollback. Restore the pre-test snapshot and
 		# COMMIT it, mirroring test_passkey_only_veto/_SweptBase, so the modes never leak.
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
 			doc.set(field, self._snapshot.get(field))
@@ -249,7 +249,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def test_record_enforcement_defer_folds_state(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		first = passkey.record_enforcement("defer")
 		second = passkey.record_enforcement("defer")
 		self.assertEqual(first["enforcement_state"]["grace_used"], 1)
@@ -270,7 +270,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 				)
 				user = self._user()
 				boot.record_enforcement_defer(user)
-				frappe.set_user(user)
+				sign_in(user)
 				with (
 					patch.object(state, "claim_enforcement_defer") as claim_defer,
 					patch.object(notifications, "record_enforcement_incapable") as report_incapable,
@@ -291,7 +291,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		enforcement_admin.set_user_exemption(exempt, True)
 		for user in (out_of_role, exempt):
 			with self.subTest(user=user):
-				frappe.set_user(user)
+				sign_in(user)
 				with (
 					patch.object(state, "claim_enforcement_defer") as claim_defer,
 					patch.object(notifications, "record_enforcement_incapable") as report_incapable,
@@ -305,7 +305,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_record_enforcement_ignores_enrolled_user(self):
 		user = self._user()
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with (
 			patch.object(state, "claim_enforcement_defer") as claim_defer,
 			patch.object(notifications, "record_enforcement_incapable") as report_incapable,
@@ -320,7 +320,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self._set(passkey_enforce_grace_logins=1)
 		user = self._user()
 		boot.record_enforcement_defer(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with patch.object(state, "claim_enforcement_defer") as claim_defer:
 			result = passkey.record_enforcement("defer")
 		claim_defer.assert_not_called()
@@ -328,7 +328,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def test_record_enforcement_incapable_returns_state(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with patch.object(notifications, "record_enforcement_incapable") as report_incapable:
 			result = passkey.record_enforcement("incapable")
 		report_incapable.assert_not_called()
@@ -338,7 +338,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_blocking_incapable_report_is_still_applicable(self):
 		self._set(passkey_enforce_grace_logins=0, passkey_enforce_incapable="Block + Notify Admin")
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with patch.object(notifications, "record_enforcement_incapable") as report_incapable:
 			passkey.record_enforcement("incapable")
 		report_incapable.assert_called_once_with(user)
@@ -346,13 +346,13 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_incapable_under_block_notify_records_admin_advisory(self):
 		self._set(passkey_enforce_incapable="Block + Notify Admin")
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with (
 			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
 			patch("frappe.sendmail"),
 		):
 			passkey.record_enforcement("incapable")
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		self.assertTrue(
 			frappe.db.exists("Activity Log", {"user": user, "content": "passkeys:enforce_incapable_device"})
 		)
@@ -363,7 +363,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		# Activity Log risk event (telemetry) still records on every report.
 		self._set(passkey_enforce_incapable="Block + Notify Admin")
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with (
 			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
 			patch("frappe.sendmail") as mock_send,
@@ -372,7 +372,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 			passkey.record_enforcement("incapable")
 			passkey.record_enforcement("incapable")
 		self.assertEqual(mock_send.call_count, 1, "admins are emailed at most once within the dedup window")
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		rows = frappe.get_all(
 			"Activity Log", filters={"user": user, "content": "passkeys:enforce_incapable_device"}
 		)
@@ -385,7 +385,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		# simulates a report a day later).
 		self._set(passkey_enforce_incapable="Block + Notify Admin")
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with (
 			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
 			patch("frappe.sendmail") as mock_send,
@@ -398,7 +398,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def test_record_enforcement_rejects_unknown_event(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.ValidationError):
 			passkey.record_enforcement("bogus")
 
@@ -412,7 +412,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 	def test_would_be_blocked_count_preview_for_system_manager(self):
 		self._user()  # in scope, 0 creds — counted
 		make_credential(self._user())  # enrolled ⇒ excluded from the count
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		info = frappe._dict()
 		boot.extend_bootinfo(bootinfo=info)
 		count = info.passkeys["settings_context"]["would_be_blocked_count"]

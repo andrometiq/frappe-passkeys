@@ -24,7 +24,7 @@ from frappe import _
 from frappe.utils import cint, now
 
 from passkeys import install, state
-from passkeys.errors import PasskeyConfirmationRequired
+from passkeys.errors import BrowserSessionRequired, PasskeyConfirmationRequired
 
 # Built-in action for the app's own management surface.
 MANAGE_ACTION = "passkeys.manage"
@@ -57,14 +57,8 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 		if not user or user in ("Guest", ""):
 			return
 		method = _classify_login_method()
-		settings = frappe.get_cached_doc("Passkey Settings")
-		ttl = cint(settings.passkey_reauth_window) or 600
-		state.set_sudo_window(
-			frappe.session.sid,
-			{"v": 1, "user": user, "seeded_by": method},
-			ttl,
-		)
-		_maybe_record_password_login_risk(user, method, settings)
+		set_window(user, method)
+		_maybe_record_password_login_risk(user, method, frappe.get_cached_doc("Passkey Settings"))
 	except Exception:
 		frappe.log_error(title="passkeys: sudo-window seed failed")
 
@@ -149,11 +143,32 @@ def _is_core_password_login() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def is_browser_session(user: str | None = None, sid: str | None = None) -> bool:
+	"""True iff ``sid`` is a real cookie session of ``user`` (default: this request's).
+	Core's API-key / Basic / OAuth-bearer auth binds the user through ``frappe.set_user``,
+	which sets ``sid`` to the user name; a real session's sid is a random hash."""
+	user = user or frappe.session.user
+	sid = sid or frappe.session.sid
+	return bool(user and sid) and sid not in ("Guest", user)
+
+
+def set_window(user: str, seeded_by: str) -> None:
+	"""Seed the sudo window for this session — the single writer, so a window can never
+	be keyed on a token-auth sid."""
+	if not is_browser_session(user):
+		raise BrowserSessionRequired(_("Passkey management requires a signed-in browser session."))
+	ttl = cint(frappe.get_cached_doc("Passkey Settings").passkey_reauth_window) or 600
+	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": seeded_by}, ttl)
+
+
 def get_window(user: str, sid: str | None = None) -> dict | None:
 	"""The live sudo window for ``user`` on ``sid`` (Redis ``ex`` is the sole
 	expiry authority — an expired window reads back as ``None``). Returns
-	``None`` when absent or owned by a different user."""
+	``None`` when absent, owned by a different user, or ``sid`` is not a browser
+	session."""
 	sid = sid or frappe.session.sid
+	if not is_browser_session(user, sid):
+		return None
 	window = state.get_sudo_window(sid)
 	if not window or window.get("user") != user:
 		return None
@@ -169,12 +184,14 @@ def has_management_sudo(user: str, sid: str | None = None) -> bool:
 
 
 def require_authed_user() -> str:
-	"""The current session user, or raise ``AuthenticationError`` for Guest/empty.
-	The shared authenticated-user guard the confirm / registration / credentials
-	endpoints front their handlers with."""
+	"""The current session user, or raise ``AuthenticationError`` for Guest/empty and
+	``BrowserSessionRequired`` for a token-authenticated request. The shared guard every
+	signed-in endpoint and ``@passkey_protected`` front their handlers with."""
 	user = frappe.session.user
 	if not user or user in ("Guest", ""):
 		raise frappe.AuthenticationError(_("Not permitted."))
+	if not is_browser_session(user):
+		raise BrowserSessionRequired(_("Passkey management requires a signed-in browser session."))
 	return user
 
 

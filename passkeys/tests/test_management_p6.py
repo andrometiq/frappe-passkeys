@@ -14,7 +14,7 @@ import frappe
 from passkeys import ceremony, confirm, notifications, state
 from passkeys.api import credentials
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_handle, make_user
+from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 PWD = "Secret_passw0rd_9x!"
 
@@ -48,7 +48,7 @@ class NotificationTest(_Base):
 		self.addCleanup(self._restore)
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		for field in ("passkey_notify_on_change", "passkey_notify_password_fallback"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
 		flush_settings_cache()
@@ -76,7 +76,7 @@ class NotificationTest(_Base):
 		user = self._user()
 		make_credential(user)
 		drop = make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
 		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
 		self.sent.clear()
@@ -163,7 +163,7 @@ class AdminInterlockTest(_Base):
 		user = self._user()
 		cred = make_credential(user)
 		make_handle(user, passkey_only_login=1)
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		with self.assertRaises(frappe.ValidationError):
 			frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
 		self.assertTrue(frappe.db.exists("WebAuthn Credential", cred.name))
@@ -220,6 +220,6 @@ class ReauthUnderDisableUserPassTest(_Base):
 	def test_reauth_password_refused_for_a_passkey_holder(self):
 		user = self._user()
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.AuthenticationError):
 			confirm.reauth_password(PWD)

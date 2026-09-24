@@ -27,7 +27,7 @@ from passkeys.tests.compat import (
 	flush_settings_cache,
 	is_signed_out_by_frappe,
 )
-from passkeys.tests.factories import make_user
+from passkeys.tests.factories import make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
@@ -55,7 +55,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		for field in (
 			"login_with_passkey",
 			"passkey_rp_id",
@@ -82,7 +82,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		"""Enroll one real credential for ``user`` (real crypto for verify).
 		``uv=False`` registers a ``uv_initialized=0`` credential (the
 		conditional-create-style population)."""
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
 		self._request("/api/method/passkeys.api.registration.begin_registration")
 		begun = registration.begin_registration(flow="explicit")
@@ -128,7 +128,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_full_confirmation_round_trip_mints_grant(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 
 		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
 		self.assertEqual(begun["options"]["userVerification"], "required")
@@ -147,7 +147,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_malformed_credential_envelope_is_rejected_before_consume(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		good = self._assert(auth, begun["options"], sign_count=5)
 		cases = (
@@ -169,7 +169,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		routed through notifications._activity_log, not just a logger line."""
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		# verify_confirmation MINTS the grant (a grant_issued row)...
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
@@ -187,7 +187,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_grant_is_single_use(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
 
@@ -205,7 +205,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(state.GRANT_TTL, 180)
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
 		# the stored key carries a positive TTL <= 180 (never a stored `at` re-derivation)
@@ -219,7 +219,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_grant_does_not_authorize_a_different_action(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("action.A", params={"id": 1})
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
 		self._attach_grant(token)
@@ -229,7 +229,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_grant_does_not_authorize_a_different_payload(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.pay", params={"amount": 100})
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
 		self._attach_grant(token)
@@ -250,7 +250,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 				"payload_hash": session.payload_hash({"x": 1}),
 			},
 		)
-		frappe.set_user(user)
+		sign_in(user)
 		self._request("/api/method/x")
 		self._attach_grant(token)
 		self.assertFalse(session.consume_action_grant(user, "myapp.act", {"x": 1}))
@@ -262,7 +262,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_server_computes_payload_hash_from_raw_params(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		# the client sends RAW params; the fingerprint is the SERVER's canonical hash
 		begun = self._begin("myapp.pay", params={"b": 2, "a": 1})
 		self.assertEqual(begun["payload_fingerprint"], session.payload_hash({"a": 1, "b": 2}))
@@ -274,14 +274,14 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_params_and_payload_hash_are_mutually_exclusive(self):
 		user = self._user()
 		self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.ValidationError):
 			self._begin("myapp.pay", params={"a": 1}, payload_hash="deadbeef")
 
 	def test_confirmation_params_must_be_a_mapping(self):
 		user = self._user()
 		self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		for label, malformed in (
 			("invalid JSON", "{"),
 			("encoded null", "null"),
@@ -301,7 +301,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# bound to that bogus hash — recomputation from real kwargs refuses it.
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.pay", payload_hash="0" * 64)  # verbatim echo (a lie)
 		token = self._verify(begun["state_id"], self._assert(auth, begun["options"]))["grant"]
 		self._attach_grant(token)
@@ -315,7 +315,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_uv_absent_assertion_refused(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		no_uv = self._assert(auth, begun["options"], uv=False)
 		with self.assertRaises(frappe.AuthenticationError):
@@ -328,7 +328,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		ceremony fails terminally and no grant is minted."""
 		user = self._user()
 		auth = self._enroll(user, seed="uvgate-a", uv=False)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)  # no password accompanied this session
 
 		begun = self._begin("myapp.act", params={"x": 1})
@@ -349,7 +349,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		``uv_initialized`` flips false→true."""
 		user = self._user()
 		auth = self._enroll(user, seed="uvgate-b", uv=False)
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
 
 		begun = self._begin("myapp.act", params={"x": 1})
@@ -361,7 +361,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_confirm_ceremony_is_single_use(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		credential = self._assert(auth, begun["options"])
 		self._verify(begun["state_id"], credential)
@@ -372,12 +372,12 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_verify_bound_to_originating_session(self):
 		user_a = self._user()
 		auth = self._enroll(user_a)
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		begun = self._begin("myapp.act", params={"x": 1})
 		credential = self._assert(auth, begun["options"])
 		# a different user cannot spend user_a's ceremony
 		user_b = self._user()
-		frappe.set_user(user_b)
+		sign_in(user_b)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._verify(begun["state_id"], credential)
 
@@ -388,7 +388,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_passkey_protected_refused_without_grant(self):
 		user = self._user()
 		self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(action="myapp.ship", bind_params=["order"])
 		def ship(order=None):
@@ -406,7 +406,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_decorator_exposes_only_explicit_safe_display_metadata(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(
 			action="myapp.refund",
@@ -429,7 +429,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_action_policy_survives_a_cross_worker_round_trip(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		action = f"myapp.refund.{frappe.generate_hash(length=8)}"
 		key = frappe.cache.make_key(confirm._action_policy_key(action))
 		self.addCleanup(frappe.cache.delete, key)
@@ -462,7 +462,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_unknown_action_policy_fails_closed_without_password_fallback(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		action = f"unknown.action.{frappe.generate_hash(length=8)}"
 		begun = self._begin(action, params={})
 		self.assertNotIn("password", begun["methods"])
@@ -484,7 +484,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_bind_params_resolve_through_kwargs(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(action="myapp.pay", bind_params=["amount"])
 		def pay(**kwargs):
@@ -514,7 +514,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def _assert_whole_mapping_is_bound(self, fn, action, extra):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		pay = confirm.passkey_protected(action=action, bind_params=["kwargs"])(fn)
 
 		fingerprints = {}
@@ -539,7 +539,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_ambiguous_or_unbindable_call_is_refused_before_consume(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(action="myapp.pay-ambiguous", bind_params=["context"])
 		def pay(context=None, /, **kwargs):
@@ -570,7 +570,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_absent_kwargs_key_and_explicit_none_do_not_share_a_grant(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		action = "myapp.pay-presence"
 
 		@confirm.passkey_protected(action=action, bind_params=["amount"])
@@ -596,7 +596,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_variadic_name_passed_as_a_keyword_is_refused_before_consume(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		action = "myapp.pay-variadic"
 
 		@confirm.passkey_protected(action=action, bind_params=["args", "kwargs"])
@@ -611,7 +611,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_call_missing_a_required_argument_leaves_the_grant_usable(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		action = "myapp.pay-kwonly"
 
 		@confirm.passkey_protected(action=action, bind_params=["amount"])
@@ -626,7 +626,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_unbindable_call_is_refused_before_consume_without_bind_params(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		action = "myapp.ship-unbound"
 
 		@confirm.passkey_protected(action=action)
@@ -641,7 +641,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_passkey_protected_succeeds_and_consumes_grant(self):
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(action="myapp.ship", bind_params=["order"])
 		def ship(order=None):
@@ -668,7 +668,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_wrong_reauth_password_keeps_the_session_and_a_retry_succeeds(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		with self.assertRaises(CeremonyFailed) as ctx:
 			self._reauth("not-" + PWD)
@@ -680,7 +680,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_reauth_no_action_seeds_sudo_window(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		out = self._reauth(PWD)
 		self.assertTrue(out.get("seeded"))
@@ -688,7 +688,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_reauth_with_action_mints_password_grant_for_that_action_only(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 
 		@confirm.passkey_protected(
 			action="myapp.refund", bind_params=["amount"], allow_password_fallback=True
@@ -718,7 +718,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_manage_confirmation_passkey_door_seeds_sudo_window(self):
 		user = self._user()
 		auth = self._enroll(user)  # _enroll leaves a password-seeded window
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)  # go cold
 		self.assertFalse(session.has_management_sudo(user))
 		begun = self._begin(session.MANAGE_ACTION)
@@ -728,7 +728,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_manage_confirmation_password_door_seeds_sudo_window(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		self.assertFalse(session.has_management_sudo(user))
 		out = self._reauth(PWD, action=session.MANAGE_ACTION, payload_fingerprint=session.payload_hash({}))
@@ -739,7 +739,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# scoping: a third-party action confirmation must NOT mint management sudo.
 		user = self._user()
 		auth = self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
 		self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True))
@@ -747,7 +747,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_reauth_wrong_password_refused_and_tracked(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(state.clear_password_failures, user)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._reauth("wrong-password")
@@ -760,7 +760,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# reauth_password will not mint a password grant for an action whose
 		# policy is allow_password_fallback=False (set_passkey_only_login).
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.AuthenticationError):
 			self._reauth(
 				PWD,
@@ -772,7 +772,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# even a hand-crafted password-method grant bound perfectly to the action
 		# is refused by the strict consumer (method must be "passkey").
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		token = frappe.generate_hash()
 		state.store_grant(
 			hashlib.sha256(token.encode()).hexdigest(),
@@ -794,7 +794,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_begin_confirmation_offers_no_password_for_passkey_only_action(self):
 		user = self._user()
 		self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin(session.SET_PASSKEY_ONLY_ACTION, params={"enabled": True})
 		self.assertIn("passkey", begun["methods"])
 		self.assertNotIn("password", begun["methods"])  # never a password door
@@ -803,7 +803,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_begin_confirmation_hides_password_when_reauth_refuses_it(self):
 		user = self._user(with_password=True)
 		self._enroll(user, seed="password-method-eligibility")
-		frappe.set_user(user)
+		sign_in(user)
 		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 
 		def set_disable_user_pass_login(value):
@@ -837,7 +837,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		default because their store_ceremony TTL is the matching 300 s CEREMONY_TTL."""
 		user = self._user()
 		self._enroll(user)
-		frappe.set_user(user)
+		sign_in(user)
 		begun = self._begin("myapp.act", params={"x": 1})
 		self.assertEqual(begun["options"]["timeout"], 180000)
 		self.assertEqual(begun["options"]["timeout"], state.CONFIRM_CEREMONY_TTL * 1000)
@@ -853,7 +853,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		on that identical sid succeeds, isolating the refusal to the user check."""
 		user_a = self._user()
 		user_b = self._user()
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		self._request("/api/method/x")
 		sid = self.sid  # the one live sid both the grants and the consumes see
 
@@ -893,7 +893,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		a second consume of the same token failing even with allow_password_fallback=
 		True (which would accept a LIVE password grant) — the token is gone."""
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self._request("/api/method/x")
 		token = frappe.generate_hash()
 		state.store_grant(
@@ -931,7 +931,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		CORRECT password, never a password-oracle read. (test_state pins the counter's
 		climb; this pins endpoint enforcement.)"""
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(state.clear_password_failures, user)
 		for _ in range(state.PASSWORD_FAILURE_LIMIT):
 			state.claim_password_attempt(user)
@@ -946,7 +946,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_reauth_password_allows_limit_then_throttles_limit_plus_one(self):
 		user = self._user(with_password=True)
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(state.clear_password_failures, user)
 		for _ in range(state.PASSWORD_FAILURE_LIMIT - 1):
 			state.claim_password_attempt(user)

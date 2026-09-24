@@ -15,7 +15,7 @@ from passkeys import session, state
 from passkeys.api import credentials
 from passkeys.passkey import PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
-from passkeys.tests.factories import make_credential, make_handle, make_user
+from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
 class CredentialManagementTest(IntegrationTestCase):
@@ -26,7 +26,7 @@ class CredentialManagementTest(IntegrationTestCase):
 
 	@property
 	def sid(self) -> str:
-		# frappe.set_user() sets session.sid = username; read it live.
+		# sign_in() mints a fresh sid; read it live.
 		return frappe.session.sid
 
 	def _user(self) -> str:
@@ -58,7 +58,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user_a, user_b = self._user(), self._user()
 		cred_a = make_credential(user_a, label="A key")
 		cred_b = make_credential(user_b, label="B key")
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		names = [row["name"] for row in credentials.list_credentials()["credentials"]]
 		self.assertIn(cred_a.name, names)
 		self.assertNotIn(cred_b.name, names)
@@ -71,7 +71,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		known = make_credential(user, label="mapped", aaguid="ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4")
 		unknown = make_credential(user, label="unmapped", aaguid="11111111-2222-3333-4444-555555555555")
 		bare = make_credential(user, label="no aaguid")
-		frappe.set_user(user)
+		sign_in(user)
 		by_name = {row["name"]: row for row in credentials.list_credentials()["credentials"]}
 		self.assertEqual(by_name[known.name]["provider"], "Google Password Manager")
 		self.assertIsNone(by_name[unknown.name]["provider"])
@@ -82,7 +82,7 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_rename_happy_path(self):
 		user = self._user()
 		cred = make_credential(user, label="Old")
-		frappe.set_user(user)
+		sign_in(user)
 		result = credentials.rename_credential(cred.name, "My Laptop")
 		self.assertEqual(result["label"], "My Laptop")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", cred.name, "label"), "My Laptop")
@@ -90,14 +90,14 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_rename_rejects_empty_label(self):
 		user = self._user()
 		cred = make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.ValidationError):
 			credentials.rename_credential(cred.name, "   ")
 
 	def test_rename_rejects_non_string_label(self):
 		user = self._user()
 		cred = make_credential(user, label="Original")
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.exceptions.FrappeTypeError):
 			credentials.rename_credential(cred.name, {"name": "Laptop"})
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", cred.name, "label"), "Original")
@@ -105,28 +105,28 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_rename_sanitizes_label(self):
 		user = self._user()
 		cred = make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		credentials.rename_credential(cred.name, "<b>Phone</b>")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", cred.name, "label"), "Phone")
 
 	def test_rename_caps_label(self):
 		user = self._user()
 		cred = make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		credentials.rename_credential(cred.name, "x" * 200)
 		self.assertEqual(len(frappe.db.get_value("WebAuthn Credential", cred.name, "label")), 140)
 
 	def test_rename_rejects_empty_after_sanitize(self):
 		user = self._user()
 		cred = make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.ValidationError):
 			credentials.rename_credential(cred.name, "<b></b>")
 
 	def test_rename_does_not_clobber_concurrent_auth_state(self):
 		user = self._user()
 		cred = make_credential(user, label="Old", sign_count=1)
-		frappe.set_user(user)
+		sign_in(user)
 		real_own_credential = credentials._own_credential
 
 		def load_then_authenticate(owner, name):
@@ -150,13 +150,13 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_rename_cross_user_is_uniform_not_found(self):
 		user_a, user_b = self._user(), self._user()
 		cred_b = make_credential(user_b)
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		with self.assertRaises(frappe.DoesNotExistError):
 			credentials.rename_credential(cred_b.name, "hijack")
 
 	def test_rename_missing_name_is_uniform_not_found(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.DoesNotExistError):
 			credentials.rename_credential("nonexistent-credential", "x")
 
@@ -165,7 +165,7 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_delete_requires_sudo_window(self):
 		user = self._user()
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		with self.assertRaises(PasskeyConfirmationRequired):
 			credentials.delete_credential(make_credential(user).name)
@@ -174,7 +174,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		keep = make_credential(user, label="keep")
 		drop = make_credential(user, label="drop")
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user)
 		credentials.delete_credential(drop.name)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", drop.name))
@@ -183,7 +183,7 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_delete_cross_user_is_uniform_not_found(self):
 		user_a, user_b = self._user(), self._user()
 		cred_b = make_credential(user_b)
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		self._seed_sudo(user_a)
 		with self.assertRaises(frappe.DoesNotExistError):
 			credentials.delete_credential(cred_b.name)
@@ -194,7 +194,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		only = make_credential(user)
 		make_handle(user, passkey_only_login=1)  # handle floor allows: 1 enabled credential
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user)
 		with self.assertRaises(frappe.ValidationError):
 			credentials.delete_credential(only.name)
@@ -205,7 +205,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		make_credential(user, label="one")
 		two = make_credential(user, label="two")
 		make_handle(user, passkey_only_login=1)
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user)
 		credentials.delete_credential(two.name)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", two.name))
@@ -216,7 +216,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user)
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(PasskeyConfirmationRequired):
 			credentials.set_passkey_only_login(1)
 		# passkey-grade only — no password / sudo fallback is offered
@@ -226,7 +226,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user)
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		# a password-seeded sudo window must NOT satisfy the flag toggle
 		self._seed_sudo(user, seeded_by="password")
 		with self.assertRaises(PasskeyConfirmationRequired):
@@ -235,7 +235,7 @@ class CredentialManagementTest(IntegrationTestCase):
 	def test_set_passkey_only_enable_requires_two_passkeys(self):
 		user = self._user()
 		make_credential(user)  # only one
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		with self.assertRaises(frappe.ValidationError):
 			credentials.set_passkey_only_login(1)
@@ -247,7 +247,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user, enabled=0)
 		make_handle(user)
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		with self.assertRaises(frappe.ValidationError):
 			credentials.set_passkey_only_login(1)
@@ -258,7 +258,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		make_credential(user)
 		make_credential(user)
 		make_handle(user)  # registration mints the handle; the flag lives on it
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		result = credentials.set_passkey_only_login(1)
 		self.assertEqual(result["passkey_only_login"], 1)
@@ -267,7 +267,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user)
 		make_handle(user, passkey_only_login=1)
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": False})
 		result = credentials.set_passkey_only_login(0)
 		self.assertEqual(result["passkey_only_login"], 0)
@@ -283,7 +283,7 @@ class CredentialManagementTest(IntegrationTestCase):
 			make_credential(user)
 			make_credential(user)  # ≥2 enabled (the enable-direction floor)
 			make_handle(user, passkey_only_login=(0 if enabled else 1))
-			frappe.set_user(user)
+			sign_in(user)
 			frappe.local.form_dict = frappe._dict()
 			frappe.local.response = frappe._dict()
 
@@ -314,7 +314,7 @@ class CredentialManagementTest(IntegrationTestCase):
 
 	def test_set_passkey_only_rate_limit_raises_429(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		frappe.local.form_dict = frappe._dict()
 		counter = f"{state.RATE_LIMIT_PREFIX}set_passkey_only_login:{user}"
 		self.addCleanup(state.clear_counter, counter)
@@ -332,7 +332,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user)
 		make_handle(user, passkey_only_login=0)
-		frappe.set_user(user)
+		sign_in(user)
 		self.assertEqual(credentials.list_credentials()["passkey_only_login"], 0)
 		frappe.db.set_value("WebAuthn User Handle", {"user": user}, "passkey_only_login", 1)
 		self.assertEqual(credentials.list_credentials()["passkey_only_login"], 1)
@@ -343,11 +343,11 @@ class CredentialManagementTest(IntegrationTestCase):
 		user_a, user_b = self._user(), self._user()
 		make_credential(user_a)
 		make_credential(user_b)
-		frappe.set_user(user_a)
+		sign_in(user_a)
 		for _ in range(60):  # list_credentials is 60/min/user
 			credentials.list_credentials()
 		with self.assertRaises(frappe.TooManyRequestsError):
 			credentials.list_credentials()
 		# a different user has their own counter — unaffected
-		frappe.set_user(user_b)
+		sign_in(user_b)
 		self.assertIn("credentials", credentials.list_credentials())

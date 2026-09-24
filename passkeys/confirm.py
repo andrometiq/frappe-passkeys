@@ -522,7 +522,7 @@ def verify_confirmation(state_id: str, credential: object):
 	# ``passkeys.manage``: a third-party action confirmation never mints a
 	# management sudo window (that would be a privilege leak).
 	if record.get("action") == session.MANAGE_ACTION:
-		_seed_management_window(user, "passkey")
+		session.set_window(user, "passkey")
 	return {"grant": token}
 
 
@@ -579,30 +579,17 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 		# password-re-auth for management — the refusal above already
 		# blocks a passkey holder under ``disable_user_pass_login``.
 		if action == session.MANAGE_ACTION:
-			_seed_management_window(user, "reauth")
+			session.set_window(user, "reauth")
 		return {"grant": token}
 
 	# bare sudo seed: a full-sudo window seeded by a fresh password re-auth.
-	settings = frappe.get_cached_doc("Passkey Settings")
-	ttl = cint(settings.passkey_reauth_window) or 600
-	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "reauth"}, ttl)
+	session.set_window(user, "reauth")
 	return {"seeded": True}
 
 
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
-
-
-def _seed_management_window(user: str, seeded_by: str) -> None:
-	"""Seed the full-sudo window a completed ``passkeys.manage`` confirmation grants
-	— the window the sudo-gated management endpoints (``delete_credential`` /
-	explicit ``begin_registration``) check. ``seeded_by`` is ``passkey`` (a UV
-	assertion) or ``reauth`` (the password door); both are full-sudo classes,
-	and both mirror the fresh-login / bare-``reauth_password`` seed shape + TTL."""
-	settings = frappe.get_cached_doc("Passkey Settings")
-	ttl = cint(settings.passkey_reauth_window) or 600
-	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": seeded_by}, ttl)
 
 
 def _resolve_payload_hash(params, payload_hash) -> str:

@@ -240,6 +240,24 @@ identifier, so the begin response leaks nothing about which accounts have
 passkeys. Ownership checks on management endpoints return a uniform "not found"
 so one user cannot probe another's credentials.
 
+## API keys and OAuth tokens
+
+Passkeys protect interactive sign-in only. Token-authenticated API requests (an API key and secret
+sent as `Authorization: token …` or `Basic …`, or an OAuth `Bearer` token) are not subject to
+passkey sign-in checks, even when enrollment is enforced, a user is Passkey Only, or password login
+is disabled. Frappe's own two-factor authentication behaves the same way. Treat API keys as
+privileged credentials: issue them sparingly, rotate them, and revoke them when they are no longer
+needed.
+
+Passkey management and confirmation require a signed-in browser session. A token-authenticated
+request gets a `BrowserSessionRequired` (403) refusal from every signed-in passkey endpoint
+(registration, credential list, rename and delete, the passkey-only switch, password re-auth, and
+the confirmation ceremony) and from every `@passkey_protected` action. A token caller can therefore
+never open a sudo window or obtain or spend a confirmation grant, even with the user's password.
+The server recognizes such a request by its session: core binds a token caller with
+`frappe.set_user`, which creates no session and sets the session id to the user name, whereas a
+real sign-in gets a random session id.
+
 ## What the app trusts
 
 - **The deployment terminates HTTPS at the public host and forwards the real

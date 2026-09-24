@@ -27,7 +27,7 @@ from passkeys.tests.compat import (
 	arrange_clean_login_policy,
 	flush_settings_cache,
 )
-from passkeys.tests.factories import make_user
+from passkeys.tests.factories import make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
@@ -60,7 +60,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# and commit, so nothing leaks into the bench or trips the global unique
 		# index on a later test/module (registration_api reuses seed "primary").
 		super().tearDown()
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
@@ -68,7 +68,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		frappe.db.commit()  # must survive past the runner's per-test rollback
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		for field in (
 			"login_with_passkey",
 			"passkey_as_second_factor",
@@ -95,7 +95,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		made per-test-unique: ``login_as`` commits mid-test, so a deterministic
 		credential id would leak across tests/modules and trip the global unique
 		index (`credential_id_sha256`)."""
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(frappe.session.sid, {"user": user, "seeded_by": "password"}, ttl=600)
 		begun = registration.begin_registration(flow="explicit")
 		auth = SoftAuthenticator(seed=f"{seed}-{self._ip}")

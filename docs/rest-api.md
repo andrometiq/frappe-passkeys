@@ -28,8 +28,9 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   `UnknownCredential` (401), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
   (401), `CeremonyFailed` (401 — a signed-in user's registration, confirmation or password
   re-auth was refused; the session stays signed in, so the user can retry),
-  `PasskeyServedByCore` (417 — the app has stood down for native core).
-- **Auth / CSRF**: authenticated endpoints need a logged-in session **and**
+  `BrowserSessionRequired` (403 — the request was authenticated by an API key or OAuth token,
+  not a browser session), `PasskeyServedByCore` (417 — the app has stood down for native core).
+- **Auth / CSRF**: authenticated endpoints need a logged-in browser session **and**
   `X-Frappe-CSRF-Token: <frappe.csrf_token>` on the POST. Guest login endpoints are
   CSRF-exempt but bound to an `HttpOnly` `passkey_binder` cookie the server sets on
   `begin_login` and checks on every `verify_*` — run the whole ceremony in one

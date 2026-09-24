@@ -13,7 +13,7 @@ from frappe.utils import add_to_date, now_datetime
 from passkeys import boot, notifications, passkey
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_handle, make_user
+from passkeys.tests.factories import make_handle, make_user, sign_in
 
 _NUDGE_KNOBS = (
 	"passkey_enrollment_policy",
@@ -38,7 +38,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		for field in _NUDGE_KNOBS:
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
 		flush_settings_cache()
@@ -141,13 +141,13 @@ class NudgeCadenceTest(IntegrationTestCase):
 
 	def test_record_nudge_endpoint_folds_state(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		result = passkey.record_nudge("shown")
 		self.assertEqual(result["nudge_state"]["declines"], 1)
 
 	def test_record_nudge_rejects_unknown_event(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		with self.assertRaises(frappe.ValidationError):
 			passkey.record_nudge("bogus")
 

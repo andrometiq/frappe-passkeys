@@ -12,7 +12,7 @@ import frappe
 from passkeys import boot, passkey, state
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_handle, make_user
+from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 RP_ID = "example.com"
 
@@ -35,7 +35,7 @@ class BootInfoTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		for field in (
 			"passkey_rp_id",
 			"passkey_origins",
@@ -61,7 +61,7 @@ class BootInfoTest(IntegrationTestCase):
 	def test_bootinfo_shape_for_authed_user(self):
 		user = self._user()
 		make_credential(user, label="k")
-		frappe.set_user(user)
+		sign_in(user)
 		info = frappe._dict()
 		boot.extend_bootinfo(bootinfo=info)
 		pk = info.get("passkeys")
@@ -97,14 +97,14 @@ class BootInfoTest(IntegrationTestCase):
 		user = self._user()
 		make_credential(user, label="k")
 		make_handle(user, passkey_only_login=1)
-		frappe.set_user(user)
+		sign_in(user)
 		info = frappe._dict()
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertEqual(info.passkeys["passkey_only_login"], 1)
 
 	def test_bootinfo_nudge_eligible_when_zero_credentials(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		info = frappe._dict()
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertEqual(info.passkeys["credential_count"], 0)
@@ -119,7 +119,7 @@ class BootInfoTest(IntegrationTestCase):
 	def test_system_manager_context_includes_only_compatible_site_origin(self):
 		previous = frappe.conf.get("host_name")
 		self.addCleanup(setattr, frappe.conf, "host_name", previous)
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 
 		frappe.conf.host_name = "https://admin.example.com"
 		info = frappe._dict()
@@ -136,7 +136,7 @@ class BootInfoTest(IntegrationTestCase):
 
 	def test_post_login_method_reflects_the_sudo_window(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
 		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
 		info = frappe._dict()
@@ -150,7 +150,7 @@ class BootInfoTest(IntegrationTestCase):
 		make_handle(user)
 		cred = make_credential(user)
 		make_credential(user, enabled=0)  # disabled — excluded from the signal
-		frappe.set_user(user)
+		sign_in(user)
 		data = passkey.get_signal_data()
 		self.assertEqual(data["rp_id"], RP_ID)
 		self.assertTrue(data["user_handle"])
@@ -162,7 +162,7 @@ class BootInfoTest(IntegrationTestCase):
 		user = self._user()
 		make_handle(user)
 		frappe.db.set_value("User", user, "full_name", "Ada Lovelace")
-		frappe.set_user(user)
+		sign_in(user)
 		data = passkey.get_signal_data()
 		self.assertEqual(data["name"], user)
 		self.assertEqual(data["display_name"], "Ada Lovelace")

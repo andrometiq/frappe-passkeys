@@ -137,6 +137,10 @@ There are no standing role-wide exemptions. Administrators are enforced first by
 default; recovery is an explicit temporary marker-role assignment for one user or
 an operator-only console action when no administrator can reach Desk.
 
+Enforcement, Passkey Only Login and disabled password login govern interactive sign-in only;
+API-key and OAuth-token requests are not subject to them (see
+[API keys and OAuth tokens](security.md#api-keys-and-oauth-tokens)).
+
 ## Security
 
 | Field | Default | What it does / consequence of changing it |

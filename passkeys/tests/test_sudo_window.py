@@ -15,7 +15,7 @@ from frappe.utils import set_request
 from passkeys import session, state
 from passkeys.passkey import PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_credential, make_user, sign_in
 
 
 class SudoWindowTest(IntegrationTestCase):
@@ -27,8 +27,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	@property
 	def sid(self) -> str:
-		# frappe.set_user() sets session.sid = username, so read it live (never
-		# cache it across a set_user).
+		# sign_in() mints a fresh sid; read it live (never cache it across a sign_in).
 		return frappe.session.sid
 
 	def _clear(self, sid):
@@ -50,7 +49,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_passkey_login_seeds_full_sudo(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		set_request(method="POST", path="/api/method/login")
 		frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
 		frappe.local.flags.passkey_login = 1
@@ -62,7 +61,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_password_login_seeds_full_sudo(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		frappe.local.form_dict["cmd"] = "login"  # v15/v16 core login trigger
 		session.seed_sudo_window()
 		window = session.get_window(user, self.sid)
@@ -71,7 +70,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_path_only_password_login_seeds_full_sudo(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		set_request(method="POST", path="/api/method/login")
 		frappe.local.form_dict = frappe._dict()
 		session.seed_sudo_window()
@@ -81,7 +80,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_app_password_login_flag_precedes_diverted_core_path(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		set_request(method="POST", path="/api/method/login")
 		frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
 		frappe.local.flags.passkeys_password_login = 1
@@ -117,7 +116,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_weak_login_seeds_restricted_window(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		# no passkey flag, no cmd=login → email-link/OAuth-class weak login
 		session.seed_sudo_window()
 		window = session.get_window(user, self.sid)
@@ -138,7 +137,7 @@ class SudoWindowTest(IntegrationTestCase):
 		telemetry, and the enabled-credential read never touches the hot login path)."""
 		user = self._user()
 		make_credential(user)  # ≥1 enabled credential
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(flush_settings_cache)
 		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_notify_password_login", 0)
 
@@ -164,7 +163,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_seed_ttl_is_bounded_by_settings_window(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		frappe.local.flags.passkey_login = 1
 		session.seed_sudo_window()
 		window_s = frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window") or 600
@@ -199,7 +198,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_require_management_sudo_raises_typed_error(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(self.sid)
 		with self.assertRaises(PasskeyConfirmationRequired):
 			session.require_management_sudo(user)
@@ -226,7 +225,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_passkey_grant_consumed_once(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		params = {"enabled": True}
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, params)
 		self.assertTrue(session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, params))
@@ -237,7 +236,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_password_minted_grant_refused(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		params = {"enabled": True}
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, params, method="password")
 		# a password-minted grant never satisfies the passkey-only gate
@@ -245,7 +244,7 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def test_grant_payload_and_action_are_bound(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		# wrong payload (enable vs disable) is rejected
 		self.assertFalse(

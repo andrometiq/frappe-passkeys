@@ -35,7 +35,7 @@ from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import 
 	lock_passkey_mode_floor,
 )
 from passkeys.tests.compat import IntegrationTestCase, arrange_saveable_system_settings
-from passkeys.tests.factories import make_credential, make_handle, make_user
+from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
 class _SweptBase(IntegrationTestCase):
@@ -58,7 +58,7 @@ class _SweptBase(IntegrationTestCase):
 
 	def tearDown(self):
 		super().tearDown()
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
@@ -177,7 +177,7 @@ class HandleLockSerializationTest(_SweptBase):
 				)
 				self.assertEqual(cursor.rowcount, 1)
 
-			frappe.set_user(user)
+			sign_in(user)
 			state.set_sudo_window(
 				frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600
 			)
@@ -281,7 +281,7 @@ class LockingReadTest(_SweptBase):
 		make_credential(user)
 		drop = make_credential(user)
 		make_handle(user)
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "password"}, ttl=600)
 		self.captured.clear()
 		credentials.delete_credential(drop.name)
@@ -304,7 +304,7 @@ class LockingReadTest(_SweptBase):
 		make_credential(user)
 		make_credential(user)
 		make_handle(user)
-		frappe.set_user(user)
+		sign_in(user)
 		self._authorize_toggle(user)
 		self.captured.clear()
 		credentials.set_passkey_only_login(1)
@@ -343,7 +343,7 @@ class LockingReadTest(_SweptBase):
 		make_handle(user)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
-		frappe.set_user(user)
+		sign_in(user)
 		self._authorize_toggle(user)
 		with self.assertRaises(frappe.ValidationError):
 			credentials.set_passkey_only_login(1)

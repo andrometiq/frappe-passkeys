@@ -20,6 +20,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Explicit action labels and safe parameter summaries for passkey confirmation dialogs.
 - A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps
   the user signed in, so they can retry.
+- Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a
+  signed-in browser session; a request authenticated by an API key or OAuth token is refused with
+  `BrowserSessionRequired` (403), so it can never open a sudo window or obtain a confirmation grant.
+  Token-authenticated API requests are not subject to passkey sign-in checks, as with Frappe's
+  two-factor authentication.
 - Server-side format checks for the Android fingerprint, iOS Team ID and iOS Bundle ID fields.
 - Shared, site-scoped action policy publication for deterministic confirmation across workers.
 - Pinned-input release CI, data-bearing lifecycle checks, JavaScript unit gates, secret scanning,

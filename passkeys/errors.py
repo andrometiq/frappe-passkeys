@@ -35,6 +35,11 @@ class CeremonyFailed(frappe.AuthenticationError):
 	``AuthenticationError`` class only, which would sign the user out."""
 
 
+class BrowserSessionRequired(frappe.PermissionError):
+	"""A passkey management, confirmation or re-auth call arrived without a signed-in
+	browser session (API key, Basic or OAuth bearer token)."""
+
+
 class PasskeyServedByCore(frappe.ValidationError):
 	"""Every app endpoint refuses when core serves passkeys natively."""
 

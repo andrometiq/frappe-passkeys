@@ -33,7 +33,7 @@ from passkeys import boot, session, state
 from passkeys.api import registration
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_resolved_rp_id
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
 ORIGIN = "https://example.com"
@@ -109,7 +109,7 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		# Faithful restore (never `or 0` — that writes a literal "0" into the text rp/origin fields).
 		for field in ("login_with_passkey", "passkey_rp_id", "passkey_origins", "passkey_max_per_user"):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
@@ -130,7 +130,7 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 	def test_begin_registration_allows_below_cap_refuses_at_cap(self):
 		self._set_cap(2)
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(frappe.session.sid, {"user": user, "seeded_by": "password"}, ttl=600)
 
 		# one existing credential (cap-1) — the ceremony still begins
@@ -163,7 +163,7 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		frappe.db.set_single_value("Passkey Settings", "passkey_reauth_window", self._snapshot or 600)
 		flush_settings_cache()
 		frappe.local.flags.pop("passkey_login", None)
@@ -181,7 +181,7 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 		return user
 
 	def _seed(self, user):
-		frappe.set_user(user)
+		sign_in(user)
 		frappe.local.flags.passkey_login = 1
 		session.seed_sudo_window()
 		frappe.local.flags.pop("passkey_login", None)
@@ -251,7 +251,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		# Faithful restore (never `or 0` — that coerces a blank Select/int into a literal "0").
 		for field in (
 			"passkey_enrollment_policy",
@@ -345,7 +345,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		doc = frappe.get_doc("Passkey Settings")
 		for field in (
 			"passkey_rp_id",

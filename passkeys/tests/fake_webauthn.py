@@ -40,7 +40,7 @@ import frappe
 from frappe.auth import CookieManager
 from frappe.utils import cint, set_request
 
-from passkeys import passkey, state
+from passkeys import passkey, session, state
 from passkeys.api import credentials, registration
 from passkeys.tests.compat import flush_settings_cache
 from passkeys.tests.factories import make_user
@@ -186,18 +186,25 @@ def _register_ceremony(seed, alg, rp_id, origin, label, uv) -> dict:
 	user = frappe.session.user
 	if user in ("Guest", ""):
 		frappe.throw("fake_webauthn registration needs an authenticated session user")
-	# A full sudo window is the registration gate — stand in for a real re-auth.
-	state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
-	begun = registration.begin_registration(flow="explicit")
-	auth = SoftAuthenticator(alg=alg, seed=seed)
-	credential = auth.registration(
-		challenge_b64=begun["options"]["challenge"],
-		rp_id=rp_id,
-		origin=origin,
-		uv=uv,
-		credprops_rk=True,
-	)
-	result = registration.verify_registration(begun["state_id"], credential, label)
+	# Registration needs a browser session with a full sudo window: run it on a throwaway
+	# sid (a `set_user` sid equals the user and is refused) and drop the window after.
+	prior_sid = frappe.session.sid
+	frappe.session.sid = frappe.generate_hash()
+	try:
+		session.set_window(user, "password")
+		begun = registration.begin_registration(flow="explicit")
+		auth = SoftAuthenticator(alg=alg, seed=seed)
+		credential = auth.registration(
+			challenge_b64=begun["options"]["challenge"],
+			rp_id=rp_id,
+			origin=origin,
+			uv=uv,
+			credprops_rk=True,
+		)
+		result = registration.verify_registration(begun["state_id"], credential, label)
+	finally:
+		state.clear_sudo_window(frappe.session.sid)
+		frappe.session.sid = prior_sid
 	handle = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle")
 	return {
 		"name": result["name"],

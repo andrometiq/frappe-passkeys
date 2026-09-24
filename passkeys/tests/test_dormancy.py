@@ -22,7 +22,7 @@ from passkeys.api import credentials, registration
 from passkeys.passkey import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_handle, make_user
+from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
 def _core_native():
@@ -196,7 +196,7 @@ class DormantHooksTest(IntegrationTestCase):
 
 	def test_seed_sudo_window_writes_nothing(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
 		# control: a normal login seeds a window
 		session.seed_sudo_window(login_manager=_LM(user))
@@ -209,7 +209,7 @@ class DormantHooksTest(IntegrationTestCase):
 
 	def test_clear_sudo_window_is_a_noop(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
 		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
 		# dormant: the window is left intact (core owns logout teardown)
@@ -220,7 +220,7 @@ class DormantHooksTest(IntegrationTestCase):
 	def test_extend_bootinfo_publishes_nothing(self):
 		user = self._user()
 		make_credential(user)
-		frappe.set_user(user)
+		sign_in(user)
 		info = frappe._dict()
 		with _core_native():
 			boot.extend_bootinfo(bootinfo=info)
@@ -259,7 +259,7 @@ class DormantHooksTest(IntegrationTestCase):
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
 		flush_settings_cache()
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		# control: with a mode on, the shim delivers the portal bundle to a portal page
 		ctrl = frappe._dict(path="app/dashboard", boot=frappe._dict())
 		portal_nudge.website_context(ctrl)

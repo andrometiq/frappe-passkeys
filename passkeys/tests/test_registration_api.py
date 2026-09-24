@@ -13,7 +13,7 @@ from passkeys.api import registration
 from passkeys.errors import CeremonyFailed
 from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache, is_signed_out_by_frappe
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_credential, make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
 
 RP_ID = "example.com"
@@ -53,7 +53,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		state.set_sudo_window(frappe.session.sid, {"user": user, "seeded_by": seeded_by}, ttl=600)
 
 	def _register(self, user, seed="primary", seeded_by="password", flow="explicit"):
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user, seeded_by)
 		begun = registration.begin_registration(flow=flow)
 		auth = SoftAuthenticator(seed=seed)
@@ -95,12 +95,14 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 	def test_guest_verify_does_not_burn_authenticated_users_ceremony(self):
 		user = self._user()
 		begun, credential, _auth = self._register(user, seed="guest-does-not-burn")
+		sid = frappe.session.sid
 
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
 			registration.verify_registration(begun["state_id"], credential)
 
 		frappe.set_user(user)
+		frappe.session.sid = sid  # back in the session that began the ceremony
 		result = registration.verify_registration(begun["state_id"], credential)
 		self.assertTrue(result["name"])
 
@@ -119,7 +121,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 	def test_impersonated_call_does_not_spend_the_users_rate_limit(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		frappe.session.data.impersonated_by = "Administrator"
 		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
 		for endpoint in ("begin_registration", "verify_registration"):
@@ -264,7 +266,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 	def test_registration_requires_sudo_window(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		state.clear_sudo_window(frappe.session.sid)
 		# a hijacked session with no fresh re-auth cannot mint a passwordless credential
 		with self.assertRaises(PasskeyConfirmationRequired):
@@ -277,7 +279,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			)
 
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user, seeded_by="weak")
 		settings = frappe._dict(
 			login_with_passkey="1",
@@ -288,7 +290,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 	def test_conditional_create_requires_password_seeded_window(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		# a passkey-seeded window is NOT the just-typed-password freshness proof
 		self._seed_sudo(user, seeded_by="passkey")
 		with self.assertRaises(PasskeyConfirmationRequired):
@@ -307,7 +309,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		management-grade (password/passkey/reauth) sudo is then required. A recovery
 		login must never silently mint general enrollment power."""
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		# the allow knob defaults on; pin it explicitly + restore (setUp does not).
 		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
@@ -359,7 +361,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 	def test_weak_bootstrap_race_after_consume_is_terminal(self):
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
 			frappe.db.set_single_value,
@@ -393,7 +395,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		``passkey_allow_first_enrollment_on_weak_login`` is off — the bootstrap is an
 		opt-in allowance, not a default."""
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
 			frappe.db.set_single_value,
@@ -416,7 +418,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
 		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
 		flush_settings_cache()
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user, seeded_by="weak")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
@@ -432,7 +434,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		``discoverable`` must be "Yes" even though ``result.discoverable`` is
 		"Unknown". Before the fix it stored "Unknown"."""
 		user = self._user()
-		frappe.set_user(user)
+		sign_in(user)
 		self._seed_sudo(user, "password")
 		begun = registration.begin_registration(flow="explicit")
 		auth = SoftAuthenticator(seed="s11-no-credprops")

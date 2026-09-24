@@ -32,7 +32,7 @@ from passkeys.tests.compat import (
 	arrange_saveable_system_settings,
 	flush_settings_cache,
 )
-from passkeys.tests.factories import make_user
+from passkeys.tests.factories import make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
 RP_ID = "example.com"
@@ -76,7 +76,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# leg 2 mints a session via login_as, which COMMITS mid-test — sweep the
 		# committed rows AFTER the runner's rollback (mirrors test_login_api).
 		super().tearDown()
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
@@ -111,7 +111,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		return name
 
 	def _restore(self):
-		frappe.set_user("Administrator")
+		sign_in("Administrator")
 		self._set_system_2fa(
 			enabled=self._ss_2fa or 0,
 			method=self._ss_method or "OTP App",
@@ -145,7 +145,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		return user
 
 	def _enroll(self, user, seed="sf") -> SoftAuthenticator:
-		frappe.set_user(user)
+		sign_in(user)
 		state.set_sudo_window(frappe.session.sid, {"user": user, "seeded_by": "password"}, ttl=600)
 		begun = registration.begin_registration(flow="explicit")
 		auth = SoftAuthenticator(seed=f"{seed}-{self._ip}")

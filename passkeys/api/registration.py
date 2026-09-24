@@ -202,8 +202,8 @@ def _require_any_login_mode(settings) -> None:
 
 
 def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
-	window = state.get_sudo_window(frappe.session.sid)
-	if not window or window.get("user") != user:
+	window = session.get_window(user)
+	if not window:
 		session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
 	seeded_by = window.get("seeded_by")
 

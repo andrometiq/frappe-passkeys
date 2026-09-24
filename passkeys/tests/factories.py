@@ -10,6 +10,14 @@ import secrets
 import frappe
 
 
+def sign_in(user: str) -> None:
+	"""Act as ``user`` in a browser session. ``frappe.set_user`` alone leaves ``sid`` equal
+	to the user — the shape of a token-authenticated request, which passkey management
+	refuses — so give the session a fresh random sid, as a real login does."""
+	frappe.set_user(user)
+	frappe.session.sid = frappe.generate_hash()
+
+
 def make_user() -> str:
 	email = f"passkey-test-{frappe.generate_hash(length=8)}@example.com"
 	user = frappe.get_doc(
