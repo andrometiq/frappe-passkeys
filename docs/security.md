@@ -159,10 +159,8 @@ retries or multiple tabs can consume at most one grace defer for that session.
 
 **Uninstall exports fail closed.** Credential export schema v2 is site-bound and authenticated with
 HMAC-SHA256 derived from the site's `encryption_key`, written atomically at mode `0600`. Import
-rejects another site or a bad signature. Its default requires empty passkey tables;
-`allow_existing=True` is an explicit reviewed merge with row-level rejection reporting. Unsigned
-schema-v1 files from pre-v2 app builds are rejected unless an operator reviews their provenance and
-passes `allow_unsigned_legacy=True`; this opt-in does not make the file authenticated.
+rejects another site, a bad signature or an unsigned file. Its default requires empty passkey
+tables; `allow_existing=True` is an explicit reviewed merge with row-level rejection reporting.
 
 **Enrollment cadence is server-owned.** Nudge events and grace deferrals lock the User
 row before reading the current DefaultValue row with a locking read, bypassing cached
@@ -333,12 +331,9 @@ real sign-in gets a random session id.
   by it. Enforce drives adoption; it is the login modes (passkey first-factor /
   second-factor) that decide what actually authenticates a session.
 
-- **The Frappe version floor is enforced at install time only.** The app requires Frappe
-  ≥15.108.0 / ≥16.18.3 (closing CVE-2026-47194, host-header poisoning of magic/passwordless login
-  links) and refuses a fresh install below it, but the check does not re-run on `bench update` /
-  `migrate`. The app's final login veto already covers enrolled users on the modes it protects; the
-  residual exposure is the broader login surface (e.g. email-link login for non-enrolled users), so
-  keep the deployment's Frappe patched operationally, not only at first install.
+- **Frappe itself must be kept patched.** The app declares a minimum Frappe version but does not
+  check it at runtime; core's own login surface (for example email-link login) is only as safe as
+  the deployed Frappe.
 - **Attacker-reachable transitive parsers float without a lockfile.** Client attestation is CBOR-
   decoded (`cbor2`) and attestation certificate chains are ASN.1-parsed (`pyasn1`); both arrive
   transitively via `webauthn` and the repo pins only `webauthn==2.8.0`. A fresh resolve is patched

@@ -114,7 +114,6 @@ lists what to check.
 | **v16** | `version-16` | v16.18.3 and newer |
 | **develop** | `develop` | Integration target for unreleased Frappe; not for production |
 
-The floors exclude Frappe releases affected by CVE-2026-47194, and the install aborts below them.
 Python `>=3.10,<3.15` is required. See [`docs/install.md`](docs/install.md) for the full matrix and
 the reverse-proxy, RP ID, and origin requirements.
 

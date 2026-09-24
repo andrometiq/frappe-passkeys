@@ -30,8 +30,8 @@ doctype_js = {
 
 # Installation
 # ------------
-# Version floor + native-core refusal run before_install: an after_install raise
-# would leave a half-installed, registered app.
+# The native-core refusal runs before_install: an after_install raise would leave a
+# half-installed, registered app.
 before_install = ["passkeys.install.before_install"]
 after_install = ["passkeys.install.after_install"]
 
@@ -41,12 +41,7 @@ before_uninstall = ["passkeys.install.before_uninstall"]
 
 # Migration
 # ---------
-# Remove an obsolete development-build Property Setter, then sync live UI fields.
-after_migrate = [
-	"passkeys.install.cleanup_legacy_registry_property_setter",
-	"passkeys.install.sync_standard_navbar_items",
-	"passkeys.install.sync_user_form_section",
-]
+after_migrate = ["passkeys.install.sync_user_form_section"]
 
 # Website integration: the login bundle on /login and the portal bundle + boot bridge on
 # authenticated portal pages, only when a passkey mode is on. Every website render runs

@@ -1,58 +1,24 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""P1 battery: install/uninstall guards, lifecycle cleanup, and exports."""
+"""Install / uninstall hooks, the native-core handover switch, and credential export / import."""
 
 import json
 import os
 import stat
 import types
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import cint
 
-from passkeys import boot, install
-from passkeys.patches.v17_0 import fold_nudge_flag_into_enrollment_policy as fold_nudge_patch
-from passkeys.patches.v17_0 import remove_role_exemptions as remove_exemptions_patch
-from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
+from passkeys import install
+from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
-class TestVersionFloor(unittest.TestCase):
-	"""Pure unit tests of the floor check against fake versions."""
-
-	def test_below_floor_refused(self):
-		# Per-major-line floors: 15.108.0 / 16.18.3 (CVE-2026-47194). 15.107.0 and the
-		# 16.0.0-16.18.2 window are now refused; a single floor would have let 16.x pass.
-		for version in (
-			"14.99.0",
-			"15.0.0",
-			"15.101.0",
-			"15.106.9",
-			"15.106.9-beta.1",
-			"15.107.0",
-			"16.0.0",
-			"16.18.2",
-		):
-			self.assertRaises(frappe.ValidationError, install.check_frappe_version, version)
-
-	def test_at_and_above_floor_accepted(self):
-		for version in ("15.108.0", "15.113.4", "16.18.3", "16.25.0", "17.0.0-dev", "18.0.0"):
-			install.check_frappe_version(version)  # must not raise
-
-	def test_version_tuple_parsing(self):
-		self.assertEqual(install._version_tuple("15.107.0"), (15, 107, 0))
-		self.assertEqual(install._version_tuple("17.0.0-dev"), (17, 0, 0))
-		self.assertEqual(install._version_tuple("16.25.0+custom"), (16, 25, 0))
-		self.assertEqual(install._version_tuple("16"), (16, 0, 0))
-
-
 class TestInstallGuards(IntegrationTestCase):
-	def test_running_frappe_satisfies_floor(self):
-		install.check_frappe_version()  # must not raise on a supported bench
-
 	def test_fresh_install_onto_native_core_is_refused(self):
 		with patch("passkeys.install.is_core_native", return_value=True):
 			self.assertRaises(frappe.ValidationError, install.before_install)
@@ -68,171 +34,37 @@ class TestInstallGuards(IntegrationTestCase):
 		install.before_install()  # must not raise
 
 
-class TestSettingsDefaults(unittest.TestCase):
-	def test_skips_tab_breaks_when_persisting_declared_defaults(self):
-		doc = Mock()
-		doc.meta.fields = (
-			types.SimpleNamespace(fieldtype="Tab Break", fieldname="settings_tab"),
-			types.SimpleNamespace(fieldtype="Check", fieldname="enabled", default="1"),
-		)
-		doc.flags = types.SimpleNamespace()
-		doc.get.return_value = None
-		with patch.object(install.frappe, "get_doc", return_value=doc):
-			install._ensure_settings_defaults()
-
-		doc.get.assert_called_once_with("enabled")
-		doc.set.assert_called_once_with("enabled", "1")
-		doc.save.assert_called_once_with()
-
-
-class TestFoldNudgeMigration(unittest.TestCase):
-	def _execute(self, *, current=None, legacy=None, defaults=None):
-		defaults = defaults or {}
-
-		def get_value(_doctype, filters, _field, **_kwargs):
-			field = filters["field"]
-			if field == "passkey_enrollment_nudge":
-				return legacy
-			return defaults.get(field)
-
-		with (
-			patch.object(fold_nudge_patch.install, "is_core_native", return_value=False),
-			patch.object(fold_nudge_patch.frappe.db, "get_single_value", return_value=current),
-			patch.object(fold_nudge_patch.frappe.db, "get_value", side_effect=get_value),
-			patch.object(fold_nudge_patch.frappe.db, "set_single_value") as set_single,
-			patch.object(fold_nudge_patch.frappe.db, "delete") as delete,
-		):
-			fold_nudge_patch.execute()
-		return set_single, delete
-
-	def test_legacy_zero_and_one_map_to_off_and_nudge(self):
-		for legacy, expected in (("0", "Off"), ("1", "Nudge")):
-			with self.subTest(legacy=legacy):
-				set_single, _delete = self._execute(current=None, legacy=legacy)
-				set_single.assert_any_call("Passkey Settings", "passkey_enrollment_policy", expected)
-
-	def test_preselected_policy_is_never_overwritten(self):
-		set_single, delete = self._execute(current="Enforce", legacy="1")
-		policy_writes = [
-			call for call in set_single.call_args_list if call.args[1] == "passkey_enrollment_policy"
-		]
-		self.assertEqual(policy_writes, [])
-		delete.assert_called_once_with(
-			"Singles", {"doctype": "Passkey Settings", "field": "passkey_enrollment_nudge"}
+class TestAfterInstall(IntegrationTestCase):
+	def setUp(self):
+		super().setUp()
+		self._stored_settings = frappe.db.sql(
+			"select `field`, `value` from `tabSingles` where `doctype` = 'Passkey Settings'"
 		)
 
-	def test_rerun_with_persisted_values_is_idempotent(self):
-		set_single, delete = self._execute(current="Nudge", defaults=fold_nudge_patch._ENFORCEMENT_DEFAULTS)
-		set_single.assert_not_called()
-		delete.assert_called_once()
-
-
-class TestFoldNudgeMigrationDatabase(IntegrationTestCase):
-	def test_real_legacy_singles_row_is_folded_and_removed(self):
-		frappe.db.delete(
-			"Singles",
-			{
-				"doctype": "Passkey Settings",
-				"field": ["in", ["passkey_enrollment_nudge", "passkey_enrollment_policy"]],
-			},
-		)
-		frappe.db.sql(
-			"""insert into `tabSingles` (`doctype`, `field`, `value`)
-			values (%s, %s, %s)""",
-			("Passkey Settings", "passkey_enrollment_nudge", "1"),
-		)
-
-		with patch.object(fold_nudge_patch.install, "is_core_native", return_value=False):
-			fold_nudge_patch.execute()
-
-		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy"), "Nudge")
-		self.assertFalse(
-			frappe.db.exists(
-				"Singles",
-				{"doctype": "Passkey Settings", "field": "passkey_enrollment_nudge"},
+	def tearDown(self):
+		frappe.db.delete("Singles", {"doctype": "Passkey Settings"})
+		for field, value in self._stored_settings:
+			frappe.db.sql(
+				"insert into `tabSingles` (`doctype`, `field`, `value`) values (%s, %s, %s)",
+				("Passkey Settings", field, value),
 			)
+		flush_settings_cache()
+		install.sync_user_form_section()
+		super().tearDown()
+
+	def test_persists_declared_settings_defaults_and_adds_the_user_form_section(self):
+		frappe.db.delete("Singles", {"doctype": "Passkey Settings"})
+		install._remove_user_form_section()
+		flush_settings_cache()
+
+		install.after_install()
+
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_notify_on_change"), 1)
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy"), "Nudge")
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "login_with_passkey"), 0)
+		self.assertTrue(
+			frappe.db.exists("Custom Field", {"dt": "User", "fieldname": install.USER_FORM_HTML_FIELD})
 		)
-
-
-class TestRemoveRoleExemptionsMigration(IntegrationTestCase):
-	_PRIVILEGED_FIELD = "passkey_enforce_privileged_always"
-
-	def test_deletes_only_obsolete_exemption_rows(self):
-		obsolete = frappe.get_doc(
-			{
-				"doctype": "Passkey Enforcement Role",
-				"parent": "Passkey Settings",
-				"parenttype": "Passkey Settings",
-				"parentfield": "passkey_enforce_exempt_roles",
-				"role": "System Manager",
-			}
-		)
-		obsolete.db_insert()
-		selected = frappe.get_doc(
-			{
-				"doctype": "Passkey Enforcement Role",
-				"parent": "Passkey Settings",
-				"parenttype": "Passkey Settings",
-				"parentfield": "passkey_enforce_roles",
-				"role": "System Manager",
-			}
-		)
-		selected.db_insert()
-
-		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
-			remove_exemptions_patch.execute()
-
-		self.assertFalse(frappe.db.exists("Passkey Enforcement Role", obsolete.name))
-		self.assertTrue(frappe.db.exists("Passkey Enforcement Role", selected.name))
-
-	def test_absent_privileged_default_is_seeded_for_upgraded_site(self):
-		frappe.db.delete(
-			"Singles",
-			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
-		)
-		frappe.db.set_single_value("Passkey Settings", "passkey_enforce_scope", "Selected Roles")
-
-		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
-			remove_exemptions_patch.execute()
-
-		stored = frappe.db.get_value(
-			"Singles",
-			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
-			"value",
-			order_by=None,
-		)
-		self.assertEqual(stored, "1")
-		settings = frappe.get_cached_doc("Passkey Settings")
-		with patch.object(boot.frappe, "get_roles", return_value=["System Manager"]):
-			self.assertTrue(boot._user_in_enforce_scope("manager@example.com", settings))
-
-	def test_explicit_privileged_opt_out_survives_patch(self):
-		frappe.db.set_single_value("Passkey Settings", self._PRIVILEGED_FIELD, 0)
-
-		with patch.object(remove_exemptions_patch.install, "is_core_native", return_value=False):
-			remove_exemptions_patch.execute()
-
-		stored = frappe.db.get_value(
-			"Singles",
-			{"doctype": "Passkey Settings", "field": self._PRIVILEGED_FIELD},
-			"value",
-			order_by=None,
-		)
-		self.assertEqual(stored, "0")
-
-	def test_native_core_short_circuits(self):
-		with (
-			patch.object(remove_exemptions_patch.install, "is_core_native", return_value=True),
-			patch.object(remove_exemptions_patch.frappe.db, "delete") as delete,
-			patch.object(remove_exemptions_patch.frappe.db, "get_value") as get_value,
-			patch.object(remove_exemptions_patch.frappe.db, "set_single_value") as set_single,
-			patch.object(remove_exemptions_patch.frappe, "clear_document_cache") as clear_cache,
-		):
-			remove_exemptions_patch.execute()
-		delete.assert_not_called()
-		get_value.assert_not_called()
-		set_single.assert_not_called()
-		clear_cache.assert_not_called()
 
 
 class TestCoreHandoverCapability(unittest.TestCase):
@@ -321,50 +153,6 @@ class TestUninstallGuards(IntegrationTestCase):
 		install.before_uninstall()
 
 		self.assertFalse(frappe.db.exists("DefaultValue", {"parent": install.DEFAULTS_PARENT}))
-
-
-class TestNavbarCleanup(IntegrationTestCase):
-	"""E1: "My Passkeys" moved from the avatar menu into the User-form "Passkeys"
-	section, so the app no longer declares a standard_navbar_items hook and
-	after_migrate cleans up the previously-synced item on existing sites."""
-
-	def tearDown(self):
-		install._remove_navbar_item()
-		super().tearDown()
-
-	def _add_legacy_item(self):
-		navbar = frappe.get_doc("Navbar Settings")
-		navbar.append(
-			"settings_dropdown",
-			{
-				"item_label": "My Passkeys",
-				"item_type": "Action",
-				"action": install.NAVBAR_ITEM_ACTION,
-				"is_standard": 1,
-			},
-		)
-		navbar.save(ignore_permissions=True)
-
-	def _item_exists(self):
-		return frappe.db.exists(
-			"Navbar Item", {"parent": "Navbar Settings", "action": install.NAVBAR_ITEM_ACTION}
-		)
-
-	def test_app_no_longer_advertises_the_navbar_item(self):
-		items = frappe.get_hooks("standard_navbar_items") or []
-		labels = [it.get("item_label") for it in items if isinstance(it, dict)]
-		self.assertNotIn("My Passkeys", labels)
-
-	def test_after_migrate_removes_a_previously_synced_item(self):
-		self._add_legacy_item()
-		self.assertTrue(self._item_exists())
-		install.sync_standard_navbar_items()
-		self.assertFalse(self._item_exists())
-
-	def test_removal_is_idempotent_when_absent(self):
-		self.assertFalse(self._item_exists())
-		install.sync_standard_navbar_items()  # must not raise
-		self.assertFalse(self._item_exists())
 
 
 class TestCredentialExportImport(IntegrationTestCase):
@@ -514,9 +302,9 @@ class TestCredentialExportImport(IntegrationTestCase):
 			fh.write('{"schema": "not-a-passkeys-export"}')
 		self.assertRaises(frappe.ValidationError, install.import_credentials, path)
 
-	def test_unsigned_legacy_export_requires_explicit_operator_opt_in(self):
+	def test_import_refuses_an_unsigned_version_1_export(self):
 		user = self._make_user()
-		cred = make_credential(user)
+		make_credential(user)
 		make_handle(user)
 		path = install.export_credentials(self._export_path())
 		with open(path) as fh:
@@ -530,11 +318,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 		with self.assertRaises(frappe.ValidationError):
 			install.import_credentials(path, allow_existing=True)
-		summary = install.import_credentials(path, allow_existing=True, allow_unsigned_legacy=True)
-		self.assertEqual(summary["credentials_created"], 1)
-		self.assertTrue(
-			frappe.db.exists("WebAuthn Credential", {"credential_id_sha256": cred.credential_id_sha256})
-		)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
 
 	def _dump(self, data: dict, path: str) -> None:
 		data["counts"] = {
@@ -681,36 +465,6 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": ghost}))
 
 
-class TestLegacyRegistryPropertySetterCleanup(IntegrationTestCase):
-	"""An obsolete development-build customization is removed, never created."""
-
-	def _setter_exists(self):
-		return frappe.db.exists("Property Setter", install._registry_property_setter_filters())
-
-	def tearDown(self):
-		install.cleanup_legacy_registry_property_setter()
-		super().tearDown()
-
-	def test_cleanup_is_idempotent(self):
-		field = frappe.get_meta("System Settings").get_field("two_factor_method")
-		frappe.get_doc(
-			{
-				"doctype": "Property Setter",
-				"doctype_or_field": "DocField",
-				"doc_type": "System Settings",
-				"field_name": "two_factor_method",
-				"property": "options",
-				"property_type": "Text",
-				"value": f"{field.options}\nPasskey",
-				"module": "Passkeys",
-			}
-		).insert(ignore_permissions=True)
-		self.assertTrue(self._setter_exists())
-		install.cleanup_legacy_registry_property_setter()
-		install.cleanup_legacy_registry_property_setter()
-		self.assertFalse(self._setter_exists())
-
-
 class TestUserFormSection(IntegrationTestCase):
 	"""The User-form "Passkeys" section is placed DETERMINISTICALLY via programmatic
 	Custom Fields (Section Break + HTML wrapper) right after the password / security
@@ -741,14 +495,9 @@ class TestUserFormSection(IntegrationTestCase):
 		self.assertEqual(html.fieldtype, "HTML")
 		# the HTML wrapper sits inside the Passkeys section
 		self.assertEqual(html.insert_after, install.USER_FORM_SECTION_FIELD)
-		# the section anchors on a REAL field of the User security/password area
-		self.assertIn(section.insert_after, install._USER_FORM_ANCHOR_CANDIDATES)
+		# the section anchors on a real field of the User password area
+		self.assertEqual(section.insert_after, install.USER_FORM_ANCHOR)
 		self.assertTrue(frappe.get_meta("User").has_field(section.insert_after))
-
-	def test_anchor_is_the_change_password_area_tail(self):
-		# on v15/v16/develop the primary anchor (redirect_url — the last field of the
-		# "Change Password" section) is present, so the section lands right after it.
-		self.assertEqual(install._user_form_anchor(), "redirect_url")
 
 	def test_sync_is_idempotent(self):
 		install.sync_user_form_section()

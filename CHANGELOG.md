@@ -56,7 +56,6 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   cannot silence an installed app.
 - Browser management, confirmation, headless, portal, recovery, and unsupported-device states now
   use the same server-owned contracts.
-- Legacy unsigned credential exports require an explicit, operator-reviewed import opt-in.
 
 ### Fixed
 
@@ -119,11 +118,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   belongs to someone other than the user the ceremony was started for (WebAuthn L3 §7.2).
 - Assertion counters are reclassified under row locks before sessions or grants are minted,
   rejecting duplicate nonzero counter replays.
-- Credential import refuses unsigned files by default, modified or cross-site v2 files,
-  structurally inconsistent rows, and unreviewed live-data merges.
-- Minimum supported Frappe is a per-major-line floor (v15 ≥ 15.108.0, v16 ≥ 16.18.3) that excludes
-  releases exposed to CVE-2026-47194 (host-header poisoning of magic/passwordless login links);
-  enforced by the `before_install` version check.
+- Credential import refuses unsigned, modified or cross-site files, structurally inconsistent
+  rows, and unreviewed live-data merges.
 
 [Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.0...develop
 [15.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.0

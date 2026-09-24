@@ -8,18 +8,17 @@ themselves is in [`configuration.md`](configuration.md).
 
 | Branch | Supported | Why |
 |---|---|---|
-| **v15** | **v15.108.0 and newer** | v15.107.0 first shipped the `pyOpenSSL~=26` / `cryptography>=46` that `webauthn` 2.8.x needs; **15.108.0** additionally closes CVE-2026-47194 (host-header poisoning of magic/passwordless login links → account takeover). On 15.101.0–15.106.x the resolver cannot satisfy `pyOpenSSL>=26`; older v15 cannot run `py_webauthn` 2.x at all. |
-| **v16** | **v16.18.3 and newer** | 16.18.3 closes the same CVE-2026-47194 on the v16 line. Use `version-16`; release CI validates a reviewed, pinned Frappe baseline. Validate the exact Frappe patch level you deploy. |
+| **v15** | **v15.108.0 and newer** | Use `version-15`. |
+| **v16** | **v16.18.3 and newer** | Use `version-16`. |
 | **develop** | Integration target | Pre-release only. Moving branch-tip CI fails visibly on drift but is not a release or production-readiness attestation. |
 
 The app pins `webauthn==2.8.0`; changing that authentication-critical dependency requires the full
 resolver and ceremony matrix. Python `>=3.10,<3.15` is declared. These constraints describe what the
 candidate accepts, not a promise that every future Frappe patch release in the range is compatible.
 
-The floor is declared in four places that must agree: `pyproject.toml`
-(`[tool.bench.frappe-dependencies] frappe = ">=15.108.0,<18.0.0"` — a single coarse
-lower bound), this documentation, a per-major-line `before_install` runtime check
-(≥15.108.0 / ≥16.18.3), and CI.
+`pyproject.toml` declares the Frappe range (`[tool.bench.frappe-dependencies] frappe =
+">=15.108.0,<18.0.0"`). Release CI validates a reviewed, pinned Frappe baseline per branch; validate
+the exact Frappe patch level you deploy.
 
 ## Install
 
@@ -44,27 +43,10 @@ dependency or worker-health monitoring.
 authentication changes until you enable a mode in Passkey Settings — see
 [`configuration.md`](configuration.md).
 
-### The `before_install` guards, and what their failures mean
+### The `before_install` guard
 
-Two checks run in `before_install` (`passkeys/install.py`). This placement is
-deliberate: a `before_install` failure leaves **zero** site state, whereas an
-`after_install` failure would leave a half-installed, registered app that
-re-runs its hooks on every `bench migrate`.
-
-- **Version floor.** If `frappe.__version__` is below the floor for its major
-  line (v15 → 15.108.0, v16 → 16.18.3, newer majors → 15.108.0), the install
-  aborts with:
-
-  > The passkeys app requires Frappe 15.108.0 or newer on this line (found X):
-  > older releases are exposed to CVE-2026-47194 (host-header poisoning of login
-  > links) and lack cryptography>=46.0.0 / pyOpenSSL>=26.0.0.
-
-  This check runs at **install time only** (`before_install`); it does not re-run
-  on `bench update`/`migrate`, so keep the deployment's Frappe at or above the
-  floor as an operational practice, not only at first install.
-
-  Fix: upgrade Frappe (or the whole bench) to a supported version, then retry.
-  The `bench get-app` step is unaffected — only `install-app` aborts.
+`before_install` (`passkeys/install.py`) refuses the install in one case. It runs before install
+so a refusal leaves **zero** site state.
 
 - **Native-module refusal.** If the Frappe tree contains a `frappe.passkey` module, the install aborts
   with:
@@ -143,16 +125,8 @@ the freshly built asset map. (`bench build`'s own Redis invalidation can fail
 silently — if the UI looks stale after an upgrade, run
 `bench --site <site> clear-cache && bench --site <site> clear-website-cache`.)
 
-`bench migrate` runs the app's `after_migrate` hook, which removes an obsolete
-development-build System Settings customization, syncs the User-form passkey section, and
-applies any pending `patches.txt` migrations. The current patches fold a legacy
-site's `passkey_enrollment_nudge` boolean into the `passkey_enrollment_policy`
-adoption ladder, remove legacy role-wide enforcement exemptions, and turn on
-"Always Enforce for Privileged Users" where it was never set. They are idempotent and never
-clobber a choice an administrator has already made. Migration creates no exemption: exempt an
-individual user from the Passkeys section of their User form, or use the console recovery in
-[`recovery.md`](recovery.md). No settings are otherwise changed by an upgrade; enabled modes stay
-enabled.
+`bench migrate` runs the app's `after_migrate` hook, which syncs the User-form passkey section. An
+upgrade changes no settings; enabled modes stay enabled.
 
 Do not promote an upgrade from this command sequence alone: back up the database and private
 files, validate on staging behind your real proxy and origins, and have a tested recovery path — see
@@ -191,8 +165,8 @@ lockout cases, so you cannot strand your users by accident:
   listed users first (WebAuthn User Handle list in Desk, or `bench console` —
   see [`recovery.md`](recovery.md)).
 
-Once the guards pass, uninstall also deletes the app's per-user nudge state and
-obsolete development-build customization, so a later reinstall is a clean slate. Cached challenge /
+Once the guards pass, uninstall also deletes the app's per-user nudge state and the User-form
+passkey section, so a later reinstall is a clean slate. Cached challenge /
 grant / sudo state in Redis expires on its own.
 
 ### Credential export on uninstall
@@ -258,16 +232,6 @@ rows are rejected and reported, and valid rows may still be imported. Signature 
 restored verbatim (never reset to zero), and credentials are restored before handles. On a clean,
 same-site restore under the original RP ID, authenticators users still hold continue to match the
 restored public keys.
-
-App builds before export schema v2 wrote unsigned version-1 files. They remain recoverable, but the
-importer refuses them by default because their integrity cannot be established. After comparing the
-file with the matching site backup and reviewing every user/handle row, opt in explicitly:
-
-```python
-import_credentials("<legacy-version-1-path>", allow_unsigned_legacy=True)
-```
-
-Never use this flag for an untrusted file. Site binding in an unsigned file is only a claim.
 
 **Possible core-handoff input.** The export may be useful as a migration input for a future native
 implementation, but no current core schema or compatible importer is claimed. A future adoption
