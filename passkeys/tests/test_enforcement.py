@@ -160,10 +160,11 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	# ---- scope + exemptions --------------------------------------------
 
-	def test_marker_role_is_per_user_break_glass(self):
+	def test_exemption_is_per_user_break_glass(self):
 		user = self._user()
 		enforcement_admin.set_user_exemption(user, True)
-		self.assertIn(boot.EXEMPT_ROLE, set(frappe.get_roles(user)))
+		self.addCleanup(boot.set_exempt, user, False)
+		self.assertTrue(boot.is_exempt(user))
 		self.assertFalse(self._verdict(user)["in_scope"])
 
 	def test_selected_roles_scope_membership(self):
@@ -478,15 +479,8 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertGreaterEqual(count, 1)  # at least our zero-credential test user
 
 	def test_administrator_scope_uses_assigned_roles_not_every_role(self):
-		# get_roles("Administrator") returns every Role. Once the exempt marker
-		# exists, that used to mark Administrator exempt and in every selected role.
-		enforcement_admin._ensure_exempt_role()
-		self.assertFalse(
-			frappe.db.exists(
-				"Has Role",
-				{"parent": "Administrator", "parenttype": "User", "role": boot.EXEMPT_ROLE},
-			)
-		)
+		# get_roles("Administrator") returns every Role, which used to put Administrator
+		# in every selected role.
 		self.assertTrue(self._verdict("Administrator")["in_scope"])
 		self.assertFalse(enforcement_admin.admin_enforcement_view("Administrator")["exempt"])
 

@@ -247,7 +247,7 @@ carry the per-user counter **and** an additional `System Manager` role gate (the
 settings and enforcement-admin surfaces are admin-only). Three are read-only;
 `set_user_exemption` and `reset_enforcement_grace` are the exceptions — both
 *mutate authorization state* (the first grants or revokes a user's exemption from
-passkey-enrollment enforcement via the dedicated exempt role; the second clears a
+passkey-enrollment enforcement, stored as a per-user app flag; the second clears a
 user's enforcement grace-login state), which is why both carry the tighter
 30 / hour ceiling.
 

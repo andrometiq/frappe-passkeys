@@ -2,8 +2,8 @@
 # License: MIT. See LICENSE
 
 """System-Manager-only enforcement recovery endpoints for the User form's Passkeys
-section: a per-user exemption (the :data:`EXEMPT_ROLE` marker role, created on first use
-and never removed), a grace-counter reset, and the section's read view-model. Folds into
+section: a per-user exemption (a ``__passkeys`` flag, so Role Profile syncs cannot drop it),
+a grace-counter reset, and the section's read view-model. Folds into
 ``frappe/passkey.py`` on the core merge."""
 
 import frappe
@@ -11,7 +11,6 @@ from frappe import _
 from frappe.utils import cint
 
 from passkeys import boot, state
-from passkeys.boot import EXEMPT_ROLE
 from passkeys.errors import refuse_if_core_native
 
 
@@ -37,17 +36,6 @@ def _require_user(user: str) -> str:
 	return user
 
 
-def _ensure_exempt_role() -> None:
-	"""Create :data:`EXEMPT_ROLE` if missing: a pure marker with no desk access, so
-	assigning it never widens a user's access."""
-	if not frappe.db.exists("Role", EXEMPT_ROLE):
-		role = frappe.new_doc("Role")
-		role.role_name = EXEMPT_ROLE
-		role.desk_access = 0
-		role.flags.ignore_permissions = True
-		role.insert()
-
-
 def admin_enforcement_view(user: str) -> dict:
 	"""The user's exemption, grace usage and enforcement scope, as the section paints it."""
 	settings = frappe.get_cached_doc("Passkey Settings")
@@ -58,7 +46,7 @@ def admin_enforcement_view(user: str) -> dict:
 		"effective": verdict["effective"],
 		"enforcing": boot.is_enforcing(settings),
 		"in_scope": verdict["in_scope"],
-		"exempt": EXEMPT_ROLE in boot.assigned_roles(user),
+		"exempt": boot.is_exempt(user),
 		"grace_used": cint(boot.get_enforcement_state(user)["grace_used"]),
 		"grace_total": cint(verdict["grace_total"]),
 		"grace_remaining": cint(verdict["grace_remaining"]),
@@ -77,20 +65,12 @@ def get_user_enforcement_admin(user: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def set_user_exemption(user: str, exempt: object) -> dict:
-	"""Exempt or un-exempt one user by assigning or removing the marker role; idempotent.
-	Returns the refreshed view-model."""
+	"""Exempt or un-exempt one user; idempotent. Returns the refreshed view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("set_user_exemption", 30, 3600)
 	user = _require_user(user)
-	user_doc = frappe.get_doc("User", user)
-	has_role = EXEMPT_ROLE in boot.assigned_roles(user)
-	if _coerce_bool(exempt):
-		_ensure_exempt_role()
-		if not has_role:
-			user_doc.add_roles(EXEMPT_ROLE)
-	elif has_role:
-		user_doc.remove_roles(EXEMPT_ROLE)
+	boot.set_exempt(user, _coerce_bool(exempt))
 	return admin_enforcement_view(user)
 
 

@@ -2,13 +2,12 @@
 # License: MIT. See LICENSE
 
 """Admin enrollment-enforcement recovery endpoints (F2 polish): the per-user one-click
-exemption (via the lazily-created ``Passkey Enforcement Exempt`` role) and the admin
+exemption (a per-user ``__passkeys`` flag) and the admin
 grace-counter reset, both System-Manager-gated + rate-limited."""
 
 import frappe
 
 from passkeys import boot, enforcement_admin
-from passkeys.enforcement_admin import EXEMPT_ROLE
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
@@ -32,10 +31,6 @@ _FIELDS = (
 class EnforcementAdminTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
-		# The lazily-created role survives the _restore commit, so purge it (and every
-		# assignment) at the top of each test — keeps the "role doesn't exist yet"
-		# precondition true regardless of test order.
-		self._purge_exempt_role()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
@@ -56,8 +51,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 
 	def _restore(self):
 		# Mirrors test_enforcement: the settings write must be restored + committed so the
-		# modes-on state never leaks (some legs commit past the per-test savepoint). Also
-		# strip our lazily-added exempt role so the fixture is clean.
+		# modes-on state never leaks (some legs commit past the per-test savepoint).
 		frappe.set_user("Administrator")
 		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
@@ -70,20 +64,19 @@ class EnforcementAdminTest(IntegrationTestCase):
 		doc.set_name_in_children()
 		doc.update_single(doc.get_valid_dict())
 		doc.update_children()
-		self._purge_exempt_role()
 		flush_settings_cache()
 		frappe.db.commit()
-
-	def _purge_exempt_role(self):
-		frappe.db.delete("Has Role", {"role": EXEMPT_ROLE})
-		if frappe.db.exists("Role", EXEMPT_ROLE):
-			frappe.delete_doc("Role", EXEMPT_ROLE, force=1, ignore_permissions=True)
 
 	def _user(self, roles=None) -> str:
 		user = make_user()
 		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
 		self.addCleanup(
-			frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_enforce"}
+			frappe.db.delete,
+			"DefaultValue",
+			{
+				"parent": DEFAULTS_PARENT,
+				"defkey": ("in", [f"{user}_passkey_enforce", f"{user}_passkey_exempt"]),
+			},
 		)
 		if roles:
 			frappe.get_doc("User", user).add_roles(*roles)
@@ -97,58 +90,72 @@ class EnforcementAdminTest(IntegrationTestCase):
 
 	# ---- one-click exemption --------------------------------------------
 
-	def test_exempt_creates_role_lazily_and_flips_scope(self):
-		self.assertFalse(
-			frappe.db.exists("Role", EXEMPT_ROLE), "role must not exist before the first exemption"
-		)
+	def test_exempt_flips_scope_without_touching_roles(self):
 		user = self._user()
+		roles_before = set(frappe.get_roles(user))
 		self.assertTrue(self._in_scope(user))  # enforced by default
 
 		view = enforcement_admin.set_user_exemption(user, True)
 
-		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE), "role is created lazily on first exemption")
-		# role assigned to the user, and the scope verdict flips
-		self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+		self.assertTrue(boot.is_exempt(user))
+		self.assertEqual(set(frappe.get_roles(user)), roles_before)
 		self.assertFalse(self._in_scope(user))
 		self.assertTrue(view["exempt"])
 		self.assertFalse(view["in_scope"])
 
-	def test_unexempt_removes_only_the_assignment(self):
+	def test_unexempt_puts_the_user_back_in_scope(self):
 		user = self._user()
 		enforcement_admin.set_user_exemption(user, True)
 		self.assertFalse(self._in_scope(user))
 
 		view = enforcement_admin.set_user_exemption(user, False)
 
-		# assignment gone, user back in scope
-		self.assertNotIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+		self.assertFalse(boot.is_exempt(user))
 		self.assertTrue(self._in_scope(user))
 		self.assertFalse(view["exempt"])
 		self.assertTrue(view["in_scope"])
-		# marker role LEFT in place for reuse
-		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE))
 
 	def test_exempt_is_idempotent_no_duplicate_rows(self):
 		user = self._user()
 		enforcement_admin.set_user_exemption(user, True)
 		enforcement_admin.set_user_exemption(user, True)  # double-click
 
-		# no duplicate Has Role row on the user
-		has_role = frappe.get_all(
-			"Has Role", filters={"parent": user, "role": EXEMPT_ROLE, "parenttype": "User"}
+		rows = frappe.get_all(
+			"DefaultValue", filters={"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_exempt"}
 		)
-		self.assertEqual(len(has_role), 1)
+		self.assertEqual(len(rows), 1)
+
+	def test_exemption_survives_a_role_profile_sync(self):
+		# Frappe rebuilds a profile-managed user's roles on every save; a role-based
+		# marker would be dropped here.
+		profile = frappe.get_doc({"doctype": "Role Profile", "role_profile": "Passkeys Test Profile"})
+		profile.append("roles", {"role": "Blogger"})
+		profile.insert(ignore_permissions=True, ignore_if_duplicate=True)
+		self.addCleanup(frappe.delete_doc, "Role Profile", profile.name, force=1, ignore_permissions=True)
+		user = self._user()
+		user_doc = frappe.get_doc("User", user)
+		if user_doc.meta.has_field("role_profiles"):
+			user_doc.append("role_profiles", {"role_profile": profile.name})
+		else:
+			user_doc.role_profile_name = profile.name
+		user_doc.save(ignore_permissions=True)
+
+		enforcement_admin.set_user_exemption(user, True)
+		frappe.get_doc("User", user).save(ignore_permissions=True)
+
+		self.assertTrue(boot.is_exempt(user))
+		self.assertFalse(self._in_scope(user))
 
 	def test_exempt_accepts_documented_boolean_forms(self):
 		user = self._user()
 		for value in (True, 1, "1", "true", "yes", "on"):
 			with self.subTest(value=value):
 				enforcement_admin.set_user_exemption(user, value)
-				self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+				self.assertTrue(boot.is_exempt(user))
 		for value in (False, 0, "0", "false", "no", "off"):
 			with self.subTest(value=value):
 				enforcement_admin.set_user_exemption(user, value)
-				self.assertNotIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+				self.assertFalse(boot.is_exempt(user))
 
 	def test_malformed_exemption_value_does_not_revoke(self):
 		user = self._user()
@@ -157,7 +164,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 			with self.subTest(value=value):
 				with self.assertRaises(frappe.ValidationError):
 					enforcement_admin.set_user_exemption(user, value)
-				self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+				self.assertTrue(boot.is_exempt(user))
 
 	# ---- grace reset ----------------------------------------------------
 
@@ -228,8 +235,7 @@ class EnforcementAdminTest(IntegrationTestCase):
 		finally:
 			frappe.flags.in_test = saved_in_test
 			frappe.set_user("Administrator")
-		# nothing leaked: the role was never created, the user never exempted
-		self.assertNotIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
+		self.assertFalse(boot.is_exempt(user))
 
 	def test_unknown_user_is_rejected(self):
 		with self.assertRaises(frappe.ValidationError):

@@ -50,7 +50,7 @@ post-login interstitial: the session already exists, so it raises friction towar
 and is never a server-side login block. Phone / QR enrollment is always offered; a device
 counts as capable when it has a platform authenticator or a cross-device option. Users
 outside the scope take **Everyone else**. A blank **Starting on** means immediately; until
-that date, in-scope users are nudged instead of required. The exempt marker role beats
+that date, in-scope users are nudged instead of required. A per-user exemption beats
 every scope rule, including System Managers.
 
 | Field | Default | What it does / consequence of changing it |
@@ -83,12 +83,10 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
 2. **Exempt this one user (one click).** Open the user's **User** form → the
    **Passkeys** section (System Managers see it on anyone's form). While a passkey
    is required from someone, it shows two admin actions; click **Exempt
-   from passkey enforcement**. Under the hood this assigns the dedicated
-   **`Passkey Enforcement Exempt`** marker role (created on first use) — the user
-   takes the **Everyone else** rung immediately, including a `System Manager` covered by
-   *Always require a passkey from System Managers*. **Remove enforcement exemption** reverses
-   it. The marker role remains available for reuse, but only explicit per-user
-   assignments exempt anyone; there is no role-wide exemption setting.
+   from passkey enforcement**. The exemption is stored per user by the app, not as a role,
+   so a Role Profile cannot undo it. The user takes the **Everyone else** rung immediately,
+   including a `System Manager` covered by *Always require a passkey from System Managers*.
+   **Remove enforcement exemption** reverses it. There is no role-wide exemption setting.
 3. **Give them more grace logins.** In the same section, **Reset grace logins**
    restores the user's full deferral budget (the *Grace sign-ins* count) so the
    interstitial goes back to "Remind me later" instead of blocking. Use it to buy a

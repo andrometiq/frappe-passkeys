@@ -178,6 +178,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 	def _seed_state(self, user, marker="marker"):
 		boot.record_nudge_event(user, "opt_out")
 		boot.record_enforcement_defer(user)
+		boot.set_exempt(user, True)
 		frappe.db.set_default(notifications.incapable_notify_key(user), marker, parent=DEFAULTS_PARENT)
 		return self._state(user)
 
@@ -191,7 +192,7 @@ class NudgeCadenceTest(IntegrationTestCase):
 		expected = self._seed_state(old)
 		frappe.rename_doc("User", old, new)
 		self.assertEqual(self._state(new), expected)
-		self.assertEqual(self._state(old), [None, None, None])
+		self.assertEqual(self._state(old), [None] * len(boot.get_user_state_keys(old)))
 
 	def test_case_only_user_rename_keeps_default_state(self):
 		# utf8mb4_unicode_ci matches both spellings to one row, so a copy-then-delete
@@ -218,18 +219,19 @@ class NudgeCadenceTest(IntegrationTestCase):
 		boot.record_nudge_event(new, "shown")
 		boot.record_enforcement_defer(new)
 		boot.record_enforcement_defer(new)
+		boot.set_exempt(new, True)
 		frappe.db.set_default(notifications.incapable_notify_key(new), new, parent=DEFAULTS_PARENT)
 		expected = self._state(new)
 		frappe.rename_doc("User", old, new, merge=True)
 		self.assertEqual(self._state(new), expected)
-		self.assertEqual(self._state(old), [None, None, None])
+		self.assertEqual(self._state(old), [None] * len(boot.get_user_state_keys(old)))
 
 	def test_user_merge_carries_state_when_target_has_none(self):
 		old, new = self._user(), self._user()
 		expected = self._seed_state(old)
 		frappe.rename_doc("User", old, new, merge=True)
 		self.assertEqual(self._state(new), expected)
-		self.assertEqual(self._state(old), [None, None, None])
+		self.assertEqual(self._state(old), [None] * len(boot.get_user_state_keys(old)))
 
 	def test_merging_two_enrolled_users_is_refused_clearly(self):
 		old, new = self._user(), self._user()

@@ -178,12 +178,9 @@ and enroll a new passkey.
 If the enrollment prompt then blocks that manager, exempt just that account:
 
 ```python
-if not frappe.db.exists("Role", "Passkey Enforcement Exempt"):
-    role = frappe.new_doc("Role")
-    role.role_name = "Passkey Enforcement Exempt"
-    role.desk_access = 0
-    role.insert()
-frappe.get_doc("User", "user@example.com").add_roles("Passkey Enforcement Exempt")
+from passkeys import boot
+
+boot.set_exempt("user@example.com", True)
 frappe.db.commit()
 ```
 

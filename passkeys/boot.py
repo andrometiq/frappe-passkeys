@@ -6,8 +6,9 @@
 so this module must not import ``webauthn``, directly or transitively.
 
 Per-user state is stored the twofactor way: site-wide ``DefaultValue`` rows keyed
-``{user}_passkey_nudge`` / ``{user}_passkey_enforce`` under the ``__passkeys`` parent,
-so a decline is recordable before any credential exists."""
+``{user}_passkey_nudge`` / ``{user}_passkey_enforce`` / ``{user}_passkey_exempt`` under the
+``__passkeys`` parent, so a decline is recordable before any credential exists and an
+exemption survives Role Profile syncs."""
 
 import json
 
@@ -26,9 +27,7 @@ ENFORCE_EVENTS = ("defer", "incapable")
 
 _EMPTY_ENFORCE = {"grace_used": 0}
 
-# Enrollment-enforcement role policy. The dedicated exemption marker is created
-# lazily by enforcement_admin; privileged roles stay in scope by default.
-EXEMPT_ROLE = "Passkey Enforcement Exempt"
+# Privileged roles stay in enrollment scope by default.
 PRIVILEGED_ROLES = {"System Manager"}
 
 
@@ -128,6 +127,22 @@ def record_enforcement_defer(user: str) -> dict:
 	return state
 
 
+def _exempt_key(user: str) -> str:
+	return f"{user}_passkey_exempt"
+
+
+def is_exempt(user: str) -> bool:
+	"""The per-user enforcement exemption a System Manager grants on the User form."""
+	return get_default_value(_exempt_key(user)) == "1"
+
+
+def set_exempt(user: str, exempt: bool) -> None:
+	if exempt:
+		frappe.db.set_default(_exempt_key(user), "1", parent=DEFAULTS_PARENT)
+	else:
+		frappe.defaults.clear_default(_exempt_key(user), parent=DEFAULTS_PARENT)
+
+
 def clear_enforcement_state(user: str) -> None:
 	"""Refill the user's grace budget (the admin grace reset). The incapable-advisory dedup
 	marker is not a grace counter and stays."""
@@ -136,7 +151,12 @@ def clear_enforcement_state(user: str) -> None:
 
 def get_user_state_keys(user: str) -> tuple[str, ...]:
 	"""Every per-user ``__passkeys`` key; the User delete and rename cascades walk this."""
-	return (_nudge_key(user), _enforce_key(user), notifications.incapable_notify_key(user))
+	return (
+		_nudge_key(user),
+		_enforce_key(user),
+		_exempt_key(user),
+		notifications.incapable_notify_key(user),
+	)
 
 
 def clear_user_state(user: str) -> None:
@@ -196,8 +216,8 @@ def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
 def assigned_roles(user: str) -> set[str]:
 	"""Roles on the user's Has Role rows.
 
-	``frappe.get_roles("Administrator")`` returns every Role, so the exempt marker
-	or a selected role would match Administrator as soon as the Role exists."""
+	``frappe.get_roles("Administrator")`` returns every Role, so a selected role would
+	match Administrator as soon as the Role exists."""
 	return set(
 		frappe.get_all(
 			"Has Role",
@@ -208,15 +228,14 @@ def assigned_roles(user: str) -> set[str]:
 
 
 def _user_in_enforce_scope(user: str, settings) -> bool:
-	"""The exemption marker wins; then privileged roles when that safeguard is on;
+	"""The per-user exemption wins; then privileged roles when that safeguard is on;
 	then Selected roles; All users matches everyone else; No one matches nobody.
 	Administrator is privileged. The start date is not part of this test."""
-	assigned = assigned_roles(user)
-	if EXEMPT_ROLE in assigned:
+	if is_exempt(user):
 		return False
 	# Administrator holds every Role implicitly, so only its assigned rows count; everyone
 	# else is matched on effective roles, which include implicit ones such as Desk User.
-	roles = assigned if user == "Administrator" else set(frappe.get_roles(user))
+	roles = assigned_roles(user) if user == "Administrator" else set(frappe.get_roles(user))
 	privileged = user == "Administrator" or bool(roles & PRIVILEGED_ROLES)
 	if cint(settings.passkey_enforce_privileged_always) and privileged:
 		return True
