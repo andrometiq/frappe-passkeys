@@ -141,10 +141,6 @@
 		allModesOff:
 			"Both passkey login modes are off — the login-page passkey UI is hidden and no new " +
 			"passkeys can be used to sign in. Existing passkeys are preserved.",
-		// enrollment ladder (policy Select + enforcement scope/escape hatches)
-		enforceNoDate:
-			"Enrollment Policy 'Enforce After Date' needs an Enforce After date — Save will fail " +
-			"until you set it (or choose 'Enforce' to enforce immediately).",
 		enforceNoMode:
 			"Enrollment enforcement has no effect while both passkey login modes are off. Enable a " +
 			"passkey login mode for the policy to apply.",
@@ -152,8 +148,8 @@
 			"Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
 			"the accounts attackers target first — industry practice enforces them first.",
 		enforceEmptyRoles:
-			"Enforcement scope is 'Selected Roles' but no roles are listed, so the policy applies " +
-			"to nobody. Add the roles to enforce, or switch the scope to 'All Users'.",
+			"Require a passkey from is 'Selected roles' but no roles are listed, so it applies " +
+			"to nobody. Add the roles to require, or switch to 'All users'.",
 		enforceBlockIncapable:
 			"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create " +
 			"a passkey (and cannot use a phone) will be blocked rather than nudged.",
@@ -265,21 +261,20 @@
 		caps = caps || {};
 		var enf = boot.enforcement || {};
 		var out = {
-			show: false, blocking: false, variant: "", allowHybrid: false,
+			show: false, blocking: false, variant: "",
 			notifyAdmin: false, graceRemaining: 0, reason: "",
 		};
-		// Off / Nudge / before the date / out of scope: the nudge path owns it.
+		// Off / nudge / before the date / out of scope: the nudge path owns it.
 		if (enf.effective !== "enforce" || !enf.in_scope) { out.reason = "not_enforcing"; return out; }
 		var count = typeof boot.credential_count === "number" ? boot.credential_count : 0;
 		if (count > 0) { out.reason = "satisfied"; return out; }
 
 		out.graceRemaining = typeof enf.grace_remaining === "number" ? enf.grace_remaining : 0;
-		out.allowHybrid = enf.allow_hybrid !== false;
 		var supported = caps.supported !== false; // unknown counts as capable
 		var uvpaaOk = caps.uvpaa !== false; // unknown counts as capable
 		var hybridOk = caps.hybrid !== false; // unknown counts as capable
-		// Without a platform authenticator, a phone (hybrid) can still enroll.
-		var canEnroll = supported && (uvpaaOk || (out.allowHybrid && hybridOk));
+		// Phone/QR enrollment is always offered; a hybrid transport counts as capable.
+		var canEnroll = supported && (uvpaaOk || hybridOk);
 
 		if (canEnroll) {
 			out.show = true;
@@ -306,10 +301,9 @@
 	}
 
 	// ---------------------------------------------- admin enforcement recovery
-	// The User-form recovery controls show only under an enforcement policy (site-wide).
+	// The User-form recovery controls show only while the site requires a passkey from someone.
 	function shouldShowEnforcementAdmin(boot) {
-		var policy = boot && boot.enforcement && boot.enforcement.policy;
-		return policy === "Enforce" || policy === "Enforce After Date";
+		return !!(boot && boot.enforcement && boot.enforcement.enforcing);
 	}
 
 	// View-model for get_user_enforcement_admin.
@@ -416,18 +410,16 @@
 			});
 		}
 
-		var policy = doc.passkey_enrollment_policy || "Nudge";
-		var enforcing = policy === "Enforce" || policy === "Enforce After Date";
+		var scope = doc.passkey_enforce_scope || "No one";
+		var privileged = isTruthy(doc.passkey_enforce_privileged_always);
+		var enforcing = scope !== "No one" || privileged;
 
-		if (policy === "Enforce After Date" && !doc.passkey_enforce_after) {
-			banners.push({ level: "error", key: COPY.enforceNoDate });
-		}
 		if (enforcing) {
 			if (!anyMode) banners.push({ level: "warning", key: COPY.enforceNoMode });
-			if (!isTruthy(doc.passkey_enforce_privileged_always)) {
+			if (scope === "Selected roles" && !privileged) {
 				banners.push({ level: "warning", key: COPY.enforcePrivilegedOutside });
 			}
-			if (doc.passkey_enforce_scope === "Selected Roles" && !roleNames(doc.passkey_enforce_roles).length) {
+			if (scope === "Selected roles" && !roleNames(doc.passkey_enforce_roles).length) {
 				banners.push({ level: "warning", key: COPY.enforceEmptyRoles });
 			}
 			if (doc.passkey_enforce_incapable === "Block + Notify Admin") {
@@ -499,7 +491,7 @@
 	function enforcementDeferKey(user, enforcement) {
 		enforcement = enforcement || {};
 		return "passkey_enforcement_defer:" + encodeURIComponent(String(user || "current")) +
-			":" + encodeURIComponent(String(enforcement.policy || enforcement.effective || "enforce")) +
+			":" + encodeURIComponent(String(enforcement.effective || "enforce")) +
 			":" + cint(enforcement.graceRemaining !== undefined
 				? enforcement.graceRemaining : enforcement.grace_remaining);
 	}

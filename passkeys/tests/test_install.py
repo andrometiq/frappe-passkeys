@@ -60,7 +60,11 @@ class TestAfterInstall(IntegrationTestCase):
 		install.after_install()
 
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_notify_on_change"), 1)
-		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy"), "Nudge")
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enforce_scope"), "No one")
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_everyone_else"), "Nudge")
+		self.assertEqual(
+			frappe.db.get_single_value("Passkey Settings", "passkey_enforce_privileged_always"), 1
+		)
 		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "login_with_passkey"), 0)
 		self.assertTrue(
 			frappe.db.exists("Custom Field", {"dt": "User", "fieldname": install.USER_FORM_HTML_FIELD})

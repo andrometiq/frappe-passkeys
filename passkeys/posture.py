@@ -51,7 +51,7 @@ def classify_posture(ctx: dict) -> dict:
 	core_2fa_method = ctx.get("core_2fa_method")
 	passkey_only_count = cint(ctx.get("passkey_only_user_count"))
 	login_user_count = cint(ctx.get("login_user_count"))
-	enforcement = ctx.get("enforcement_effective") or "off"
+	enforcing = bool(ctx.get("enforcement_effective"))
 	hard_fail = bool(ctx.get("sign_count_hard_fail"))
 	reauth_window = cint(ctx.get("reauth_window"))
 	administrator_has_passkey = bool(ctx.get("administrator_has_enabled_passkey"))
@@ -237,7 +237,7 @@ def classify_posture(ctx: dict) -> dict:
 						passkey_only_count, login_user_count
 					),
 					_("Everyone else can still fall back to a password, so passkeys are optional for them."),
-					_enforcement_recommendation(enforcement),
+					_enforcement_recommendation(enforcing),
 				)
 			)
 
@@ -323,14 +323,14 @@ def _undetermined_verdict() -> dict:
 	return _verdict(_("Security posture could not be fully determined."), "high", degraded=True)
 
 
-def _enforcement_recommendation(enforcement: str) -> str:
-	if enforcement == "enforce":
+def _enforcement_recommendation(enforcing: bool) -> str:
+	if enforcing:
 		return _(
 			"Enrollment is enforcing — once users enroll, set 'Passwordless login only' for the "
 			"users you want to fully cover."
 		)
 	return _(
-		"Raise adoption with an Enrollment Policy, then set 'Passwordless login only' for covered users."
+		"Require a passkey from the users you want covered, then set 'Passwordless login only' for them."
 	)
 
 
@@ -392,7 +392,7 @@ def build_posture() -> dict:
 			"otp_fallback_enabled": bool(cint(settings.passkey_2fa_allow_otp_fallback)),
 			"passkey_only_user_count": passkey_only_count,
 			"login_user_count": login_user_count,
-			"enforcement_effective": boot.policy_effective(settings),
+			"enforcement_effective": boot.is_enforcing(settings),
 			"sign_count_hard_fail": bool(cint(settings.passkey_sign_count_hard_fail)),
 			"reauth_window": cint(settings.passkey_reauth_window),
 			"administrator_has_enabled_passkey": bool(

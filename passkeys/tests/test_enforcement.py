@@ -1,9 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Enrollment-enforcement verdict (F2): the server-owned ``enforcement`` boot block —
-policy rung resolution (incl. ``Enforce After Date`` against the server clock), scope /
-exempt-role membership, grace-login budget, and the ``record_enforcement`` endpoint."""
+"""Enrollment-enforcement verdict: the server-owned ``enforcement`` boot block —
+per-user rung (scope, System Managers, Starting on, Everyone else), exempt-role
+membership, grace-login budget, and the ``record_enforcement`` endpoint."""
 
 from unittest.mock import patch
 
@@ -22,13 +22,12 @@ _FIELDS = (
 	"passkey_origins",
 	"login_with_passkey",
 	"passkey_as_second_factor",
-	"passkey_enrollment_policy",
 	"passkey_enforce_after",
 	"passkey_enforce_scope",
 	"passkey_enforce_privileged_always",
+	"passkey_everyone_else",
 	"passkey_enforce_grace_logins",
 	"passkey_enforce_incapable",
-	"passkey_enforce_allow_hybrid",
 	"passkey_nudge_max_prompts",
 	"passkey_nudge_cooldown_days",
 )
@@ -43,13 +42,12 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
-		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
-		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_scope = "All users"
 		settings.passkey_enforce_privileged_always = 1
+		settings.passkey_everyone_else = "Nudge"
 		settings.passkey_enforce_grace_logins = 3
 		settings.passkey_enforce_incapable = "Degrade to Nudge"
-		settings.passkey_enforce_allow_hybrid = 1
 		settings.set("passkey_enforce_roles", [])
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()
@@ -115,7 +113,9 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertFalse(v["blocking"])
 		self.assertEqual(v["grace_remaining"], 3)
 		self.assertEqual(v["reason"], "grace")
-		self.assertTrue(v["allow_hybrid"])
+		self.assertTrue(v["enforcing"])
+		self.assertFalse(any("hybrid" in key for key in v))
+		self.assertNotIn("policy", v)
 		self.assertEqual(v["incapable_policy"], "degrade")
 
 	def test_non_mapping_enforcement_state_falls_back_to_zero(self):
@@ -140,10 +140,17 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertFalse(v["blocking"])
 		self.assertEqual(v["reason"], "satisfied")
 
-	def test_off_and_nudge_are_not_in_scope(self):
-		self._set(passkey_enrollment_policy="Off")
-		self.assertFalse(self._verdict(self._user())["in_scope"])
-		self._set(passkey_enrollment_policy="Nudge")
+	def test_everyone_else_off_and_nudge_are_not_in_scope(self):
+		self._set(
+			passkey_enforce_scope="No one",
+			passkey_enforce_privileged_always=0,
+			passkey_everyone_else="Off",
+		)
+		v = self._verdict(self._user())
+		self.assertEqual(v["effective"], "off")
+		self.assertFalse(v["in_scope"])
+		self.assertFalse(v["enforcing"])
+		self._set(passkey_everyone_else="Nudge")
 		v = self._verdict(self._user())
 		self.assertEqual(v["effective"], "nudge")
 		self.assertFalse(v["in_scope"])
@@ -163,44 +170,88 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertFalse(self._verdict(user)["in_scope"])
 
 	def test_selected_roles_scope_membership(self):
-		self._set(passkey_enforce_scope="Selected Roles")
+		self._set(passkey_enforce_scope="Selected roles")
 		self._set_enforced_roles("Sales User")
 		self.assertFalse(self._verdict(self._user())["in_scope"])  # no Sales User role
 		self.assertTrue(self._verdict(self._user(roles=["Sales User"]))["in_scope"])
 
 	def test_privileged_always_includes_system_manager_under_selected_roles(self):
-		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=1)
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=1)
 		self._set_enforced_roles("Sales User")
 		self.assertTrue(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
 
 	def test_privileged_opt_out_excludes_system_manager_under_selected_roles(self):
-		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=0)
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
 		self._set_enforced_roles("Sales User")
 		self.assertFalse(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
 
 	def test_marker_role_wins_over_privileged_always(self):
-		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=1)
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=1)
 		self._set_enforced_roles("Sales User")
 		user = self._user(roles=["System Manager"])
 		enforcement_admin.set_user_exemption(user, True)
 		self.assertFalse(self._verdict(user)["in_scope"])
 
-	# ---- Enforce After Date (server clock) -----------------------------
-
-	def test_enforce_after_future_date_behaves_as_nudge(self):
+	def test_no_one_plus_privileged_enforces_system_manager_only(self):
 		self._set(
-			passkey_enrollment_policy="Enforce After Date",
-			passkey_enforce_after=add_to_date(nowdate(), days=7),
+			passkey_enforce_scope="No one",
+			passkey_enforce_privileged_always=1,
+			passkey_everyone_else="Off",
 		)
+		manager = self._verdict(self._user(roles=["System Manager"]))
+		self.assertEqual(manager["effective"], "enforce")
+		self.assertTrue(manager["in_scope"])
+		outsider = self._verdict(self._user())
+		self.assertEqual(outsider["effective"], "off")
+		self.assertFalse(outsider["in_scope"])
+
+	def test_everyone_else_off_does_not_nudge_non_members(self):
+		self._set(
+			passkey_enforce_scope="Selected roles",
+			passkey_enforce_privileged_always=0,
+			passkey_everyone_else="Off",
+		)
+		self._set_enforced_roles("Sales User")
+		user = self._user()
+		self.assertEqual(self._verdict(user)["effective"], "off")
+		self.assertFalse(boot.nudge_eligible(user, self._settings(), 0))
+
+	def test_everyone_else_nudge_prompts_non_members(self):
+		self._set(
+			passkey_enforce_scope="Selected roles",
+			passkey_enforce_privileged_always=0,
+			passkey_everyone_else="Nudge",
+		)
+		self._set_enforced_roles("Sales User")
+		user = self._user()
+		self.assertEqual(self._verdict(user)["effective"], "nudge")
+		self.assertTrue(boot.nudge_eligible(user, self._settings(), 0))
+
+	def test_exempt_takes_everyone_else(self):
+		self._set(passkey_everyone_else="Off", passkey_enforce_privileged_always=1)
+		user = self._user(roles=["System Manager"])
+		enforcement_admin.set_user_exemption(user, True)
+		self.assertEqual(self._verdict(user)["effective"], "off")
+		self.assertFalse(self._verdict(user)["in_scope"])
+		self._set(passkey_everyone_else="Nudge")
+		self.assertEqual(self._verdict(user)["effective"], "nudge")
+
+	# ---- Starting on (server clock) ------------------------------------
+
+	def test_future_start_date_behaves_as_nudge(self):
+		self._set(passkey_enforce_after=add_to_date(nowdate(), days=7))
 		v = self._verdict(self._user())
 		self.assertEqual(v["effective"], "nudge")
 		self.assertFalse(v["in_scope"])
 
-	def test_enforce_after_past_date_behaves_as_enforce(self):
-		self._set(
-			passkey_enrollment_policy="Enforce After Date",
-			passkey_enforce_after=add_to_date(nowdate(), days=-1),
-		)
+	def test_past_start_date_behaves_as_enforce(self):
+		self._set(passkey_enforce_after=add_to_date(nowdate(), days=-1))
+		v = self._verdict(self._user())
+		self.assertEqual(v["effective"], "enforce")
+		self.assertTrue(v["in_scope"])
+
+	def test_blank_start_date_enforces_immediately(self):
+		self._set(passkey_enforce_after=None)
 		v = self._verdict(self._user())
 		self.assertEqual(v["effective"], "enforce")
 		self.assertTrue(v["in_scope"])
@@ -257,17 +308,27 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)
 
 	def test_record_enforcement_ignores_off_nudge_and_future_date(self):
-		policies = (
-			("Off", None),
-			("Nudge", None),
-			("Enforce After Date", add_to_date(nowdate(), days=7)),
+		cases = (
+			{
+				"passkey_enforce_scope": "No one",
+				"passkey_enforce_privileged_always": 0,
+				"passkey_everyone_else": "Off",
+				"passkey_enforce_after": None,
+			},
+			{
+				"passkey_enforce_scope": "No one",
+				"passkey_enforce_privileged_always": 0,
+				"passkey_everyone_else": "Nudge",
+				"passkey_enforce_after": None,
+			},
+			{
+				"passkey_enforce_scope": "All users",
+				"passkey_enforce_after": add_to_date(nowdate(), days=7),
+			},
 		)
-		for enrollment_policy, enforce_after in policies:
-			with self.subTest(policy=enrollment_policy):
-				self._set(
-					passkey_enrollment_policy=enrollment_policy,
-					passkey_enforce_after=enforce_after,
-				)
+		for scalars in cases:
+			with self.subTest(scalars=scalars):
+				self._set(**scalars)
 				user = self._user()
 				boot.record_enforcement_defer(user)
 				sign_in(user)
@@ -284,7 +345,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 				self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 1})
 
 	def test_record_enforcement_ignores_exempt_and_out_of_role_users(self):
-		self._set(passkey_enforce_scope="Selected Roles")
+		self._set(passkey_enforce_scope="Selected roles")
 		self._set_enforced_roles("Sales User")
 		out_of_role = self._user()
 		exempt = self._user(roles=["Sales User"])
@@ -436,7 +497,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		if not frappe.db.exists("Role", scope_role):
 			frappe.get_doc({"doctype": "Role", "role_name": scope_role}).insert(ignore_permissions=True)
 		self.addCleanup(frappe.delete_doc, "Role", scope_role, force=1, ignore_permissions=True)
-		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=0)
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
 		self._set_enforced_roles(scope_role)
 		self.assertFalse(self._verdict("Administrator")["in_scope"])
 
@@ -479,10 +540,10 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		user = self._user()
 		self._set(passkey_enforce_incapable="Block + Notify Admin")
 		self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
-		self._set(passkey_enforce_incapable="Degrade to Nudge", passkey_enforce_scope="Selected Roles")
+		self._set(passkey_enforce_incapable="Degrade to Nudge", passkey_enforce_scope="Selected roles")
 		self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
-		for policy in ("Off", "Nudge"):
-			self._set(passkey_enrollment_policy=policy)
+		for everyone_else in ("Off", "Nudge"):
+			self._set(passkey_everyone_else=everyone_else, passkey_enforce_privileged_always=0)
 			with patch.object(boot, "get_nudge_state") as read_nudge:
 				self.assertFalse(self._verdict(user)["degrade_nudge_eligible"])
 			read_nudge.assert_not_called()

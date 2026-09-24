@@ -27,7 +27,7 @@ _LOCKED = {
 	"core_2fa_method": None,
 	"passkey_only_user_count": 5,
 	"login_user_count": 5,
-	"enforcement_effective": "enforce",
+	"enforcement_effective": True,
 	"sign_count_hard_fail": True,
 	"reauth_window": 600,
 	"administrator_has_enabled_passkey": True,

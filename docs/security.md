@@ -328,12 +328,12 @@ real sign-in gets a random session id.
   identifier-first login are not implemented in this version.
 - **A console-created settings desync** (e.g. passkey 2FA on while core 2FA off)
   is outside what validators can catch; the security posture panel flags it.
-- **Enrollment "Enforce" is a post-login interstitial, not an authentication
-  block.** The session already exists before the enforce gate runs — it raises
+- **Requiring a passkey is a post-login interstitial, not an authentication
+  block.** The session already exists before the gate runs — it raises
   friction toward enrolling a passkey (and, once grace is spent, becomes a
   non-dismissible interstitial), but it does not turn passkeys into a server-side
   first-factor requirement. A client that never renders the app's JS is not gated
-  by it. Enforce drives adoption; it is the login modes (passkey first-factor /
+  by it. The requirement drives adoption; it is the login modes (passkey first-factor /
   second-factor) that decide what actually authenticates a session.
 
 - **Frappe itself must be kept patched.** The app declares a minimum Frappe version but does not

@@ -48,8 +48,9 @@ Frappe v15, v16, and develop.
   See [Custom UI](docs/custom-ui.md#action-confirmation-for-your-own-methods).
 
 - **Enrollment nudges and enforcement.** Prompt users without a passkey to create one, with a
-  prompt cap and a cooldown. Or require enrollment for everyone or for selected roles, with a
-  number of grace logins before the prompt blocks.
+  prompt cap and a cooldown. Or require enrollment from nobody, from selected roles, or from
+  everyone — System Managers can stay required on their own — with grace sign-ins before the
+  prompt blocks. Phone and QR enrollment is always offered.
 
 - **Self-service management.** Users add, rename, and remove their passkeys at `/passkeys`, and can
   switch their own account to passkey-only sign-in.

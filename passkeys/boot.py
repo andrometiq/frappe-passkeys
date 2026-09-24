@@ -80,19 +80,34 @@ def record_nudge_event(user: str, event: str) -> dict:
 	return state
 
 
-def policy_effective(settings) -> str:
-	"""The effective enrollment rung — ``off`` | ``nudge`` | ``enforce``. ``Enforce After
-	Date`` is evaluated against the server clock on every call; a missing date stays
-	``nudge``, never ``enforce``."""
-	policy = settings.passkey_enrollment_policy
-	if policy == "Off":
+def is_enforcing(settings) -> bool:
+	"""True when the site requires a passkey from someone: scope is not ``No one``,
+	or System Managers are always included. Independent of the start date."""
+	scope = settings.passkey_enforce_scope or "No one"
+	return scope != "No one" or bool(cint(settings.passkey_enforce_privileged_always))
+
+
+def _date_reached(settings) -> bool:
+	"""Blank or a date on or before today (server clock). A future date is the runway."""
+	after = settings.passkey_enforce_after
+	return not after or getdate(after) <= getdate(nowdate())
+
+
+def _everyone_else_rung(settings) -> str:
+	return "off" if settings.passkey_everyone_else == "Off" else "nudge"
+
+
+def effective_rung(user: str, settings) -> str:
+	"""``off`` | ``nudge`` | ``enforce`` for this user.
+
+	No login mode is ``off``. The exempt marker and anyone outside the scope take
+	Everyone else. In-scope users are ``enforce`` once Starting on has been reached
+	(blank counts as reached) and ``nudge`` before that date."""
+	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
 		return "off"
-	if policy == "Enforce":
-		return "enforce"
-	if policy == "Enforce After Date":
-		after = settings.passkey_enforce_after
-		return "enforce" if after and getdate(after) <= getdate(nowdate()) else "nudge"
-	return "nudge"
+	if _user_in_enforce_scope(user, settings):
+		return "enforce" if _date_reached(settings) else "nudge"
+	return _everyone_else_rung(settings)
 
 
 def _enforce_key(user: str) -> str:
@@ -142,13 +157,13 @@ def rename_user_state(old: str, new: str, merge: bool) -> None:
 			frappe.db.set_value("DefaultValue", old_row, "defkey", new_key, update_modified=False)
 
 
-def _cadence_ok(settings, state: dict) -> bool:
-	"""Shared nudge/upsell cadence: a login mode is on, the effective rung is ``nudge``
+def _cadence_ok(user: str, settings, state: dict) -> bool:
+	"""Shared nudge/upsell cadence: a login mode is on, this user's rung is ``nudge``
 	(under ``enforce`` the interstitial owns the surface), and the thresholds hold. The
 	caller applies any credential-count gate."""
 	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
 		return False
-	if policy_effective(settings) != "nudge":
+	if effective_rung(user, settings) != "nudge":
 		return False
 	return _nudge_thresholds_ok(settings, state)
 
@@ -168,14 +183,14 @@ def nudge_eligible(user: str, settings, credential_count: int, state: dict | Non
 	if cint(credential_count) > 0:
 		return False
 	state = state if state is not None else get_nudge_state(user)
-	return _cadence_ok(settings, state)
+	return _cadence_ok(user, settings, state)
 
 
 def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
 	"""Post-hybrid (QR) upsell cadence: the nudge cadence without the zero-credential
 	gate, since the user just signed in with a passkey."""
 	state = state if state is not None else get_nudge_state(user)
-	return _cadence_ok(settings, state)
+	return _cadence_ok(user, settings, state)
 
 
 def assigned_roles(user: str) -> set[str]:
@@ -193,42 +208,43 @@ def assigned_roles(user: str) -> set[str]:
 
 
 def _user_in_enforce_scope(user: str, settings) -> bool:
-	"""The exemption marker role wins; then privileged roles when that safeguard is on;
-	then Selected Roles; otherwise All Users. Administrator is privileged."""
+	"""The exemption marker wins; then privileged roles when that safeguard is on;
+	then Selected roles; All users matches everyone else; No one matches nobody.
+	Administrator is privileged. The start date is not part of this test."""
 	roles = assigned_roles(user)
 	if EXEMPT_ROLE in roles:
 		return False
 	privileged = user == "Administrator" or bool(roles & PRIVILEGED_ROLES)
 	if cint(settings.passkey_enforce_privileged_always) and privileged:
 		return True
-	if settings.passkey_enforce_scope == "Selected Roles":
+	scope = settings.passkey_enforce_scope or "No one"
+	if scope == "Selected roles":
 		target = {row.role for row in (settings.passkey_enforce_roles or [])}
 		return bool(roles & target)
-	return True  # "All Users"
+	return scope == "All users"
 
 
 def build_enforcement(user: str, settings, credential_count: int, nudge_state: dict | None = None) -> dict:
 	"""The server-owned enforcement verdict; the client only ANDs its device-capability
-	probe. ``in_scope`` needs the ``enforce`` rung, a login mode and a scope match;
+	probe. ``in_scope`` is the enforce rung (scope match, start date reached, a login mode on);
 	``blocking`` bites an in-scope user with no passkey and no grace left.
-	``incapable_policy`` + ``allow_hybrid`` govern a device that cannot create a passkey;
-	``degrade_nudge_eligible`` applies the nudge thresholds to such a user under Degrade."""
-	effective = policy_effective(settings)
-	mode_on = bool(cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
+	``incapable_policy`` governs a device that cannot create a passkey — phone/QR
+	enrollment is always offered. ``degrade_nudge_eligible`` applies the nudge
+	thresholds to such a user under Degrade."""
+	effective = effective_rung(user, settings)
 	incapable_policy = (
 		"block_notify" if settings.passkey_enforce_incapable == "Block + Notify Admin" else "degrade"
 	)
-	allow_hybrid = bool(cint(settings.passkey_enforce_allow_hybrid))
 	grace_total = cint(settings.passkey_enforce_grace_logins)
 
-	in_scope = effective == "enforce" and mode_on and _user_in_enforce_scope(user, settings)
+	in_scope = effective == "enforce"
 	# only in-scope users pay the grace read
 	grace_used = cint(get_enforcement_state(user)["grace_used"]) if in_scope else 0
 	grace_remaining = max(0, grace_total - grace_used) if in_scope else grace_total
 	blocking = in_scope and credential_count == 0 and grace_remaining == 0
 
 	if not in_scope:
-		reason = "not_in_scope" if effective == "enforce" else effective
+		reason = effective
 	elif credential_count > 0:
 		reason = "satisfied"
 	elif blocking:
@@ -237,13 +253,12 @@ def build_enforcement(user: str, settings, credential_count: int, nudge_state: d
 		reason = "grace"
 
 	return {
-		"policy": settings.passkey_enrollment_policy or "Nudge",
+		"enforcing": is_enforcing(settings),
 		"effective": effective,
 		"in_scope": in_scope,
 		"blocking": blocking,
 		"grace_remaining": grace_remaining,
 		"grace_total": grace_total,
-		"allow_hybrid": allow_hybrid,
 		"incapable_policy": incapable_policy,
 		"degrade_nudge_eligible": (
 			in_scope

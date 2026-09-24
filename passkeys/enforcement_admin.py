@@ -14,8 +14,6 @@ from passkeys import boot, state
 from passkeys.boot import EXEMPT_ROLE
 from passkeys.errors import refuse_if_core_native
 
-_ENFORCING_POLICIES = ("Enforce", "Enforce After Date")
-
 
 def _coerce_bool(value) -> bool:
 	"""Accept JSON booleans and documented boolean form values only."""
@@ -57,9 +55,8 @@ def admin_enforcement_view(user: str) -> dict:
 	verdict = boot.build_enforcement(user, settings, credential_count)
 	return {
 		"user": user,
-		"policy": verdict["policy"],
 		"effective": verdict["effective"],
-		"enforcing": settings.passkey_enrollment_policy in _ENFORCING_POLICIES,
+		"enforcing": boot.is_enforcing(settings),
 		"in_scope": verdict["in_scope"],
 		"exempt": EXEMPT_ROLE in boot.assigned_roles(user),
 		"grace_used": cint(boot.get_enforcement_state(user)["grace_used"]),

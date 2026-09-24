@@ -59,6 +59,9 @@ The upstream PR should replace this proposal with a dated matrix containing the 
 core commit, chosen destinations, migration behavior, and test evidence. Counts and hashes belong in
 that immutable review snapshot, not in this evergreen design document.
 
-The enrollment boot contract includes `enforcement.degrade_nudge_eligible`: the server
-applies the ordinary nudge opt-out, cap and cooldown to in-scope, unenrolled users under
-Degrade. Both Desk and portal require this explicit verdict for incapable-device nudges.
+The enrollment boot contract includes `enforcement.enforcing` (the site requires a passkey
+from someone) and `enforcement.effective` (`off`, `nudge`, or `enforce` for this user).
+Phone/QR enrollment is always offered, so the verdict has no hybrid switch.
+`enforcement.degrade_nudge_eligible` applies the ordinary nudge opt-out, cap and cooldown
+to in-scope, unenrolled users under Degrade. Both Desk and portal require this explicit
+verdict for incapable-device nudges.

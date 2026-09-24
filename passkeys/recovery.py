@@ -8,17 +8,26 @@ Run from the server console; these are deliberately not whitelisted:
 """
 
 import frappe
+from frappe.utils import cint
 
 
 def disable_enforcement():
-	"""Drop the enrollment policy to Nudge so enforcement stops gating logins."""
-	policy = frappe.db.get_single_value("Passkey Settings", "passkey_enrollment_policy")
-	if policy in ("Off", "Nudge"):
-		print(f"Passkey enforcement is already disabled (Enrollment Policy: {policy}).")
-		return policy
+	"""Stop requiring a passkey: set scope to ``No one`` and clear the System Manager
+	safeguard. Other Passkey Settings, including Everyone else, stay as they are."""
+	scope = frappe.db.get_single_value("Passkey Settings", "passkey_enforce_scope") or "No one"
+	privileged = cint(frappe.db.get_single_value("Passkey Settings", "passkey_enforce_privileged_always"))
+	if scope == "No one" and not privileged:
+		print(
+			"Passkey enforcement is already disabled "
+			"(Require a passkey from: No one; System Managers are not required)."
+		)
+		return
 
-	frappe.db.set_single_value("Passkey Settings", "passkey_enrollment_policy", "Nudge")
+	frappe.db.set_single_value("Passkey Settings", "passkey_enforce_scope", "No one")
+	frappe.db.set_single_value("Passkey Settings", "passkey_enforce_privileged_always", 0)
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
-	print(f"Passkey enforcement disabled: Enrollment Policy changed from {policy or '(unset)'} to Nudge.")
-	return "Nudge"
+	print(
+		"Passkey enforcement disabled: Require a passkey from changed from "
+		f"{scope} to No one, and Always require a passkey from System Managers is off."
+	)

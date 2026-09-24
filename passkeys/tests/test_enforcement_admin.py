@@ -20,13 +20,12 @@ _FIELDS = (
 	"passkey_origins",
 	"login_with_passkey",
 	"passkey_as_second_factor",
-	"passkey_enrollment_policy",
 	"passkey_enforce_after",
 	"passkey_enforce_scope",
 	"passkey_enforce_privileged_always",
+	"passkey_everyone_else",
 	"passkey_enforce_grace_logins",
 	"passkey_enforce_incapable",
-	"passkey_enforce_allow_hybrid",
 )
 
 
@@ -43,13 +42,12 @@ class EnforcementAdminTest(IntegrationTestCase):
 		settings.passkey_origins = "https://example.com"
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
-		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
-		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_scope = "All users"
 		settings.passkey_enforce_privileged_always = 1
+		settings.passkey_everyone_else = "Nudge"
 		settings.passkey_enforce_grace_logins = 3
 		settings.passkey_enforce_incapable = "Degrade to Nudge"
-		settings.passkey_enforce_allow_hybrid = 1
 		settings.set("passkey_enforce_roles", [])
 		settings.save(ignore_permissions=True)
 		flush_settings_cache()

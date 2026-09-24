@@ -6,7 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from passkeys import policy, state, well_known
+from passkeys import boot, policy, state, well_known
 from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
@@ -31,22 +31,16 @@ class PasskeySettings(Document):
 		return bool(cint(self.login_with_passkey) or cint(self.passkey_as_second_factor))
 
 	def _enforcing(self) -> bool:
-		"""True iff the policy is an enforcement rung (``Enforce`` /
-		``Enforce After Date``) — regardless of whether the date has arrived yet."""
-		return self.passkey_enrollment_policy in ("Enforce", "Enforce After Date")
+		"""True when scope is not ``No one`` or System Managers are always included.
+		Independent of whether Starting on has been reached."""
+		return boot.is_enforcing(self)
 
 	def _validate_enrollment_policy(self):
-		"""Hard guards on the adoption ladder. ``Enforce After Date`` requires the date;
-		grace logins cannot be negative. (The self-lockout / inert-policy heads-ups are
+		"""Hard guards on enrollment. Grace sign-ins cannot be negative. A blank
+		Starting on means immediately. (The inert-requirement heads-ups are
 		non-blocking — see ``_warn_enforcement_risks``.)"""
-		if self.passkey_enrollment_policy == "Enforce After Date" and not self.passkey_enforce_after:
-			frappe.throw(
-				_(
-					"Enrollment Policy 'Enforce After Date' requires an Enforce After date. Set the date, or choose 'Enforce' to enforce immediately."
-				)
-			)
 		if cint(self.passkey_enforce_grace_logins) < 0:
-			frappe.throw(_("Grace Logins cannot be negative. Use 0 to block immediately."))
+			frappe.throw(_("Grace sign-ins cannot be negative. Use 0 to block immediately."))
 
 	def _validate_enablement(self):
 		"""Enabling any mode requires an importable webauthn, a resolved
@@ -162,11 +156,11 @@ class PasskeySettings(Document):
 			)
 
 	def _warn_enforcement_risks(self):
-		"""Non-blocking heads-ups for the enforcement rungs (the save proceeds). Mirror
-		the enrollment-policy banner matrix in ``passkey_manage_common.bundle.js``."""
+		"""Non-blocking heads-ups when a passkey is required (the save proceeds). Mirror
+		the banner matrix in ``passkey_manage_common.bundle.js``."""
 		if not self._enforcing():
 			return
-		# Enforcement is inert without a passkey login mode — nothing to require.
+		# The requirement is inert without a passkey login mode — nothing to require.
 		if not self._any_mode_enabled():
 			frappe.msgprint(
 				_(
@@ -174,19 +168,21 @@ class PasskeySettings(Document):
 				),
 				indicator="orange",
 			)
-		# Privileged accounts are the first targets; opting them out weakens the rollout.
-		if not cint(self.passkey_enforce_privileged_always):
+		# Privileged accounts are the first targets; leaving them out of a role list weakens it.
+		if self.passkey_enforce_scope == "Selected roles" and not cint(
+			self.passkey_enforce_privileged_always
+		):
 			frappe.msgprint(
 				_(
 					"Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first."
 				),
 				indicator="orange",
 			)
-		# Selected-roles scope with no roles listed enforces against nobody.
-		if self.passkey_enforce_scope == "Selected Roles" and not (self.passkey_enforce_roles or []):
+		# Selected roles with no roles listed requires a passkey from nobody (unless privileged).
+		if self.passkey_enforce_scope == "Selected roles" and not (self.passkey_enforce_roles or []):
 			frappe.msgprint(
 				_(
-					"Enforcement scope is 'Selected Roles' but no roles are listed, so the policy applies to nobody. Add the roles you want to enforce, or switch the scope to 'All Users'."
+					"Require a passkey from is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles you want to require, or switch to 'All users'."
 				),
 				indicator="orange",
 			)

@@ -17,7 +17,7 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_as_second_factor: paintBanners,
 	passkey_notify_on_change: paintBanners,
 	passkey_origins: paintBanners,
-	passkey_enrollment_policy: paintBanners,
+	passkey_everyone_else: paintBanners,
 	passkey_enforce_after: paintBanners,
 	passkey_enforce_scope: paintBanners,
 	passkey_enforce_roles: paintBanners,

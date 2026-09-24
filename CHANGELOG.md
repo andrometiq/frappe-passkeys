@@ -19,8 +19,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   user, session, action and the arguments listed in `bind_params`. A passkey is required unless an
   action opts in with `allow_password_fallback=True`. Dialogs show an explicit action label and only
   the parameters declared safe to display.
-- Enrollment nudges with a prompt cap and cooldown, and enrollment enforcement for all users or
-  selected roles, with grace logins, per-user exemptions and an admin grace reset.
+- Enrollment nudges with a prompt cap and cooldown, and a post-login requirement for no one,
+  selected roles, or all users. System Managers can be required on top of that scope. A blank
+  start date means immediately; before the date, in-scope users are nudged. Everyone outside
+  the scope is nudged or left alone. Grace sign-ins, per-user exemptions and an admin grace
+  reset are included. Phone and QR enrollment is always offered.
 - Self-service management at `/passkeys` and on the User form, including a per-user passkey-only
   sign-in switch.
 - A security-posture panel on Passkey Settings, console recovery commands, and site-bound,

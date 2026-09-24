@@ -20,20 +20,18 @@
   "passkey_ios_team_id",
   "passkey_ios_bundle_id",
   "enrollment_tab",
-  "passkey_enrollment_policy",
-  "passkey_enforce_after",
-  "passkey_nudge_max_prompts",
-  "column_break_enrollment",
-  "passkey_nudge_cooldown_days",
-  "passkey_conditional_create",
-  "enforcement_section",
   "passkey_enforce_scope",
   "passkey_enforce_roles",
   "passkey_enforce_privileged_always",
-  "column_break_enforcement",
+  "passkey_enforce_after",
+  "passkey_everyone_else",
+  "enforcement_section",
   "passkey_enforce_grace_logins",
   "passkey_enforce_incapable",
-  "passkey_enforce_allow_hybrid",
+  "prompts_section",
+  "passkey_nudge_max_prompts",
+  "passkey_nudge_cooldown_days",
+  "passkey_conditional_create",
   "security_tab",
   "passkey_sign_count_hard_fail",
   "passkey_max_per_user",
@@ -140,40 +138,84 @@
    "label": "Enrollment"
   },
   {
-   "default": "Nudge",
-   "description": "The adoption ladder rung. Off: no prompt. Nudge: cadence-capped, dismissible enrollment prompt. Enforce: in-scope users must register a passkey to keep using the app (recovery stays available). Enforce After Date: behaves as Nudge until the date, then Enforce. Enforce is a post-login interstitial: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block.",
-   "fieldname": "passkey_enrollment_policy",
+   "default": "No one",
+   "description": "In-scope users must enroll after signing in. This is a post-login prompt with grace sign-ins, never a server-side login block.",
+   "fieldname": "passkey_enforce_scope",
    "fieldtype": "Select",
-   "label": "Enrollment Policy",
-   "options": "Off\nNudge\nEnforce\nEnforce After Date"
+   "label": "Require a passkey from",
+   "options": "No one\nSelected roles\nAll users"
   },
   {
-   "depends_on": "eval:doc.passkey_enrollment_policy==\"Enforce After Date\"",
-   "description": "Enforcement begins on this date (evaluated against the server clock on every request). Before it, the policy behaves as Nudge; a past date behaves as immediate Enforce.",
+   "depends_on": "eval:doc.passkey_enforce_scope==\"Selected roles\"",
+   "description": "A user is in scope if they hold any of these roles.",
+   "fieldname": "passkey_enforce_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Roles",
+   "options": "Passkey Enforcement Role"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.passkey_enforce_scope!=\"All users\"",
+   "description": "Adds System Managers to the scope above, whatever it is.",
+   "fieldname": "passkey_enforce_privileged_always",
+   "fieldtype": "Check",
+   "label": "Always require a passkey from System Managers"
+  },
+  {
+   "depends_on": "eval:doc.passkey_enforce_scope!=\"No one\" || doc.passkey_enforce_privileged_always",
+   "description": "Blank = immediately. Until this date in-scope users are nudged instead of required.",
    "fieldname": "passkey_enforce_after",
    "fieldtype": "Date",
-   "label": "Enforce After",
-   "mandatory_depends_on": "eval:doc.passkey_enrollment_policy==\"Enforce After Date\""
+   "label": "Starting on"
+  },
+  {
+   "default": "Nudge",
+   "depends_on": "eval:doc.passkey_enforce_scope!=\"All users\"",
+   "description": "Users outside the scope: a dismissible enrollment prompt (capped below), or nothing.",
+   "fieldname": "passkey_everyone_else",
+   "fieldtype": "Select",
+   "label": "Everyone else",
+   "options": "Nudge\nOff"
+  },
+  {
+   "depends_on": "eval:doc.passkey_enforce_scope!=\"No one\" || doc.passkey_enforce_privileged_always",
+   "fieldname": "enforcement_section",
+   "fieldtype": "Section Break",
+   "label": "When a passkey is required"
   },
   {
    "default": "3",
-   "depends_on": "eval:[\"Nudge\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy) || (doc.passkey_enrollment_policy == \"Enforce\" && doc.passkey_enforce_incapable == \"Degrade to Nudge\")",
-   "description": "How many times the dismissible enrollment nudge may appear before it stops. Applies to Nudge, to 'Enforce After Date' before its date, and to devices that cannot create a passkey under 'Degrade to Nudge'.",
-   "fieldname": "passkey_nudge_max_prompts",
+   "description": "How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers brand-new users' first session; 0 blocks immediately.",
+   "fieldname": "passkey_enforce_grace_logins",
    "fieldtype": "Int",
-   "label": "Maximum Nudge Prompts"
+   "label": "Grace sign-ins"
   },
   {
-   "fieldname": "column_break_enrollment",
-   "fieldtype": "Column Break"
+   "default": "Degrade to Nudge",
+   "description": "What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). Degrade to Nudge never locks the device out; Block + Notify Admin keeps prompting and records a risk event instead.",
+   "fieldname": "passkey_enforce_incapable",
+   "fieldtype": "Select",
+   "label": "Device cannot create a passkey",
+   "options": "Degrade to Nudge\nBlock + Notify Admin"
+  },
+  {
+   "fieldname": "prompts_section",
+   "fieldtype": "Section Break",
+   "label": "Prompts"
+  },
+  {
+   "default": "3",
+   "description": "How many times the dismissible enrollment prompt may appear before it stops. Applies to Everyone else set to Nudge, to in-scope users before Starting on, and to devices that cannot create a passkey under Degrade to Nudge.",
+   "fieldname": "passkey_nudge_max_prompts",
+   "fieldtype": "Int",
+   "label": "Maximum prompts per user"
   },
   {
    "default": "30",
-   "depends_on": "eval:[\"Nudge\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy) || (doc.passkey_enrollment_policy == \"Enforce\" && doc.passkey_enforce_incapable == \"Degrade to Nudge\")",
-   "description": "Minimum days between nudge prompts. Applies wherever Maximum Nudge Prompts applies.",
+   "description": "Minimum days between those prompts. Applies wherever Maximum prompts per user applies.",
    "fieldname": "passkey_nudge_cooldown_days",
    "fieldtype": "Int",
-   "label": "Nudge Cooldown (Days)"
+   "label": "Days between prompts"
   },
   {
    "default": "1",
@@ -181,61 +223,6 @@
    "fieldname": "passkey_conditional_create",
    "fieldtype": "Check",
    "label": "Conditional Create"
-  },
-  {
-   "depends_on": "eval:[\"Enforce\", \"Enforce After Date\"].includes(doc.passkey_enrollment_policy)",
-   "fieldname": "enforcement_section",
-   "fieldtype": "Section Break",
-   "label": "Enforcement Scope"
-  },
-  {
-   "default": "All Users",
-   "description": "Whether enforcement applies to everyone or only to users holding one of the selected roles.",
-   "fieldname": "passkey_enforce_scope",
-   "fieldtype": "Select",
-   "label": "Enforcement Scope",
-   "options": "All Users\nSelected Roles"
-  },
-  {
-   "depends_on": "eval:doc.passkey_enforce_scope==\"Selected Roles\"",
-   "description": "A user is in scope for enforcement if they hold any of these roles.",
-   "fieldname": "passkey_enforce_roles",
-   "fieldtype": "Table MultiSelect",
-   "label": "Enforce for Roles",
-   "options": "Passkey Enforcement Role"
-  },
-  {
-   "default": "1",
-   "description": "Users holding a privileged role (System Manager) stay in the enforcement scope even when Scope is Selected Roles. Industry practice enforces the strongest authentication for administrators first.",
-   "fieldname": "passkey_enforce_privileged_always",
-   "fieldtype": "Check",
-   "label": "Always Enforce for Privileged Users"
-  },
-  {
-   "fieldname": "column_break_enforcement",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "3",
-   "description": "How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers brand-new users' first session; 0 blocks immediately.",
-   "fieldname": "passkey_enforce_grace_logins",
-   "fieldtype": "Int",
-   "label": "Grace Logins"
-  },
-  {
-   "default": "Degrade to Nudge",
-   "description": "What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). Degrade to Nudge never locks the device out; Block + Notify Admin keeps prompting and records a risk event instead.",
-   "fieldname": "passkey_enforce_incapable",
-   "fieldtype": "Select",
-   "label": "Incapable Device Policy",
-   "options": "Degrade to Nudge\nBlock + Notify Admin"
-  },
-  {
-   "default": "1",
-   "description": "On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so capable-via-phone users are not dead-ended.",
-   "fieldname": "passkey_enforce_allow_hybrid",
-   "fieldtype": "Check",
-   "label": "Allow Hybrid (Phone / QR) Enrollment"
   },
   {
    "fieldname": "security_tab",
@@ -302,7 +289,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-23 00:00:01.000000",
+ "modified": "2026-09-24 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

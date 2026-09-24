@@ -16,7 +16,7 @@ Closes the boundary gaps the tests-&-CI map named as unpinned:
 * Exact tipping points the representative-value tests skip: the nudge cooldown at
   *exactly* N days (both sides of the ``<`` compare), the nudge cap at
   ``declines == cap`` vs ``cap-1``, the enforcement grace budget at ``grace=1`` and
-  the ``max(0, …)`` clamp, and ``Enforce After Date`` when the date **is today**
+  the ``max(0, …)`` clamp, and a start date that **is today**
   (the ``<=`` boundary).
 
 Scoped to real coupling per the map — no blind Cartesian. Uses the established
@@ -240,7 +240,9 @@ class NudgeBoundaryTest(IntegrationTestCase):
 		# cadence, not the origin validator, so a leaked/foreign `passkey_origins` value
 		# left on the shared single by an earlier committing test must not break its setup.
 		for field, value in {
-			"passkey_enrollment_policy": "Nudge",
+			"passkey_enforce_scope": "No one",
+			"passkey_enforce_privileged_always": 0,
+			"passkey_everyone_else": "Nudge",
 			"login_with_passkey": 1,
 			"passkey_nudge_max_prompts": 3,
 			"passkey_nudge_cooldown_days": 30,
@@ -254,7 +256,9 @@ class NudgeBoundaryTest(IntegrationTestCase):
 		sign_in("Administrator")
 		# Faithful restore (never `or 0` — that coerces a blank Select/int into a literal "0").
 		for field in (
-			"passkey_enrollment_policy",
+			"passkey_enforce_scope",
+			"passkey_enforce_privileged_always",
+			"passkey_everyone_else",
 			"login_with_passkey",
 			"passkey_nudge_max_prompts",
 			"passkey_nudge_cooldown_days",
@@ -323,7 +327,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 class EnforcementBoundaryTest(IntegrationTestCase):
 	"""The enforcement verdict's exact edges the representative-value battery skips:
 	a ``grace=1`` budget, the ``max(0, …)`` remaining clamp when over-spent, and
-	``Enforce After Date`` when the date IS today (the ``<=`` server-clock compare)."""
+	a start date that IS today (the ``<=`` server-clock compare)."""
 
 	def setUp(self):
 		super().setUp()
@@ -333,9 +337,9 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		settings.passkey_origins = ORIGIN
 		settings.login_with_passkey = 1
 		settings.passkey_as_second_factor = 0
-		settings.passkey_enrollment_policy = "Enforce"
 		settings.passkey_enforce_after = None
-		settings.passkey_enforce_scope = "All Users"
+		settings.passkey_enforce_scope = "All users"
+		settings.passkey_everyone_else = "Nudge"
 		settings.passkey_enforce_privileged_always = 1
 		settings.passkey_enforce_grace_logins = 3
 		settings.set("passkey_enforce_roles", [])
@@ -352,7 +356,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 			"passkey_origins",
 			"login_with_passkey",
 			"passkey_as_second_factor",
-			"passkey_enrollment_policy",
+			"passkey_everyone_else",
 			"passkey_enforce_after",
 			"passkey_enforce_scope",
 			"passkey_enforce_privileged_always",
@@ -417,7 +421,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 	def test_enforce_after_date_today_is_enforce(self):
 		# getdate(after) <= getdate(nowdate()): today == today resolves to enforce (the
 		# <= boundary the future/past tests straddle but never land on).
-		self._set(passkey_enrollment_policy="Enforce After Date", passkey_enforce_after=nowdate())
+		self._set(passkey_enforce_after=nowdate())
 		v = self._verdict(self._user())
 		self.assertEqual(v["effective"], "enforce")
 		self.assertTrue(v["in_scope"])
@@ -483,7 +487,7 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 	def _restore(self):
 		doc = frappe.get_doc("Passkey Settings")
 		for field in (
-			"passkey_enrollment_policy",
+			"passkey_everyone_else",
 			"passkey_enforce_after",
 			"passkey_enforce_scope",
 			"passkey_enforce_privileged_always",
@@ -506,33 +510,41 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 		doc.save()
 		return doc
 
-	def test_enforce_after_date_requires_a_date(self):
-		with self.assertRaises(frappe.ValidationError):
-			self._save(passkey_enrollment_policy="Enforce After Date", passkey_enforce_after=None)
-		# with a date it saves
-		self._save(passkey_enrollment_policy="Enforce After Date", passkey_enforce_after="2027-01-01")
+	def test_blank_start_date_saves(self):
+		# The mandatory-date throw is gone: a blank Starting on means immediately.
+		doc = self._save(passkey_enforce_scope="All users", passkey_enforce_after=None)
+		self.assertFalse(doc.passkey_enforce_after)
 
 	def test_negative_grace_logins_is_rejected(self):
 		with self.assertRaises(frappe.ValidationError):
-			self._save(passkey_enrollment_policy="Enforce", passkey_enforce_grace_logins=-1)
+			self._save(passkey_enforce_scope="All users", passkey_enforce_grace_logins=-1)
 
 	def test_privileged_opt_out_warns_but_does_not_block_save(self):
 		with patch("frappe.msgprint") as msgprint:
 			doc = self._save(
-				passkey_enrollment_policy="Enforce",
+				passkey_enforce_scope="Selected roles",
 				passkey_enforce_privileged_always=0,
 			)
-		self.assertEqual(doc.passkey_enrollment_policy, "Enforce")
+		self.assertEqual(doc.passkey_enforce_scope, "Selected roles")
 		messages = [call.args[0] for call in msgprint.call_args_list]
 		self.assertIn(
 			"Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first.",
 			messages,
 		)
 
+	def test_privileged_opt_out_is_silent_outside_selected_roles(self):
+		with patch("frappe.msgprint") as msgprint:
+			self._save(passkey_enforce_scope="No one", passkey_enforce_privileged_always=0)
+			self._save(passkey_enforce_scope="All users", passkey_enforce_privileged_always=0)
+		messages = [call.args[0] for call in msgprint.call_args_list]
+		self.assertFalse(
+			any("Privileged users (System Manager) are outside" in message for message in messages)
+		)
+
 	def test_recommended_privileged_enforcement_has_no_self_lockout_warning(self):
 		with patch("frappe.msgprint") as msgprint:
 			self._save(
-				passkey_enrollment_policy="Enforce",
+				passkey_enforce_scope="Selected roles",
 				passkey_enforce_privileged_always=1,
 			)
 		messages = [call.args[0] for call in msgprint.call_args_list]
@@ -543,35 +555,31 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 
 
 class EnrollmentFieldVisibilityTest(IntegrationTestCase):
-	"""Policy-scoped visibility of the enrollment knobs.
-
-	Regression for the bug where the Nudge cadence knobs rendered under every policy, plus
-	a guard that Grace Logins stays reachable under Enforce. ``depends_on`` is a static,
-	ship-time declaration evaluated client-side, so this asserts the meta the form drives
-	off of directly."""
-
-	# Visible wherever the nudge cadence applies: Nudge, Enforce After Date, and the
-	# incapable-device nudge under Enforce + Degrade to Nudge.
-	NUDGE_DEPENDS_ON = (
-		'eval:["Nudge", "Enforce After Date"].includes(doc.passkey_enrollment_policy)'
-		' || (doc.passkey_enrollment_policy == "Enforce" && doc.passkey_enforce_incapable == "Degrade to Nudge")'
-	)
+	"""depends_on of the Enrollment tab. Prompt cadence is always on the form; the
+	requirement section shows when someone can be in scope. ``depends_on`` is a static
+	declaration evaluated client-side, so this asserts the meta the form drives off of."""
 
 	def _field(self, fieldname):
 		return frappe.get_meta("Passkey Settings").get_field(fieldname)
 
-	def test_nudge_knobs_are_scoped_to_the_nudge_cadence_policies(self):
-		for fieldname in ("passkey_nudge_max_prompts", "passkey_nudge_cooldown_days"):
-			self.assertEqual(
-				self._field(fieldname).depends_on,
-				self.NUDGE_DEPENDS_ON,
-				f"{fieldname} must be visible wherever the nudge cadence applies",
-			)
+	def test_prompt_knobs_are_always_visible(self):
+		for fieldname in ("passkey_nudge_max_prompts", "passkey_nudge_cooldown_days", "prompts_section"):
+			self.assertFalse(self._field(fieldname).depends_on, fieldname)
 
-	def test_grace_logins_stays_reachable_under_enforce(self):
-		# The field carries no hiding depends_on of its own; the enforcement section gates it
-		# to the enforcing policies, so it is visible + settable whenever enforcement can bite.
+	def test_requirement_section_follows_scope_or_privileged(self):
 		self.assertFalse(self._field("passkey_enforce_grace_logins").depends_on)
 		section = self._field("enforcement_section").depends_on
-		self.assertIn("Enforce", section)
-		self.assertIn("Enforce After Date", section)
+		self.assertIn('passkey_enforce_scope!="No one"', section)
+		self.assertIn("passkey_enforce_privileged_always", section)
+		self.assertEqual(
+			self._field("passkey_enforce_roles").depends_on,
+			'eval:doc.passkey_enforce_scope=="Selected roles"',
+		)
+		self.assertEqual(
+			self._field("passkey_everyone_else").depends_on,
+			'eval:doc.passkey_enforce_scope!="All users"',
+		)
+		self.assertEqual(
+			self._field("passkey_enforce_privileged_always").depends_on,
+			'eval:doc.passkey_enforce_scope!="All users"',
+		)

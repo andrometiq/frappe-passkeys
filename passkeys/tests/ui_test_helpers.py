@@ -343,11 +343,14 @@ def clear_sudo_window() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def configure_nudge(max_prompts: int = 3, cooldown_days: int = 30, conditional_create: int = 0) -> dict:
-	"""Put the site on the ``Nudge`` policy with these knobs for the nudge specs (written
-	directly — the same bench rationale as :func:`configure_login`)."""
+	"""Put out-of-scope users on a nudge (scope ``No one``, System Managers not required,
+	Everyone else ``Nudge``) for the nudge specs. Written directly — the same bench
+	rationale as :func:`configure_login`."""
 	_guard()
 	values = {
-		"passkey_enrollment_policy": "Nudge",
+		"passkey_enforce_scope": "No one",
+		"passkey_enforce_privileged_always": 0,
+		"passkey_everyone_else": "Nudge",
 		"passkey_nudge_max_prompts": cint(max_prompts),
 		"passkey_nudge_cooldown_days": cint(cooldown_days),
 		"passkey_conditional_create": cint(conditional_create),

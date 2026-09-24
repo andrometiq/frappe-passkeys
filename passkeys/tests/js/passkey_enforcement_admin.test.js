@@ -12,11 +12,10 @@ const assert = require("node:assert");
 
 const M = require("../../public/js/passkey_manage_common.bundle.js");
 
-test("shouldShowEnforcementAdmin only on an enforcement rung", () => {
-	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { policy: "Enforce" } }), true);
-	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { policy: "Enforce After Date" } }), true);
-	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { policy: "Nudge" } }), false);
-	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { policy: "Off" } }), false);
+test("shouldShowEnforcementAdmin only while the site is enforcing", () => {
+	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { enforcing: true } }), true);
+	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { enforcing: false } }), false);
+	assert.equal(M.shouldShowEnforcementAdmin({ enforcement: { effective: "nudge" } }), false);
 	assert.equal(M.shouldShowEnforcementAdmin({}), false);
 	assert.equal(M.shouldShowEnforcementAdmin(null), false);
 });

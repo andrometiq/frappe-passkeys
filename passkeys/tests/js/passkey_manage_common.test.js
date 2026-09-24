@@ -196,13 +196,12 @@ test("nudgeDecision: conditional create gated on server eligible ∧ knob ∧ ca
 function enfBoot(over) {
 	const enf = Object.assign(
 		{
-			policy: "Enforce",
+			enforcing: true,
 			effective: "enforce",
 			in_scope: true,
 			blocking: false,
 			grace_remaining: 3,
 			grace_total: 3,
-			allow_hybrid: true,
 			incapable_policy: "degrade",
 			degrade_nudge_eligible: true,
 			reason: "grace",
@@ -276,10 +275,11 @@ test("enforcementDecision: unknown capability counts as capable (tri-state)", ()
 	assert.strictEqual(d.show, true);
 });
 
-test("enforcementDecision: no platform authenticator but hybrid allowed ⇒ enroll via phone", () => {
+test("enforcementDecision: no platform authenticator but hybrid transport ⇒ enroll via phone", () => {
 	const d = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: false, hybrid: true });
 	assert.strictEqual(d.variant, "enforce");
-	assert.strictEqual(d.allowHybrid, true);
+	assert.strictEqual(d.show, true);
+	assert.strictEqual(d.allowHybrid, undefined);
 });
 
 test("enforcementDecision: genuinely incapable device degrades to nudge (default)", () => {
@@ -287,12 +287,9 @@ test("enforcementDecision: genuinely incapable device degrades to nudge (default
 	assert.strictEqual(d.variant, "nudge");
 	assert.strictEqual(d.blocking, false);
 	assert.strictEqual(d.reason, "incapable_degrade");
-	// uvpaa false + hybrid false + allow_hybrid false ⇒ still incapable
-	const d2 = M.enforcementDecision(
-		enfBoot({ enforcement: { allow_hybrid: false } }),
-		{ supported: true, uvpaa: false, hybrid: true }
-	);
-	assert.strictEqual(d2.variant, "nudge");
+	// uvpaa false and hybrid false is incapable; hybrid true is capable even without uvpaa
+	const viaPhone = M.enforcementDecision(enfBoot(), { supported: true, uvpaa: false, hybrid: true });
+	assert.strictEqual(viaPhone.variant, "enforce");
 });
 
 test("enforcementDecision: incapable + Block+Notify blocks and flags the admin", () => {
@@ -446,23 +443,17 @@ test("roleNames normalises child rows / strings / missing tables", () => {
 	assert.deepStrictEqual(M.roleNames(undefined), []);
 });
 
-test("settingsBanners: Enforce After Date without a date is a Save-blocking error", () => {
+test("settingsBanners: a blank Starting on is not a Save-blocking error", () => {
 	const b = M.settingsBanners(
-		{ login_with_passkey: 1, passkey_enrollment_policy: "Enforce After Date" },
-		{}
-	);
-	assert.ok(b.some((x) => x.key === M.COPY.enforceNoDate && x.level === "error"));
-	// with a date ⇒ gone
-	const ok = M.settingsBanners(
 		{
 			login_with_passkey: 1,
-			passkey_enrollment_policy: "Enforce After Date",
-			passkey_enforce_after: "2026-08-01",
+			passkey_enforce_scope: "All users",
 			passkey_enforce_privileged_always: 1,
 		},
 		{}
 	);
-	assert.ok(!ok.some((x) => x.key === M.COPY.enforceNoDate));
+	assert.ok(!b.some((x) => x.key === M.COPY.enforceNoDate));
+	assert.strictEqual(M.COPY.enforceNoDate, undefined);
 });
 
 test("settingsBanners: enforcing while no mode enabled warns it is inert", () => {
@@ -470,7 +461,7 @@ test("settingsBanners: enforcing while no mode enabled warns it is inert", () =>
 		{
 			login_with_passkey: 0,
 			passkey_as_second_factor: 0,
-			passkey_enrollment_policy: "Enforce",
+			passkey_enforce_scope: "All users",
 			passkey_enforce_privileged_always: 1,
 		},
 		{}
@@ -478,24 +469,27 @@ test("settingsBanners: enforcing while no mode enabled warns it is inert", () =>
 	assert.ok(b.some((x) => x.key === M.COPY.enforceNoMode && x.level === "warning"));
 });
 
-test("settingsBanners: privileged-always opt-out warns", () => {
+test("settingsBanners: privileged-always opt-out warns only for Selected roles", () => {
 	const doc = {
 		login_with_passkey: 1,
-		passkey_enrollment_policy: "Enforce",
+		passkey_enforce_scope: "Selected roles",
 		passkey_enforce_privileged_always: 0,
+		passkey_enforce_roles: [{ role: "Sales User" }],
 	};
 	const b = M.settingsBanners(doc, {});
 	assert.ok(b.some((x) => x.key === M.COPY.enforcePrivilegedOutside && x.level === "warning"));
 	doc.passkey_enforce_privileged_always = 1;
 	assert.ok(!M.settingsBanners(doc, {}).some((x) => x.key === M.COPY.enforcePrivilegedOutside));
+	doc.passkey_enforce_scope = "All users";
+	doc.passkey_enforce_privileged_always = 0;
+	assert.ok(!M.settingsBanners(doc, {}).some((x) => x.key === M.COPY.enforcePrivilegedOutside));
 });
 
-test("settingsBanners: Selected Roles with no roles enforces nobody (warning)", () => {
+test("settingsBanners: Selected roles with no roles enforces nobody (warning)", () => {
 	const b = M.settingsBanners(
 		{
 			login_with_passkey: 1,
-			passkey_enrollment_policy: "Enforce",
-			passkey_enforce_scope: "Selected Roles",
+			passkey_enforce_scope: "Selected roles",
 			passkey_enforce_roles: [],
 			passkey_enforce_privileged_always: 1,
 		},
@@ -508,7 +502,7 @@ test("settingsBanners: Block+Notify incapable policy warns; report-only preview 
 	const b = M.settingsBanners(
 		{
 			login_with_passkey: 1,
-			passkey_enrollment_policy: "Enforce",
+			passkey_enforce_scope: "All users",
 			passkey_enforce_incapable: "Block + Notify Admin",
 			passkey_enforce_privileged_always: 1,
 		},
@@ -520,8 +514,11 @@ test("settingsBanners: Block+Notify incapable policy warns; report-only preview 
 	assert.deepStrictEqual(preview.args, [7]);
 });
 
-test("settingsBanners: no enforcement banners under Nudge / Off", () => {
-	const nudge = M.settingsBanners({ login_with_passkey: 1, passkey_enrollment_policy: "Nudge" }, { wouldBeBlockedCount: 3 });
+test("settingsBanners: no enforcement banners when scope is No one and privileged is off", () => {
+	const nudge = M.settingsBanners(
+		{ login_with_passkey: 1, passkey_enforce_scope: "No one", passkey_enforce_privileged_always: 0, passkey_everyone_else: "Nudge" },
+		{ wouldBeBlockedCount: 3 }
+	);
 	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforcePrivilegedOutside, M.COPY.enforcePreview].indexOf(x.key) !== -1));
 });
 

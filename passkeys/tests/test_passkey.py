@@ -67,15 +67,14 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			("passkey_max_per_user", "10"),
 			("passkey_reauth_window", "600"),
 			("passkey_allow_first_enrollment_on_weak_login", "1"),
-			("passkey_enrollment_policy", "Nudge"),
+			("passkey_enforce_scope", "No one"),
+			("passkey_enforce_privileged_always", "1"),
+			("passkey_everyone_else", "Nudge"),
 			("passkey_nudge_max_prompts", "3"),
 			("passkey_nudge_cooldown_days", "30"),
 			("passkey_conditional_create", "1"),
-			("passkey_enforce_scope", "All Users"),
-			("passkey_enforce_privileged_always", "1"),
 			("passkey_enforce_grace_logins", "3"),
 			("passkey_enforce_incapable", "Degrade to Nudge"),
-			("passkey_enforce_allow_hybrid", "1"),
 			("passkey_notify_on_change", "1"),
 			("passkey_notify_password_fallback", "0"),
 		):
@@ -103,20 +102,18 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			"passkey_ios_team_id",
 			"passkey_ios_bundle_id",
 			"enrollment_tab",
-			"passkey_enrollment_policy",
-			"passkey_enforce_after",
-			"passkey_nudge_max_prompts",
-			"column_break_enrollment",
-			"passkey_nudge_cooldown_days",
-			"passkey_conditional_create",
-			"enforcement_section",
 			"passkey_enforce_scope",
 			"passkey_enforce_roles",
 			"passkey_enforce_privileged_always",
-			"column_break_enforcement",
+			"passkey_enforce_after",
+			"passkey_everyone_else",
+			"enforcement_section",
 			"passkey_enforce_grace_logins",
 			"passkey_enforce_incapable",
-			"passkey_enforce_allow_hybrid",
+			"prompts_section",
+			"passkey_nudge_max_prompts",
+			"passkey_nudge_cooldown_days",
+			"passkey_conditional_create",
 			"security_tab",
 			"passkey_sign_count_hard_fail",
 			"passkey_max_per_user",
@@ -144,7 +141,8 @@ class TestDocTypeSchemas(PasskeyTestCase):
 				("Tab Break", "Notifications"),
 			],
 		)
-		self.assertEqual(meta.get_field("enforcement_section").label, "Enforcement Scope")
+		self.assertEqual(meta.get_field("enforcement_section").label, "When a passkey is required")
+		self.assertEqual(meta.get_field("prompts_section").label, "Prompts")
 
 
 class TestWebAuthnCredential(PasskeyTestCase):

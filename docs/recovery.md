@@ -141,6 +141,26 @@ re-enabling — changing the RP ID invalidates every existing passkey.
 
 ---
 
+## Scenario G — the enrollment prompt is blocking Desk
+
+Symptom: after sign-in, in-scope users (or every System Manager) cannot get past
+the passkey enrollment prompt.
+
+The prompt is post-login. It is not a server-side authentication block. To stop
+requiring a passkey, set **Require a passkey from** to *No one* and untick
+**Always require a passkey from System Managers**. From the console, without
+running the settings controller:
+
+```bash
+bench --site <site> execute passkeys.recovery.disable_enforcement
+```
+
+That sets both fields and leaves **Everyone else** and every other Passkey
+Setting as they are. Per-user exemptions still use the User form, or see
+[`configuration.md`](configuration.md#a-user-cant-get-past-enforcement--what-to-do).
+
+---
+
 ## Last resort — remove the app entirely
 
 If you need passkeys gone and nothing above applies, uninstall the app

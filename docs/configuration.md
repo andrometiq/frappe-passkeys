@@ -45,43 +45,26 @@ in [`mobile-apps.md`](mobile-apps.md). Leave them blank for a web-only site.
 
 ## Enrollment
 
-The **Enrollment Policy** is the rung control of the passkey adoption ladder — it
-decides whether, and how hard, the app pushes passkey-less users to enroll. The
-nudge and conditional-create knobs tune the softer rungs; the separate
-**Enforcement Scope** section below only takes effect on the harder ones.
+**Require a passkey from** decides who must enroll after they sign in. That prompt is a
+post-login interstitial: the session already exists, so it raises friction toward enrollment
+and is never a server-side login block. Phone / QR enrollment is always offered; a device
+counts as capable when it has a platform authenticator or a cross-device option. Users
+outside the scope take **Everyone else**. A blank **Starting on** means immediately; until
+that date, in-scope users are nudged instead of required. The exempt marker role beats
+every scope rule, including System Managers.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
-| **Enrollment Policy** (`passkey_enrollment_policy`) | Nudge | The adoption-ladder rung, a Select of four values. **Off** — never prompt. **Nudge** — show a dismissible "set up a passkey" prompt after login to users who have none, capped by the two nudge knobs below. **Enforce** — in-scope users must register a passkey to keep using the app (recovery stays available). **Enforce After Date** — behaves as *Nudge* until the date in *Enforce After*, then becomes *Enforce*. Enforce is a **post-login interstitial**: the session already exists before it runs, so it raises friction toward enrollment but is not a server-side authentication block. |
-| **Enforce After** (`passkey_enforce_after`) | *blank* | Only shown, and required, when the policy is *Enforce After Date*. Enforcement begins on this date, evaluated against the server clock on every request; before it the policy behaves as *Nudge*, and a past date behaves as an immediate *Enforce*. |
-| **Maximum Nudge Prompts** (`passkey_nudge_max_prompts`) | 3 | How many times a user is nudged before the app stops (applies to *Nudge*, to *Enforce After Date* before its date, and to incapable devices under *Degrade to Nudge*). Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
-| **Nudge Cooldown (Days)** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between nudges to the same user. Applies wherever Maximum Nudge Prompts applies. |
+| **Require a passkey from** (`passkey_enforce_scope`) | No one | *No one*, *Selected roles*, or *All users*. In-scope users must enroll after signing in, after grace sign-ins. |
+| **Roles** (`passkey_enforce_roles`) | *empty* | Shown when scope is *Selected roles*. A user is in scope if they hold **any** of these roles. |
+| **Always require a passkey from System Managers** (`passkey_enforce_privileged_always`) | On | Adds System Managers (and Administrator) to the scope above, whatever it is. Hidden when scope is *All users*, because they are already included. Turning it off under *Selected roles* warns. A per-user exemption still wins. |
+| **Starting on** (`passkey_enforce_after`) | *blank* | Blank means immediately. Until this date, in-scope users are nudged instead of required. A past date is immediate. Shown when scope is not *No one*, or System Managers are always included. |
+| **Everyone else** (`passkey_everyone_else`) | Nudge | Users outside the scope: *Nudge* (a dismissible prompt, capped below) or *Off* (nothing). Hidden when scope is *All users*. The exempt marker takes this rung too. |
+| **Grace sign-ins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. A defer can consume at most one grace login per session, even if the endpoint is retried or multiple tabs render the prompt. `0` blocks immediately. Shown under **When a passkey is required**. |
+| **Device cannot create a passkey** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* uses the ordinary opt-out, prompt cap and cooldown on both Desk and portal, and never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
+| **Maximum prompts per user** (`passkey_nudge_max_prompts`) | 3 | How many times the dismissible prompt may appear. Applies to *Everyone else* = Nudge, to in-scope users before **Starting on**, and to incapable devices under *Degrade to Nudge*. Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
+| **Days between prompts** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between those prompts. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. Off: only the explicit nudge/enroll flow creates passkeys. |
-
-Nudges and the post-hybrid upsell are disabled when both passkey login modes are off.
-A prompt counts only after the Desk dialog is shown or the portal banner is inserted. The portal
-banner is not shown on /passkeys, which is itself the enrolment page. "Don't ask again" keeps the
-prompt open until the server has saved the choice; if the save fails, an error appears in the prompt
-and the user can retry. If conditional creation does not end in a server-verified credential (none
-created, verify rejected, or a network error), the eligible visible nudge appears; an aborted or
-still-pending attempt does not. The post-hybrid upsell hint is
-consumed on evaluation, even when capped, and cleared when the login page initializes.
-
-## Enforcement Scope
-
-This section is shown, and takes effect, **only** when **Enrollment Policy** is
-*Enforce* or *Enforce After Date*. It scopes who enforcement applies to and
-provides recovery controls for capable-but-stuck users. Privileged users remain
-in scope by default even when enforcement targets selected roles.
-
-| Field | Default | What it does / consequence of changing it |
-|---|---|---|
-| **Enforcement Scope** (`passkey_enforce_scope`) | All Users | Whether enforcement applies to everyone (*All Users*) or only to users holding one of the selected roles (*Selected Roles*). |
-| **Enforce for Roles** (`passkey_enforce_roles`) | *empty* | Only shown when scope is *Selected Roles*. A user is in scope for enforcement if they hold **any** of these roles. |
-| **Always Enforce for Privileged Users** (`passkey_enforce_privileged_always`) | On | Keeps users holding `System Manager` in scope even when scope is *Selected Roles*. Administrators are high-value targets, so keeping this on is the recommended posture. Turning it off is allowed but produces an amber warning. A temporary per-user exemption still wins when recovery is needed. |
-| **Grace Logins** (`passkey_enforce_grace_logins`) | 3 | How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. A defer can consume at most one grace login per session, even if the endpoint is retried or multiple tabs render the prompt. `0` blocks immediately. |
-| **Incapable Device Policy** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* uses the ordinary opt-out, prompt cap and cooldown on both Desk and portal, and never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
-| **Allow Hybrid (Phone / QR) Enrollment** (`passkey_enforce_allow_hybrid`) | On | On a device with no platform authenticator, offer enrollment via a phone / QR code (cross-device) so users who are capable via a phone are not dead-ended. |
 
 ### A user can't get past enforcement — what to do
 
@@ -89,8 +72,8 @@ Enforce is a **post-login interstitial**, not a pre-session authentication block
 but **Block + Notify Admin** can still prevent useful application access. The
 levers below go from least to most drastic. Pick the narrowest one that fits.
 
-1. **They said "I can't set one up here."** With the default *Incapable Device
-   Policy* (**Degrade to Nudge**) the interstitial already let them through as a
+1. **They said "I can't set one up here."** With the default *Device cannot create a
+   passkey* (**Degrade to Nudge**) the interstitial already let them through as a
    dismissible nudge (or silently when opted out, capped or cooling down), without emailing
    administrators. Nothing is blocking;
    help them enroll on a capable device (or issue a security key) when convenient.
@@ -98,25 +81,25 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
    **Contact administrator**, because clicking it emails the System Managers. The
    fixes below apply then.
 2. **Exempt this one user (one click).** Open the user's **User** form → the
-   **Passkeys** section (System Managers see it on anyone's form). While the policy
-   is *Enforce* / *Enforce After Date* it shows two admin actions; click **Exempt
+   **Passkeys** section (System Managers see it on anyone's form). While a passkey
+   is required from someone, it shows two admin actions; click **Exempt
    from passkey enforcement**. Under the hood this assigns the dedicated
    **`Passkey Enforcement Exempt`** marker role (created on first use) — the user
-   drops out of scope immediately, including a `System Manager` covered by
-   *Always Enforce for Privileged Users*. **Remove enforcement exemption** reverses
+   takes the **Everyone else** rung immediately, including a `System Manager` covered by
+   *Always require a passkey from System Managers*. **Remove enforcement exemption** reverses
    it. The marker role remains available for reuse, but only explicit per-user
    assignments exempt anyone; there is no role-wide exemption setting.
 3. **Give them more grace logins.** In the same section, **Reset grace logins**
-   restores the user's full deferral budget (the *Grace Logins* count) so the
+   restores the user's full deferral budget (the *Grace sign-ins* count) so the
    interstitial goes back to "Remind me later" instead of blocking. Use it to buy a
    capable-but-not-right-now user time to enroll.
 4. **Adjust scope or roles.** If a whole non-privileged group is caught wrongly,
-   narrow **Enforcement Scope** to *Selected Roles* and set *Enforce for Roles*.
-   This takes effect on the next login. Privileged users stay in scope while
-   *Always Enforce for Privileged Users* is on.
-5. **Back off the policy.** Flipping **Enrollment Policy** to **Nudge** turns every
-   interstitial back into a dismissible prompt site-wide — the escape hatch when a
-   rollout is biting more users than expected.
+   set **Require a passkey from** to *Selected roles* and list **Roles**.
+   This takes effect on the next login. System Managers stay in scope while
+   *Always require a passkey from System Managers* is on.
+5. **Back off the requirement.** Set **Require a passkey from** to **No one** and
+   untick **Always require a passkey from System Managers**. In-scope interstitials
+   stop; **Everyone else** still decides whether everyone else sees a nudge.
 6. **If every administrator is locked out, use the server console.** Disable the
    enrollment gate without invoking the settings controller:
 
@@ -124,8 +107,9 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
    bench --site <site> execute passkeys.recovery.disable_enforcement
    ```
 
-   This idempotently drops an enforcing policy to *Nudge* and deliberately leaves
-   every other Passkey Setting untouched. Frappe core also provides operator
+   This idempotently sets **Require a passkey from** to *No one* and unticks
+   **Always require a passkey from System Managers**. Every other Passkey Setting,
+   including **Everyone else**, is left untouched. Frappe core also provides operator
    recovery hatches for restoring an administrator account:
 
    ```bash
