@@ -18,6 +18,21 @@ from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
+class TestFrappeVersionFloor(unittest.TestCase):
+	def test_below_floor_refused(self):
+		for version in ("15.107.9", "16.18.2", "15.0.0-dev"):
+			with self.subTest(version=version), self.assertRaises(frappe.ValidationError):
+				install.check_frappe_version(version)
+
+	def test_at_or_above_floor_and_other_lines_accepted(self):
+		for version in ("15.108.0", "15.121.1", "16.18.3", "16.35.0+abc", "17.0.0-dev"):
+			with self.subTest(version=version):
+				install.check_frappe_version(version)
+
+	def test_running_frappe_satisfies_floor(self):
+		install.check_frappe_version()
+
+
 class TestInstallGuards(IntegrationTestCase):
 	def test_fresh_install_onto_native_core_is_refused(self):
 		with patch("passkeys.install.is_core_native", return_value=True):

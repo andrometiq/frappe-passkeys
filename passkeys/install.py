@@ -33,9 +33,28 @@ CREDENTIAL_EXPORT_VERSION = 2
 CREDENTIAL_EXPORT_SIGNATURE_ALG = "HMAC-SHA256"
 
 
+# Oldest Frappe per major line with the fix for GHSA-3w78-3cj3-p949. Bench only warns
+# on pyproject's frappe-dependencies, so the floor is enforced here.
+FRAPPE_VERSION_FLOORS = {15: (15, 108, 0), 16: (16, 18, 3)}
+
+
+def check_frappe_version(current: str | None = None) -> None:
+	current = current or frappe.__version__
+	parts = current.split("+", 1)[0].split("-", 1)[0].split(".")
+	version = tuple(int(part) if part.isdigit() else 0 for part in [*parts, "0", "0"][:3])
+	floor = FRAPPE_VERSION_FLOORS.get(version[0])
+	if floor and version < floor:
+		frappe.throw(
+			_("The passkeys app needs Frappe {0} or later on this line; this site runs {1}.").format(
+				".".join(map(str, floor)), current
+			)
+		)
+
+
 def before_install():
-	"""Refuse to install on a Frappe that ships its own passkey module. Runs before
-	install so a refusal leaves no half-installed app behind."""
+	"""Refuse to install on a Frappe below the security floor or one that ships its own
+	passkey module. Runs before install so a refusal leaves no half-installed app behind."""
+	check_frappe_version()
 	if core_module_present() or is_core_native():
 		frappe.throw(
 			_(

@@ -16,9 +16,10 @@ The app pins `webauthn==2.8.0`; changing that authentication-critical dependency
 resolver and ceremony matrix. Python `>=3.10,<3.15` is declared. These constraints describe what the
 candidate accepts, not a promise that every future Frappe patch release in the range is compatible.
 
-`pyproject.toml` declares the Frappe range (`[tool.bench.frappe-dependencies] frappe =
-">=15.108.0,<18.0.0"`). Release CI validates a reviewed, pinned Frappe baseline per branch; validate
-the exact Frappe patch level you deploy.
+Each branch's `pyproject.toml` declares its Frappe range (`version-15`: `>=15.108.0,<16.0.0`;
+`version-16`: `>=16.18.3,<17.0.0`). Bench only warns about that range, so installing refuses a
+Frappe below the floor of its line. Release CI validates a reviewed, pinned Frappe baseline per
+branch; validate the exact Frappe patch level you deploy.
 
 ## Install
 
