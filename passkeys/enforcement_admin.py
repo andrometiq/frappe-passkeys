@@ -1,23 +1,10 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Admin enrollment-enforcement recovery endpoints (folds into ``frappe/passkey.py`` on
-the core merge).
-
-The three System-Manager-only affordances surfaced on the User form's Passkeys section
-for an administrator unblocking a stuck user:
-
-  * **one-click per-user exemption** — mechanism stays role-based: a dedicated role,
-    :data:`EXEMPT_ROLE`, created LAZILY on the first exemption (never at install), kept in
-    place for reuse, and assigned/removed on the user. Un-exempt removes only the
-    assignment; the marker role stays in place.
-  * **grace-counter reset** — clears exactly the ``{user}_passkey_enforce`` grace blob
-    (see :func:`passkeys.boot.clear_enforcement_state`).
-  * a read view-model (:func:`admin_enforcement_view`) the section paints.
-
-Every write endpoint is ``refuse_if_core_native`` (dormant-shell 417) → ``only_for("System
-Manager")`` → per-user rate-limited, mirroring the app's other admin endpoints
-(``passkey_settings.get_security_posture``)."""
+"""System-Manager-only enforcement recovery endpoints for the User form's Passkeys
+section: a per-user exemption (the :data:`EXEMPT_ROLE` marker role, created on first use
+and never removed), a grace-counter reset, and the section's read view-model. Folds into
+``frappe/passkey.py`` on the core merge."""
 
 import frappe
 from frappe import _
@@ -53,10 +40,8 @@ def _require_user(user: str) -> str:
 
 
 def _ensure_exempt_role() -> None:
-	"""Lazily create :data:`EXEMPT_ROLE`. Idempotent — safe on every exemption.
-
-	The role carries no desk access: it is a pure enforcement marker and grants no
-	privilege, so assigning it can never widen a user's access."""
+	"""Create :data:`EXEMPT_ROLE` if missing: a pure marker with no desk access, so
+	assigning it never widens a user's access."""
 	if not frappe.db.exists("Role", EXEMPT_ROLE):
 		role = frappe.new_doc("Role")
 		role.role_name = EXEMPT_ROLE
@@ -66,11 +51,7 @@ def _ensure_exempt_role() -> None:
 
 
 def admin_enforcement_view(user: str) -> dict:
-	"""The per-user enforcement admin view-model the User-form Passkeys section paints.
-
-	Reports the user's dedicated-role exemption state, grace-budget usage, and whether
-	they are currently in enforcement scope. Read-only (no mutation), so it is safe to
-	call before and after a write to hand the client the refreshed state."""
+	"""The user's exemption, grace usage and enforcement scope, as the section paints it."""
 	settings = frappe.get_cached_doc("Passkey Settings")
 	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
 	verdict = boot.build_enforcement(user, settings, credential_count)
@@ -91,32 +72,27 @@ def admin_enforcement_view(user: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def get_user_enforcement_admin(user: str) -> dict:
-	"""Read the per-user enforcement admin view-model (exemption + grace state). System-
-	Manager-only + rate-limited; dormant-shell 417 the moment core serves passkeys."""
+	"""The per-user enforcement admin view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
-	state.rate_limit_user("get_user_enforcement_admin", 60, 60)  # 60/min/user
+	state.rate_limit_user("get_user_enforcement_admin", 60, 60)
 	return admin_enforcement_view(_require_user(user))
 
 
 @frappe.whitelist(methods=["POST"])
 def set_user_exemption(user: str, exempt: object) -> dict:
-	"""Exempt / un-exempt ONE user from passkey enrollment enforcement, via the dedicated
-	role. Idempotent (double-click safe): on exempt, lazily create the role and assign it
-	to the user (no duplicate Has Role row); on un-exempt, remove ONLY the role assignment
-	from the user — the marker role stays in place. System-Manager-only + rate-limited.
-	Returns the refreshed admin view-model
-	(``exempt`` / ``in_scope`` reflect the change)."""
+	"""Exempt or un-exempt one user by assigning or removing the marker role; idempotent.
+	Returns the refreshed view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
-	state.rate_limit_user("set_user_exemption", 30, 3600)  # 30/hr/user
+	state.rate_limit_user("set_user_exemption", 30, 3600)
 	user = _require_user(user)
 	user_doc = frappe.get_doc("User", user)
 	has_role = EXEMPT_ROLE in set(frappe.get_roles(user))
 	if _coerce_bool(exempt):
 		_ensure_exempt_role()
 		if not has_role:
-			user_doc.add_roles(EXEMPT_ROLE)  # add_roles is itself idempotent; guard avoids a needless save
+			user_doc.add_roles(EXEMPT_ROLE)
 	elif has_role:
 		user_doc.remove_roles(EXEMPT_ROLE)
 	return admin_enforcement_view(user)
@@ -124,14 +100,10 @@ def set_user_exemption(user: str, exempt: object) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def reset_enforcement_grace(user: str) -> dict:
-	"""Clear one user's enforcement grace counter so their full deferral budget is restored
-	(``build_enforcement`` then reads a fresh zero-state). Clears EXACTLY the key
-	``record_enforcement`` writes and ``build_enforcement`` reads — no parallel state.
-	System-Manager-only + rate-limited. Returns the refreshed admin view-model with
-	``grace_remaining`` back at ``grace_total``."""
+	"""Restore one user's full grace budget. Returns the refreshed view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
-	state.rate_limit_user("reset_enforcement_grace", 30, 3600)  # 30/hr/user
+	state.rate_limit_user("reset_enforcement_grace", 30, 3600)
 	user = _require_user(user)
 	boot.clear_enforcement_state(user)
 	return admin_enforcement_view(user)

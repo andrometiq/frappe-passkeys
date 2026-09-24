@@ -1,23 +1,14 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Out-of-band credential-change notifications + risk-event
-telemetry + admin-change owner notices. Folds into
-``frappe/passkey.py`` on the core merge.
+"""Out-of-band credential-change notices, risk-event telemetry and the admin advisory.
+Folds into ``frappe/passkey.py`` on the core merge. Called from DocType events, so it
+must not import ``webauthn``.
 
-**Hook-path import discipline:** called from the ``WebAuthn Credential``
-``on_update``/``after_delete`` DocType events and ceremony/risk paths, so it
-MUST NOT import ``webauthn``. It imports only ``frappe`` and the webauthn-free
-``passkeys.install`` (for the shared ``__passkeys`` Defaults parent).
-
-The add/remove/flag email is the **compensating control for registration
-hijack**: it carries actionable metadata (label, time, IP) so a user who
-did not initiate the change can react. It is gated on ``passkey_notify_on_change``
-(off only for mail-less dev sites). The password-fallback risk email is
-gated on ``passkey_notify_password_fallback`` (default off). Every
-add/remove/flag also writes an Activity Log row. **Every sender is
-exception-hardened**: a mail or logging failure must never break a ceremony, a
-delete, or an admin save."""
+The add/remove/flag email is the compensating control for registration hijack
+(``passkey_notify_on_change``); every change also writes an Activity Log row. Every
+sender is exception-hardened: a mail or log failure never breaks a ceremony, a delete
+or an admin save."""
 
 import frappe
 from frappe import _
@@ -25,30 +16,18 @@ from frappe.utils import cint, get_datetime, now_datetime
 
 from passkeys.install import DEFAULTS_PARENT
 
-# Risk-event vocabulary — Activity-Log-backed telemetry for later signaling.
 RISK_FALLBACK_USED = "fallback_used"
 RISK_WEAK_LOGIN_ENROLLMENT = "weak_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
 RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
 
-# Admin-advisory dedup window: at most one incapable-device email per user per 24h.
-# The client once-guard resets on every page load, so without a server-side gate one
-# in-scope incapable user could email every System Manager once per page view (up to
-# the endpoint's 30/hr rate cap). The window marker is stored the twofactor way — a
-# site-wide ``DefaultValue`` under ``__passkeys``, exactly like the grace state — so it
-# is shared across the user's browsers and swept on uninstall. The endpoint rate limit
-# stays as the coarse backstop.
+# At most one incapable-device admin email per user per day; the client guard resets on
+# every page load.
 INCAPABLE_NOTIFY_WINDOW_SEC = 24 * 60 * 60
 
 
-# ---------------------------------------------------------------------------
-# credential-change notifications
-# ---------------------------------------------------------------------------
-
-
 def notify_credential_added(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey added" out-of-band email + Activity Log. Called from the
-	registration endpoint after a row is persisted."""
+	""" "Passkey added" email + Activity Log, after a registration is persisted."""
 	_safe(
 		user,
 		activity=("passkey_added", _("Passkey added: {0}").format(label)),
@@ -61,8 +40,7 @@ def notify_credential_added(user: str, label: str, ip: str | None = None) -> Non
 
 
 def notify_credential_removed(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey removed" out-of-band email + Activity Log (owner
-	notification is sent even when a System Manager removes the row)."""
+	""" "Passkey removed" email + Activity Log, also when a System Manager removes it."""
 	_safe(
 		user,
 		activity=("passkey_removed", _("Passkey removed: {0}").format(label)),
@@ -75,9 +53,7 @@ def notify_credential_removed(user: str, label: str, ip: str | None = None) -> N
 
 
 def notify_credential_disabled(user: str, label: str) -> None:
-	""" "Passkey disabled" owner notice: a System Manager soft-disabled a
-	credential (disable > delete for forensics). Same compensating-control class as
-	removal."""
+	""" "Passkey disabled" notice: a System Manager soft-disabled the credential."""
 	_safe(
 		user,
 		activity=("passkey_disabled", _("Passkey disabled: {0}").format(label)),
@@ -90,9 +66,7 @@ def notify_credential_disabled(user: str, label: str) -> None:
 
 
 def notify_credential_flagged(user: str, label: str, reason: str | None = None) -> None:
-	""" "Passkey flagged" out-of-band email + Activity Log: a sign-count
-	regression / anomaly was recorded on an assertion. Non-blocking telemetry that
-	surfaces a possible clone."""
+	""" "Passkey flagged" email + Activity Log: a sign-count regression, a possible clone."""
 	_safe(
 		user,
 		activity=("passkey_flagged", _("Passkey flagged: {0} ({1})").format(label, reason or "anomaly")),
@@ -105,15 +79,9 @@ def notify_credential_flagged(user: str, label: str, reason: str | None = None) 
 	)
 
 
-# ---------------------------------------------------------------------------
-# risk events — Activity-Log-backed telemetry (+ one opt-in email)
-# ---------------------------------------------------------------------------
-
-
 def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
-	"""Log a risk event to the Activity Log (telemetry for later signaling).
-	The ``fallback_used`` event additionally emails when
-	``passkey_notify_password_fallback`` is on (default off). Non-blocking."""
+	"""An Activity Log risk event; ``fallback_used`` also emails the user when
+	``passkey_notify_password_fallback`` is on."""
 	try:
 		_activity_log(user, event, detail or event)
 	except Exception:
@@ -135,11 +103,8 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 
 
 def record_enforcement_incapable(user: str) -> None:
-	"""Record an in-scope Block + Notify Admin report and advise administrators.
-	The admin email is **deduped server-side** to at most one per user per 24h
-	(:data:`INCAPABLE_NOTIFY_WINDOW_SEC`): the client once-guard resets each page load, so
-	the dedup is what stops a single incapable user flooding admins one email per page view.
-	Non-blocking — a mail/log failure must never break the interstitial."""
+	"""Record an incapable-device report and email the System Managers, at most once per
+	user per :data:`INCAPABLE_NOTIFY_WINDOW_SEC`."""
 	try:
 		_activity_log(
 			user, RISK_ENFORCE_INCAPABLE, f"Passkey enforcement: {user}'s device cannot create a passkey"
@@ -173,49 +138,29 @@ def incapable_notify_key(user: str) -> str:
 
 
 def _incapable_notified_recently(user: str) -> bool:
-	"""True iff an incapable-device admin advisory was emailed for ``user`` within the
-	dedup window. Absent/malformed marker ⇒ False (fail open to sending — a bad row must
-	never permanently silence the advisory)."""
 	raw = frappe.db.get_value(
 		"DefaultValue",
 		{"parent": DEFAULTS_PARENT, "defkey": incapable_notify_key(user)},
 		"defvalue",
 		for_update=True,
 	)
-	if not raw:
-		return False
-	try:
-		last = get_datetime(raw)
-	except Exception:
-		return False
-	return (now_datetime() - last).total_seconds() < INCAPABLE_NOTIFY_WINDOW_SEC
+	return bool(raw) and (now_datetime() - get_datetime(raw)).total_seconds() < INCAPABLE_NOTIFY_WINDOW_SEC
 
 
 def _mark_incapable_notified(user: str) -> None:
-	"""Stamp the dedup window marker (twofactor-style ``DefaultValue`` under
-	``__passkeys``, swept on uninstall) after an advisory is dispatched."""
 	frappe.db.set_default(incapable_notify_key(user), now_datetime().isoformat(), parent=DEFAULTS_PARENT)
 
 
 def _system_manager_emails() -> list[str]:
-	"""Deliverable System-Manager addresses (excludes Administrator, which has no real
-	inbox on most sites). Best-effort — returns [] on any error."""
-	try:
-		from frappe.utils.user import get_system_managers
+	"""Deliverable System Manager addresses (Administrator has no real inbox)."""
+	from frappe.utils.user import get_system_managers
 
-		return [m for m in get_system_managers(only_name=True) if m and "@" in m and m != "Administrator"]
-	except Exception:
-		return []
-
-
-# ---------------------------------------------------------------------------
-# internals
-# ---------------------------------------------------------------------------
+	return [m for m in get_system_managers(only_name=True) if m and "@" in m and m != "Administrator"]
 
 
 def _safe(user: str, *, activity: tuple, subject: str, body: str) -> None:
-	"""Write the Activity Log row (always) + send the email (iff notify knob on).
-	Each sink is independently exception-hardened."""
+	"""The Activity Log row, plus the email when ``passkey_notify_on_change`` is on; each
+	independently exception-hardened."""
 	try:
 		_activity_log(user, activity[0], activity[1])
 	except Exception:
@@ -235,9 +180,8 @@ def _send(user: str, subject: str, message: str) -> None:
 
 
 def _activity_log(user: str, operation: str, subject: str) -> None:
-	"""Best-effort Activity Log row. ``operation`` rides ``content`` (the
-	Activity Log ``operation`` field is a closed Select in core); ``subject`` is the
-	human line. Wrapped by the caller's try/except."""
+	"""An Activity Log row; ``operation`` rides ``content`` because core's ``operation``
+	field is a closed Select."""
 	frappe.get_doc(
 		{
 			"doctype": "Activity Log",

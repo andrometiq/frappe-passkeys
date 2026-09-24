@@ -202,17 +202,11 @@ class PasskeySettings(Document):
 
 @frappe.whitelist(methods=["POST"])
 def get_resolved_rp_id() -> dict:
-	"""Return the RP ID the SERVER will actually resolve right now, so the Passkey
-	Settings form can display server-truth instead of guessing from the browser host
-	(``window.location.hostname`` never matches an RP ID that comes from ``host_name``,
-	which is exactly the A1 confusion: the form showed a value Save then rejected).
-
-	Read-only and System-Manager-gated (the settings form is admin-only). Follows the
-	app endpoint idioms: ``refuse_if_core_native`` first (dormant-shell 417) and a
-	per-user rate limit."""
+	"""The RP ID the server resolves right now, so the settings form shows server truth
+	rather than guessing from the browser host."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
-	state.rate_limit_user("get_resolved_rp_id", 30, 60)  # 30/min/user
+	state.rate_limit_user("get_resolved_rp_id", 30, 60)
 	settings = frappe.get_cached_doc("Passkey Settings")
 	rp_id = policy.resolve_rp_id(settings)
 	return {
@@ -224,18 +218,10 @@ def get_resolved_rp_id() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def get_security_posture() -> dict:
-	"""Return the admin security-posture verdict for the Passkey Settings page: given
-	the site's ACTUAL auth surface (password / email-link / social / LDAP sign-in + the
-	core second factor) and this app's own state, can a passkey still be bypassed, and
-	how to close each gap.
-
-	Read-only and System-Manager-gated (the settings form is admin-only), so — unlike
-	guest login copy — the rows are deliberately concrete about the exact setting to
-	change. Follows the app endpoint idioms: ``refuse_if_core_native`` first (dormant
-	417) and a per-user rate limit."""
+	"""The security-posture verdict for the Passkey Settings page (``posture.py``)."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
-	state.rate_limit_user("get_security_posture", 30, 60)  # 30/min/user
+	state.rate_limit_user("get_security_posture", 30, 60)
 	from passkeys import posture
 
 	return posture.build_posture()
