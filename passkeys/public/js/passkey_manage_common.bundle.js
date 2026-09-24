@@ -248,77 +248,21 @@
 		};
 	}
 
-	// ------------------------------------------------------- nudge cadence
-	// Whether `cooldownDays` (default 30) have passed since the last nudge. Never shown or
-	// an unparseable timestamp ⇒ eligible (the decline cap still bounds it).
-	function cooldownElapsed(lastShownIso, cooldownDays, now) {
-		if (!lastShownIso) return true;
-		var then = Date.parse(lastShownIso);
-		if (isNaN(then)) return true;
-		now = typeof now === "number" ? now : Date.now();
-		var days = typeof cooldownDays === "number" ? cooldownDays : 30;
-		return now - then >= days * 24 * 60 * 60 * 1000;
-	}
-
-	function nudgeState(boot) {
-		var s = (boot && boot.nudge_state) || {};
-		return {
-			declines: typeof s.declines === "number" ? s.declines : 0,
-			lastShown: s.last_shown || null,
-			optOut: isTruthy(s.opt_out),
-		};
-	}
-
-	function nudgeKnobs(boot) {
-		var st = (boot && boot.settings) || {};
-		return {
-			nudgeEnabled: isTruthy(st.nudge_enabled),
-			conditionalCreate: isTruthy(st.conditional_create),
-			maxPrompts: typeof st.nudge_max_prompts === "number" ? st.nudge_max_prompts : 3,
-			cooldownDays: typeof st.nudge_cooldown_days === "number" ? st.nudge_cooldown_days : 30,
-		};
-	}
-
-	// Client-side cadence FALLBACK (used only when the server didn't ship
-	// `nudge_state.eligible`). Uses the knobs when present, else the defaults:
-	// knob on ∧ 0 creds ∧ declines < max ∧ cooldown elapsed ∧ not opted out.
-	function clientEligible(boot, now) {
-		var knobs = nudgeKnobs(boot);
-		var st = nudgeState(boot);
-		var count = typeof boot.credential_count === "number" ? boot.credential_count : 0;
-		if (!knobs.nudgeEnabled) return false;
-		if (count > 0) return false;
-		if (st.optOut) return false;
-		if (st.declines >= knobs.maxPrompts) return false;
-		if (!cooldownElapsed(st.lastShown, knobs.cooldownDays, now)) return false;
-		return true;
-	}
-
-	// The server's `boot.nudge_state.eligible` is authoritative; clientEligible is the
-	// fallback for a bootinfo without it.
-	function serverEligible(boot, now) {
-		var ns = boot && boot.nudge_state;
-		if (ns && typeof ns.eligible === "boolean") return ns.eligible;
-		return clientEligible(boot, now);
-	}
-
-	// The post-login nudge decision: server cadence AND client capability, with a `reason`.
-	//   boot: frappe.boot.passkeys
-	//   caps: client capability probe (supported / conditionalCreate)
-	function nudgeDecision(boot, caps, now) {
+	// ------------------------------------------------------- nudge decisions
+	// The server owns the cadence (boot.nudge_state.eligible); the client adds capability.
+	function nudgeDecision(boot, caps) {
 		boot = boot || {};
 		caps = caps || {};
 		var supported = caps.supported !== false; // unknown counts as supported
-		var eligible = serverEligible(boot, now);
+		var eligible = !!boot.nudge_state && boot.nudge_state.eligible === true;
 
 		var out = { showNudge: false, allowConditionalCreate: false, reason: "", eligible: eligible };
 		if (!eligible) out.reason = "server_ineligible";
 		else if (!supported) out.reason = "unsupported";
 		else { out.showNudge = true; out.reason = "eligible"; }
 
-		// Conditional create needs the server flag (off when absent), the capability and a
-		// PASSWORD-seeded login window: session age alone cannot tell a password login from
-		// an email-link one.
+		// Conditional create also needs a PASSWORD-seeded login window: session age alone
+		// cannot tell a password login from an email-link one.
 		out.allowConditionalCreate =
 			eligible &&
 			caps.conditionalCreate === true &&
@@ -428,9 +372,9 @@
 	function cint(v) { var n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
 
 	// Post-hybrid upsell: after a QR sign-in the login bundle sets UPSELL_FLAG_KEY; offer
-	// "add a passkey to this device" under the nudge cadence but without the 0-credentials
-	// gate. `storageGet(key)` is injected so the logic stays browser-free.
-	function upsellDecision(boot, caps, storageGet, now) {
+	// "add a passkey to this device" under the server's upsell cadence, which has no
+	// 0-credentials gate. `storageGet(key)` is injected so the logic stays browser-free.
+	function upsellDecision(boot, caps, storageGet) {
 		boot = boot || {};
 		caps = caps || {};
 		var flagged = false;
@@ -439,13 +383,9 @@
 		} catch (e) {
 			flagged = false;
 		}
-		var st = nudgeState(boot);
-		var knobs = nudgeKnobs(boot);
 		var supported = caps.supported !== false;
 		var uvpaaOk = caps.uvpaa !== false; // unknown ⇒ still offer (local sheet decides)
-		var cadence = typeof boot.upsell_eligible === "boolean"
-			? boot.upsell_eligible
-			: (!st.optOut && st.declines < knobs.maxPrompts && cooldownElapsed(st.lastShown, knobs.cooldownDays, now));
+		var cadence = boot.upsell_eligible === true;
 
 		var out = { showUpsell: false, reason: "" };
 		if (!flagged) out.reason = "no_flag";
@@ -707,12 +647,7 @@
 		};
 	}
 
-	// The at-a-glance MARK for a posture row — the tick/flag language the settings
-	// report paints. Purely a function of severity + detectability (no copy):
-	//   high   -> "flag" (active bypass / critical gap ; red)
-	//   medium -> "warn" (a gap worth closing          ; orange)
-	//   low    -> "tune" (a hardening heads-up          ; blue)
-	//   info / undetectable -> "note" (neutral context  ; gray)
+	// The row mark the settings report paints; undetectable rows are always a "note".
 	var POSTURE_ROW_MARK = { high: "flag", medium: "warn", low: "tune", info: "note" };
 
 	function postureRowMark(row) {
@@ -721,41 +656,11 @@
 		return POSTURE_ROW_MARK[row.severity] || "note";
 	}
 
-	// The settings-report view-model, built on posturePanel:
-	//   summary.tone        "good" | "high" | "info" (mirrors the verdict)
-	//   summary.allClear    true iff the verdict is "good"
-	//   summary.canBypass   true iff at least one active bypass path exists
-	//   summary.actionCount rows wanting action now (flags + warnings)
-	//   rows[].mark         "flag" | "warn" | "tune" | "note" (see postureRowMark)
+	// posturePanel with each row's mark: the settings-report view-model.
 	function postureReport(response) {
 		var panel = posturePanel(response);
-		var flagCount = 0;
-		var warnCount = 0;
-		var rows = panel.rows.map(function (r) {
-			var mark = postureRowMark(r);
-			if (mark === "flag") flagCount++;
-			else if (mark === "warn") warnCount++;
-			return {
-				code: r.code,
-				severity: r.severity,
-				what: r.what,
-				why: r.why,
-				recommendation: r.recommendation,
-				detectable: r.detectable,
-				mark: mark,
-			};
-		});
-		return {
-			headline: panel.headline,
-			rows: rows,
-			summary: {
-				tone: panel.headline.tone,
-				allClear: panel.headline.tone === "good",
-				canBypass: panel.headline.canBypass,
-				actionCount: flagCount + warnCount,
-				rowCount: rows.length,
-			},
-		};
+		panel.rows.forEach(function (r) { r.mark = postureRowMark(r); });
+		return panel;
 	}
 
 	// ---------------------------------------------------------- signal payloads
@@ -840,11 +745,6 @@
 		backupBadge: backupBadge,
 		accessibleActionName: accessibleActionName,
 		credentialViewModel: credentialViewModel,
-		cooldownElapsed: cooldownElapsed,
-		nudgeState: nudgeState,
-		nudgeKnobs: nudgeKnobs,
-		clientEligible: clientEligible,
-		serverEligible: serverEligible,
 		nudgeDecision: nudgeDecision,
 		enforcementDecision: enforcementDecision,
 		shouldShowEnforcementAdmin: shouldShowEnforcementAdmin,

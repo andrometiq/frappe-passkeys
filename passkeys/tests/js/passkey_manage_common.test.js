@@ -134,20 +134,10 @@ test("credentialViewModel: flagged + disabled surfaces reason + enabled flag", (
 	assert.strictEqual(vm.flaggedReason, "sign_count_regression");
 });
 
-// ---------------------------------------------------------- cooldown
-
-test("cooldownElapsed: never-shown / unparseable => elapsed; within window => not", () => {
-	assert.strictEqual(M.cooldownElapsed(null, 30, NOW), true);
-	assert.strictEqual(M.cooldownElapsed("not-a-date", 30, NOW), true);
-	assert.strictEqual(M.cooldownElapsed(new Date(NOW - 10 * DAY).toISOString(), 30, NOW), false);
-	assert.strictEqual(M.cooldownElapsed(new Date(NOW - 31 * DAY).toISOString(), 30, NOW), true);
-});
-
 // ---------------------------------------------------------- nudge decision
 
-// The REAL server bootinfo carries `nudge_state.eligible` (authoritative cadence)
-// and `conditional_create` — no client `settings` knob block. bootBase mirrors it;
-// bootLegacy (no `eligible`) exercises the client-knob fallback.
+// Mirrors the server bootinfo: `nudge_state.eligible` and `upsell_eligible` are the
+// authoritative cadence verdicts.
 function bootBase(over) {
 	return deepAssign(
 		{
@@ -157,17 +147,7 @@ function bootBase(over) {
 			nudge_state: { declines: 0, last_shown: null, opt_out: 0, eligible: true },
 			post_login_method: "password",
 			conditional_create: true,
-		},
-		over || {}
-	);
-}
-function bootLegacy(over) {
-	return deepAssign(
-		{
-			credential_count: 0,
-			nudge_state: { declines: 0, last_shown: null, opt_out: 0 }, // NO eligible
-			post_login_method: "password",
-			settings: { nudge_enabled: 1, conditional_create: 1, nudge_max_prompts: 3, nudge_cooldown_days: 30 },
+			upsell_eligible: true,
 		},
 		over || {}
 	);
@@ -175,7 +155,6 @@ function bootLegacy(over) {
 function deepAssign(base, over) {
 	const out = Object.assign({}, base, over);
 	if (over.nudge_state) out.nudge_state = Object.assign({}, base.nudge_state, over.nudge_state);
-	if (over.settings) out.settings = Object.assign({}, base.settings, over.settings);
 	return out;
 }
 
@@ -190,23 +169,10 @@ test("nudgeDecision: eligible but unsupported client => no nudge", () => {
 	assert.strictEqual(M.nudgeDecision(bootBase(), { supported: false }, NOW).reason, "unsupported");
 });
 
-test("nudgeDecision: client-knob FALLBACK when the server omits eligible (F3-8)", () => {
-	// happy fallback
-	assert.strictEqual(M.nudgeDecision(bootLegacy(), { supported: true }, NOW).showNudge, true);
-	// knob off / already enrolled / opted out / max / cooldown all => server_ineligible
-	assert.strictEqual(M.nudgeDecision(bootLegacy({ settings: { nudge_enabled: 0 } }), { supported: true }, NOW).showNudge, false);
-	assert.strictEqual(M.nudgeDecision(bootLegacy({ credential_count: 2 }), { supported: true }, NOW).showNudge, false);
-	assert.strictEqual(M.nudgeDecision(bootLegacy({ nudge_state: { opt_out: 1 } }), { supported: true }, NOW).showNudge, false);
-	assert.strictEqual(M.nudgeDecision(bootLegacy({ nudge_state: { declines: 3 } }), { supported: true }, NOW).showNudge, false);
-	assert.strictEqual(
-		M.nudgeDecision(bootLegacy({ nudge_state: { last_shown: new Date(NOW - 5 * DAY).toISOString() } }), { supported: true }, NOW).showNudge,
-		false
-	);
-	// custom max_prompts honoured (not hardcoded): 4 declines under a max of 5 still shows
-	assert.strictEqual(
-		M.nudgeDecision(bootLegacy({ settings: { nudge_max_prompts: 5 }, nudge_state: { declines: 4 } }), { supported: true }, NOW).showNudge,
-		true
-	);
+test("nudgeDecision: a boot without the server verdict never nudges", () => {
+	const d = M.nudgeDecision({ credential_count: 0, nudge_state: { declines: 0 } }, { supported: true }, NOW);
+	assert.strictEqual(d.showNudge, false);
+	assert.strictEqual(d.reason, "server_ineligible");
 });
 
 test("nudgeDecision: conditional create gated on server eligible ∧ knob ∧ caps ∧ password window", () => {
@@ -357,25 +323,18 @@ test("upsellDecision: NOT gated on 0 credentials (the user just signed in)", () 
 	);
 });
 
-test("upsellDecision: cadence-capped (declines/opt_out) + platform-authenticator gate", () => {
+test("upsellDecision: server cadence + platform-authenticator gate", () => {
 	const store = () => "1";
-	assert.strictEqual(
-		M.upsellDecision(bootBase({ nudge_state: { declines: 3, eligible: true } }), { supported: true, uvpaa: true }, store, NOW).reason,
-		"cadence_capped"
-	);
-	assert.strictEqual(
-		M.upsellDecision(bootBase({ nudge_state: { opt_out: 1, eligible: true } }), { supported: true, uvpaa: true }, store, NOW).reason,
-		"cadence_capped"
-	);
 	assert.strictEqual(
 		M.upsellDecision(bootBase(), { supported: true, uvpaa: false }, store, NOW).reason,
 		"no_platform_authenticator"
 	);
-	// server upsell_eligible flag overrides the client cadence
-	assert.strictEqual(
-		M.upsellDecision(bootBase({ upsell_eligible: false }), { supported: true, uvpaa: true }, store, NOW).reason,
-		"cadence_capped"
-	);
+	for (const upsell of [false, undefined]) {
+		assert.strictEqual(
+			M.upsellDecision(bootBase({ upsell_eligible: upsell }), { supported: true, uvpaa: true }, store, NOW).reason,
+			"cadence_capped"
+		);
+	}
 });
 
 // ---------------------------------------------------------- settings banners
@@ -642,7 +601,7 @@ test("postureRowMark: maps severity to the tick/flag language", () => {
 	assert.strictEqual(M.postureRowMark(), "note");
 });
 
-test("postureReport: 'good' verdict is all-clear with zero actions (the satisfying tick)", () => {
+test("postureReport: 'good' verdict marks low/info rows without flags", () => {
 	const r = M.postureReport({
 		verdict: {
 			headline: "No stock bypass paths detected — passkeys are the only stock way to sign in.",
@@ -655,15 +614,13 @@ test("postureReport: 'good' verdict is all-clear with zero actions (the satisfyi
 			{ code: "custom_apps", severity: "info", what: "custom apps", detectable: false },
 		],
 	});
-	assert.strictEqual(r.summary.tone, "good");
-	assert.strictEqual(r.summary.allClear, true);
-	assert.strictEqual(r.summary.canBypass, false);
-	assert.strictEqual(r.summary.actionCount, 0); // low/info are not "action" items
-	assert.strictEqual(r.summary.rowCount, 3);
+	assert.strictEqual(r.headline.tone, "good");
+	assert.strictEqual(r.headline.canBypass, false);
+	assert.strictEqual(r.rows.length, 3);
 	assert.strictEqual(r.headline.text.indexOf("No stock bypass paths") === 0, true);
 });
 
-test("postureReport: bypass verdict counts flags+warnings as actions, marks each row", () => {
+test("postureReport: bypass verdict marks each row", () => {
 	const r = M.postureReport({
 		verdict: { headline: "Users can still sign in without a passkey via: password sign-in.", tone: "high", can_bypass: true },
 		rows: [
@@ -676,29 +633,23 @@ test("postureReport: bypass verdict counts flags+warnings as actions, marks each
 	// ordering is inherited from posturePanel: high, medium, low, then the disclaimer last
 	assert.deepStrictEqual(r.rows.map((x) => x.code), ["password_login", "email_link", "sign_count_soft", "custom_apps"]);
 	assert.deepStrictEqual(r.rows.map((x) => x.mark), ["flag", "warn", "tune", "note"]);
-	assert.strictEqual(r.summary.tone, "high");
-	assert.strictEqual(r.summary.allClear, false);
-	assert.strictEqual(r.summary.canBypass, true);
-	assert.strictEqual(r.summary.actionCount, 2); // one flag + one warn
+	assert.strictEqual(r.headline.tone, "high");
+	assert.strictEqual(r.headline.canBypass, true);
 });
 
-test("postureReport: 'info' (passkeys not active) is neither all-clear nor a bypass", () => {
+test("postureReport: 'info' (passkeys not active) is not a bypass", () => {
 	const r = M.postureReport({
 		verdict: { headline: "Passkeys are not an active login factor on this site.", tone: "info", can_bypass: false },
 		rows: [{ code: "no_mode", severity: "info", what: "not active" }],
 	});
-	assert.strictEqual(r.summary.tone, "info");
-	assert.strictEqual(r.summary.allClear, false);
-	assert.strictEqual(r.summary.canBypass, false);
-	assert.strictEqual(r.summary.actionCount, 0);
+	assert.strictEqual(r.headline.tone, "info");
+	assert.strictEqual(r.headline.canBypass, false);
 });
 
 test("postureReport: empty/absent response degrades cleanly", () => {
 	const r = M.postureReport();
-	assert.strictEqual(r.summary.tone, "info");
-	assert.strictEqual(r.summary.allClear, false);
-	assert.strictEqual(r.summary.actionCount, 0);
-	assert.strictEqual(r.summary.rowCount, 0);
+	assert.strictEqual(r.headline.tone, "info");
+	assert.strictEqual(r.rows.length, 0);
 	assert.deepStrictEqual(r.rows, []);
 });
 

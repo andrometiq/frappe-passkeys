@@ -1,39 +1,30 @@
-// passkey_settings.js — the Passkey Settings form: paints the banners decided by
-// passkey_manage_common.bundle.js::settingsBanners, the posture report and the RP-ID
-// one-way-door confirm.
-//
+// The Passkey Settings form: the banners from passkey_manage_common's settingsBanners,
+// the security-posture report and the RP-ID one-way-door confirm.
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
-		var M = frappe.passkeys_manage_common;
-		if (!M) return;
-		// Baseline for the RP-ID one-way-door revert: the last-saved value to
-		// fall back to if the user backs out of the confirm. refresh() re-fires after
-		// every load and save, so this always tracks the persisted RP ID.
+		// The last-saved RP ID, for reverting a backed-out change (refresh re-fires on save).
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
-		paintMobileFieldDescriptions(frm);
-		paintBanners(frm, M);
-		// The RP ID the server resolves now (boot can be stale); repaints when it lands.
-		fetchResolvedRpId(frm);
-		// The posture verdict reads SAVED state, so fetch on refresh (also after save).
-		fetchSecurityPosture(frm, M);
+		frm.set_df_property("passkey_app_origins", "description", __(
+			"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
+		));
+		paintBanners(frm);
+		fetchResolvedRpId(frm); // boot can be stale; repaints when it lands
+		fetchSecurityPosture(frm); // the verdict reads SAVED state
 	},
-	// Repaint on any knob change so the matrix stays live before save.
-	login_with_passkey: repaint,
-	passkey_as_second_factor: repaint,
-	passkey_notify_on_change: repaint,
-	passkey_origins: repaint,
-	// enrollment ladder + enforcement scope/escape-hatch knobs
-	passkey_enrollment_policy: repaint,
-	passkey_enforce_after: repaint,
-	passkey_enforce_scope: repaint,
-	passkey_enforce_roles: repaint,
-	passkey_enforce_privileged_always: repaint,
-	passkey_enforce_incapable: repaint,
+	// Repaint on any knob change so the banners stay live before save.
+	login_with_passkey: paintBanners,
+	passkey_as_second_factor: paintBanners,
+	passkey_notify_on_change: paintBanners,
+	passkey_origins: paintBanners,
+	passkey_enrollment_policy: paintBanners,
+	passkey_enforce_after: paintBanners,
+	passkey_enforce_scope: paintBanners,
+	passkey_enforce_roles: paintBanners,
+	passkey_enforce_privileged_always: paintBanners,
+	passkey_enforce_incapable: paintBanners,
 	validate: function (frm) {
-		var M = frappe.passkeys_manage_common;
-		if (!M || typeof M.validateAndroidFingerprints !== "function") return;
-		var result = M.validateAndroidFingerprints(frm.doc.passkey_android_cert_fingerprints);
+		var result = frappe.passkeys_manage_common.validateAndroidFingerprints(frm.doc.passkey_android_cert_fingerprints);
 		if (!result.valid) {
 			frappe.throw(__(
 				"Each Android signing-certificate fingerprint must contain exactly 64 hexadecimal characters; colons and a SHA-256 label are optional. Invalid line(s): {0}",
@@ -42,61 +33,37 @@ frappe.ui.form.on("Passkey Settings", {
 		}
 	},
 	passkey_rp_id: function (frm) {
-		repaint(frm);
-		var M = frappe.passkeys_manage_common;
-		if (!M) return;
-		// One-way door: changing the RP ID after enrollment invalidates
-		// every passkey. Loud typed confirm before the value can be saved.
+		paintBanners(frm);
+		// One-way door: a new RP ID invalidates every passkey, so confirm before it can be saved.
 		if (frm.doc.__islocal || !frm.doc.passkey_rp_id) return;
 		if (frm._passkey_rpid_ack === frm.doc.passkey_rp_id) return;
-		var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) ||
-			frm._passkey_rpid_saved || "";
+		var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
 		var proceeded = false;
 		var d = frappe.warn(
 			__("Change the RP ID?"),
-			__(M.COPY.rpIdOneWayDoor),
+			__(frappe.passkeys_manage_common.COPY.rpIdOneWayDoor),
 			function () { proceeded = true; frm._passkey_rpid_ack = frm.doc.passkey_rp_id; },
 			__("Yes, change it"),
-			true // set_danger — Cancel is the safe default
+			true // set_danger: Cancel is the safe default
 		);
-		// Any dismissal MUST revert the field so a backed-out change can never be saved.
-		if (d && d.$wrapper && d.$wrapper.on) {
-			d.$wrapper.on("hide.bs.modal", function () {
-				if (proceeded) return;
-				// Ack the reverted value first so set_value's change event short-circuits
-				// (no re-opening the warn).
-				frm._passkey_rpid_ack = saved;
-				frm.set_value("passkey_rp_id", saved);
-			});
-		}
+		// Any dismissal reverts the field so a backed-out change can never be saved.
+		d.$wrapper.on("hide.bs.modal", function () {
+			if (proceeded) return;
+			// Ack the reverted value first so set_value's change event doesn't reopen the warn.
+			frm._passkey_rpid_ack = saved;
+			frm.set_value("passkey_rp_id", saved);
+		});
 	},
 });
 
-function paintMobileFieldDescriptions(frm) {
-	if (!frm.set_df_property) return;
-	frm.set_df_property("passkey_app_origins", "description", __(
-		"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
-	));
-}
-
-function repaint(frm) {
-	var M = frappe.passkeys_manage_common;
-	if (M) paintBanners(frm, M);
-}
-
-// Fetch the RP ID the server resolves now; on failure buildContext falls back to boot.
 function fetchResolvedRpId(frm) {
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_resolved_rp_id",
 		callback: function (r) {
 			if (!r || !r.message) return;
 			frm._passkey_server_rpid = r.message.rp_id || null;
-			// Newer servers return the exact configured host_name origin. Accept the
-			// transition aliases but never synthesize an origin from the RP ID.
-			frm._passkey_server_site_origin = r.message.configured_site_origin ||
-				r.message.site_origin || r.message.exact_site_origin || null;
-			frm._passkey_host_name_configured = !!r.message.host_name_configured;
-			repaint(frm);
+			frm._passkey_server_site_origin = r.message.configured_site_origin || null;
+			paintBanners(frm);
 		},
 	});
 }
@@ -104,64 +71,45 @@ function fetchResolvedRpId(frm) {
 // The hosted explainer the report footer links to (new tab, never iframed).
 var POSTURE_THEORY_URL = "https://andrometiq.github.io/frappe-passkeys/why-passkeys.html";
 
-// Fetch + paint the security-posture report (view-model: M.postureReport). States:
-// loading, all-clear, gaps, passkeys-not-active, and a quiet "unavailable" on error.
-function fetchSecurityPosture(frm, M) {
-	if (!M.postureReport) return;
-	renderPostureState(frm, { state: "loading" });
+function fetchSecurityPosture(frm) {
+	renderPosture(frm, postureNoticeCard(__("Checking your security posture…")));
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_security_posture",
 		callback: function (r) {
-			if (!r || !r.message) { renderPostureState(frm, { state: "error" }); return; }
-			renderPostureState(frm, { state: "ready", report: M.postureReport(r.message) });
+			if (!r || !r.message) return renderPostureFailure(frm);
+			renderPosture(frm, postureNodes(frappe.passkeys_manage_common.postureReport(r.message)));
 		},
-		error: function () { renderPostureState(frm, { state: "error" }); },
+		error: function () { renderPostureFailure(frm); },
 	});
 }
 
-function renderPostureState(frm, opts) {
-	var host = postureHost(frm);
-	if (!host) return;
-	while (host.firstChild) host.removeChild(host.firstChild); // idempotent across repaints
-	if (opts.state === "loading") {
-		host.appendChild(postureNoticeCard("note", __("Checking your security posture…")));
-		return;
-	}
-	if (opts.state === "error") {
-		host.appendChild(postureNoticeCard("note", __("The security report couldn’t be loaded right now.")));
-		return;
-	}
-	paintPostureReport(host, opts.report);
+function renderPostureFailure(frm) {
+	renderPosture(frm, postureNoticeCard(__("The security report couldn’t be loaded right now.")));
+}
+
+function renderPosture(frm, nodes) {
+	var host = settingsFormHost(frm, "_passkey_posture_host", "passkey-posture");
+	fillHost(host, [].concat(nodes));
 }
 
 // A single-line card (loading / unavailable) in the verdict card's shell, so nothing jumps.
-function postureNoticeCard(markKind, text) {
-	var card = postureCardShell("gray", markKind);
+function postureNoticeCard(text) {
+	var card = postureCard("gray", "note", text);
 	card.classList.add("passkey-posture-card--muted");
-	card.appendChild(postureCardBody(__("Security posture"), text, false));
 	return card;
 }
 
-// The verdict card + the collapsible full report.
-function paintPostureReport(host, report) {
-	var summary = report.summary;
-	var tone = summary.tone; // "good" | "high" | "info"
-	// No red here: a bypass path is a recommendation. Red is kept for the save-blocking
-	// banners above this card.
+// The verdict card and its collapsible report. No red: a bypass path is a recommendation;
+// red is kept for the save-blocking banners above this card.
+function postureNodes(report) {
+	var tone = report.headline.tone; // "good" | "high" | "info"
 	var indicator = tone === "good" ? "green" : tone === "high" ? "blue" : "gray";
-	var markKind = tone === "good" ? "good" : "note"; // tick for all-clear, info-circle otherwise
-
-	var card = postureCardShell(indicator, markKind);
+	var card = postureCard(indicator, tone === "good" ? "good" : "note", report.headline.text || __("Security posture"));
 	card.classList.add("passkey-posture-card--" + tone);
-	// role="status", not "alert": a recommendation is announced politely.
-	card.appendChild(postureCardBody(__("Security posture"), report.headline.text || __("Security posture"), false));
 
-	var region = buildPostureReportRegion(report);
+	var region = postureRegion(report);
 	region.hidden = true;
-
-	// "View recommendations" or, when all-clear, "View report"; toggles the report in place.
-	var ctaOpen = summary.canBypass ? __("View recommendations") : __("View report");
-	var ctaClose = __("Hide report");
+	var ctaOpen = report.headline.canBypass ? __("View recommendations") : __("View report");
 	var cta = document.createElement("button");
 	cta.type = "button";
 	cta.className = "btn btn-sm passkey-posture-cta btn-default";
@@ -169,121 +117,74 @@ function paintPostureReport(host, report) {
 	cta.setAttribute("aria-controls", region.id);
 	cta.textContent = ctaOpen;
 	cta.addEventListener("click", function () {
-		var open = region.hidden; // about to open?
+		var open = region.hidden;
 		region.hidden = !open;
 		cta.setAttribute("aria-expanded", open ? "true" : "false");
-		cta.textContent = open ? ctaClose : ctaOpen;
+		cta.textContent = open ? __("Hide report") : ctaOpen;
 	});
 	card.appendChild(cta);
-
-	host.appendChild(card);
-	host.appendChild(region);
+	return [card, region];
 }
 
-// Card shell: the coloured indicator rail + the leading tick/flag mark.
-function postureCardShell(indicator, markKind) {
-	var card = document.createElement("div");
-	card.className = "passkey-posture-card";
+// The card shell: the indicator rail, the mark, a "Security posture" eyebrow and the verdict
+// line, announced politely (role=status).
+function postureCard(indicator, markKind, verdictText) {
+	var card = settingsElement("div", "passkey-posture-card");
 	card.setAttribute("data-indicator", indicator);
 	card.appendChild(postureMark(markKind));
+	var body = settingsElement("div", "passkey-posture-headline");
+	body.appendChild(settingsElement("div", "passkey-posture-eyebrow", __("Security posture")));
+	var verdict = settingsElement("div", "passkey-posture-verdict-text", verdictText);
+	verdict.setAttribute("role", "status");
+	body.appendChild(verdict);
+	card.appendChild(body);
 	return card;
 }
 
-// Card body: a small "Security posture" eyebrow + the verdict line. `alert` marks the
-// verdict line as an assertive live region when a bypass exists.
-function postureCardBody(eyebrowText, verdictText, alert) {
-	var body = document.createElement("div");
-	body.className = "passkey-posture-headline";
-	var eyebrow = document.createElement("div");
-	eyebrow.className = "passkey-posture-eyebrow";
-	eyebrow.textContent = eyebrowText;
-	body.appendChild(eyebrow);
-	var verdict = document.createElement("div");
-	verdict.className = "passkey-posture-verdict-text";
-	verdict.setAttribute("role", alert ? "alert" : "status");
-	verdict.textContent = verdictText;
-	body.appendChild(verdict);
-	return body;
-}
-
-function buildPostureReportRegion(report) {
-	var region = document.createElement("div");
-	region.className = "passkey-posture-report";
+function postureRegion(report) {
+	var region = settingsElement("div", "passkey-posture-report");
 	region.id = "passkey-posture-report";
-
-	var heading = document.createElement("div");
-	heading.className = "passkey-posture-report-heading";
-	heading.textContent = __("What this checks");
-	region.appendChild(heading);
-
-	report.rows.forEach(function (row) {
-		region.appendChild(postureRowEl(row));
-	});
-
-	// Footer: the hosted explainer, in a new tab with noopener/noreferrer.
-	var footer = document.createElement("div");
-	footer.className = "passkey-posture-footer";
-	var link = document.createElement("a");
-	link.className = "passkey-posture-theory";
+	region.appendChild(settingsElement("div", "passkey-posture-report-heading", __("What this checks")));
+	report.rows.forEach(function (row) { region.appendChild(postureRow(row)); });
+	var footer = settingsElement("div", "passkey-posture-footer");
+	var link = settingsElement("a", "passkey-posture-theory", __("Why passkeys are safer — and when they aren’t →"));
 	link.href = POSTURE_THEORY_URL;
 	link.target = "_blank";
 	link.rel = "noopener noreferrer";
-	link.textContent = __("Why passkeys are safer — and when they aren’t →");
 	footer.appendChild(link);
 	region.appendChild(footer);
 	return region;
 }
 
-function postureRowEl(row) {
+function postureRow(row) {
 	// "flag" shares the "warn" amber; priority is carried by row order, not colour.
-	var indicator = row.mark === "flag" ? "orange"
-		: row.mark === "warn" ? "orange"
-		: row.mark === "tune" ? "blue" : "gray";
-	var wrap = document.createElement("div");
-	wrap.className = "passkey-posture-row";
+	var indicator = { flag: "orange", warn: "orange", tune: "blue" }[row.mark] || "gray";
+	var wrap = settingsElement("div", "passkey-posture-row");
 	wrap.setAttribute("data-indicator", indicator);
 	if (!row.detectable) wrap.classList.add("passkey-posture-note");
-
 	wrap.appendChild(postureMark(row.mark));
-
-	var main = document.createElement("div");
-	main.className = "passkey-posture-row-main";
-
-	var problem = document.createElement("div");
-	problem.className = "passkey-posture-problem";
-	var what = document.createElement("strong");
-	what.textContent = row.what;
-	problem.appendChild(what);
-	if (row.why) {
-		var why = document.createElement("span");
-		why.className = "passkey-posture-why text-muted";
-		why.textContent = " " + row.why;
-		problem.appendChild(why);
-	}
+	var main = settingsElement("div", "passkey-posture-row-main");
+	var problem = settingsElement("div", "passkey-posture-problem");
+	problem.appendChild(settingsElement("strong", "", row.what));
+	if (row.why) problem.appendChild(settingsElement("span", "passkey-posture-why text-muted", " " + row.why));
 	main.appendChild(problem);
-
-	if (row.recommendation) {
-		var fix = document.createElement("div");
-		fix.className = "passkey-posture-fix";
-		fix.textContent = row.recommendation;
-		main.appendChild(fix);
-	}
+	if (row.recommendation) main.appendChild(settingsElement("div", "passkey-posture-fix", row.recommendation));
 	wrap.appendChild(main);
 	return wrap;
 }
 
-// The tick/flag glyphs as inline SVG: v15's desk sprite lacks many symbols.
+// Inline SVG marks: v15's desk sprite lacks many symbols.
+var POSTURE_WARNING_MARK = '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>';
 var POSTURE_MARK_SVG = {
 	good: '<circle cx="12" cy="12" r="9"></circle><path d="m8.2 12.4 2.6 2.6 5-5.4"></path>',
-	flag: '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>',
-	warn: '<path d="M12 3.4 2.3 20.4h19.4z"></path><line x1="12" y1="10" x2="12" y2="14.5"></line><line x1="12" y1="17.4" x2="12" y2="17.5"></line>',
+	flag: POSTURE_WARNING_MARK,
+	warn: POSTURE_WARNING_MARK,
 	tune: '<circle cx="12" cy="12" r="9"></circle><line x1="8.2" y1="12" x2="15.8" y2="12"></line>',
 	note: '<circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16.4"></line><line x1="12" y1="7.7" x2="12" y2="7.8"></line>',
 };
 
 function postureMark(kind) {
-	var span = document.createElement("span");
-	span.className = "passkey-posture-mark passkey-posture-mark--" + kind;
+	var span = settingsElement("span", "passkey-posture-mark passkey-posture-mark--" + kind);
 	span.setAttribute("aria-hidden", "true");
 	// Constant artwork (no user data), so innerHTML is safe.
 	span.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true" ' +
@@ -292,130 +193,97 @@ function postureMark(kind) {
 	return span;
 }
 
-// The posture container, mounted BELOW the banner host so save-blockers come first.
-function postureHost(frm) {
-	if (frm._passkey_posture_host && frm._passkey_posture_host.isConnected) return frm._passkey_posture_host;
-	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
-	var mount = $mount && $mount.get ? $mount.get(0) : $mount;
-	if (!mount) return null;
-	var host = document.createElement("div");
-	host.className = "passkey-posture";
-	// Below the banner host when it exists, else at the very top of the form.
-	var bannerHostEl = (frm._passkey_banner_host && frm._passkey_banner_host.isConnected)
-		? frm._passkey_banner_host : null;
-	mount.insertBefore(host, bannerHostEl ? bannerHostEl.nextSibling : mount.firstChild);
-	frm._passkey_posture_host = host;
+// A container at the top of the form, created once per form. The posture host goes
+// below the banner host so save-blockers come first.
+function settingsFormHost(frm, key, className) {
+	if (frm[key] && frm[key].isConnected) return frm[key];
+	var mount = frm.layout.wrapper.get(0);
+	var host = settingsElement("div", className);
+	var banners = frm._passkey_banner_host;
+	var after = key !== "_passkey_banner_host" && banners && banners.isConnected ? banners : null;
+	mount.insertBefore(host, after ? after.nextSibling : mount.firstChild);
+	frm[key] = host;
 	return host;
 }
 
-function paintBanners(frm, M) {
-	var host = bannerHost(frm);
-	if (!host) return;
-	while (host.firstChild) host.removeChild(host.firstChild); // idempotent across repaints
-
+function paintBanners(frm) {
+	var M = frappe.passkeys_manage_common;
+	var host = settingsFormHost(frm, "_passkey_banner_host", "passkey-settings-banners");
 	var ctx = buildContext(frm);
-	var banners = M.settingsBanners(frm.doc, ctx);
-	// Render errors first, then warnings, then info.
 	var order = { error: 0, warning: 1, info: 2 };
-	banners.sort(function (a, b) { return (order[a.level] || 9) - (order[b.level] || 9); });
-	banners.forEach(function (bn) {
-		host.appendChild(bannerEl(bn.level, M.format(__(bn.key), bn.args || [])));
-	});
+	var banners = M.settingsBanners(frm.doc, ctx).sort(function (a, b) { return order[a.level] - order[b.level]; });
+	fillHost(host, banners.map(function (bn) {
+		return bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
+	}));
 	paintResolvedConfig(frm, ctx);
 }
 
-// Render the resolved RP ID + origins in the resolved_rp_html field. Values go in as text
-// nodes before the .html() sink, so free-text passkey_origins can never inject markup.
+// The resolved RP ID + origins in the resolved_rp_html field. Values enter as text nodes
+// before the .html() sink, so free-text passkey_origins can never inject markup.
 function paintResolvedConfig(frm, ctx) {
-	var field = frm.get_field && frm.get_field("resolved_rp_html");
-	if (!field || !field.html) return;
+	var field = frm.get_field("resolved_rp_html");
+	if (!field) return;
 	var rpId = ctx.resolvedRpId;
-	var origins = ctx.resolvedOrigins && ctx.resolvedOrigins.length ? ctx.resolvedOrigins : null;
+	var origins = ctx.resolvedOrigins.length ? ctx.resolvedOrigins : null;
 	if (!rpId && !origins) {
-		field.html(); // nothing resolves yet — fall back to the field's own static note
+		field.html(); // nothing resolves yet: the field's own static note
 		return;
 	}
-	var line = document.createElement("p");
-	line.className = "text-muted small";
+	var line = settingsElement("p", "text-muted small");
 	line.style.margin = "0";
 	if (rpId) {
 		line.appendChild(document.createTextNode(__("Resolves to") + ": "));
-		var strong = document.createElement("strong");
-		strong.textContent = rpId;
-		line.appendChild(strong);
+		line.appendChild(settingsElement("strong", "", rpId));
 	}
 	if (origins) {
-		// One translatable unit (no <strong> here, unlike the RP-ID line above) so the label stays localizable.
 		line.appendChild(document.createTextNode((rpId ? " · " : "") + __("Origins: {0}", [origins.join(", ")])));
 	}
-	var box = document.createElement("div");
+	var box = settingsElement("div");
 	box.appendChild(line);
-	// box.innerHTML is safe: every dynamic value entered via textContent, so it is escaped.
 	field.html(box.innerHTML);
 }
 
-// The banner container at the top of the form; cleared on every paint.
-function bannerHost(frm) {
-	if (frm._passkey_banner_host && frm._passkey_banner_host.isConnected) return frm._passkey_banner_host;
-	var $mount = (frm.layout && frm.layout.wrapper) || (frm.dashboard && frm.dashboard.wrapper) || frm.$wrapper;
-	var mount = $mount && $mount.get ? $mount.get(0) : $mount;
-	if (!mount) return null;
-	var host = document.createElement("div");
-	host.className = "passkey-settings-banners";
-	mount.insertBefore(host, mount.firstChild);
-	frm._passkey_banner_host = host;
-	return host;
-}
-
 function bannerEl(level, msg) {
-	var color = level === "error" ? "red" : level === "warning" ? "orange" : "blue";
-	var div = document.createElement("div");
-	div.className = "passkey-settings-banner alert alert-" + (level === "error" ? "danger" : level === "warning" ? "warning" : "info");
+	var div = settingsElement("div", "passkey-settings-banner alert alert-" +
+		{ error: "danger", warning: "warning", info: "info" }[level], msg);
 	div.setAttribute("role", level === "info" ? "status" : "alert");
-	div.setAttribute("data-indicator", color);
-	div.textContent = msg; // plain text — never innerHTML (msg is translated copy + values)
+	div.setAttribute("data-indicator", { error: "red", warning: "orange", info: "blue" }[level]);
 	return div;
 }
 
-// The settings context for settingsBanners. Cross-flag data comes from
-// frappe.boot.passkeys.settings_context when the server ships it.
+// The settingsBanners context. Cross-flag data comes from boot.passkeys.settings_context,
+// which the server sends to System Managers.
 function buildContext(frm) {
-	var boot = (frappe.boot && frappe.boot.passkeys) || {};
+	var boot = frappe.boot.passkeys || {};
 	var sc = boot.settings_context || {};
-	var host = window.location && window.location.hostname;
-	// Mirrors policy.resolve_rp_id: the explicit RP ID, else the server's host_name
-	// resolution. Never window.location.hostname, which is not what the server uses.
+	// Mirrors policy.resolve_rp_id: the explicit RP ID, else the server's resolution.
+	// Never window.location.hostname, which is not what the server uses.
 	var explicit = (frm.doc.passkey_rp_id || "").trim().toLowerCase();
-	var serverResolved = frm._passkey_server_rpid !== undefined
-		? frm._passkey_server_rpid
-		: (boot.rp_id || null);
-	var rpId = explicit || serverResolved || null;
-	var configuredSiteOrigin = frm._passkey_server_site_origin !== undefined
+	var serverRpId = frm._passkey_server_rpid !== undefined ? frm._passkey_server_rpid : boot.rp_id;
+	var siteOrigin = frm._passkey_server_site_origin !== undefined
 		? frm._passkey_server_site_origin
-		: (sc.configured_site_origin || sc.site_origin || boot.configured_site_origin || boot.site_origin || null);
-	var origins = parseOrigins(frm.doc.passkey_origins, configuredSiteOrigin);
+		: sc.configured_site_origin;
 	return {
-		currentHost: host,
-		currentOrigin: window.location && window.location.origin,
-		resolvedRpId: rpId,
-		resolvedOrigins: origins,
-		configuredSiteOrigin: configuredSiteOrigin,
-		hostNameConfigured: frm._passkey_host_name_configured,
-		// server-supplied cross-flag context (optional)
+		currentHost: window.location.hostname,
+		currentOrigin: window.location.origin,
+		resolvedRpId: explicit || serverRpId || null,
+		resolvedOrigins: frappe.passkeys_manage_common.deriveOrigins(frm.doc.passkey_origins, siteOrigin),
 		coreTwoFactor: sc.core_two_factor_auth,
 		disablePassLogin: sc.disable_user_pass_login,
 		passkeyOnlyUserCount: sc.passkey_only_user_count,
-		// report-only enforcement preview: in-scope users with no passkey yet
-		// (server-supplied — the matrix omits the preview banner when absent).
 		wouldBeBlockedCount: sc.would_be_blocked_count,
 	};
 }
 
-// Resolved origins, as policy.resolve_origins derives them.
-function parseOrigins(raw, configuredSiteOrigin) {
-	var M = typeof frappe !== "undefined" && frappe.passkeys_manage_common;
-	if (M && M.deriveOrigins) return M.deriveOrigins(raw, configuredSiteOrigin);
-	var lines = String(raw || "").split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
-	if (configuredSiteOrigin && lines.indexOf(configuredSiteOrigin) === -1) lines.unshift(configuredSiteOrigin);
-	return lines;
+// Replace a host's children; every repaint starts clean.
+function fillHost(host, nodes) {
+	host.textContent = "";
+	nodes.forEach(function (node) { host.appendChild(node); });
+}
+
+function settingsElement(tag, className, text) {
+	var node = document.createElement(tag);
+	if (className) node.className = className;
+	if (text != null) node.textContent = text;
+	return node;
 }
