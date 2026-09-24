@@ -130,7 +130,8 @@
 
 	// ------------------------------------------------------- conditional UI
 	function startConditional() {
-		if (!state.conditionalEnabled) return;
+		// Overlapping get() calls make the browser abort one; the open modal owns the authenticator.
+		if (!state.conditionalEnabled || state.busyModal) return;
 		var input = C.resolveIdentifierInput(document);
 		if (input) {
 			// the one-token seam: username -> "username webauthn"

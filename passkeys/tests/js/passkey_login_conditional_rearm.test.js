@@ -386,3 +386,64 @@ test("a joined click aborts conditional UI a sharing re-arm started before openi
 	assert.strictEqual(mod.state.conditionalAbort, null);
 	assert.strictEqual(gets.length, 1);
 });
+
+test("a re-arm that shares a click's begin never starts conditional UI under the open dialog", async () => {
+	primeConditional();
+	mod.state.modes.first_factor = true;
+	const originalQuerySelector = global.document.querySelector;
+	global.document.querySelector = (selector) => (selector === "#login_email" ? fakeEl() : null);
+	try {
+		const verify = deferred();
+		global.window.frappe.call = function (opts) {
+			return verify.promise.then(() => {
+				const xhr = { responseJSON: { exc_type: "PasskeyServedByCore" }, status: 401 };
+				opts.statusCode[401](xhr);
+				throw xhr;
+			});
+		};
+		const begins = [];
+		global.fetch = function () { const d = deferred(); begins.push(d); return d.promise; };
+		const modal = { promise: null, reject: null };
+		const gets = [];
+		installNavigator({
+			credentials: {
+				get(options) {
+					gets.push(options);
+					if (options.mediation === "conditional") return new Promise(() => {});
+					modal.promise = new Promise((_, reject) => { modal.reject = reject; });
+					return modal.promise;
+				},
+			},
+		});
+		const conditionalGets = () => gets.filter((options) => options.mediation === "conditional").length;
+
+		mod.runVerify(fakeCred, { source: "conditional" }, "sid-under-test"); // verify pending, state spent
+		mod.onButtonClick(); // the click starts the re-begin first
+		verify.resolve();
+		await tick();
+		await tick();
+		assert.strictEqual(begins.length, 1, "the late failure's re-arm joined the click's begin");
+
+		begins[0].resolve(beginResponse("shared-sid", "CQ")); // the click's modal runs before the re-arm
+		await tick();
+		await tick();
+		assert.strictEqual(mod.state.busyModal, true);
+		assert.strictEqual(gets.length, 1, "only the modal get() is open");
+		assert.strictEqual(conditionalGets(), 0, "the re-arm did not start conditional UI under the dialog");
+		assert.strictEqual(mod.state.conditionalAbort, null);
+
+		modal.reject(new DOMException("cancelled", "NotAllowedError"));
+		await tick();
+		await tick();
+		assert.strictEqual(mod.state.busyModal, false);
+		assert.strictEqual(conditionalGets(), 0, "the spent re-arm budget still bounds automatic re-arms");
+
+		global.fetch = function () { return Promise.resolve(beginResponse("after-modal-sid", "Cg")); };
+		mod.onPageShow({ persisted: true });
+		await tick();
+		await tick();
+		assert.strictEqual(conditionalGets(), 1, "conditional UI starts again once the dialog has settled");
+	} finally {
+		global.document.querySelector = originalQuerySelector;
+	}
+});
