@@ -432,13 +432,12 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertTrue(self._verdict("Administrator")["in_scope"])
 		self.assertFalse(enforcement_admin.admin_enforcement_view("Administrator")["exempt"])
 
+		scope_role = "Passkeys Test Scope Role"
+		if not frappe.db.exists("Role", scope_role):
+			frappe.get_doc({"doctype": "Role", "role_name": scope_role}).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Role", scope_role, force=1, ignore_permissions=True)
 		self._set(passkey_enforce_scope="Selected Roles", passkey_enforce_privileged_always=0)
-		self._set_enforced_roles("Sales User")
-		self.assertFalse(
-			frappe.db.exists(
-				"Has Role", {"parent": "Administrator", "parenttype": "User", "role": "Sales User"}
-			)
-		)
+		self._set_enforced_roles(scope_role)
 		self.assertFalse(self._verdict("Administrator")["in_scope"])
 
 		self._set(passkey_enforce_privileged_always=1)
