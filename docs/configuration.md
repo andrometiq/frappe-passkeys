@@ -97,29 +97,12 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
    set **Require a passkey from** to *Selected roles* and list **Roles**.
    This takes effect on the next login. System Managers stay in scope while
    *Always require a passkey from System Managers* is on.
-5. **Back off the requirement.** Set **Require a passkey from** to **No one** and
-   untick **Always require a passkey from System Managers**. In-scope interstitials
-   stop; **Everyone else** still decides whether everyone else sees a nudge.
-6. **If every administrator is locked out, use the server console.** Disable the
-   enrollment gate without invoking the settings controller:
-
-   ```bash
-   bench --site <site> execute passkeys.recovery.disable_enforcement
-   ```
-
-   This idempotently sets **Require a passkey from** to *No one* and unticks
-   **Always require a passkey from System Managers**. Every other Passkey Setting,
-   including **Everyone else**, is left untouched. Frappe core also provides operator
-   recovery hatches for restoring an administrator account:
-
-   ```bash
-   bench --site <site> add-system-manager <email>
-   bench --site <site> set-admin-password <new-password>
-   ```
+5. **If no System Manager can reach Desk,** follow
+   [No System Manager can sign in](recovery.md#no-system-manager-can-sign-in). Lifting the
+   requirement for the whole site is its last resort, not a way to let one user through.
 
 There are no standing role-wide exemptions. Administrators are enforced first by
-default; recovery is an explicit temporary marker-role assignment for one user or
-an operator-only console action when no administrator can reach Desk.
+default; recovery is an explicit per-user exemption.
 
 Enforcement, Passkey Only Login and disabled password login govern interactive sign-in only;
 API-key and OAuth-token requests are not subject to them (see
@@ -204,12 +187,14 @@ unusable for sign-in while the switch is on. It is the released-branch lever
 for "no passwords for this account"; the site-wide equivalent needs the
 self-hoster override in [`operations.md`](operations.md).
 
-- Only the user themself can turn it on or off, and only by presenting a fresh
-  **passkey** confirmation — never a password and never a sudo window. (A password
-  must not be able to switch off the very flag that says "a password is not
-  enough".)
-- Enabling it requires **at least two enabled passkeys**, so a single lost device
-  never locks the account out.
+- The user's own switch needs a fresh **passkey** confirmation — never a password and
+  never a sudo window. (A password must not be able to switch off the very flag that says
+  "a password is not enough".) Turning it on there requires **at least two enabled
+  passkeys**, so a single lost device never locks the account out.
+- A **System Manager** can clear it on the user's **WebAuthn User Handle** form; that is
+  how a user who lost every passkey is recovered
+  ([A user lost their passkey](recovery.md#a-user-lost-their-passkey)). Turning it on from
+  that form requires at least one enabled credential and a passkey login mode.
 - **Administrator is exempt only from this per-user passkey-only login veto.** That preserves the
   password break-glass path for an Administrator who has not opted into the passkey second factor.
   Once Administrator explicitly enrolls an enabled credential while *Passkey as Second Factor* is

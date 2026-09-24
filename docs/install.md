@@ -124,7 +124,9 @@ files, validate on staging behind your real proxy and origins, and have a tested
 **Disable** (turn the modes off in Passkey Settings) is the reversible pause:
 all passkey UI disappears, the login and second-factor ceremonies refuse, but
 every credential row is preserved and the action-confirmation primitive keeps
-working. Re-enabling restores everything. Prefer this for temporary changes.
+working. Re-enabling restores the modes. This suspends the site's passkey login
+controls; it is not an account-recovery procedure. Use [Desk recovery](recovery.md)
+for lockouts, and reserve disabling controls for its warned last resort.
 
 **Uninstall** drops the app's DocTypes and their tables. On its own that would
 destroy every stored credential and orphan the passkeys held on users'
@@ -149,8 +151,9 @@ lockout cases, so you cannot strand your users by accident:
 
 - **Passkey-only users exist.** If any user has *Passkey Only Login* set on
   their WebAuthn User Handle, they would be locked out. Clear that flag on the
-  listed users first (WebAuthn User Handle list in Desk, or `bench console` —
-  see [`recovery.md`](recovery.md)).
+  listed users through their **WebAuthn User Handle** forms in Desk and verify
+  their replacement sign-in methods before removal. If a user is locked out,
+  follow [account recovery](recovery.md#a-user-lost-their-passkey) first.
 
 Once the guards pass, uninstall also deletes the app's per-user nudge state and the User-form
 passkey section, so a later reinstall is a clean slate. Cached challenge /

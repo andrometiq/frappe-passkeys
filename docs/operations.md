@@ -50,8 +50,9 @@ Before enabling passkeys on a site people depend on:
 5. Turn on Enforce, passkey-only accounts, or OTP-fallback-off only after that period and a
    recovery drill have gone well.
 
-To back out, turn both modes off in Passkey Settings — the reversible pause described in
-[Disable vs uninstall](install.md#disable-vs-uninstall).
+To back out a rollout, turn both modes off in Passkey Settings — the reversible pause described in
+[Disable vs uninstall](install.md#disable-vs-uninstall). That is a site decision, not a way to
+unlock one user; lockouts go through [`recovery.md`](recovery.md).
 
 ## Changing the RP ID or moving domains
 
@@ -62,30 +63,18 @@ enrolled passkey-second-factor user; rehearse console recovery before the cutove
 
 - **Real domain migration** (the site's public host changes): update `host_name`
   in site config (and Passkey RP ID / Passkey Origins if set explicitly) to the new host, and
-  check that the resolved origins are exactly the non-empty set you will serve. Accept that all
-  existing passkeys are now invalid, and have users re-enroll. The Passkey Settings change dialog
-  restates the consequence.
+  check that the resolved origins are exactly the non-empty set you will serve.
+  If the RP ID changes, existing passkeys cannot authenticate under the new RP ID;
+  have users re-enroll. Moving to another trusted origin within the same RP ID does
+  not itself require new passkeys. The Passkey Settings change dialog warns about
+  changing the RP ID.
 
-- **Staging clone / restore to a different host:** Passkey Settings travel with
-  the database, so on the clone every login ceremony correctly **fails closed**
-  on the host mismatch (it logs `passkeys: request host … not in configured
-  origins` and shows the red mismatch banner in Passkey Settings). Passkey-only
-  users cannot get into the clone at all (Administrator can, by design). The
-  standard post-restore step on a clone is to zero the login modes and clear the
-  passkey-only flags — one `bench console` block:
-
-  ```python
-  bench --site <clone-site> console
-  >>> frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
-  >>> frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
-  >>> for name in frappe.get_all("WebAuthn User Handle",
-  ...         filters={"passkey_only_login": 1}, pluck="name"):
-  ...     frappe.db.set_value("WebAuthn User Handle", name, "passkey_only_login", 0)
-  >>> frappe.db.commit()
-  ```
-
-  (Raw DB writes bypass the settings guards on purpose — this is site-admin
-  authority; see "Console authority" below.)
+- **Staging clone / restore to a different host:** inspect **Passkey Settings →
+  Relying Party** as a System Manager. Repair the intended host, RP ID and exact
+  trusted origins; a mismatch fails closed. Follow
+  [Passkeys fail after a restore or host change](recovery.md#passkeys-fail-after-a-restore-or-host-change).
+  Recover one manager first if necessary, then affected users individually. Do not
+  routinely switch off both login modes or clear every user's passkey-only flag.
 
 - **Stale restore:** credentials that were deleted *after* the backup was taken
   come back when you restore it — the row returns and the authenticator still
@@ -113,9 +102,11 @@ enrolled passkey-second-factor user; rehearse console recovery before the cutove
   re-auth) and refuses to remove a user's last passkey when that would lock them
   out. System Managers can revoke any user's credential from the WebAuthn
   Credential DocType — **prefer disabling (set `enabled=0`) over deleting** so the
-  row survives for forensics. Either way the owner is emailed, and the app refuses
-  to remove/disable the last enabled credential of a passkey-only user (or under
-  site-wide password disable) until the flag is cleared.
+  row survives for forensics. With **Notify on Passkey Changes** on, the owner is
+  emailed. The app refuses to remove or disable the last enabled credential while
+  **Passkey Only Login** or site-wide password disable is set. Follow
+  [account recovery](recovery.md#a-user-lost-their-passkey) for the correct order; the
+  site-wide case requires its own recovery path.
 
 ## Monitoring the risk events
 
@@ -178,8 +169,8 @@ site-wide.
 
 - Every user who must retain access — **including Administrator** — has at least
   one enrolled, working passkey, verified *before* you flip the switch.
-- You keep a tested `bench console` path to flip the flag back off (below), off
-  the network path that the flag closes.
+- You keep tested operator access outside the login path, and have rehearsed
+  [recovery of one manager](recovery.md#no-system-manager-can-sign-in).
 
 **When it is a foot-gun:**
 
@@ -190,25 +181,23 @@ site-wide.
   outside the app's mergeability guarantees. Re-apply and re-test after every
   update.
 
-**The recovery / kill-switch** (also see [`recovery.md`](recovery.md)):
+**Recovery:** use [the recovery guide](recovery.md#password-login-is-disabled-site-wide).
+Recover one account first. Reopening password sign-in site-wide is a last resort,
+at your own risk: for that window the whole site is not protected by the password-disable
+control. Verify the requester's identity out of band and rule out a planned attack,
+including social engineering an admin into lowering defences. The guide keeps the
+console change and its restoration steps together.
 
-```python
-bench --site <site> console
->>> frappe.db.set_single_value("System Settings", "disable_user_pass_login", 0)
->>> frappe.db.commit()
->>> frappe.clear_cache()
-```
-
-This is the durably-correct approach the upstream plan replaces: the core merge
-adds passkeys to the `validate_user_pass_login` allowlist so no patch is needed.
+The upstream plan replaces the local validator override by adding passkeys to
+core's `validate_user_pass_login` allowlist, so a local patch would no longer be needed.
 
 ## Console authority (stated once)
 
-`bench console`, System Console, and raw `db_set` writes bypass **every**
-validation guard in this app — the credential-count floor, the disable guard, and
-the two-factor floor guard. That is intentional: console access is site-admin
-authority, out of the threat model. It is also what makes every lockout in
-[`recovery.md`](recovery.md) survivable.
+Raw database writes from an operator console bypass DocType validation and document
+hooks, including credential-count and settings guards. Document saves still run their
+controllers. Use that authority to restore one trusted manager when nobody can reach
+Desk; see [console access](recovery.md#console-access). Site-wide protection changes
+are reserved for the guide's last resort.
 
 **Administrator break-glass boundary:** Administrator is exempt from the per-user passkey-only
 login veto only. If Administrator explicitly enrolls an enabled credential while Passkey as Second

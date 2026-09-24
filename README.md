@@ -57,7 +57,8 @@ Frappe v15, v16, and develop.
 
 - **Admin tools.** A security-posture panel on Passkey Settings lists the remaining ways to sign in
   without a passkey and how to close each one. Per-user enforcement exemption and grace-login reset
-  sit on the User form. Documented console commands cover lockout recovery.
+  sit on the User form. System Managers recover users through Desk; console procedures cover
+  the case where no manager can sign in.
 
 - **Native mobile apps.** Serve Android Digital Asset Links and the iOS
   `apple-app-site-association` file so a native app shares the site's passkeys.
@@ -132,8 +133,8 @@ the reverse-proxy, RP ID, and origin requirements.
   passkeys: trusted app origins, the two well-known association files, and the endpoints.
 - [**Operations**](docs/operations.md): pre-production checks, RP ID and domain changes, backup and
   restore, incident response, revocation, and monitoring.
-- [**Recovery**](docs/recovery.md): locked-out user and locked-out admin recovery, with exact
-  `bench console` commands.
+- [**Recovery**](docs/recovery.md): System Manager recovery through Desk, then Administrator
+  and account-specific console procedures when no manager can sign in.
 - [**Security**](docs/security.md): the security model in operator terms: what the app enforces,
   what it trusts, residual risks, and disclosure.
 - [**WebAuthn Level 3 support**](docs/webauthn-l3.md): which WebAuthn L3 relying-party steps and
