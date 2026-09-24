@@ -9,7 +9,8 @@
 | `develop` | Integration branch | Fixed here first; not for production |
 
 Fixes land on `develop` and ship in the next 15.x / 16.x release. Validate a release against your
-exact Frappe version and topology with the [release checklist](docs/release-checklist.md).
+exact Frappe version and topology before enabling it
+([Operations](docs/operations.md#before-you-enable-passkeys-on-a-production-site)).
 
 ## Reporting A Vulnerability
 

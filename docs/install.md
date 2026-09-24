@@ -154,9 +154,9 @@ individual user from the Passkeys section of their User form, or use the console
 [`recovery.md`](recovery.md). No settings are otherwise changed by an upgrade; enabled modes stay
 enabled.
 
-Do not promote an upgrade from this command sequence alone. Complete the
-[release checklist](release-checklist.md), including candidate-specific CI, a database and private
-files backup, staging validation on the real proxy/origin topology, and a tested recovery path.
+Do not promote an upgrade from this command sequence alone: back up the database and private
+files, validate on staging behind your real proxy and origins, and have a tested recovery path — see
+[Operations](operations.md#before-you-enable-passkeys-on-a-production-site).
 
 ## Disable vs uninstall
 

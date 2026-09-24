@@ -123,16 +123,15 @@ that's asked.
 - New behaviour is covered by tests; business logic and validation stay server-side.
 - Update the relevant docs under [`docs/`](docs/) when behaviour changes.
 - For authentication, migration, origin-policy, or lifecycle changes, update
-  [`CHANGELOG.md`](CHANGELOG.md) and verify the [release checklist](docs/release-checklist.md) still
-  covers the changed risk.
+  [`CHANGELOG.md`](CHANGELOG.md) and the operator docs ([`docs/operations.md`](docs/operations.md),
+  [`docs/recovery.md`](docs/recovery.md)) that cover the changed risk.
 - Link the issue you close with `Closes #123`.
 
 ## Releases
 
-Only maintainers publish releases. A green test run is necessary but not sufficient: the candidate
-must satisfy [`docs/release-checklist.md`](docs/release-checklist.md), including a clean worktree,
-candidate-specific pinned CI, lifecycle and uninstall-export coverage, staging validation on the
-deployment topology, recovery rehearsal, changelog review, and private-data/secret scanning.
+Only maintainers publish releases. A green test run is necessary but not sufficient: release a
+clean, reviewed commit whose pinned CI (server, JavaScript, Cypress, lifecycle, secret scan) is
+green on each release branch, after a changelog review and a private-data scan.
 
 Do not describe `develop`, an untagged commit, or an upstream-tip compatibility run as production-ready.
 Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid

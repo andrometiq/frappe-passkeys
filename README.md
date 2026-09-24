@@ -105,7 +105,8 @@ in Passkey Settings. Changing the RP ID later invalidates every enrolled passkey
 This is the first public release: **15.0.0** on the `version-15` branch and **16.0.0** on
 `version-16`. CI runs the server, JavaScript, and browser end-to-end suites against Frappe v15, v16,
 and develop. As with any authentication change, try it on staging before you enable it on a site
-that depends on it; the [release checklist](docs/release-checklist.md) lists what to verify.
+that depends on it; [Operations](docs/operations.md#before-you-enable-passkeys-on-a-production-site)
+lists what to check.
 
 | Frappe | Branch | Supported |
 | --- | --- | --- |
@@ -129,14 +130,12 @@ the reverse-proxy, RP ID, and origin requirements.
   rate limits) for a native app or a no-JS single-page app.
 - [**Mobile apps**](docs/mobile-apps.md): let a native iOS or Android app share the site's
   passkeys: trusted app origins, the two well-known association files, and the endpoints.
-- [**Operations**](docs/operations.md): RP ID and domain changes, backup and restore, incident
-  response, revocation, and monitoring.
+- [**Operations**](docs/operations.md): pre-production checks, RP ID and domain changes, backup and
+  restore, incident response, revocation, and monitoring.
 - [**Recovery**](docs/recovery.md): locked-out user and locked-out admin recovery, with exact
   `bench console` commands.
 - [**Security**](docs/security.md): the security model in operator terms: what the app enforces,
   what it trusts, residual risks, and disclosure.
-- [**Release checklist**](docs/release-checklist.md): candidate, staging, recovery, and deployment
-  checks.
 - [**Security policy**](SECURITY.md): how to report a vulnerability privately.
 - [**Changelog**](CHANGELOG.md): what changed in each release.
 - [**Upstream proposal**](docs/upstream/): a design and validation checklist for adopting passkeys

@@ -34,6 +34,25 @@ A Redis flush (or a deploy that clears the cache) cancels only in-flight
 ceremonies: the worst case is a user retrying one sign-in. Nothing enrolled is
 lost. Sudo windows and grants simply have to be re-earned.
 
+## Before you enable passkeys on a production site
+
+Release CI tests the app against pinned Frappe baselines; it does not test your deployment.
+Before enabling passkeys on a site people depend on:
+
+1. Take a database and private-files backup and confirm it restores. Keep a separate copy of the
+   site's `encryption_key`: enabling a mode and verifying a credential export both need it.
+2. Try the release on a staging copy behind the same TLS, reverse proxy, and host name as
+   production, with the RP ID and Passkey Origins you will use.
+3. Make sure an administrator can run the console recovery in [`recovery.md`](recovery.md)
+   without relying on the login path you are changing.
+4. Enable it for a small group first, with password login still on, and watch the
+   [risk events](#monitoring-the-risk-events), enrollment failures, and support requests.
+5. Turn on Enforce, passkey-only accounts, or OTP-fallback-off only after that period and a
+   recovery drill have gone well.
+
+To back out, turn both modes off in Passkey Settings — the reversible pause described in
+[Disable vs uninstall](install.md#disable-vs-uninstall).
+
 ## Changing the RP ID or moving domains
 
 **Changing the Relying Party ID invalidates every enrolled passkey.** It is a

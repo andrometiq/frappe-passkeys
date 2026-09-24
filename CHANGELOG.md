@@ -19,7 +19,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   restore validation.
 - Explicit action labels and safe parameter summaries for passkey confirmation dialogs.
 - `@passkey_protected` requires a passkey by default; confirming with a password is an explicit
-  per-action opt-in (`allow_password_fallback=True`).
+  per-action opt-in (`allow_password_fallback=True`). **Integrators:** pass it on any custom action
+  that should still accept a password.
 - A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps
   the user signed in, so they can retry.
 - Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a
@@ -31,7 +32,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Shared, site-scoped action policy publication for deterministic confirmation across workers.
 - Pinned-input release CI, data-bearing lifecycle checks, JavaScript unit gates, secret scanning,
   and a separate moving-upstream compatibility workflow whose failures remain visible.
-- Release checklist and private security-reporting policy.
+- Private security-reporting policy.
 
 ### Changed
 
@@ -122,4 +123,6 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   releases exposed to CVE-2026-47194 (host-header poisoning of magic/passwordless login links);
   enforced by the `before_install` version check.
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/develop...HEAD
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.0...develop
+[15.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.0
+[16.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.0

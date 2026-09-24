@@ -57,8 +57,8 @@ Any native proposal must preserve or deliberately supersede these app guarantees
 - Registration JSON fallbacks preserve attestation fields on browsers without native `toJSON`.
 - Mode enablement verifies engine importability without loading crypto into login or boot hooks;
   this point-in-time check does not replace deployment health checks.
-- Production readiness is established per release candidate by the release checklist, not inferred
-  from this proposal or a moving branch-tip test.
+- Production readiness is established per release candidate (pinned CI, review, and staging on the
+  deployment topology), not inferred from this proposal or a moving branch-tip test.
 
 ## Proposed work packages
 
