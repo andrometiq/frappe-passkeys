@@ -61,6 +61,12 @@ mismatch fails the ceremony.
 duplicate registration and cross-account credential hijack both fail closed at
 insert.
 
+**Assertions must belong to the expected user.** A passwordless login resolves the account from
+the assertion's `userHandle` and requires the credential to belong to it. When the user is known
+before the ceremony (the second factor, action confirmation), the credential must be in that
+ceremony's allow-list and owned by the user, and a returned `userHandle` must be that user's handle
+(WebAuthn L3 §7.2).
+
 **Session minting through one choke point.** Every passkey session is created via
 core's `login_as` → `post_login` — full login hooks, IP/hour checks, a fresh
 session and CSRF token, and an Activity Log row. The app never spins up a fresh

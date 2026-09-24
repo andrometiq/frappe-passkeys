@@ -358,6 +358,28 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 1)
 
+	def test_user_handle_of_another_user_is_refused(self):
+		user = self._user()
+		auth = self._enroll(user)
+		other_handle = b64url(self._enroll(self._user(), seed="other").user_handle)
+		sign_in(user)
+		for handle in (other_handle, b64url(b"\x03" * 16)):
+			with self.subTest(handle=handle):
+				begun = self._begin("myapp.act", params={"x": 1})
+				credential = self._assert(auth, begun["options"])
+				credential["response"]["userHandle"] = handle
+				with self.assertRaises(CeremonyFailed):
+					self._verify(begun["state_id"], credential)
+
+	def test_absent_user_handle_is_accepted(self):
+		user = self._user()
+		auth = self._enroll(user)
+		sign_in(user)
+		begun = self._begin("myapp.act", params={"x": 1})
+		credential = self._assert(auth, begun["options"])
+		credential["response"]["userHandle"] = None
+		self.assertTrue(self._verify(begun["state_id"], credential)["grant"])
+
 	def test_confirm_ceremony_is_single_use(self):
 		user = self._user()
 		auth = self._enroll(user)

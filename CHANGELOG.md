@@ -115,6 +115,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   signature at decoration time, and reads bound names passed through `**kwargs`; previously both
   bound `None`, so one grant covered any payload. Naming the `**kwargs` parameter itself binds the
   whole mapping.
+- The second factor and action confirmation refuse an assertion whose returned `userHandle`
+  belongs to someone other than the user the ceremony was started for (WebAuthn L3 §7.2).
 - Assertion counters are reclassified under row locks before sessions or grants are minted,
   rejecting duplicate nonzero counter replays.
 - Credential import refuses unsigned files by default, modified or cross-site v2 files,

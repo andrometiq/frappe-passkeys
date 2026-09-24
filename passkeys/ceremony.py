@@ -99,6 +99,20 @@ def lock_enabled_user(user: str) -> bool:
 	return bool(cint(frappe.db.get_value("User", user, "enabled", for_update=True)))
 
 
+def get_handle_user(user_handle: str, *, for_update: bool = False) -> str | None:
+	"""The User a WebAuthn user handle belongs to."""
+	return frappe.db.get_value("WebAuthn User Handle", {"handle": user_handle}, "user", for_update=for_update)
+
+
+def has_matching_user_handle(credential: dict, user: str) -> bool:
+	"""WebAuthn L3 §7.2 when the user was identified before the ceremony: a returned
+	``userHandle`` must map to that user. Authenticators may omit it."""
+	user_handle = credential["response"].get("userHandle")
+	if user_handle in (None, ""):
+		return True
+	return isinstance(user_handle, str) and get_handle_user(user_handle) == user
+
+
 def advance_credential(
 	name: str, result, *, sign_count_hard_fail: bool = False, error=frappe.AuthenticationError
 ) -> None:

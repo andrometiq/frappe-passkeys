@@ -317,6 +317,31 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 			self._leg2(resp["tmp_id"], bogus, binder)
 		self.assertEqual(frappe.session.user, "Guest")
 
+	def test_user_handle_of_another_user_is_refused(self):
+		user = self._user()
+		auth = self._enroll(user)
+		other_handle = b64url(self._enroll(self._user(), seed="other").user_handle)
+		resp, binder = self._leg1(user, PWD)
+		state_id, options = resp["tmp_id"], resp["verification"]["options"]
+		for handle in (other_handle, b64url(b"\x03" * 16)):
+			with self.subTest(handle=handle):
+				credential = self._assert(auth, options)
+				credential["response"]["userHandle"] = handle
+				with self.assertRaises(CeremonyExpired):  # re-arm path, no session
+					self._leg2(state_id, credential, binder)
+				self.assertEqual(frappe.session.user, "Guest")
+				state_id = frappe.local.response["state_id"]
+				options = frappe.local.response["verification"]["options"]
+
+	def test_absent_user_handle_is_accepted(self):
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+		credential = self._assert(auth, resp["verification"]["options"], sign_count=3)
+		credential["response"]["userHandle"] = None
+		self._leg2(resp["tmp_id"], credential, binder)
+		self.assertEqual(frappe.session.user, user)
+
 	# ======================================================================
 	# mid-ceremony revocation must NOT mint a session
 	# ======================================================================

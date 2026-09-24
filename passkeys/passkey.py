@@ -179,7 +179,7 @@ def verify_login(state_id: str, credential: object):
 	# Resolve only enough unlocked data to choose the User row that starts the
 	# global lock order. Preserve the public UnknownCredential contract when the
 	# id itself is absent; every ownership/mapping mismatch remains uniform.
-	handle_user = frappe.db.get_value("WebAuthn User Handle", {"handle": user_handle}, "user")
+	handle_user = ceremony.get_handle_user(user_handle)
 	candidate = frappe.db.get_value(
 		"WebAuthn Credential", {"credential_id_sha256": sha}, ["name", "user"], as_dict=True
 	)
@@ -188,9 +188,7 @@ def verify_login(state_id: str, credential: object):
 	lock_user = handle_user or candidate.user
 	if not ceremony.lock_enabled_user(lock_user):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
-	locked_handle_user = frappe.db.get_value(
-		"WebAuthn User Handle", {"handle": user_handle}, "user", for_update=True
-	)
+	locked_handle_user = ceremony.get_handle_user(user_handle, for_update=True)
 	cred = frappe.db.get_value(
 		"WebAuthn Credential",
 		{"credential_id_sha256": sha},
@@ -609,7 +607,12 @@ def _verify_second_factor_assertion(record, credential, engine, settings):
 		as_dict=True,
 		for_update=True,
 	)
-	if not cred or cred.user != record["user"] or not cint(cred.enabled):
+	if (
+		not cred
+		or cred.user != record["user"]
+		or not cint(cred.enabled)
+		or not ceremony.has_matching_user_handle(credential, record["user"])
+	):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 
 	result = engine.verify_authentication(

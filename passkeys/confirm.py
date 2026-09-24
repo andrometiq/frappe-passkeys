@@ -621,7 +621,12 @@ def _resolve_ceremony_credential(record, credential, user):
 		as_dict=True,
 		for_update=True,
 	)
-	if not cred or cred.user != user or not cint(cred.enabled):
+	if (
+		not cred
+		or cred.user != user
+		or not cint(cred.enabled)
+		or not ceremony.has_matching_user_handle(credential, user)
+	):
 		raise CeremonyFailed(_("Passkey could not be verified."))
 	return cred
 
