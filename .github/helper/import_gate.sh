@@ -100,9 +100,6 @@ for raw_line in patches_path.read_text(encoding="utf-8").splitlines():
     if not line or line.startswith(("[", "#", "execute:")):
         continue
     patch_modules.append(line)
-if not patch_modules:
-    print("::error::import gate found no patch modules in passkeys/patches.txt")
-    sys.exit(1)
 
 modules = {"passkeys.hooks", *patch_modules}
 target_attributes = []
