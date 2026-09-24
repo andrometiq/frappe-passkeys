@@ -43,7 +43,7 @@ jobs:
     env:
       # Last verified v15 baseline: the import floor is tested against an exact
       # commit so a moving branch cannot silently alter this security gate.
-      FRAPPE_GATE_REF: 588e443808206a7bfe87429c5a55e16016ec7840
+      FRAPPE_GATE_REF: 8f801ade016078685c3165c96e38f84f249f5309
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -101,12 +101,12 @@ jobs:
       matrix:
         include:
           - frappe-branch: version-15
-            frappe-ref: 588e443808206a7bfe87429c5a55e16016ec7840
+            frappe-ref: 8f801ade016078685c3165c96e38f84f249f5309
             python-version: "3.10.20"
             node-version: "18.20.8"
             mariadb-image: "mariadb:10.6@sha256:b5e45ee3bbf582fb91e4b9447cc3f020fbab2dbcf22970e482df04d6d8ac4e44"
           - frappe-branch: version-16
-            frappe-ref: 9a8daf343db69a0127f470bad8be0af192cd80c8
+            frappe-ref: 012667b9c4e7f66d5e1ff5858d2e922331d4300a
             python-version: "3.14.6"
             node-version: "24.18.0"
             mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
@@ -186,12 +186,12 @@ jobs:
       matrix:
         include:
           - frappe-branch: version-15
-            frappe-ref: 588e443808206a7bfe87429c5a55e16016ec7840
+            frappe-ref: 8f801ade016078685c3165c96e38f84f249f5309
             python-version: "3.10.20"
             node-version: "18.20.8"
             mariadb-image: "mariadb:10.6@sha256:b5e45ee3bbf582fb91e4b9447cc3f020fbab2dbcf22970e482df04d6d8ac4e44"
           - frappe-branch: version-16
-            frappe-ref: 9a8daf343db69a0127f470bad8be0af192cd80c8
+            frappe-ref: 012667b9c4e7f66d5e1ff5858d2e922331d4300a
             python-version: "3.14.6"
             node-version: "24.18.0"
             mariadb-image: "mariadb:11.8@sha256:09336a8c0cff9f363e133d8a245cca5ad3eeb326e0ffaedf74d49214c4571486"
