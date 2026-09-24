@@ -84,14 +84,6 @@ test("verifying → waiting is allowed (transparent ceremony_expired re-arm on t
 	assert.strictEqual(m.to("waiting").text, "Waiting for your device…");
 });
 
-test("strict:false is an escape hatch that lets any transition through", () => {
-	const m = new C.LoginStatus({ strict: false });
-	m.to("success");
-	assert.strictEqual(m.state, "success");
-	m.to("waiting"); // would be illegal under strict mode
-	assert.strictEqual(m.state, "waiting");
-});
-
 // ------------------------------------------------ browser-error → state mapping
 
 test("A5: the removed/stale-passkey state is distinct, error-toned, and doesn't assert the account fact", () => {

@@ -12,6 +12,7 @@
 	var C = window.frappe && window.frappe.passkeys_common;
 	if (!C) return; // common helpers absent -> no-op, password form untouched
 	var t = C.t;
+	var escapeHtml = C.escapeHtml;
 
 	// -------------------------------------------------------------- constants
 	var API = {
@@ -111,21 +112,12 @@
 		});
 	}
 
-	// begin_login via raw fetch (silent config channel). Returns
-	// {enabled, modes, state_id?, options?} or null on any failure.
+	// The silent config channel: {enabled, modes, state_id?, options?}, or null on any
+	// failure (429/5xx/network degrade like enabled:false).
 	function beginLogin() {
-		return fetch(methodUrl(API.begin_login), {
-			method: "POST",
-			headers: jsonHeaders(),
-			body: "{}",
-			credentials: "same-origin",
-		})
-			.then(function (r) {
-				if (!r.ok) return null; // 429/5xx => degrade like enabled:false
-				return r.json();
-			})
-			.then(function (data) { return data ? (data.message || data) : null; })
-			.catch(function () { return null; });
+		return C.post(API.begin_login, {}).then(function (res) {
+			return res.ok ? C.unwrapMessage(res.body) : null;
+		}).catch(function () { return null; });
 	}
 
 	// ------------------------------------------------------- conditional UI
@@ -727,33 +719,9 @@
 		}
 	}
 
+	// frappe-web.bundle.js ships frappe.call on /login.
 	function frappeCall(method, args, statusCode) {
-		if (window.frappe && typeof window.frappe.call === "function") {
-			return window.frappe.call({
-				method: method,
-				type: "POST",
-				args: args,
-				freeze: true,
-				statusCode: statusCode,
-			});
-		}
-		// last-ditch raw fetch (no jQuery/frappe.call) — drives the same status handlers
-		return rawCall(methodUrl(method), args, statusCode);
-	}
-
-	function rawCall(url, args, statusCode) {
-		return fetch(url, {
-			method: "POST",
-			headers: jsonHeaders(),
-			body: JSON.stringify(args || {}),
-			credentials: "same-origin",
-		}).then(function (r) {
-			return r.json().catch(function () { return {}; }).then(function (data) {
-				var h = statusCode && statusCode[r.status];
-				if (r.status === 200) { if (h) h(data); }
-				else if (h) h({ responseJSON: data, status: r.status });
-			});
-		});
+		return window.frappe.call({ method: method, type: "POST", args: args, freeze: true, statusCode: statusCode });
 	}
 
 	// --------------------------------------------------------------- dialog a11y
@@ -924,19 +892,7 @@
 	function rememberHint() { try { if (window.localStorage) localStorage.setItem(HINT_KEY, "1"); } catch (e) { /* ignore */ } }
 	function removeSelf() { removeSecondFactorInterception(); abortConditional(); clearSlowTimer(); var s = document.getElementById(STATUS_ID); if (s && s.parentNode) s.parentNode.removeChild(s); var b = document.getElementById("passkey-login-btn"); if (b && b.parentNode) b.parentNode.removeChild(b); }
 	function valueOf(sel) { var el = document.querySelector(sel); return el ? (el.value || "").trim() : ""; }
-	function methodUrl(method) { return "/api/method/" + method; }
-	function jsonHeaders() {
-		var h = { "Content-Type": "application/json", Accept: "application/json" };
-		var token = window.frappe && (window.frappe.csrf_token || (window.frappe.session && window.frappe.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token; // guests are CSRF-exempt; harmless if sent
-		return h;
-	}
 	function newAbortController() { return (typeof AbortController === "function") ? new AbortController() : null; }
-	function escapeHtml(s) {
-		return String(s).replace(/[&<>"']/g, function (c) {
-			return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-		});
-	}
 	function noop() {}
 
 	// expose a tiny surface for the DOM-contract Cypress job to assert against

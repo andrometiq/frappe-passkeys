@@ -46,30 +46,9 @@
 			.then(function (map) { _aaguidMap = map || {}; return _aaguidMap; });
 	}
 
-	// ---------------------------------------------------------------- transport
-	// Raw fetch so we own the 401 retry-contract body. Resolves {ok, status, body} for any
-	// status; rejects only on a transport failure.
-	function post(method, body, headers) {
-		return fetch("/api/method/" + method, {
-			method: "POST",
-			headers: jsonHeaders(headers),
-			credentials: "same-origin",
-			body: JSON.stringify(body || {}),
-		}).then(function (resp) {
-			return resp.json().catch(function () { return null; }).then(function (json) {
-				return { ok: resp.ok, status: resp.status, body: json };
-			});
-		});
-	}
-	function jsonHeaders(extra) {
-		var h = { "Content-Type": "application/json", Accept: "application/json" };
-		var f = window.frappe;
-		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token;
-		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
-		return h;
-	}
-	function unwrap(body) { return C.unwrapMessage(body); }
+	var post = C.post;
+	var unwrap = C.unwrapMessage;
+	var escapeHtml = C.escapeHtml;
 
 	// -------------------------------------------------------------- sudo dance
 	// A sudo-gated mutation: on the 401 contract run a passkeys.manage confirmation, then
@@ -866,7 +845,6 @@
 		try { if (window.frappe && frappe.datetime && frappe.datetime.str_to_user) return frappe.datetime.str_to_user(v); } catch (e) { /* fall back to the raw value */ }
 		return String(v);
 	}
-	function escapeHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 
 	// ------------------------------------------------------------------ publish
 	var manage = {

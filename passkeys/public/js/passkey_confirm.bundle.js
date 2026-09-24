@@ -1,153 +1,59 @@
-// passkey_confirm.bundle.js — the client half of the action-confirmation
-// ("passkey signing") primitive. Publishes the public JS API other Desk / portal
-// apps call to require a fresh passkey confirmation for a sensitive action.
-//
-// Public API:
-//   const grant = await frappe.passkeys.confirm("myapp.release_payment", {payment_id});
-//   await frappe.passkeys.call("myapp.api.release_payment", {payment_id});
-// Also aliased at frappe.ui.passkey.*.
-//
-// Browser wiring only (fetch, the WebAuthn gesture, the frappe.ui.Dialog UI); the protocol
-// lives in passkey_common.bundle.js::createConfirmEngine. JS never computes a payload
-// hash: the server's payload_fingerprint is echoed verbatim. Loads AFTER passkey_common.
-//
+// Desk client for action confirmation: publishes frappe.passkeys.confirm / .call (aliased
+// at frappe.ui.passkey.*) over the engine in passkey_common, with a frappe.ui.Dialog UI.
+// Loads after passkey_common.
 // eslint-env browser
 (function () {
 	"use strict";
 
 	var C = window.frappe && window.frappe.passkeys_common;
-	if (!C) {
-		// common lib missing — fail safe: expose a stub that rejects clearly
-		// rather than throwing at load time on every Desk page.
-		return installStub();
-	}
-
+	if (!C) return;
 	var t = C.t;
+	var esc = C.escapeHtml;
 
-	// ---------------------------------------------------------------- transport
-	function methodUrl(method) { return "/api/method/" + method; }
-
-	function jsonHeaders(extra) {
-		var h = { "Content-Type": "application/json", Accept: "application/json" };
-		var f = window.frappe;
-		var token = f && (f.csrf_token || (f.session && f.session.csrf_token));
-		if (token) h["X-Frappe-CSRF-Token"] = token; // authed POSTs require CSRF
-		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
-		return h;
-	}
-
-	// Raw fetch so we own the 401 body and bypass frappe's error painter. Resolves
-	// {ok, status, body} for any status; rejects only on a transport failure.
-	function post(method, body, headers) {
-		return fetch(methodUrl(method), {
-			method: "POST",
-			headers: jsonHeaders(headers),
-			credentials: "same-origin",
-			body: JSON.stringify(body || {}),
-		}).then(function (resp) {
-			return resp
-				.json()
-				.catch(function () { return null; })
-				.then(function (json) {
-					return { ok: resp.ok, status: resp.status, body: json };
-				});
-		});
-	}
-
-	// ------------------------------------------------------------------ gesture
-	// Parse the L3 RequestOptionsJSON, run a MODAL get() (UV is wire-required by
-	// the server options), serialize the assertion to AuthenticationJSON.
-	function runGesture(optionsJSON) {
-		if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
-			var e = new Error("not supported");
-			e.name = "NotSupportedError";
-			return Promise.reject(e);
-		}
-		var publicKey = C.parseRequestOptionsFromJSON(optionsJSON);
-		// Modal mediation is the default for get() — no `mediation` field, no
-		// conditional autofill (confirmation is an explicit, foreground gesture).
-		return navigator.credentials
-			.get({ publicKey: publicKey })
-			.then(function (cred) {
-				if (!cred) {
-					var err = new Error("no credential");
-					err.name = "NotAllowedError";
-					throw err;
-				}
-				return C.authAssertionToJSON(cred);
-			});
-	}
-
-	// ------------------------------------------------------------------ dialog
-	// The frappe.ui.Dialog controller the engine drives; a fresh one per ceremony (the engine
-	// keeps only one live at a time).
+	// The controller the engine drives; a fresh one per ceremony.
 	function makeDialogUI() {
 		var dialog = null;
 		var restoreFocus = C.captureFocus(document);
 		var focusRestored = false;
-		var liveRegionSeeded = false;
+		var settled = false;
 		// A wrong-password message survives the prompt's re-render until the next submit.
 		var passwordMessage = "";
 		function restoreCapturedFocus() {
 			if (focusRestored) return;
 			focusRestored = true;
-			if (restoreFocus) restoreFocus();
+			restoreFocus();
 		}
 
-		function ensureDialog(opts) {
-			if (dialog) return dialog;
-			var Dialog = window.frappe && window.frappe.ui && window.frappe.ui.Dialog;
-			var title = t("Confirm it's you");
-			var d;
-			if (Dialog) {
-				d = new Dialog({ title: title, size: "small" });
-			} else {
-				// Extremely defensive: frappe.ui.Dialog should always be present
-				// in Desk/portal. If not, degrade to a minimal API-compatible shim.
-				d = minimalDialog(title);
-			}
-			dialog = d;
-			return d;
+		// The engine can go straight to the password leg, so either prompt may open it.
+		function ensureDialog() {
+			if (!dialog) dialog = new window.frappe.ui.Dialog({ title: t("Confirm it's you"), size: "small" });
+			return dialog;
 		}
 
-		function bodyEl() {
-			// frappe.ui.Dialog exposes $body (jQuery) and .body (DOM).
-			if (dialog.$body && dialog.$body.get) return dialog.$body.get(0);
-			return dialog.body || (dialog.$wrapper && dialog.$wrapper.get && dialog.$wrapper.get(0));
-		}
+		function bodyEl() { return dialog.$body.get(0); }
 
-		function setContent(html) {
-			if (dialog.$body && dialog.$body.html) { dialog.$body.html(html); return; }
-			var el = bodyEl();
-			if (el) el.innerHTML = html;
-		}
-
-		function seedA11y() {
-			var el = bodyEl();
-			if (!el) return;
-			if (!liveRegionSeeded) {
-				var lr = C.ensureLiveRegion(el.ownerDocument || document);
-				// frappe.ui.Dialog already sets role="dialog" + aria-labelledby +
-				// focus trap + Esc; we only add the async live region + labels.
-				liveRegionSeeded = true;
-				void lr;
-			}
-		}
-
-		function show() {
-			if (dialog.show) dialog.show();
-			else if (dialog.$wrapper && dialog.$wrapper.modal) dialog.$wrapper.modal("show");
-			seedA11y();
-		}
-
-		function esc(s) {
-			return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-				return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+		function render(html, reject) {
+			ensureDialog();
+			dialog.$body.html(html);
+			// Esc / backdrop / close all fire hide.bs.modal; after done() it is not a cancel.
+			var fired = false;
+			dialog.$wrapper.on("hide.bs.modal", function () {
+				if (fired || settled) return;
+				fired = true;
+				reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
 			});
+			dialog.show();
+			C.ensureLiveRegion(document);
+			return bodyEl();
+		}
+
+		function actionName(opts) {
+			var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
+			return { context: context, name: context.labelFromServer ? context.label : t(context.label) };
 		}
 
 		function summaryHtml(rows) {
-			if (!rows || !rows.length) return "";
+			if (!rows.length) return "";
 			var out = ['<div class="passkey-confirm-summary" aria-label="' + esc(t("Action details")) + '">'];
 			rows.forEach(function (row) {
 				if (row.label) {
@@ -162,223 +68,115 @@
 			return out.join("");
 		}
 
+		function showMessage(msg) {
+			var box = dialog && bodyEl().querySelector(".passkey-confirm-msg");
+			if (box) box.textContent = msg;
+			C.announce(document, msg);
+		}
+
 		var controller = {
-			// Show the passkey confirmation UI; resolve with the chosen method.
 			chooseMethod: function (opts) {
 				return new Promise(function (resolve, reject) {
-					ensureDialog(opts);
-					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
-					var actName = context.labelFromServer ? context.label : t(context.label);
-					// The built-in management action explains that this sign-in wasn't strongly
-					// verified recently; third-party actions keep the action-named lead.
-					var leadHtml = '<p class="passkey-confirm-action"><strong>' + esc(actName) + '</strong></p>' +
-						(opts.action === "passkeys.manage"
-						? '<p class="passkey-confirm-lead">' +
-							esc(t("This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below.")) +
-							'</p>'
-						: '<p class="passkey-confirm-lead">' +
-							esc(t("Confirm {0} with your passkey.", [actName])) + '</p>');
-					var lines = [
-						'<div class="passkey-confirm" role="group" aria-label="' +
-							esc(t("Confirm this action with a passkey")) + '">',
-						leadHtml,
-						summaryHtml(context.summary),
+					var action = actionName(opts);
+					// The built-in management action explains why; others name the action.
+					var lead = opts.action === "passkeys.manage"
+						? t("This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below.")
+						: t("Confirm {0} with your passkey.", [action.name]);
+					var html = [
+						'<div class="passkey-confirm" role="group" aria-label="' + esc(t("Confirm this action with a passkey")) + '">',
+						'<p class="passkey-confirm-action"><strong>' + esc(action.name) + '</strong></p>',
+						'<p class="passkey-confirm-lead">' + esc(lead) + '</p>',
+						summaryHtml(action.context.summary),
 						'<div class="passkey-confirm-actions">',
-						'<button type="button" class="btn btn-primary passkey-confirm-passkey" ' +
-							'autofocus>' + esc(t("Confirm with passkey")) + '</button>',
-					];
-					if (opts.canPassword) {
-						lines.push(
-							'<button type="button" class="btn btn-link passkey-confirm-usepw">' +
+						'<button type="button" class="btn btn-primary passkey-confirm-passkey" autofocus>' +
+							esc(t("Confirm with passkey")) + '</button>',
+						opts.canPassword
+							? '<button type="button" class="btn btn-link passkey-confirm-usepw">' +
 								esc(t("Use your password instead")) + '</button>'
-						);
-					}
-					lines.push('</div>');
-					lines.push('<div class="passkey-confirm-msg" aria-live="polite"></div>');
-					lines.push('</div>');
-					setContent(lines.join(""));
-					seedA11y();
-
-					var el = bodyEl();
-					var pk = el && el.querySelector(".passkey-confirm-passkey");
-					var pw = el && el.querySelector(".passkey-confirm-usepw");
+							: "",
+						'</div>',
+						'<div class="passkey-confirm-msg" aria-live="polite"></div>',
+						'</div>',
+					].join("");
+					var el = render(html, reject);
+					var pk = el.querySelector(".passkey-confirm-passkey");
+					var pw = el.querySelector(".passkey-confirm-usepw");
 					if (pk) {
 						pk.addEventListener("click", function () { resolve("passkey"); });
-						try { pk.focus(); } catch (e) { /* ignore */ }
+						pk.focus();
 					}
 					if (pw) pw.addEventListener("click", function () { resolve("password"); });
-
-					wireCancel(reject);
-					show();
 				});
 			},
 
-			// Prompt for the password (fallback path). Resolve with the string;
-			// reject (user_cancelled) if the user dismisses the dialog.
 			collectPassword: function (opts) {
 				return new Promise(function (resolve, reject) {
-					// The engine can go straight to the password leg without chooseMethod, so
-					// the dialog may not exist yet.
-					opts = opts || {};
-					ensureDialog(opts);
-					var context = C.confirmationActionContext(opts.action, opts.actionLabel, opts.parameterSummary);
-					var actionName = context.labelFromServer ? context.label : t(context.label);
-					var lead = t("Confirm your password to continue.");
+					var action = actionName(opts || {});
 					var html = [
-						'<div class="passkey-confirm" role="group" aria-label="' +
-							esc(t("Confirm with your password")) + '">',
-						'<p class="passkey-confirm-action"><strong>' + esc(actionName) + '</strong></p>',
-						summaryHtml(context.summary),
+						'<div class="passkey-confirm" role="group" aria-label="' + esc(t("Confirm with your password")) + '">',
+						'<p class="passkey-confirm-action"><strong>' + esc(action.name) + '</strong></p>',
+						summaryHtml(action.context.summary),
 						'<label class="passkey-confirm-pwlabel" for="passkey-confirm-pw">' +
-							esc(lead) + '</label>',
+							esc(t("Confirm your password to continue.")) + '</label>',
 						'<input type="password" id="passkey-confirm-pw" class="form-control ' +
 							'passkey-confirm-pw" autocomplete="current-password" autofocus />',
 						'<div class="passkey-confirm-actions">',
-						'<button type="button" class="btn btn-primary passkey-confirm-pwgo">' +
-							esc(t("Confirm")) + '</button>',
+						'<button type="button" class="btn btn-primary passkey-confirm-pwgo">' + esc(t("Confirm")) + '</button>',
 						'</div>',
-						'<div class="passkey-confirm-msg" role="alert" aria-live="assertive">' +
-							esc(passwordMessage) + '</div>',
+						'<div class="passkey-confirm-msg" role="alert" aria-live="assertive">' + esc(passwordMessage) + '</div>',
 						'</div>',
 					].join("");
-					setContent(html);
-					seedA11y();
-					var el = bodyEl();
-					var input = el && el.querySelector(".passkey-confirm-pw");
-					var go = el && el.querySelector(".passkey-confirm-pwgo");
+					var el = render(html, reject);
+					var input = el.querySelector(".passkey-confirm-pw");
+					var go = el.querySelector(".passkey-confirm-pwgo");
 					function submit() {
-						var v = input ? input.value : "";
+						var value = input ? input.value : "";
 						if (input) input.value = "";
 						passwordMessage = "";
-						resolve(v);
+						resolve(value);
 					}
 					if (go) go.addEventListener("click", submit);
 					if (input) {
 						input.addEventListener("keydown", function (ev) {
 							if (ev.key === "Enter") { ev.preventDefault(); submit(); }
 						});
-						try { input.focus(); } catch (e) { /* ignore */ }
+						input.focus();
 					}
-					wireCancel(reject);
-					show();
 				});
 			},
 
 			passwordError: function (msg) {
 				passwordMessage = msg;
-				var el = bodyEl();
-				var box = el && el.querySelector(".passkey-confirm-msg");
-				if (box) box.textContent = msg;
-				C.announce(document, msg);
+				showMessage(msg);
 			},
 
-			announce: function (msg) {
-				var el = bodyEl();
-				var box = el && el.querySelector(".passkey-confirm-msg");
-				if (box) box.textContent = msg;
-				C.announce(document, msg);
-			},
+			announce: showMessage,
 
 			busy: function (on) {
-				var el = bodyEl();
-				var pk = el && el.querySelector(".passkey-confirm-passkey");
+				var pk = dialog && bodyEl().querySelector(".passkey-confirm-passkey");
 				if (pk) pk.disabled = !!on;
 			},
 
-			done: function (ok) {
-				void ok;
-				var restoreOnHidden = false;
-				try {
-					// Bootstrap performs its own focus work while hiding. Restoring in
-					// hide.bs.modal is too early and gets overwritten by that cleanup.
-					if (dialog && dialog.$wrapper && dialog.$wrapper.one) {
-						restoreOnHidden = true;
-						dialog.$wrapper.one("hidden.bs.modal", restoreCapturedFocus);
-					}
-					if (dialog && dialog.hide) dialog.hide();
-					// Bootstrap 4's modal("hide") silently no-ops (and never retries) when
-					// called during the ~300ms show transition (_isTransitioning), which a
-					// fast ceremony can hit — leaving .modal.fade.show stuck open. Re-hide
-					// once the show transition settles so the close can't get swallowed.
-					if (dialog && dialog.$wrapper && dialog.$wrapper.one) {
-						dialog.$wrapper.one("shown.bs.modal", function () {
-							try { dialog.$wrapper.modal("hide"); } catch (e) { /* ignore */ }
-						});
-					}
-				} catch (e) { restoreOnHidden = false; }
-				if (!restoreOnHidden) restoreCapturedFocus();
+			done: function () {
+				settled = true;
+				if (!dialog) { restoreCapturedFocus(); return; }
+				// Bootstrap moves focus while hiding, so restore only once it has finished.
+				dialog.$wrapper.one("hidden.bs.modal", restoreCapturedFocus);
+				dialog.hide();
+				// Bootstrap 4 ignores hide() during the show transition; hide again once shown.
+				dialog.$wrapper.one("shown.bs.modal", function () { dialog.$wrapper.modal("hide"); });
 			},
-
-			close: function () { controller.done(false); },
 		};
-
-		// Esc / backdrop / dialog "hide" ⇒ user_cancelled, unless the engine has
-		// already settled (done() sets _settled).
-		function wireCancel(reject) {
-			var fired = false;
-			function cancel() {
-				if (fired || controller._settled) return;
-				fired = true;
-				reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
-			}
-			if (dialog && dialog.$wrapper && dialog.$wrapper.on) {
-				dialog.$wrapper.on("hide.bs.modal", cancel);
-			} else if (dialog && dialog.onHide) {
-				dialog.onHide = cancel;
-			}
-			// frappe.ui.Dialog primary Esc handling already dismisses; the hide
-			// event above catches every dismissal route.
-		}
-
-		// mark settled so a programmatic hide (success) isn't read as a cancel
-		var _origDone = controller.done;
-		controller.done = function (ok) { controller._settled = true; _origDone(ok); };
-
 		return controller;
 	}
 
-	// Minimal API-compatible dialog for the (shouldn't-happen) case where
-	// frappe.ui.Dialog is absent — keeps the a11y contract (role/labelledby/Esc).
-	function minimalDialog(title) {
-		var wrap = document.createElement("div");
-		wrap.className = "passkey-confirm-modal";
-		wrap.setAttribute("role", "dialog");
-		wrap.setAttribute("aria-modal", "true");
-		wrap.setAttribute("aria-label", title);
-		var body = document.createElement("div");
-		body.className = "passkey-confirm-modal-body";
-		wrap.appendChild(body);
-		var onHideRef = { fn: null };
-		function onKey(ev) { if (ev.key === "Escape") hide(); }
-		function show() {
-			(document.body || document.documentElement).appendChild(wrap);
-			document.addEventListener("keydown", onKey, true);
-		}
-		function hide() {
-			document.removeEventListener("keydown", onKey, true);
-			if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
-			if (api.onHide) api.onHide();
-		}
-		var api = {
-			body: body,
-			$body: null,
-			show: show,
-			hide: hide,
-			onHide: null,
-		};
-		void onHideRef;
-		return api;
-	}
-
-	// ------------------------------------------------------------------- engine
 	var engine = C.createConfirmEngine({
-		post: post,
-		runGesture: runGesture,
-		ui: makeDialogUI, // fresh controller per ceremony
+		post: C.post,
+		runGesture: C.getAssertion,
+		ui: makeDialogUI,
 		translate: t,
 	});
 
-	// -------------------------------------------------------------- public API
 	function confirm(action, params) {
 		if (!action) return Promise.reject(new C.ConfirmError(C.CONFIRM_CODES.CONFIRMATION_FAILED, t("An action is required.")));
 		return engine.confirm(action, params);
@@ -388,35 +186,17 @@
 		return engine.call(method, args);
 	}
 
-	publish({ confirm: confirm, call: call });
-
-	function publish(api) {
-		var f = (window.frappe = window.frappe || {});
-		f.passkeys = f.passkeys || {};
-		f.passkeys.confirm = api.confirm;
-		f.passkeys.call = api.call;
-		// forward-compat with the core destination namespace
-		f.ui = f.ui || {};
-		f.ui.passkey = f.ui.passkey || {};
-		if (!f.ui.passkey.confirm) f.ui.passkey.confirm = api.confirm;
-		if (!f.ui.passkey.call) f.ui.passkey.call = api.call;
-	}
-
-	function installStub() {
-		var f = (window.frappe = window.frappe || {});
-		f.passkeys = f.passkeys || {};
-		function unavailable() {
-			var message = typeof window.__ === "function"
-				? window.__("Passkey confirmation is unavailable.")
-				: "Passkey confirmation is unavailable.";
-			return Promise.reject({ code: "not_supported", message: message });
-		}
-		if (!f.passkeys.confirm) f.passkeys.confirm = unavailable;
-		if (!f.passkeys.call) f.passkeys.call = unavailable;
-	}
+	var f = window.frappe;
+	f.passkeys = f.passkeys || {};
+	f.passkeys.confirm = confirm;
+	f.passkeys.call = call;
+	f.ui = f.ui || {};
+	f.ui.passkey = f.ui.passkey || {};
+	if (!f.ui.passkey.confirm) f.ui.passkey.confirm = confirm;
+	if (!f.ui.passkey.call) f.ui.passkey.call = call;
 
 	// Node-only test seam; `module` is undefined in the browser.
 	if (typeof module === "object" && module.exports) {
-		module.exports = { makeDialogUI: makeDialogUI, minimalDialog: minimalDialog };
+		module.exports = { makeDialogUI: makeDialogUI };
 	}
 })();

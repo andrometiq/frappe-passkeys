@@ -17,28 +17,8 @@
 	var statusRoot = document.getElementById("passkey-portal-status");
 	var isPasskeyPage = !!mountRoot;
 
-	// ------------------------------------------------------------------ transport
-	function post(method, body, headers) {
-		return fetch("/api/method/" + method, {
-			method: "POST",
-			headers: jsonHeaders(headers),
-			credentials: "same-origin",
-			body: JSON.stringify(body || {}),
-		}).then(function (resp) {
-			return resp.json().catch(function () { return null; }).then(function (json) {
-				return { ok: resp.ok, status: resp.status, body: json };
-			});
-		});
-	}
-	function jsonHeaders(extra) {
-		var h = { "Content-Type": "application/json", Accept: "application/json" };
-		var f = window.frappe;
-		var token = f && (f.csrf_token || (f.boot && f.boot.csrf_token) || (f.session && f.session.csrf_token));
-		if (token && token !== "None") h["X-Frappe-CSRF-Token"] = token;
-		if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
-		return h;
-	}
-	function unwrap(body) { return C.unwrapMessage(body); }
+	var post = C.post;
+	var unwrap = C.unwrapMessage;
 
 	// -------------------------------------------------------- self-contained modal
 	// role=dialog + aria-modal + focus trap + Esc + focus return.
@@ -215,23 +195,7 @@
 			close: closeSettled,
 		};
 	}
-	function runGesture(optionsJSON) {
-		if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
-			var e = new Error("not supported");
-			e.name = "NotSupportedError";
-			return Promise.reject(e);
-		}
-		var pk = C.parseRequestOptionsFromJSON(optionsJSON);
-		return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
-			if (!cred) {
-				var err = new Error("no credential");
-				err.name = "NotAllowedError";
-				throw err;
-			}
-			return C.authAssertionToJSON(cred);
-		});
-	}
-	var engine = C.createConfirmEngine({ post: post, runGesture: runGesture, ui: makeConfirmUI, translate: t });
+	var engine = C.createConfirmEngine({ post: post, runGesture: C.getAssertion, ui: makeConfirmUI, translate: t });
 	// publish so any portal script (and our own delete path) can re-auth
 	window.frappe = window.frappe || {};
 	window.frappe.passkeys = window.frappe.passkeys || {};

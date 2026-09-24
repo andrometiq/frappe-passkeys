@@ -1,25 +1,19 @@
-// passkey_common.bundle.js — shared WebAuthn L3 helpers, side-effect-free at load so
-// `node --test` can exercise them without a bench. Exports CommonJS for node and
-// `frappe.passkeys_common` in the browser; it must load BEFORE any bundle that reads it.
-//
+// Shared WebAuthn helpers, side-effect-free at load. Published as `frappe.passkeys_common`
+// (CommonJS for node tests); loads before every other passkeys bundle.
 // eslint-env browser, node
 (function (root, factory) {
 	"use strict";
 	var api = factory();
-	if (typeof module === "object" && module.exports) {
-		module.exports = api; // node unit tests
-	}
+	if (typeof module === "object" && module.exports) module.exports = api;
 	if (typeof window !== "undefined") {
 		window.frappe = window.frappe || {};
-		window.frappe.passkeys_common = api; // browser bundles
+		window.frappe.passkeys_common = api;
 	}
 })(typeof self !== "undefined" ? self : this, function () {
 	"use strict";
 
 	// ------------------------------------------------------------------ i18n
-	// window.__ === frappe._ is defined by frappe-web.bundle.js, loaded before every
-	// web_include_js entry on all three branches. Fall back to identity so the
-	// pure logic is testable and never throws pre-boot.
+	// window.__ (frappe._) loads before every web_include_js entry; identity otherwise.
 	function t(str, replacements) {
 		var g = typeof window !== "undefined" ? window : {};
 		if (typeof g.__ === "function") {
@@ -64,7 +58,7 @@
 	function b64urlToBytes(b64url) {
 		var b64 = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
 		var pad = b64.length % 4;
-		if (pad) b64 += "====".slice(pad); // tolerate unpadded input
+		if (pad) b64 += "====".slice(pad);
 		var bin = (typeof atob === "function")
 			? atob(b64)
 			: Buffer.from(b64, "base64").toString("binary");
@@ -162,26 +156,109 @@
 		return out;
 	}
 
+	// Creation options: the native L3 static, else decode the base64url members.
+	function parseCreationOptionsFromJSON(json, PKC) {
+		var Cred = PKC || (typeof window !== "undefined" ? window.PublicKeyCredential : undefined);
+		if (Cred && typeof Cred.parseCreationOptionsFromJSON === "function") {
+			return Cred.parseCreationOptionsFromJSON(json);
+		}
+		var out = Object.assign({}, json);
+		out.challenge = b64urlToBytes(json.challenge);
+		if (json.user && json.user.id) out.user = Object.assign({}, json.user, { id: b64urlToBytes(json.user.id) });
+		if (Array.isArray(json.excludeCredentials)) {
+			out.excludeCredentials = json.excludeCredentials.map(function (c) {
+				return { type: c.type || "public-key", id: b64urlToBytes(c.id), transports: c.transports };
+			});
+		}
+		return out;
+	}
+
+	// ------------------------------------------------------------ gestures
+	// navigator.credentials.get()/create() from the server's JSON options, serialized back
+	// to JSON. `opts` may carry `mediation` and `signal`. The browser call stays in the
+	// caller's task so a click's user activation is not lost.
+	function getAssertion(optionsJSON, opts) {
+		return credentialRequest("get", function () {
+			return parseRequestOptionsFromJSON(optionsJSON);
+		}, opts).then(authAssertionToJSON);
+	}
+
+	function createCredential(optionsJSON, opts) {
+		return credentialRequest("create", function () {
+			var publicKey = parseCreationOptionsFromJSON(optionsJSON);
+			// py_webauthn emits no extensions; credProps fills the discoverable tri-state.
+			publicKey.extensions = Object.assign({}, publicKey.extensions, { credProps: true });
+			return publicKey;
+		}, opts).then(registrationResponseToJSON);
+	}
+
+	function credentialRequest(kind, buildPublicKey, opts) {
+		var credentials = typeof navigator !== "undefined" ? navigator.credentials : null;
+		var request;
+		try {
+			if (!credentials || typeof credentials[kind] !== "function") throw namedError("NotSupportedError");
+			request = { publicKey: buildPublicKey() };
+		} catch (e) {
+			return Promise.reject(e);
+		}
+		if (opts && opts.mediation) request.mediation = opts.mediation;
+		if (opts && opts.signal) request.signal = opts.signal;
+		return credentials[kind](request).then(function (cred) {
+			if (!cred) throw namedError("NotAllowedError");
+			return cred;
+		});
+	}
+
+	function namedError(name) {
+		var e = new Error(name);
+		e.name = name;
+		return e;
+	}
+
+	// ------------------------------------------------------------ transport
+	// Same-origin POST that leaves the 401 retry-contract body to the caller. Resolves
+	// {ok, status, body} for any HTTP status; rejects only on a transport failure.
+	function post(method, body, headers) {
+		return fetch("/api/method/" + method, {
+			method: "POST",
+			headers: Object.assign(jsonHeaders(), headers),
+			credentials: "same-origin",
+			body: JSON.stringify(body || {}),
+		}).then(function (resp) {
+			return resp.json().catch(function () { return null; }).then(function (json) {
+				return { ok: resp.ok, status: resp.status, body: json };
+			});
+		});
+	}
+
+	function jsonHeaders() {
+		var headers = { "Content-Type": "application/json", Accept: "application/json" };
+		var f = (typeof window !== "undefined" && window.frappe) || {};
+		var token = f.csrf_token || (f.boot && f.boot.csrf_token) || (f.session && f.session.csrf_token);
+		// Guests are CSRF-exempt; a guest page renders the token as "None".
+		if (token && token !== "None") headers["X-Frappe-CSRF-Token"] = token;
+		return headers;
+	}
+
+	function escapeHtml(s) {
+		return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+			return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+		});
+	}
+
 	// ---------------------------------------------------- feature detection
 	// Layered, never a single signal (the iOS 26.2 isUVPAA regression class):
-	//   window.PublicKeyCredential defined -> getClientCapabilities() (absent key = UNKNOWN,
-	//   not false) -> legacy statics isConditionalMediationAvailable / isUVPAA.
+	// getClientCapabilities() (an absent key stays unknown), then the older statics
+	// isConditionalMediationAvailable / isUVPAA for whatever is still unknown.
 	function detectCapabilities(env) {
 		env = env || {};
 		var win = env.window || (typeof window !== "undefined" ? window : {});
 		var PKC = env.PublicKeyCredential || win.PublicKeyCredential;
-		var result = {
-			supported: false,
-			conditionalMediation: null, // null = unknown
-			uvpaa: null,
-			hybrid: null,
-		};
-		if (!PKC) {
-			return Promise.resolve(result);
-		}
+		var result = { supported: false, conditionalMediation: null, uvpaa: null, hybrid: null };
+		if (!PKC) return Promise.resolve(result);
 		result.supported = true;
 
-		function legacyProbes() {
+		function staticProbes() {
 			var jobs = [];
 			if (result.conditionalMediation === null &&
 				typeof PKC.isConditionalMediationAvailable === "function") {
@@ -209,17 +286,16 @@
 				.then(function () { return PKC.getClientCapabilities(); })
 				.then(function (caps) {
 					caps = caps || {};
-					// absent key => leave as null (unknown), never coerce to false
 					if ("conditionalGet" in caps) result.conditionalMediation = !!caps.conditionalGet;
 					if ("userVerifyingPlatformAuthenticator" in caps) {
 						result.uvpaa = !!caps.userVerifyingPlatformAuthenticator;
 					}
 					if ("hybridTransport" in caps) result.hybrid = !!caps.hybridTransport;
-					return legacyProbes();
+					return staticProbes();
 				})
-				.catch(function () { return legacyProbes(); });
+				.catch(function () { return staticProbes(); });
 		}
-		return legacyProbes();
+		return staticProbes();
 	}
 
 	// ------------------------------------------------------- error mapping
@@ -227,13 +303,11 @@
 	function mapDomException(err) {
 		var name = err && (err.name || err.code);
 		switch (name) {
-			case "NotAllowedError":
-				// user cancelled OR timed out — indistinguishable by design (privacy)
+			case "NotAllowedError": // cancel and timeout are indistinguishable by design
 				return { code: "user_cancelled", messageKey: "Couldn't use a passkey — sign in another way." };
 			case "AbortError":
 				return { code: "user_cancelled", messageKey: "Passkey sign-in was cancelled." };
 			case "InvalidStateError":
-				// on GET this is unusual; on registration = already-registered
 				return { code: "confirmation_failed", messageKey: "That passkey can't be used here." };
 			case "SecurityError":
 				return { code: "not_supported", messageKey: "Passkeys aren't available on this page." };
@@ -253,26 +327,24 @@
 	function mapServerExcType(excType) {
 		switch (excType) {
 			case "CeremonyExpired":
-				return "ceremony_expired"; // transparent re-begin + one fresh gesture
+				return "ceremony_expired";
 			case "UnknownCredential":
-				return "unknown_credential"; // signalUnknownCredential + neutral copy
+				return "unknown_credential";
 			case "UVSetupRequired":
-				return "uv_setup_required"; // inline password step-up
+				return "uv_setup_required";
 			case "PasskeyConfirmationRequired":
 				return "confirmation_required";
 			case "PasskeyServedByCore":
 				return "served_by_core";
 			default:
-				return "unknown"; // delegate to core's painter
+				return "unknown";
 		}
 	}
 
 	// -------------------------------------------------- selector resolution
 	// A selector miss returns null and callers skip the patch — never throw.
 	function resolveIdentifierInput(doc) {
-		if (!doc) return null;
-		// develop login.html:21, v16 :13, v15 :9 — id is stable across generations
-		return doc.querySelector("#login_email");
+		return doc ? doc.querySelector("#login_email") : null; // same id on v15, v16 and develop
 	}
 
 	// Mount point in the visible login section: .page-card-actions, else a provider
@@ -290,8 +362,7 @@
 		return null;
 	}
 
-	// The section currently shown by login.route() (others are display:none). We tolerate
-	// environments (tests) without computed style by falling back to the first section.
+	// The section login.route() currently shows (others are display:none), else the first.
 	function pickVisibleSection(doc) {
 		var sections = doc.querySelectorAll("section");
 		if (!sections || !sections.length) return null;
@@ -304,17 +375,11 @@
 
 	function isVisible(el) {
 		if (!el) return false;
-		// inline style check first (JSDOM/stub friendly); getComputedStyle when available
 		if (el.style && (el.style.display === "none" || el.style.visibility === "hidden")) return false;
 		var win = el.ownerDocument && el.ownerDocument.defaultView;
 		if (win && typeof win.getComputedStyle === "function") {
 			var cs = win.getComputedStyle(el);
 			if (cs && (cs.display === "none" || cs.visibility === "hidden")) return false;
-		}
-		if (typeof el.offsetParent !== "undefined" && el.offsetParent === null &&
-			el.style && el.style.position !== "fixed") {
-			// offsetParent null often means detached/hidden; keep permissive for stubs
-			// (only trust it when the browser populates it)
 		}
 		return true;
 	}
@@ -352,8 +417,7 @@
 		this.spent = true;
 		return true;
 	};
-	// Re-arm after a verify that consumed the state without success — returns true if a
-	// re-arm is permitted (bounded), false once the cap is hit (back to password form).
+	// Bounded automatic re-arm after a failed verify; false once the cap is hit.
 	CeremonyState.prototype.canRearm = function () {
 		return this.rearmCount < this.maxRearm;
 	};
@@ -361,16 +425,10 @@
 		this.rearmCount += 1;
 		return this.rearmCount;
 	};
-	CeremonyState.prototype.reset = function () {
-		this.rearmCount = 0;
-		this.spent = false;
-	};
 
 	// -------------------------------------------------- login status machine
-	// The first-factor login's visible status. Each state has ONE copy string that feeds
-	// both the on-page status element and the aria-live region, so sighted and
-	// screen-reader users always get the same message. Copy is the English base (wrapped
-	// in t() at render); every error names a way out. Tone: progress / success / error.
+	// One copy string per state feeds both the visible status and the aria-live region, so
+	// sighted and screen-reader users get the same message. Every error names a way out.
 	var LOGIN_STATES = {
 		idle: { text: "", tone: "idle", visible: false, terminal: false },
 		waiting: { text: "Waiting for your device…", tone: "progress", visible: true, terminal: false },
@@ -384,8 +442,7 @@
 			text: "No passkey was used — you can try again or sign in another way.",
 			tone: "error", visible: true, terminal: true,
 		},
-		// Server UnknownCredential. The copy never asserts the account fact ("didn't work
-		// here", not "isn't registered"): enumeration-safe.
+		// Enumeration-safe: "didn't work here", never "isn't registered".
 		removed: {
 			text: "That passkey didn't work here — it may have been removed. Sign in another way.",
 			tone: "error", visible: true, terminal: true,
@@ -417,53 +474,32 @@
 	}
 
 	function LoginStatus(opts) {
-		opts = opts || {};
-		this.state = LOGIN_STATES[opts.state] ? opts.state : "idle";
-		this.strict = opts.strict !== false; // guard transitions by default
+		this.state = opts && LOGIN_STATES[opts.state] ? opts.state : "idle";
 	}
 	LoginStatus.prototype.can = function (next) {
-		if (next === this.state) return true; // re-entry is always a safe no-op
+		if (next === this.state) return true;
 		var allowed = LOGIN_TRANSITIONS[this.state] || [];
 		return allowed.indexOf(next) !== -1;
 	};
-	// Transition and return the view to render. Illegal or unknown target ⇒ stay put and
-	// return the CURRENT view, so the caller always has something coherent to paint.
+	// Transition and return the view to paint; an illegal or unknown target stays put.
 	LoginStatus.prototype.to = function (next) {
-		if (LOGIN_STATES[next] && (!this.strict || this.can(next))) {
-			this.state = next;
-		}
+		if (LOGIN_STATES[next] && this.can(next)) this.state = next;
 		return loginStatusView(this.state);
 	};
 	LoginStatus.prototype.view = function () { return loginStatusView(this.state); };
 
-	// Map a mapDomException() code to a login state. Browsers report cancel and timeout
-	// as the same NotAllowedError (privacy), so both land on "cancelled".
 	function loginStatusForDomCode(code) {
-		switch (code) {
-			case "not_supported":
-				return "unsupported";
-			case "user_cancelled":
-				return "cancelled";
-			case "no_credentials":
-				return "cancelled"; // "no usable passkey" — same route out, honestly indistinct
-			default:
-				return "failed"; // network / confirmation_failed / unknown
-		}
+		if (code === "not_supported") return "unsupported";
+		if (code === "user_cancelled" || code === "no_credentials") return "cancelled";
+		return "failed";
 	}
 
-	// Map a mapServerExcType() kind to a login state. unknown_credential gets its own
-	// state; every other refusal collapses to "failed" (enumeration-safe).
+	// Every server refusal but unknown_credential collapses to "failed" (enumeration-safe).
 	function loginStatusForServerKind(kind) {
-		switch (kind) {
-			case "unknown_credential":
-				return "removed";
-			default:
-				return "failed";
-		}
+		return kind === "unknown_credential" ? "removed" : "failed";
 	}
 
 	// ------------------------------------------------------- signal builders
-	// Base64url credential id: cred.id already is one per spec; else encode rawId; else null.
 	function credentialIdB64url(cred) {
 		if (!cred) return null;
 		if (typeof cred.id === "string" && cred.id) return cred.id;
@@ -473,8 +509,7 @@
 		return null;
 	}
 
-	// True when an assertion carried a non-empty userHandle (present as a base64url string
-	// in JSON, or an ArrayBuffer/typed array on a live credential).
+	// userHandle is a base64url string in JSON, an ArrayBuffer on a live credential.
 	function assertionHasUserHandle(cred) {
 		var r = cred && cred.response;
 		if (!r) return false;
@@ -485,14 +520,9 @@
 		return true;
 	}
 
-	// signalUnknownCredential payload {rpId, credentialId} for the credential the server
-	// just rejected.
-	//
-	// Guard: only signal when the assertion carried a userHandle. The server raises
-	// UnknownCredential for BOTH "credential row not found" (safe to prune) AND "assertion
-	// had no userHandle" (the credential may still be live). The two are indistinguishable
-	// from exc_type alone, but a returned userHandle means we're in the row-not-found case,
-	// so we never risk telling a provider to hide a valid passkey. Returns null to skip.
+	// signalUnknownCredential payload, or null to skip. UnknownCredential covers both "row
+	// not found" (safe to prune) and "no userHandle" (may still be live); only a returned
+	// userHandle proves the first, so a valid passkey is never hidden.
 	function buildUnknownCredentialSignal(cred, rpId) {
 		if (!rpId || !cred) return null;
 		if (!assertionHasUserHandle(cred)) return null;
@@ -520,8 +550,7 @@
 		var region = ensureLiveRegion(doc);
 		if (region) region.textContent = message;
 	}
-	// Focus management: save the active element so it can be restored after the OS sheet
-	// or a dialog closes. Returns a restore() closure.
+	// Returns restore(): refocus whatever was active before the OS sheet or dialog opened.
 	function captureFocus(doc) {
 		var prev = doc && doc.activeElement;
 		return function restore() {
@@ -532,25 +561,16 @@
 	}
 
 	// ------------------------------------------------------- version-native icons
-	// Native-first icons: use the first candidate <symbol> present in the host sprite so
-	// each Frappe version renders its own glyph:
-	//   pencil : develop/v16 lucide → #icon-pencil ; v15 timeless → #icon-edit
-	//   trash  : develop/v16 lucide → #icon-trash  ; v15 timeless → #icon-delete
-	//   key    : develop/v16 lucide → #icon-key    ; v15 has NO key glyph → inline fallback
-	// With no candidate present (v15's key, or a page whose sprite is absent or loads after
-	// us) we fall back to the inline SVG below, so a button is never blank.
+	// Native-first icons: the first <symbol> present in the host sprite (develop/v16 lucide
+	// names, then v15 names), else the inline SVG below; v15 has no key glyph.
 	var ICON_SYMBOLS = {
 		pencil: ["icon-pencil", "icon-edit"],
 		trash: ["icon-trash", "icon-delete"],
 		key: ["icon-key"],
 	};
 
-	// App-shipped inline SVGs (lucide artwork — pencil, trash-2, key; lucide is ISC-licensed)
-	// used ONLY as the fallback when the host sprite carries no matching symbol. fill/stroke
-	// are PINNED inline here because Frappe's `.icon` drives them from CSS variables that flip
-	// per version (v15 fills, develop strokes), which would otherwise turn this outline art
-	// into solid blobs on v15. The native <use> branch deliberately does NOT pin them — the
-	// version whose sprite we reference already styles its own icon correctly.
+	// Lucide artwork (ISC). fill/stroke are pinned inline because Frappe's `.icon` flips them
+	// per version (v15 fills), which would turn outline art solid; <use> icons are not pinned.
 	var ICON_PATHS = {
 		pencil:
 			'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>' +
@@ -567,9 +587,6 @@
 			'<circle cx="7.5" cy="15.5" r="5.5"/>',
 	};
 
-	// Icon markup for `name` (unknown ⇒ ""), keeping the caller's classes. The native <use>
-	// form carries no inline fill/stroke; the fallback is the pinned inline SVG. `doc`
-	// defaults to the global document; tests inject a stub.
 	function iconSvg(name, className, doc) {
 		var cls = className ? ' class="' + className + '"' : "";
 		var d = doc || (typeof document !== "undefined" ? document : null);
@@ -593,23 +610,18 @@
 	}
 
 	// ============================================================ confirm
-	// The action-confirmation protocol engine: begin -> gesture -> verify -> grant, the 401
-	// retry with fingerprint echo, and concurrency dedupe. No browser globals; the UI and
-	// fetch/navigator wiring are injected (passkey_confirm.bundle.js, the portal bundle).
+	// The action-confirmation engine: begin -> gesture -> verify -> grant, the 401 retry
+	// with fingerprint echo, and concurrency dedupe. The UI and transport are injected.
 
-	// Wire constants — MUST mirror passkeys/session.py GRANT_HEADER/GRANT_KWARG.
-	var GRANT_HEADER = "X-Passkey-Grant";
-	var GRANT_KWARG = "_passkey_grant";
+	var GRANT_HEADER = "X-Passkey-Grant"; // mirrors session.GRANT_HEADER
 
-	// Method paths the confirm client calls (server whitelist names).
 	var CONFIRM_METHODS = {
 		begin: "passkeys.confirm.begin_confirmation",
 		verify: "passkeys.confirm.verify_confirmation",
 		reauth: "passkeys.confirm.reauth_password",
 	};
 
-	// The 401 retry-contract exc_type (wire taxonomy) and the fixed,
-	// exhaustive rejection codes consuming apps program against.
+	// The 401 retry-contract exc_type and the fixed rejection codes apps program against.
 	var CONFIRM_EXC_TYPE = "PasskeyConfirmationRequired";
 	var CONFIRM_CODES = {
 		USER_CANCELLED: "user_cancelled",
@@ -620,10 +632,7 @@
 		NETWORK: "network",
 	};
 
-	// frappe wraps a whitelisted dict return as {message: <dict>}; typed-error
-	// bodies put their structured keys at TOP LEVEL via frappe.local.response.
-	// So SUCCESS payloads are unwrapped from `.message`; ERROR payloads
-	// are read at top level (parseConfirmationRequired below).
+	// Success payloads arrive as {message: ...}; typed-error keys sit at the top level.
 	function unwrapMessage(body) {
 		if (body && typeof body === "object" && "message" in body) return body.message;
 		return body;
@@ -656,9 +665,7 @@
 		return msgs.length ? msgs.join(" ") : null;
 	}
 
-	// Parse a 401 body into the retry contract, or null if it isn't one. Clients
-	// match on exc_type ONLY. Echoes payload_fingerprint VERBATIM —
-	// JS never computes a hash.
+	// The 401 retry contract, or null. payload_fingerprint is echoed verbatim; JS never hashes.
 	function parseConfirmationRequired(body) {
 		if (!body || typeof body !== "object") return null;
 		if (body.exc_type !== CONFIRM_EXC_TYPE) return null;
@@ -722,18 +729,13 @@
 		return rows;
 	}
 
-	// The header a caller attaches to the protected call once it holds a grant.
-	// Header is primary; the _passkey_grant kwarg is the server-side
-	// fallback (session.py) — the client uses the header.
 	function buildGrantHeaders(token) {
 		var h = {};
 		if (token) h[GRANT_HEADER] = token;
 		return h;
 	}
 
-	// Stable local key for concurrency dedupe ONLY ("concurrent invocations
-	// share one dialog"). NOT a security hash and NEVER sent to the server — the
-	// payload hash is server-computed. Sorted keys for stability.
+	// Local dedupe key so concurrent identical calls share one dialog; never sent to the server.
 	function confirmSignature(action, params, payloadFingerprint) {
 		if (payloadFingerprint) return "fp:" + action + ":" + payloadFingerprint;
 		var p = params || {};
@@ -746,18 +748,12 @@
 		return "pp:" + action + ":" + parts.join("&");
 	}
 
-	// Pull the grant token from a verify_confirmation / reauth_password success
-	// body. Server returns {grant: "<token>"} (wrapped as {message:{grant}}).
 	function extractGrant(body) {
 		var m = unwrapMessage(body);
-		if (m && typeof m === "object" && m.grant) return m.grant;
-		if (body && typeof body === "object" && body.grant) return body.grant;
-		return null;
+		return (m && typeof m === "object" && m.grant) || null;
 	}
 
-	// Available authentication methods for a confirmation, from a
-	// begin_confirmation response (authoritative, per-user) or a 401 body
-	// (policy hint). methods ⊆ ["passkey","password","sudo"].
+	// methods ⊆ ["passkey", "password", "sudo"], from begin_confirmation or a 401 body.
 	function confirmCapabilities(methods) {
 		var m = Array.isArray(methods) ? methods : [];
 		return {
@@ -772,28 +768,19 @@
 		this.message = message || code;
 	}
 
-	// The engine. deps (all injected — nothing browser-bound here):
-	//   post(method, body, headers) -> Promise<{ok, status, body}>
-	//   runGesture(optionsJSON)     -> Promise<assertionJSON>  (parse + get + toJSON)
-	//   ui: {
-	//     chooseMethod({action, canPasskey, canPassword}) -> Promise<"passkey"|"password">
-	//                                                          (reject to cancel)
-	//     collectPassword({action, actionLabel, parameterSummary}) -> Promise<string>
-	//                                                          (reject to cancel)
-	//     announce(msg), busy(bool), done(ok), passwordError(msg)
-	//   }
-	//   translate (optional): (str) -> str
-	//   now (optional): () -> ms
+	var MAX_PASSWORD_TRIES = 5;
+
+	// deps: post(method, body, headers) -> Promise<{ok, status, body}>;
+	// runGesture(optionsJSON) -> Promise<assertionJSON>; ui: a controller, or a factory for
+	// one per ceremony (contract: docs/custom-ui.md); translate (optional).
 	function createConfirmEngine(deps) {
-		deps = deps || {};
 		var post = deps.post;
 		var runGesture = deps.runGesture;
-		var makeUI = deps.ui; // () -> ui controller, OR a controller object
+		var makeUI = deps.ui;
 		var tr = deps.translate || function (s) { return s; };
-		var maxPasswordTries = typeof deps.maxPasswordTries === "number" ? deps.maxPasswordTries : 5;
 
-		var inflight = {}; // signature -> Promise (dedupe identical concurrent)
-		var chain = Promise.resolve(); // serialize distinct dialogs (never stack two)
+		var inflight = {}; // signature -> Promise: identical concurrent calls share one
+		var chain = Promise.resolve(); // distinct confirmations run one after another
 
 		function reject(code, msg) {
 			return Promise.reject(new ConfirmError(code, tr(msg || code)));
@@ -804,23 +791,20 @@
 		}
 
 		function mapGestureError(err) {
-			if (err && err.code && CODE_SET[err.code]) return err; // already typed
+			if (err && err.code && CODE_SET[err.code]) return err;
 			var mapped = mapDomException(err);
 			return new ConfirmError(mapped.code, tr(mapped.messageKey));
 		}
 
-		// One confirmation ceremony. input:
-		//   {action, params}                 (frappe.passkeys.confirm)
-		//   {action, payloadFingerprint, methods}  (retry after a 401)
+		// input: {action, params} from confirm(), or the parsed 401 from call().
 		function ceremony(input) {
 			var action = input.action;
 			var beginBody = input.payloadFingerprint
-				? { action: action, payload_hash: input.payloadFingerprint } // echo verbatim
+				? { action: action, payload_hash: input.payloadFingerprint }
 				: { action: action, params: input.params || {} };
 
 			return post(CONFIRM_METHODS.begin, beginBody, {}).then(function (res) {
 				if (!res || !res.ok) {
-					// begin itself failed: served-by-core / disabled / network
 					var parsed = res && parseConfirmationRequired(res.body);
 					if (res && res.status === 417) return reject(CONFIRM_CODES.NOT_SUPPORTED, "Passkey confirmation isn't available here.");
 					if (parsed) return reject(CONFIRM_CODES.CONFIRMATION_FAILED, "Couldn't start confirmation.");
@@ -830,9 +814,8 @@
 				var stateId = begin.state_id;
 				var options = begin.options;
 				var fingerprint = begin.payload_fingerprint || input.payloadFingerprint || null;
-				// On call() retries the initial 401 came from the protected action
-				// itself and carries its explicitly safe display metadata. Keep it
-				// across a worker handoff where begin may know only the safe default.
+				// The protected action's own 401 carries its display metadata; keep it when
+				// begin (possibly on another worker) knows only the default.
 				var actionLabel = input.actionLabel ||
 					(typeof begin.action_label === "string" ? begin.action_label : null);
 				var parameterSummary = input.parameterSummary !== undefined && input.parameterSummary !== null
@@ -842,14 +825,11 @@
 					actionLabel: actionLabel,
 					parameterSummary: parameterSummary,
 				};
-				// begin's per-user methods are authoritative; fall back to the
-				// 401 policy hint only if begin omitted them.
+				// begin's per-user methods are authoritative; the 401 hint is the fallback.
 				var caps = confirmCapabilities(
 					Array.isArray(begin.methods) ? begin.methods : input.methods
 				);
 				if (!caps.passkey && !caps.password) {
-					// No way to re-authenticate (weak login, no password, no usable passkey):
-					// say what to do instead.
 					return reject(CONFIRM_CODES.FALLBACK_UNAVAILABLE,
 						"This needs you to confirm it's you, but this sign-in can't be confirmed " +
 						"with a passkey or password. Sign in again with your password or a passkey, then try again.");
@@ -857,7 +837,7 @@
 				var controller = ui();
 				return Promise.resolve()
 					.then(function () {
-						if (!caps.passkey) return "password"; // open straight on the password tab
+						if (!caps.passkey) return "password";
 						return controller.chooseMethod({
 							action: displayContext.action,
 							actionLabel: displayContext.actionLabel,
@@ -896,8 +876,7 @@
 				})
 				.then(function (res) {
 					if (!res || !res.ok) {
-						// An assertion is NEVER re-POSTed; failure = fresh ceremony. Surface
-						// any server message; otherwise honest copy that points at the password.
+						// An assertion is never re-POSTed; a retry is a fresh ceremony.
 						controller.announce(tr("That didn't work — please try again."));
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							serverMessages(res && res.body) ||
@@ -921,7 +900,7 @@
 							var grant = extractGrant(res.body);
 							if (grant) return grant;
 						}
-						if (tries >= maxPasswordTries) {
+						if (tries >= MAX_PASSWORD_TRIES) {
 							throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Too many attempts. Try again later."));
 						}
 						controller.passwordError(tr("That password wasn't right. Try again."));
@@ -932,8 +911,6 @@
 			return attempt();
 		}
 
-		// Concurrency: identical signatures share one in-flight promise;
-		// distinct confirmations serialize so two dialogs never stack.
 		function run(input) {
 			var sig = confirmSignature(input.action, input.params, input.payloadFingerprint);
 			if (inflight[sig]) return inflight[sig];
@@ -941,18 +918,15 @@
 			inflight[sig] = p;
 			var clear = function () { if (inflight[sig] === p) delete inflight[sig]; };
 			p.then(clear, clear);
-			// keep the chain alive but swallow errors so one failure can't poison the queue
 			chain = p.then(function () {}, function () {});
 			return p;
 		}
 
-		// Public: low-level — run the ceremony, resolve to a grant token.
 		function confirm(action, params) {
 			return run({ action: action, params: params || {} });
 		}
 
-		// Public: high-level — call a protected method, catch the 401 contract,
-		// run the confirmation, retry ONCE with the grant header.
+		// On the 401 contract: confirm, then retry once with the grant header.
 		function call(method, args) {
 			args = args || {};
 			return post(method, args, {}).then(function (res) {
@@ -968,8 +942,7 @@
 				}).then(function (grant) {
 					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
 						if (res2 && res2.ok) return unwrapMessage(res2.body);
-						// Confirmed, but the retry still failed: show the server's own refusal
-						// (e.g. the last-passkey guard, which runs after the sudo gate).
+						// e.g. the last-passkey guard, which runs after the sudo gate.
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							serverMessages(res2 && res2.body) ||
 								tr("We confirmed it's you, but the action still didn't go through — please try again."));
@@ -980,22 +953,18 @@
 			});
 		}
 
+		// A server that answered and refused is confirmation_failed, never network.
 		function httpError(res) {
-			// A real HTTP response that isn't the 401 contract: the server was reached and
-			// refused, so it is `confirmation_failed` (with the server's message when it sent
-			// one), never `network`. A dropped fetch rejects and maps to `network` below.
 			return new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 				serverMessages(res && res.body) ||
 					tr("The action couldn't be confirmed — please try again."));
 		}
 
-		return { confirm: confirm, call: call, run: run, _inflight: inflight };
+		return { confirm: confirm, call: call };
 	}
 
 	var CODE_SET = {};
-	(function () {
-		for (var k in CONFIRM_CODES) if (Object.prototype.hasOwnProperty.call(CONFIRM_CODES, k)) CODE_SET[CONFIRM_CODES[k]] = true;
-	})();
+	Object.keys(CONFIRM_CODES).forEach(function (k) { CODE_SET[CONFIRM_CODES[k]] = true; });
 
 	return {
 		t: t,
@@ -1006,6 +975,11 @@
 		parseRequestOptionsFromJSON: parseRequestOptionsFromJSON,
 		authAssertionToJSON: authAssertionToJSON,
 		registrationResponseToJSON: registrationResponseToJSON,
+		parseCreationOptionsFromJSON: parseCreationOptionsFromJSON,
+		getAssertion: getAssertion,
+		createCredential: createCredential,
+		post: post,
+		escapeHtml: escapeHtml,
 		detectCapabilities: detectCapabilities,
 		mapDomException: mapDomException,
 		mapServerExcType: mapServerExcType,
@@ -1025,9 +999,7 @@
 		captureFocus: captureFocus,
 		iconSvg: iconSvg,
 		LIVE_REGION_ID: LIVE_REGION_ID,
-		// action-confirmation ("passkey signing")
 		GRANT_HEADER: GRANT_HEADER,
-		GRANT_KWARG: GRANT_KWARG,
 		CONFIRM_METHODS: CONFIRM_METHODS,
 		CONFIRM_EXC_TYPE: CONFIRM_EXC_TYPE,
 		CONFIRM_CODES: CONFIRM_CODES,

@@ -65,6 +65,7 @@ function makeDialogClass(doc) {
 			html(h) { if (h === undefined) return store.html; store.html = h; store.nodes = {}; return this; },
 			get() { return bodyEl; },
 		};
+		this.$wrapper = { on() { return this; }, one() { return this; }, modal() {} };
 		this.show = function () {};
 		this.hide = function () {};
 		FakeDialog.instances.push(this);

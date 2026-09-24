@@ -204,16 +204,18 @@ test("published register(): fallback sends attestation fields to verify_registra
 				},
 			},
 		},
-		frappe: {
-			csrf_token: "csrf-token",
-			passkeys_common: C,
-			passkeys_manage_common: M,
-		},
+		atob,
+		btoa,
+		frappe: { csrf_token: "csrf-token" },
 	};
 	context.window = context;
 	context.self = context;
-	const source = fs.readFileSync(require.resolve("../../public/js/passkey_headless.bundle.js"), "utf8");
-	vm.runInNewContext(source, context, { filename: "passkey_headless.bundle.js" });
+	vm.createContext(context);
+	// Load the bundles in page order, in the sandbox, so they share its fetch/navigator.
+	for (const name of ["passkey_common", "passkey_manage_common", "passkey_headless"]) {
+		const file = require.resolve("../../public/js/" + name + ".bundle.js");
+		vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: name + ".bundle.js" });
+	}
 
 	const result = await context.frappe.passkeys.headless.register();
 	assert.strictEqual(result.name, "WC-browser");

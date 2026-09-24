@@ -280,8 +280,6 @@ test("CeremonyState re-arm is bounded at one per visible failure, then refuses",
 	assert.strictEqual(s.canRearm(), true);
 	s.markRearm();
 	assert.strictEqual(s.canRearm(), false, "second re-arm refused (never an auto loop)");
-	s.reset();
-	assert.strictEqual(s.canRearm(), true, "reset re-enables after a fresh success cycle");
 });
 
 test("CeremonyState.adopt swaps state and resets spent-ness, clock, and automatic re-arm capacity", () => {

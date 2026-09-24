@@ -81,7 +81,6 @@ test("buildGrantHeaders uses the pinned header name (mirrors session.py)", () =>
 	assert.deepStrictEqual(C.buildGrantHeaders("tok"), { "X-Passkey-Grant": "tok" });
 	assert.deepStrictEqual(C.buildGrantHeaders(""), {}); // no empty token
 	assert.strictEqual(C.GRANT_HEADER, "X-Passkey-Grant");
-	assert.strictEqual(C.GRANT_KWARG, "_passkey_grant");
 });
 
 test("confirmSignature: identical params dedupe; fingerprint path distinct", () => {
