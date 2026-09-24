@@ -514,10 +514,10 @@
 		refreshSignalsInSession();
 	}
 
-	// Node-only test seam; `module` is undefined in the browser.
+	// Node test seam. The asset build wraps bundles in a CommonJS shim, so `module`
+	// exists in the browser too: never gate the boot hook on it.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { showEnforceDialog: showEnforceDialog, showNudgeDialog: showNudgeDialog, maybeNudge: maybeNudge, recordNudge: recordNudge };
-	} else {
-		frappe.after_ajax(onReady);
 	}
+	if (typeof frappe.after_ajax === "function") frappe.after_ajax(onReady);
 })();

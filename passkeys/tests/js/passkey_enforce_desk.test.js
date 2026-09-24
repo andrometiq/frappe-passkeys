@@ -136,7 +136,8 @@ function deferCount() {
 }
 
 const Dialog = makeDialogClass();
-const frappeObj = { passkeys_common: C, passkeys_manage_common: M, ui: { Dialog } };
+const bootHooks = [];
+const frappeObj = { passkeys_common: C, passkeys_manage_common: M, ui: { Dialog }, after_ajax: (fn) => bootHooks.push(fn) };
 global.frappe = frappeObj; // the bundle uses a bare `frappe.ui.Dialog`
 global.document = (function () {
 	const doc = { readyState: "complete", createElement: (tag) => fakeEl(tag), getElementById: () => null, addEventListener() {}, removeEventListener() {} };
@@ -150,6 +151,11 @@ global.location = { hostname: "example.com" };
 
 const mod = require("../../public/js/passkey_desk.bundle.js");
 assert.strictEqual(typeof mod.showEnforceDialog, "function", "node test seam must export showEnforceDialog");
+
+test("desk boot: the Desk hook registers even when a CommonJS `module` wrapper exists", () => {
+	// The asset build defines `module` in the browser; the nudge/enforcement boot must still run.
+	assert.strictEqual(bootHooks.length, 1, "frappe.after_ajax(onReady) was registered once");
+});
 
 test("desk enforce: dismissing a non-blocking gate WITHOUT acting records exactly one defer", () => {
 	fetchLog.length = 0;
