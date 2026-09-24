@@ -7,7 +7,7 @@ grace-counter reset, both System-Manager-gated + rate-limited."""
 
 import frappe
 
-from passkeys import boot, enforcement_admin
+from passkeys import boot, enforcement_admin, state
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
@@ -31,6 +31,9 @@ _FIELDS = (
 class EnforcementAdminTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		# The admin endpoints are rate-limited per user and these tests call them often.
+		for endpoint in ("get_user_enforcement_admin", "set_user_exemption", "reset_enforcement_grace"):
+			state.clear_counter(f"{state.RATE_LIMIT_PREFIX}{endpoint}:Administrator")
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
