@@ -17,8 +17,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   one-time-code fallback.
 - `@passkey_protected` for any whitelisted method: a single-use confirmation grant bound to the
   user, session, action and the arguments listed in `bind_params`. A passkey is required unless an
-  action opts in with `allow_password_fallback=True`. Dialogs show an explicit action label and only
-  the parameters declared safe to display.
+  action opts in with `allow_password_fallback=True`. `allow_sudo_window=True` (off by default) lets
+  a live management sudo window satisfy the gate with no new gesture. Dialogs show an explicit action
+  label and only the parameters declared safe to display.
 - Enrollment nudges with a prompt cap and cooldown, and a post-login requirement for no one,
   selected roles, or all users. System Managers can be required on top of that scope. A blank
   start date means immediately; before the date, in-scope users are nudged. Everyone outside
@@ -33,6 +34,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Security
 
+- `cbor2`, which the app uses directly to decode public keys, is declared with a patched floor
+  (`>=5.9.0`) instead of arriving only through `webauthn`.
 - Every login mode ships off. The RP ID and origins come from pinned configuration — a `host_name`
   origin within the RP ID scope plus explicitly listed Passkey Origins — never from request
   headers, and an RP ID never implies trust in `https://<rp_id>`.
@@ -46,7 +49,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Enrolled second-factor users are held at the final login hook on every core login path, not
   only on the login page; the one-time-code fallback is a single-use, user-bound handoff.
 - Passkey management, confirmation, password re-auth and `@passkey_protected` actions require a
-  signed-in browser session; API-key or OAuth requests get `BrowserSessionRequired` (403) and never
+  signed-in browser session; API-key (`token` or `Basic`) or OAuth bearer requests get
+  `BrowserSessionRequired` (403) and never
   open a sudo window or obtain a grant. Token-authenticated API requests are not subject to passkey
   sign-in checks, as with Frappe's two-factor authentication.
 - A refused registration, confirmation or password re-auth raises `CeremonyFailed` (401) and keeps

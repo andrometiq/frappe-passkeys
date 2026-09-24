@@ -27,7 +27,8 @@ merely to make mobile association easier.
 
 ## 1. Server setup (Passkey Settings)
 
-Open **Passkey Settings** in Desk. The **Mobile Apps** section holds everything below.
+Open **Passkey Settings** in Desk. RP ID and origins are on the Relying Party tab and login
+modes on Login Modes. The Mobile Apps tab holds §1.2–1.3.
 
 ### 1.1 RP ID and login mode
 
@@ -175,8 +176,8 @@ static files. The documents look like this (generic examples):
 ```
 
 Serve each with `Content-Type: application/json` and no redirect. The trade-off:
-a static file drifts from your settings — you must re-copy it whenever the Trusted App
-Origins / fingerprints change.
+a static file drifts from your settings — you must re-copy it whenever the fingerprints,
+package name, Team ID, or Bundle ID change.
 
 ### 2.3 Verify
 
@@ -212,8 +213,13 @@ tooling validate the files end to end.
 
 ## 4. Endpoints the app calls
 
-Call as `POST /api/method/<path>`; thread `X-Frappe-CSRF-Token` for authenticated
-calls. Names and shapes are the app's actual whitelisted methods.
+Call as `POST /api/method/<path>`. Persist cookies across begin and verify: guest
+ceremonies are bound to the HttpOnly `passkey_binder` cookie set by `begin_login`
+and `login_with_password`. Authenticated calls need `X-Frappe-CSRF-Token` and a
+signed-in browser session. API-key (`token` or `Basic`) and OAuth bearer sessions
+are refused with 403 `BrowserSessionRequired` on management and confirmation
+([API keys and OAuth tokens](security.md#api-keys-and-oauth-tokens)).
+Names and shapes are the app's actual whitelisted methods.
 
 **First-factor passwordless login (guest):**
 
@@ -223,8 +229,9 @@ calls. Names and shapes are the app's actual whitelisted methods.
   the app must **not** collect a username; the account is resolved from `userHandle`.
 - `passkeys.passkey.verify_login` — args `state_id`, `credential` (the assertion JSON;
   `response.userHandle` is **required**). Returns `null` with core's login envelope
-  (`message: "Logged In"`, `home_page`) on success. Wire errors: `UVSetupRequired`
-  (body carries `setup_id`), `UnknownCredential`, `CeremonyExpired`.
+  (`message: "Logged In"`, `home_page`) on success. Wire errors: `AuthenticationError`
+  (uniform failure, no detail), `UVSetupRequired` (body carries `setup_id`),
+  `UnknownCredential`, `CeremonyExpired`.
 - `passkeys.passkey.complete_uv_setup` — args `setup_id`, `pwd` (only when
   `verify_login` returned `UVSetupRequired`).
 
@@ -235,7 +242,7 @@ calls. Names and shapes are the app's actual whitelisted methods.
   `{ state_id, options: <PublicKeyCredentialCreationOptions JSON> }`.
 - `passkeys.api.registration.verify_registration` — args `state_id`, `credential`
   (the creation response JSON), optional `label`. Returns
-  `{ name, label, signal: { user_handle, credential_ids: [...] } }`.
+  `{ name, label, signal: { user_handle, credential_ids: [...], name, display_name } }`.
 
 **Second factor (password → passkey step-up; guest):**
 
@@ -318,9 +325,10 @@ await frappe.verifyLogin(
 **Adapter shape.** Implement a `FrappePasskeyServer` with
 `beginRegister()/finishRegister()`, `beginLogin()/finishLogin()`,
 `loginWithPassword()/finishSecondFactor()` that wrap section 4 and thread the
-`state_id` / `tmp_id` + the CSRF token. Handle the typed wire errors explicitly:
-`UVSetupRequired` (collect the password, call `complete_uv_setup`), `CeremonyExpired`
-re-arm on the second factor, and `PasskeyServedByCore` (417).
+`state_id` / `tmp_id`, the CSRF token, and the cookies. Handle the typed wire errors
+explicitly: `UVSetupRequired` (collect the password, call `complete_uv_setup`),
+`CeremonyExpired` re-arm on the second factor, `PasskeyConfirmationRequired` (run the
+confirmation endpoints, then retry), and `PasskeyServedByCore` (417).
 
 If you must drop the third-party dependency, the escape hatch is ~2 Kotlin
 (`androidx.credentials.CredentialManager`) and ~2 Swift

@@ -208,8 +208,9 @@ pk.login({ mediation: "conditional", signal: ac.signal }).then((r) => {
 
 ### Removing a passkey needs a confirmation engine
 
-`removeCredential` and `setPasswordlessOnly` are **sudo-gated**: the server may
-demand a fresh confirmation (`HTTP 401 PasskeyConfirmationRequired`). They route
+Removing a passkey is sudo-gated. Turning passkey-only login on or off needs a
+passkey grant, never a password or a sudo window. Either call may return
+`HTTP 401 PasskeyConfirmationRequired`. Both route
 through `frappe.passkeys.call`, which runs that confirmation and retries. On Desk and
 on the app's portal pages `frappe.passkeys.call` is already wired. On a **bare** page
 you wire it once from the pure engine and your own tiny modal:
@@ -268,6 +269,8 @@ Only the arguments named in `bind_params` are bound to the grant: a named parame
 (defaults applied), naming the `*args` / `**kwargs` parameter binds the whole tuple / mapping, and any
 other name binds that `**kwargs` key only when the call passes it. A protected action requires a
 passkey by default; set `allow_password_fallback=True` to also let a user confirm with their password.
+`allow_sudo_window` defaults to false; set it true to let a live management sudo window satisfy the
+gate with no new gesture.
 
 `display_params` must be a subset of `bind_params`, and every `bind_params` name must be a parameter
 of the method (or reach its `**kwargs`) — decoration raises `ValueError` otherwise. A call that does

@@ -52,8 +52,8 @@ the password already proved knowledge, and the passkey adds possession. UV is re
 from the assertion, never assumed.
 
 **Sign-count and backup-flag policy.** Counters are stored and checked app-side:
-an exact non-zero replay is always rejected; a regression is flagged (and its
-owner emailed) or hard-rejected under the *Hard-fail* knob; the counter is never
+an exact non-zero replay is always rejected; a regression is flagged (owner emailed on the
+first flag) or hard-rejected under the *Hard-fail* knob; the counter is never
 written downward. Backup-eligibility is write-once at registration — a later
 mismatch fails the ceremony.
 
@@ -126,6 +126,8 @@ name binds that key of the `**kwargs` mapping only when the call passes it, so `
 positional-only, `*args` or `**kwargs` name passed by keyword) is ambiguous and refused. Arguments
 left out of `bind_params` are not bound. A protected action requires a passkey by default; a
 password confirmation is accepted only when the action opts in with `allow_password_fallback=True`.
+`allow_sudo_window=True` (off by default) lets a live full-sudo window satisfy the gate without a new
+gesture.
 Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload
@@ -222,6 +224,7 @@ password attempt.
 | `list_credentials` | 60 / min |
 | `rename_credential` | 20 / hour |
 | `delete_credential` | 10 / hour |
+| `set_passkey_only_login` | 20 / hour |
 | `get_signal_data` | 60 / min |
 | `record_nudge` | 30 / hour |
 | `record_enforcement` | 30 / hour |
@@ -342,10 +345,10 @@ real sign-in gets a random session id.
   check it at runtime; core's own login surface (for example email-link login) is only as safe as
   the deployed Frappe.
 - **Attacker-reachable transitive parsers float without a lockfile.** Client attestation is CBOR-
-  decoded (`cbor2`) and attestation certificate chains are ASN.1-parsed (`pyasn1`); both arrive
-  transitively via `webauthn` and the repo pins only `webauthn==2.8.0`. A fresh resolve is patched
-  (`cbor2>=5.9.0`, `pyasn1>=0.6.4`), but a stale bench may carry an older, vulnerable version — run
-  `bench setup requirements` and confirm those minimums on the deployment bench. The app's own
+  decoded (`cbor2`) and attestation certificate chains are ASN.1-parsed (`pyasn1`). The app declares
+  `webauthn==2.8.0` and `cbor2>=5.9.0`; `pyasn1` arrives through `webauthn`, and a fresh resolve gives
+  `pyasn1>=0.6.4`. A stale bench may still carry an older, vulnerable `pyasn1` — run
+  `bench setup requirements` and confirm that minimum on the deployment bench. The app's own
   `cryptography` posture inherits Frappe's pin (currently `~=50`); re-check it when Frappe's moves.
 
 ## Reporting a vulnerability

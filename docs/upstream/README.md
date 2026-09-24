@@ -19,7 +19,8 @@ date and ref.
    System Settings fields, public API names, and whether a generic two-factor provider registry is
    desirable.
 3. **Land the smallest prerequisite seams.** The sketches cover a two-factor provider interface,
-   password-disable validation, a native login-page slot, and the `webauthn` autocomplete token.
+   password-disable validation, a native login-page slot, the `webauthn` autocomplete token,
+   settings placement, and an enrollment-scoped email link.
    These may be changed, combined, or rejected during review.
 4. **Build native passkeys from the hardened contracts.** Port behavior, not files blindly. The
    app's hooks and released-branch shims are not automatically suitable for core.

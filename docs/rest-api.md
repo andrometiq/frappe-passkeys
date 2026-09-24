@@ -28,7 +28,7 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   `UnknownCredential` (401), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
   (401), `CeremonyFailed` (401 — a signed-in user's registration, confirmation or password
   re-auth was refused; the session stays signed in, so the user can retry),
-  `BrowserSessionRequired` (403 — the request was authenticated by an API key or OAuth token,
+  `BrowserSessionRequired` (403 — the request was authenticated by an API key (`token` or `Basic`) or an OAuth bearer,
   not a browser session), `PasskeyServedByCore` (417 — the app has stood down for native core).
 - **Auth / CSRF**: authenticated endpoints need a logged-in browser session **and**
   `X-Frappe-CSRF-Token: <frappe.csrf_token>` on the POST. Guest login endpoints are
@@ -259,6 +259,7 @@ Display-only; no sudo. Rate limit: **20 / 3600 s / user**.
 Turn password login off/on for the account. Gated on a **passkey grant only** — never
 a password/sudo window ("a password must never disable the password-is-not-sufficient
 flag"). Enabling additionally needs ≥2 enabled passkeys.
+Rate limit: **20 / 3600 s / user**.
 
 - **Args**: `enabled` (boolean).
 - **Success** `200`: `{"message": {"passkey_only_login": 1}}`.
@@ -283,8 +284,10 @@ Mint UV-required assertion options bound to an action (+ optional payload).
   `payload_fingerprint` echoed verbatim — never compute it client-side). The two are
   mutually exclusive.
 - **Success** `200`: `{"message": {"state_id": "…", "options": <RequestOptionsJSON>,
-  "payload_fingerprint": "…", "methods": ["passkey","password"],
+  "payload_fingerprint": "…", "methods": ["passkey"],
   "action_label": "Release payment", "parameter_summary": [{"label":"Payment","value":"PAY-1"}]}}`.
+  With a credential, the default `methods` list is `["passkey"]`. `password` is added only when the
+  action sets `allow_password_fallback=True`; `sudo` only when it sets `allow_sudo_window=True`.
   The display fields are optional decorator metadata. `display_params` must be a subset of
   `bind_params`; undeclared values are never exposed and display metadata does not alter grant
 	  binding.

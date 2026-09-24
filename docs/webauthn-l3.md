@@ -45,13 +45,13 @@ It was checked on 2026-09-24 against the app's source and the pinned server libr
 | `C.crossOrigin` / `C.topOrigin` | app, `engine.py` | Rejected, as for registration. |
 | `rpIdHash` | py_webauthn | |
 | UP flag set | py_webauthn | |
-| UV flag when required | app | Required for passwordless login and for action confirmation (the UV bit must be set and the credential's `uvInitialized` true). Not required for passkey as a second factor, where the password is the other factor. |
+| UV flag when required | app | Required for passwordless login and action confirmation (the UV bit must be set). A false `uvInitialized` routes passwordless login to the password step-up, and confirmation to a password- or reauth-seeded sudo window. Not required for passkey as a second factor, where the password is the other factor. |
 | BS set only if BE set | py_webauthn | |
 | Stored BE vs asserted BE | app, `engine.py` + `policy.py` | A change in either direction rejects the assertion. |
 | Signature over `authData ‖ SHA-256(clientDataJSON)` | py_webauthn | |
 | Signature counter | app, `engine.py` + [`ceremony.py`](../passkeys/ceremony.py) | An equal non-zero counter (replay) always rejects. A regression flags the credential and notifies the owner; a setting turns it into a hard failure. The stored value only moves up. |
 | Update `backupState` | app, `ceremony.py` | Refreshed on every successful assertion. |
-| Update `uvInitialized` only with an additional factor | app, `passkey.py`, `confirm.py` | The false→true flip needs the user's password in the same flow. |
+| Update `uvInitialized` only with an additional factor | app, `passkey.py`, `confirm.py` | The false→true flip needs password knowledge proven in the session (a step-up password, the second-factor password, or a password- or reauth-seeded sudo window). |
 | Defer state updates until the RP's extra checks pass | app, `passkey.py` | Counter and flag updates run after the password-version and account checks, before the session is created. |
 
 ### Client features

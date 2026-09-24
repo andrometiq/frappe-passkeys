@@ -23,7 +23,7 @@ The snapshot is `combined_aaguid.json` from the community
 repository (MIT license) — the maintainers' curated passkey-provider list
 merged with the FIDO Alliance Metadata Service (MDS) entries for security
 keys. Attribution and upstream provenance also ride in the file's own `_meta`
-key (both loaders skip underscore-prefixed keys).
+key (the server loader skips underscore-prefixed keys; the client only reads string or `name` values, so `_meta` never resolves either).
 
 Current snapshot: upstream commit `d587293f8ff9c8d57ff63fcf444da0e1e1728e5f`
 (2026-07-01, "from MDS file version 264"), 371 entries.

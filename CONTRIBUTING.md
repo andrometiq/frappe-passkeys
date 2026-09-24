@@ -58,7 +58,7 @@ fake_webauthn.enroll(user="alice@example.com")
 ```
 
 Every whitelisted entry point calls `_guard()` first (`frappe.only_for("System Manager")` plus a
-`developer_mode` / `flags.in_test` check), so it is reachable only by a System Manager on a dev/test
+`flags.in_test` or (`developer_mode` and `allow_tests`) check), so it is reachable only by a System Manager on a dev/test
 bench — never in production, never by a guest — and folds away with `shims/` on the core merge. Two
 invariants keep it safe:
 
