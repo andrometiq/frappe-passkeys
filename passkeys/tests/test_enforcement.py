@@ -59,15 +59,12 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		# enqueues + commits), which durably commits the modes-on Passkey Settings write
 		# past the runner's per-test savepoint rollback. Restore the pre-test snapshot and
 		# COMMIT it, mirroring test_passkey_only_veto/_SweptBase, so the modes never leak.
+		# Raw writes: the snapshot is whatever the previous test left, which need not pass
+		# the settings validators, so a validated save() could refuse to put it back.
 		sign_in("Administrator")
-		doc = frappe.get_doc("Passkey Settings")
 		for field in _FIELDS:
-			doc.set(field, self._snapshot.get(field))
-		if (cint(doc.login_with_passkey) or cint(doc.passkey_as_second_factor)) and not doc.passkey_origins:
-			doc.passkey_origins = "https://example.com"
-		doc.set("passkey_enforce_roles", [])
-		doc.flags.ignore_permissions = True
-		doc.save()
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
+		frappe.db.delete("Passkey Enforcement Role", {"parent": "Passkey Settings"})
 		flush_settings_cache()
 		frappe.db.commit()  # must survive past the (per-class) rollback
 

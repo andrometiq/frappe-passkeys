@@ -95,9 +95,14 @@ class TestEndpoints(IntegrationTestCase):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		self.addCleanup(self._restore)
+		# Pin a valid relying party so _save() validates only the mobile fields, whatever
+		# login state an earlier test left behind (a blank RP ID resolves from host_name).
+		self._set(passkey_rp_id="example.com", passkey_origins="https://example.com")
 
 	def _restore(self):
 		for field in (
+			"passkey_rp_id",
+			"passkey_origins",
 			"passkey_android_package_name",
 			"passkey_android_cert_fingerprints",
 			"passkey_ios_team_id",
