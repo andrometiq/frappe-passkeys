@@ -67,10 +67,8 @@ chromium_only("passkey management — accessibility", () => {
 			.and("have.attr", "aria-live", "polite");
 	});
 
-	// "My Passkeys" is no longer a navbar entry (it lives in the User-form section), but
-	// openManagerDialog() is retained for programmatic CTAs/nudges — exercise the
-	// dialog's a11y (visible, titled, Esc-dismissable) via that entry point. Version-
-	// independent, so it runs on every Frappe branch.
+	// openManagerDialog() is the programmatic entry point for CTAs: check the dialog's
+	// a11y (visible, titled, Esc-dismissable) on every Frappe branch.
 	it("the manager dialog (opened programmatically, e.g. from a CTA) is Esc-dismissable", () => {
 		cy.visit_desk(USER);
 		// Wait for the desk's initial route render to settle before opening the
