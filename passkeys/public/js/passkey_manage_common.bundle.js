@@ -1,19 +1,14 @@
-// passkey_manage_common.bundle.js — pure logic for credential management, enrollment
-// nudges and the settings UX, side-effect-free at load so `node --test` covers it. The
-// DOM wiring lives in the desk/portal bundles, user_passkeys.js and passkey_settings.js.
-// Exports CommonJS for node and `frappe.passkeys_manage_common` in the browser; it must
-// load AFTER passkey_common.bundle.js.
-//
+// Credential management, enrollment nudges and the settings UX: the decisions, and the
+// card DOM the desk and portal share. Side-effect-free at load. Published as
+// `frappe.passkeys_manage_common` (CommonJS for node tests); loads after passkey_common.
 // eslint-env browser, node
 (function (root, factory) {
 	"use strict";
 	var api = factory();
-	if (typeof module === "object" && module.exports) {
-		module.exports = api; // node unit tests
-	}
+	if (typeof module === "object" && module.exports) module.exports = api;
 	if (typeof window !== "undefined") {
 		window.frappe = window.frappe || {};
-		window.frappe.passkeys_manage_common = api; // browser bundles
+		window.frappe.passkeys_manage_common = api;
 	}
 })(typeof self !== "undefined" ? self : this, function () {
 	"use strict";
@@ -29,33 +24,25 @@
 		recordNudge: "passkeys.passkey.record_nudge",
 		recordEnforcement: "passkeys.passkey.record_enforcement",
 		getSignalData: "passkeys.passkey.get_signal_data",
-		// admin enforcement-recovery (System-Manager-only; User-form Passkeys section)
 		getUserEnforcementAdmin: "passkeys.enforcement_admin.get_user_enforcement_admin",
 		setUserExemption: "passkeys.enforcement_admin.set_user_exemption",
 		resetEnforcementGrace: "passkeys.enforcement_admin.reset_enforcement_grace",
 	};
 
-	// The confirm-ceremony action that sudo-gates the app's own management
-	// surface: a live `passkeys.manage` window OR a fresh passkey
-	// confirmation satisfies delete / explicit registration.
+	// The confirmation action that sudo-gates delete and explicit registration.
 	var MANAGE_ACTION = "passkeys.manage";
 
-	// record_nudge event enum.
 	var NUDGE_EVENTS = { SHOWN: "shown", DECLINED: "declined", OPT_OUT: "opt_out" };
 
-	// record_enforcement event enum. DEFER spends one grace login ("Remind me later");
-	// INCAPABLE reports the device cannot create a passkey (admin advisory under
-	// Block + Notify Admin).
+	// DEFER spends one grace login; INCAPABLE reports a device that cannot create a passkey.
 	var ENFORCE_EVENTS = { DEFER: "defer", INCAPABLE: "incapable" };
 
-	// localStorage key the login bundle sets after a hybrid (QR) assertion with
-	// local isUVPAA (post-hybrid upsell).
+	// Set by the login bundle after a cross-device (QR) sign-in.
 	var UPSELL_FLAG_KEY = "passkey_upsell_add_local";
 
 	var ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
-	// ===================================================== translatable copy keys
-	// English source strings; logic returns keys/args and the renderer calls __().
+	// English source strings; the renderer translates them.
 	var COPY = {
 		// cards / empty state
 		unknownProvider: "Unknown provider",
@@ -96,7 +83,7 @@
 		upsellBody:
 			"You just signed in from another device. Add a passkey here to sign in " +
 			"directly next time.",
-		// enforcement interstitial (honest, guilt-free copy — FIDO no-dark-pattern rule)
+		// enforcement interstitial (guilt-free copy, per the FIDO no-dark-patterns guidance)
 		enforceTitle: "Set up a passkey to continue",
 		enforceBody:
 			"Your organization requires a passkey to keep signing in. It only takes a " +
@@ -174,8 +161,7 @@
 			"This policy would require a passkey from {0} in-scope user(s) who do not have one yet.",
 	};
 
-	// ------------------------------------------------------------ tiny formatter
-	// {0}/{1} placeholder fill for pure logic; the DOM layer translates the key first.
+	// {0}/{1} placeholders; the caller translates first.
 	function format(str, args) {
 		if (!args || !args.length) return str;
 		return String(str).replace(/\{(\d+)\}/g, function (m, i) {
@@ -185,8 +171,7 @@
 	}
 
 	// ---------------------------------------------------------- provider lookup
-	// Card provider name: server cred.provider, else aaguidMap[aaguid], else null (Unknown).
-	// A zero / empty AAGUID is not an error (Safari ships none).
+	// Provider name: the server's, else the AAGUID map's, else null. Safari sends a zero AAGUID.
 	function providerFor(cred, aaguidMap) {
 		cred = cred || {};
 		if (cred.provider) return String(cred.provider);
@@ -221,7 +206,7 @@
 		return format(tr(key), [label || ""]);
 	}
 
-	// Per-credential card view-model. Values stay raw (the DOM layer formats and escapes).
+	// Per-credential card view-model; values stay raw (the DOM layer formats them).
 	function credentialViewModel(cred, opts) {
 		opts = opts || {};
 		cred = cred || {};
@@ -272,19 +257,9 @@
 		return out;
 	}
 
-	// The post-login enforcement decision. The server owns the verdict (`boot.enforcement`);
-	// the client adds only device capability, which the server cannot know. Returns:
-	//   show        — surface an interstitial at all
-	//   variant     — "enforce" (the blocking/skippable enrollment gate) or "nudge"
-	//                 (an incapable device under Degrade, subject to server nudge cadence)
-	//   blocking    — the enforce variant is non-dismissible (grace exhausted, or the
-	//                 admin chose Block + Notify Admin for an incapable device)
-	//   allowHybrid — offer the phone/QR enrollment path
-	//   notifyAdmin — record the incapable event so the admin is alerted (Block + Notify)
-	//   graceRemaining — honest "N sign-ins left" for the skippable copy
-	//   reason      — machine-readable, for tests/telemetry
-	//   boot: frappe.boot.passkeys (needs .enforcement + .credential_count)
-	//   caps: client capability probe (supported / uvpaa / hybrid)
+	// The post-login enforcement decision. The server owns the verdict (boot.enforcement);
+	// the client adds only device capability. variant "enforce" is the enrollment gate,
+	// "nudge" an incapable device under Degrade; notifyAdmin records the incapable event.
 	function enforcementDecision(boot, caps) {
 		boot = boot || {};
 		caps = caps || {};
@@ -293,20 +268,17 @@
 			show: false, blocking: false, variant: "", allowHybrid: false,
 			notifyAdmin: false, graceRemaining: 0, reason: "",
 		};
-		// Only the server's enforce rung engages this surface; Off/Nudge/pre-date
-		// (effective !== "enforce") or out-of-scope ⇒ the nudge path owns things.
+		// Off / Nudge / before the date / out of scope: the nudge path owns it.
 		if (enf.effective !== "enforce" || !enf.in_scope) { out.reason = "not_enforcing"; return out; }
-		// Already holds a passkey ⇒ enforcement satisfied, nothing to prompt.
 		var count = typeof boot.credential_count === "number" ? boot.credential_count : 0;
 		if (count > 0) { out.reason = "satisfied"; return out; }
 
 		out.graceRemaining = typeof enf.grace_remaining === "number" ? enf.grace_remaining : 0;
-		out.allowHybrid = enf.allow_hybrid !== false; // default on unless server says false
+		out.allowHybrid = enf.allow_hybrid !== false;
 		var supported = caps.supported !== false; // unknown counts as capable
 		var uvpaaOk = caps.uvpaa !== false; // unknown counts as capable
 		var hybridOk = caps.hybrid !== false; // unknown counts as capable
-		// Enroll can fall through to a phone/QR (hybrid) when there's no platform
-		// authenticator — so "capable to enroll" is UVPAA OR (hybrid allowed ∧ hybrid).
+		// Without a platform authenticator, a phone (hybrid) can still enroll.
 		var canEnroll = supported && (uvpaaOk || (out.allowHybrid && hybridOk));
 
 		if (canEnroll) {
@@ -334,14 +306,13 @@
 	}
 
 	// ---------------------------------------------- admin enforcement recovery
-	// Show the User-form enforcement-recovery controls only under an enforcement policy.
-	// The policy is site-wide, so the admin's own boot value decides.
+	// The User-form recovery controls show only under an enforcement policy (site-wide).
 	function shouldShowEnforcementAdmin(boot) {
 		var policy = boot && boot.enforcement && boot.enforcement.policy;
 		return policy === "Enforce" || policy === "Enforce After Date";
 	}
 
-	// View-model for the admin enforcement-recovery controls (get_user_enforcement_admin).
+	// View-model for get_user_enforcement_admin.
 	function enforcementAdminViewModel(state) {
 		state = state || {};
 		var exempt = state.exempt === true;
@@ -359,11 +330,9 @@
 			graceUsed: graceUsed,
 			graceTotal: cint(state.grace_total),
 			graceRemaining: cint(state.grace_remaining),
-			// The exempt toggle: label flips, and `nextExemptValue` is what to POST.
 			exemptButtonKey: exempt ? "enforceAdminUnexempt" : "enforceAdminExempt",
 			exemptButtonPrimary: !exempt,
 			nextExemptValue: !exempt,
-			// Reset is a no-op when no grace has been spent — disable it then.
 			resetDisabled: graceUsed <= 0,
 			indicator: indicator,
 		};
@@ -400,12 +369,8 @@
 	}
 
 	// ---------------------------------------------------- settings banners
-	// Banners ({level, key, args}) for the Passkey Settings values. Banners that need
-	// server context are emitted only when `ctx` carries it.
-	//   doc: { login_with_passkey, passkey_as_second_factor, passkey_notify_on_change,
-	//          passkey_rp_id, passkey_origins }
-	//   ctx: { currentHost, currentOrigin, resolvedRpId, resolvedOrigins, coreTwoFactor,
-	//          disablePassLogin, passkeyOnlyUserCount }
+	// {level, key, args} banners for the Passkey Settings form. Those that need server
+	// context appear only when `ctx` carries it (see passkey_settings.js buildContext).
 	function settingsBanners(doc, ctx) {
 		doc = doc || {};
 		ctx = ctx || {};
@@ -414,14 +379,12 @@
 		var secondFactor = isTruthy(doc.passkey_as_second_factor);
 		var anyMode = firstFactor || secondFactor;
 
-		// No RP ID while enabling a mode: Save will fail (_validate_enablement), so say how
-		// to fix it now. `resolvedRpId` is server-truth, never the browser host.
+		// Save will fail without an RP ID, so say how to fix it now.
 		if (anyMode && !ctx.resolvedRpId) {
 			banners.push({ level: "error", key: COPY.rpIdUnresolved, args: [ctx.currentHost || ""] });
 		}
 
-		// This page's origin is not trusted, so ceremonies here will fail. Only once an RP ID
-		// resolves; otherwise rpIdUnresolved is the real story.
+		// This page's origin is not trusted, so ceremonies here will fail.
 		if (
 			ctx.resolvedRpId &&
 			ctx.currentOrigin &&
@@ -432,23 +395,19 @@
 			banners.push({ level: "error", key: COPY.hostMismatch, args: [ctx.resolvedRpId || ""] });
 		}
 
-		// Validator: 2FA needs core two-factor ON. Client pre-warn.
 		if (secondFactor && ctx.coreTwoFactor !== undefined && !isTruthy(ctx.coreTwoFactor)) {
 			banners.push({ level: "error", key: COPY.twofaRequiresCore });
 		}
 
-		// warning: dead 2FA combo under site disable_user_pass_login.
 		if (secondFactor && ctx.disablePassLogin !== undefined && isTruthy(ctx.disablePassLogin)) {
 			banners.push({ level: "warning", key: COPY.deadTwofaCombo });
 		}
 
-		// warning: notifications off weakens the hijack safeguard.
 		if (anyMode && doc.passkey_notify_on_change !== undefined && !isTruthy(doc.passkey_notify_on_change)) {
 			banners.push({ level: "warning", key: COPY.notifyOffWeakens });
 		}
 
-		// generalized guard pre-warn: no passkey-capable mode left
-		// while passkey-only users exist (server REFUSES the save — this is a heads-up).
+		// The server refuses this save; warn before it.
 		if (!anyMode && (ctx.passkeyOnlyUserCount || 0) > 0) {
 			banners.push({
 				level: "error",
@@ -457,37 +416,28 @@
 			});
 		}
 
-		// ---- enrollment ladder (policy Select + enforcement scope) ----
 		var policy = doc.passkey_enrollment_policy || "Nudge";
 		var enforcing = policy === "Enforce" || policy === "Enforce After Date";
 
-		// Enforce After Date with no date — Save WILL fail (validator throws).
 		if (policy === "Enforce After Date" && !doc.passkey_enforce_after) {
 			banners.push({ level: "error", key: COPY.enforceNoDate });
 		}
 		if (enforcing) {
-			// Inert policy: enforcing while no passkey login mode is on.
 			if (!anyMode) banners.push({ level: "warning", key: COPY.enforceNoMode });
-			// Privileged accounts should remain inside enforcement scope.
 			if (!isTruthy(doc.passkey_enforce_privileged_always)) {
 				banners.push({ level: "warning", key: COPY.enforcePrivilegedOutside });
 			}
-			// Selected-roles scope with an empty role list enforces against nobody.
 			if (doc.passkey_enforce_scope === "Selected Roles" && !roleNames(doc.passkey_enforce_roles).length) {
 				banners.push({ level: "warning", key: COPY.enforceEmptyRoles });
 			}
-			// Block + Notify can hard-lock genuinely incapable devices.
 			if (doc.passkey_enforce_incapable === "Block + Notify Admin") {
 				banners.push({ level: "warning", key: COPY.enforceBlockIncapable });
 			}
-			// Report-only preview: how many in-scope users would be required to enroll
-			// (server-supplied — only shown when the count context is present).
 			if (typeof ctx.wouldBeBlockedCount === "number") {
 				banners.push({ level: "info", key: COPY.enforcePreview, args: [ctx.wouldBeBlockedCount] });
 			}
 		}
 
-		// "pause": both modes off is legal but the UI removes itself.
 		if (!anyMode) {
 			banners.push({ level: "info", key: COPY.allModesOff });
 		}
@@ -495,8 +445,7 @@
 		return banners;
 	}
 
-	// Normalize a Table-MultiSelect value to an array of role-name strings. Accepts
-	// child rows ({role}), plain strings, or a missing table (⇒ []).
+	// A Table MultiSelect value (child rows or strings) as role names.
 	function roleNames(rows) {
 		if (!Array.isArray(rows)) return [];
 		return rows
@@ -515,9 +464,7 @@
 		return origins;
 	}
 
-	// The passkey-only server floor is two ENABLED credentials when turning the flag
-	// on. A user already in passkey-only mode must always be able to turn it off, even
-	// if a credential was disabled out of band.
+	// Turning passkey-only on needs two enabled credentials; turning it off is always allowed.
 	function passkeyOnlyAvailability(enabledCount, current) {
 		enabledCount = cint(enabledCount);
 		var needsTwo = !current && enabledCount < 2;
@@ -547,8 +494,8 @@
 		return { valid: invalid.length === 0, invalid: invalid, normalized: normalized };
 	}
 
-	// A server grace verdict changes after a successful defer, so remaining-count plus
-	// user is a stable idempotency key for retries/reloads within one browser session.
+	// The grace count changes after a successful defer, so user + remaining count keys one
+	// defer per verdict across retries and reloads.
 	function enforcementDeferKey(user, enforcement) {
 		enforcement = enforcement || {};
 		return "passkey_enforcement_defer:" + encodeURIComponent(String(user || "current")) +
@@ -557,9 +504,8 @@
 				? enforcement.graceRemaining : enforcement.grace_remaining);
 	}
 
-	// Run one asynchronous event per key. sessionStorage survives page reloads; the
-	// closure covers browsers where storage is unavailable. Failed work clears the key
-	// so a genuine transport/server failure can be retried.
+	// Run one asynchronous event per key, remembered in sessionStorage (or memory where
+	// storage is unavailable). A failure clears the key so it can be retried.
 	function createSessionEventRecorder(storage) {
 		var memory = {};
 		function read(key) {
@@ -589,8 +535,7 @@
 		};
 	}
 
-	// Exact-origin membership (scheme, host and port), as the server matches
-	// clientDataJSON.origin against its allowlist.
+	// Exact scheme, host and port, as the server matches clientDataJSON.origin.
 	function originsIncludeOrigin(origins, origin) {
 		var target = canonicalOrigin(origin);
 		return !!target && origins.some(function (candidate) {
@@ -608,8 +553,7 @@
 	}
 
 	// ---------------------------------------------------- security posture panel
-	// Orders the server's translated posture rows (posture.build_posture): severity
-	// high→info, the detectability disclaimer (detectable === false) always last. No copy here.
+	// The server's posture rows, high→info, with the undetectable disclaimer always last.
 	var POSTURE_SEVERITY_RANK = { high: 0, medium: 1, low: 2, info: 3 };
 
 	function posturePanel(response) {
@@ -664,25 +608,19 @@
 	}
 
 	// ---------------------------------------------------------- signal payloads
-	// Shape a signalAllAcceptedCredentials payload from a verify_registration
-	// signal block or a get_signal_data response. Returns null when
-	// there is nothing to signal (caller then no-ops — fire-and-forget).
+	// signalAllAcceptedCredentials from a verify_registration signal block or get_signal_data;
+	// null when there is nothing to signal. An empty list after the last delete is intended.
 	function signalPayload(data) {
 		var s = data && (data.signal || data);
 		if (!s) return null;
 		var userHandle = s.user_handle || s.userHandle || null;
 		var ids = s.credential_ids || s.credentialIds || null;
 		if (!userHandle || !Array.isArray(ids)) return null;
-		// An empty array is intentional: after the last passkey is deleted the provider should
-		// hide them all. Callers signal only after a successful server read, so a failed list
-		// never sends [].
 		return { userHandle: userHandle, allAcceptedCredentialIds: ids.slice() };
 	}
 
-	// Shape a signalCurrentUserDetails payload from a get_signal_data response or a
-	// verify_registration signal block. Returns null when there's nothing to sync.
-	// signalCurrentUserDetails needs BOTH name + displayName; if the server sent only one,
-	// mirror it into the other so the provider's account-chooser label is never blanked.
+	// signalCurrentUserDetails needs both names; mirror one into the other so the provider's
+	// account label is never blanked.
 	function currentUserDetailsPayload(data) {
 		var s = data && (data.signal || data);
 		if (!s) return null;
@@ -693,10 +631,8 @@
 		return { userHandle: userHandle, name: name || displayName, displayName: displayName || name };
 	}
 
-	// Fire both WebAuthn Signal API updates from one parity-correct seam. Registration
-	// can pass its verify payload; deletion passes get_signal_data. An empty accepted-id
-	// list is intentional after the final credential is removed. The native calls remain
-	// best-effort and are never awaited on a mutation's critical path.
+	// Fire both Signal API updates, best-effort: never awaited, failures swallowed (Firefox has
+	// none; Safari 26 can leave the promise unsettled).
 	function signalCredentialState(PKC, data, defaultRpId) {
 		var source = data && (data.signal || data);
 		var rpId = source && (source.rp_id || source.rpId) || defaultRpId || null;
@@ -730,8 +666,190 @@
 		return result;
 	}
 
+	// ================================================= shared management DOM
+	// The desk and portal cards follow one markup contract (docs/custom-ui.md). DOM is built
+	// only when these are called.
+	function common() { return window.frappe.passkeys_common; }
+
+	function el(tag, className, text) {
+		var node = document.createElement(tag);
+		if (className) node.className = className;
+		if (text != null) node.textContent = text;
+		return node;
+	}
+
+	// kind: "primary" | "link".
+	function button(kind, label, onClick) {
+		var node = el("button", "btn btn-" + kind + " btn-sm passkey-btn", label);
+		node.type = "button";
+		node.addEventListener("click", onClick);
+		return node;
+	}
+
+	function iconButton(className, iconName, name, onClick) {
+		var node = el("button", "btn btn-xs btn-default passkey-icon-btn " + className);
+		node.type = "button";
+		node.setAttribute("aria-label", name); // the icon-only action's accessible name
+		node.setAttribute("title", name);
+		var glyph = el("span", "passkey-icon");
+		glyph.setAttribute("aria-hidden", "true");
+		glyph.innerHTML = common().iconSvg(iconName, "icon icon-sm");
+		node.appendChild(glyph);
+		node.addEventListener("click", onClick);
+		return node;
+	}
+
+	function formatDate(value) {
+		if (!value) return "—";
+		try {
+			return window.frappe.datetime.str_to_user(value);
+		} catch (e) {
+			return String(value); // portal pages may lack frappe.datetime or its boot defaults
+		}
+	}
+
+	// The <ul> of cards. actionsFor(vm) returns {onRename, onDelete}, or null for read-only.
+	function cardList(creds, aaguidMap, actionsFor) {
+		var t = common().t;
+		var list = el("ul", "passkey-card-list");
+		list.setAttribute("role", "list");
+		creds.forEach(function (cred) {
+			var vm = credentialViewModel(cred, { aaguidMap: aaguidMap, translate: t });
+			list.appendChild(cardElement(vm, actionsFor(vm), t));
+		});
+		return list;
+	}
+
+	function cardElement(vm, actions, t) {
+		var card = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled"));
+		card.setAttribute("data-name", vm.name);
+		var glyph = el("span", "passkey-card-glyph");
+		glyph.setAttribute("aria-hidden", "true");
+		glyph.innerHTML = common().iconSvg("key", "icon");
+		card.appendChild(glyph);
+
+		var main = el("div", "passkey-card-main");
+		var labelRow = el("div", "passkey-card-labelrow");
+		var label = el("span", "passkey-card-label", vm.label);
+		label.setAttribute("title", vm.label);
+		labelRow.appendChild(label);
+		var badge = el("span", "passkey-badge passkey-badge-" + (vm.badge.synced ? "synced" : "device"), t(vm.badge.key));
+		badge.setAttribute("title", t(vm.badge.hintKey));
+		labelRow.appendChild(badge);
+		if (!vm.enabled) labelRow.appendChild(el("span", "passkey-badge passkey-badge-disabled", t(COPY.disabledBadge)));
+		main.appendChild(labelRow);
+
+		var meta = el("div", "passkey-card-meta");
+		meta.appendChild(el("span", "passkey-card-provider", vm.hasProvider ? vm.providerName : t(vm.unknownProviderKey)));
+		meta.appendChild(el("span", "passkey-card-created", t(COPY.createdLabel) + ": " + formatDate(vm.created)));
+		meta.appendChild(el("span", "passkey-card-lastused",
+			vm.lastUsed ? t(COPY.lastUsedLabel) + ": " + formatDate(vm.lastUsed) : t(COPY.lastUsedNever)));
+		main.appendChild(meta);
+		if (vm.flagged) {
+			var flagged = el("div", "passkey-card-flagged", t(COPY.flaggedBanner));
+			flagged.setAttribute("role", "alert");
+			main.appendChild(flagged);
+		}
+		card.appendChild(main);
+
+		if (actions) {
+			var row = el("div", "passkey-card-actions");
+			row.appendChild(iconButton("passkey-rename", "pencil", vm.a11y.rename, actions.onRename));
+			row.appendChild(iconButton("passkey-delete", "trash", vm.a11y.del, actions.onDelete));
+			card.appendChild(row);
+		}
+		return card;
+	}
+
+	function emptyState(onAdd) {
+		var t = common().t;
+		var wrap = el("div", "passkey-empty");
+		wrap.appendChild(el("h4", "passkey-empty-title", t(COPY.emptyTitle)));
+		wrap.appendChild(el("p", "passkey-empty-body", t(COPY.emptyBody)));
+		var cta = button("primary", t(COPY.addButton), onAdd);
+		cta.className += " passkey-empty-cta";
+		wrap.appendChild(cta);
+		return wrap;
+	}
+
+	// The passwordless-login switch, from a list_credentials payload. It never flips on its
+	// own: it snaps back and asks onRequest(desired); the change shows once the sudo-gated
+	// call succeeds and the list is re-rendered.
+	function passkeyOnlyRow(payload, onRequest) {
+		var t = common().t;
+		var enabledCount = payload.credentials.filter(function (c) { return credentialViewModel(c).enabled; }).length;
+		var current = !!payload.passkey_only_login;
+		var availability = passkeyOnlyAvailability(enabledCount, current);
+		var row = el("div", "passkey-only-row");
+		var main = el("div", "passkey-only-main");
+		main.appendChild(el("div", "passkey-only-label", t(COPY.passkeyOnlyLabel)));
+		main.appendChild(el("div", "passkey-only-help", t(COPY[availability.helpKey])));
+		row.appendChild(main);
+		var toggle = el("input", "passkey-only-toggle");
+		toggle.type = "checkbox";
+		toggle.checked = current;
+		toggle.setAttribute("role", "switch");
+		toggle.setAttribute("aria-checked", current ? "true" : "false");
+		toggle.setAttribute("aria-label", t(COPY.passkeyOnlyLabel));
+		if (availability.disabled) {
+			toggle.disabled = true;
+			toggle.setAttribute("title", t(COPY.passkeyOnlyNeedsTwo));
+		}
+		toggle.addEventListener("change", function () {
+			var desired = toggle.checked;
+			toggle.checked = current;
+			if (desired !== current) onRequest(desired);
+		});
+		row.appendChild(toggle);
+		return row;
+	}
+
+	// The optional provider-name snapshot; {} when absent.
+	var aaguidMapPromise = null;
+	function loadAaguidMap() {
+		if (!aaguidMapPromise) {
+			aaguidMapPromise = fetch("/assets/passkeys/aaguid-map.json", { credentials: "same-origin" })
+				.then(function (r) { return r.ok ? r.json() : {}; })
+				.catch(function () { return {}; });
+		}
+		return aaguidMapPromise;
+	}
+
+	// Nudge and enforcement events for the desk and portal prompts.
+	function createEnrollmentEvents(post) {
+		var storage = null;
+		try { storage = window.sessionStorage || null; } catch (e) { /* storage denied */ }
+		var once = createSessionEventRecorder(storage);
+		var incapableReported = false;
+		function recordEnforcement(event) {
+			return post(MANAGE_METHODS.recordEnforcement, { event: event });
+		}
+		return {
+			// Resolves the response, or null on a transport failure (never rejects).
+			recordNudge: function (event) {
+				return post(MANAGE_METHODS.recordNudge, { event: event }).catch(function () { return null; });
+			},
+			// "Remind me later": one grace login per verdict, however often it is sent.
+			recordEnforcementDefer: function (boot, decision) {
+				var session = window.frappe.session;
+				var verdict = Object.assign({}, boot && boot.enforcement, { graceRemaining: decision.graceRemaining });
+				return once(enforcementDeferKey(session && session.user, verdict), function () {
+					return recordEnforcement(ENFORCE_EVENTS.DEFER).then(function (res) {
+						if (!res || !res.ok) throw new Error("record_enforcement_failed");
+						return res;
+					});
+				}).catch(function () {});
+			},
+			// Once per page, so a repeated escape never sends the admin a second email.
+			reportIncapableOnce: function () {
+				if (incapableReported) return;
+				incapableReported = true;
+				recordEnforcement(ENFORCE_EVENTS.INCAPABLE).catch(function () {});
+			},
+		};
+	}
+
 	return {
-		// wire seam
 		MANAGE_METHODS: MANAGE_METHODS,
 		MANAGE_ACTION: MANAGE_ACTION,
 		NUDGE_EVENTS: NUDGE_EVENTS,
@@ -739,7 +857,6 @@
 		UPSELL_FLAG_KEY: UPSELL_FLAG_KEY,
 		ZERO_AAGUID: ZERO_AAGUID,
 		COPY: COPY,
-		// pure helpers
 		format: format,
 		providerFor: providerFor,
 		backupBadge: backupBadge,
@@ -765,5 +882,13 @@
 		signalPayload: signalPayload,
 		currentUserDetailsPayload: currentUserDetailsPayload,
 		signalCredentialState: signalCredentialState,
+		// shared management DOM
+		el: el,
+		button: button,
+		cardList: cardList,
+		emptyState: emptyState,
+		passkeyOnlyRow: passkeyOnlyRow,
+		loadAaguidMap: loadAaguidMap,
+		createEnrollmentEvents: createEnrollmentEvents,
 	};
 });
