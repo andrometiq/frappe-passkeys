@@ -2,31 +2,20 @@
 # License: MIT. See LICENSE
 
 """Admin security-posture verdict for the Passkey Settings page (folds into
-``frappe/passkey.py`` on the core merge).
+``frappe/passkey.py`` on the core merge): given everything else this site allows, can a
+user meant to use a passkey still sign in without one?
 
-The owner-facing question this answers: *given everything else this site allows —
-password login, email-link login, social/LDAP sign-in, the core second factor — can a
-user who is meant to use a passkey still get in without one?* :func:`classify_posture`
-is a **pure** function (no DB, no request) that takes the site's already-read auth
-facts and returns a structured verdict + severity-ordered rows; :func:`build_posture`
-does the actual config reads and calls it. The whitelisted, System-Manager-gated
-endpoint that surfaces this lives next to its sibling read endpoint in
-``passkey_settings.py`` (``get_security_posture``).
-
-Copy is deliberately concrete (names the exact setting to change): this surface is
-System-Manager-only, so — unlike the guest login copy — revealing the mechanic is the
-right call (the reveal-vs-vague split in the error-copy playbook)."""
+:func:`classify_posture` is pure (no DB, no request); :func:`build_posture` does the
+reads. The surface is System-Manager-only, so the copy names the exact setting to change."""
 
 import frappe
 from frappe import _
 from frappe.utils import cint
 
-# Severity ranks. The client renderer (``passkey_manage_common.bundle.js::posturePanel``)
-# mirrors this order; the detectability disclaimer always sorts last regardless.
+# The client renderer (``posturePanel``) mirrors this order.
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
-# The re-auth window (seconds) above which we surface it as a low-severity heads-up.
-# Below this the default is unremarkable and we stay quiet (no wall of rows).
+# A re-auth window (seconds) above this gets a low-severity row.
 _REAUTH_WINDOW_NOTICE_THRESHOLD = 900
 
 
@@ -38,24 +27,18 @@ def _row(code, severity, what, why, recommendation, detectable=True, bypass_labe
 		"why": why,
 		"recommendation": recommendation,
 		"detectable": detectable,
-		# Present ⇒ this row is an active bypass path; feeds the top verdict line.
 		"bypass_label": bypass_label,
 	}
 
 
 def classify_posture(ctx: dict) -> dict:
-	"""Pure verdict builder. ``ctx`` carries only primitives (no DB / request), so this
-	is unit-testable across every permutation. Returns
-	``{"verdict": {...}, "rows": [...]}`` where each row is
-	``{code, severity, what, why, recommendation, detectable, bypass_label}``.
+	"""``{"verdict": {...}, "rows": [...]}`` from primitive auth facts. A row carrying a
+	``bypass_label`` is an active bypass and feeds the verdict headline.
 
-	Mode lens:
-	  * **first-factor** (``login_with_passkey``): a passkey is *a* first factor, so
-	    every OTHER first factor (password / email-link / social / LDAP) is a bypass.
-	  * **second-factor enabled**: enrolled users are final-vetoed on every stock login
-	    path unless this app completed its passkey or OTP-fallback leg. Alternate login
-	    methods are therefore availability constraints, not passkey bypasses. Core Two
-	    Factor Authentication remains a required defence-in-depth floor."""
+	In first-factor mode a passkey is *a* first factor, so every other one (password,
+	email link, social, LDAP) is a bypass. With the second factor on, enrolled users are
+	vetoed on every stock login path until they complete the passkey (or OTP-fallback)
+	leg, so alternate methods only constrain availability."""
 	first = bool(ctx.get("first_factor"))
 	second = bool(ctx.get("second_factor"))
 	otp_fallback = bool(ctx.get("otp_fallback_enabled"))
@@ -73,16 +56,12 @@ def classify_posture(ctx: dict) -> dict:
 	reauth_window = cint(ctx.get("reauth_window"))
 
 	rows = []
-	any_mode = first or second
-	# In first-factor mode, password login is an alternative first factor. In
-	# second-factor mode it is vetoed into the passkey or OTP-fallback leg.
 	pw_is_bypass = first and pw_enabled and not second
 	alternate_is_bypass = first and not second
 	if config_read_failed:
 		rows.append(_degraded_row())
 
-	# ---- no active passkey mode -------------------------------------------------
-	if not any_mode:
+	if not (first or second):
 		rows.append(
 			_row(
 				"no_mode",
@@ -93,22 +72,13 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 		rows.append(_custom_apps_row())
+		if config_read_failed:
+			return {"verdict": _undetermined_verdict(), "rows": rows}
 		return {
-			"verdict": {
-				"headline": (
-					_("Security posture could not be fully determined.")
-					if config_read_failed
-					else _("Passkeys are not an active login factor on this site.")
-				),
-				"tone": "high" if config_read_failed else "info",
-				"can_bypass": False,
-				"bypass_labels": [],
-				"degraded": config_read_failed,
-			},
+			"verdict": _verdict(_("Passkeys are not an active login factor on this site."), "info"),
 			"rows": rows,
 		}
 
-	# ---- first-factor bypass paths ---------------------------------------------
 	if pw_is_bypass:
 		rows.append(
 			_row(
@@ -188,8 +158,7 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
-	# Core 2FA remains the required defence-in-depth floor. The final login veto
-	# still fails closed for enrolled users if a console edit desynchronizes it.
+	# core 2FA is the required defence-in-depth floor behind the final login veto
 	if second:
 		if not core_2fa:
 			rows.append(
@@ -242,8 +211,7 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
-	# Password reset by email amplifies the password bypass (only meaningful while
-	# password sign-in itself is a bypass path).
+	# password reset by email amplifies the password bypass
 	if pw_is_bypass:
 		rows.append(
 			_row(
@@ -258,7 +226,6 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
-		# Adoption context: how many users are actually locked to passwordless-only.
 		if login_user_count > 0:
 			rows.append(
 				_row(
@@ -272,7 +239,7 @@ def classify_posture(ctx: dict) -> dict:
 				)
 			)
 
-	# ---- app hardening rows (not bypasses) -------------------------------------
+	# app hardening rows (not bypasses)
 	if not hard_fail:
 		rows.append(
 			_row(
@@ -301,40 +268,38 @@ def classify_posture(ctx: dict) -> dict:
 			)
 		)
 
-	# ---- honest limit (always last, not deterministically detectable) ----------
-	rows.append(_custom_apps_row())
+	rows.append(_custom_apps_row())  # the honest limit, not deterministically detectable
 
-	# ---- top verdict from the emitted bypass rows ------------------------------
 	ordered = sorted(rows, key=lambda r: SEVERITY_RANK.get(r["severity"], 9))
 	bypass_labels = [r["bypass_label"] for r in ordered if r.get("bypass_label")]
 	if bypass_labels:
-		verdict = {
-			"headline": _("Users can still sign in without a passkey via: {0}.").format(
-				", ".join(bypass_labels)
-			),
-			"tone": "high",
-			"can_bypass": True,
-			"bypass_labels": bypass_labels,
-			"degraded": config_read_failed,
-		}
+		verdict = _verdict(
+			_("Users can still sign in without a passkey via: {0}.").format(", ".join(bypass_labels)),
+			"high",
+			bypass_labels,
+			config_read_failed,
+		)
 	elif config_read_failed:
-		verdict = {
-			"headline": _("Security posture could not be fully determined."),
-			"tone": "high",
-			"can_bypass": False,
-			"bypass_labels": [],
-			"degraded": True,
-		}
+		verdict = _undetermined_verdict()
 	else:
-		verdict = {
-			"headline": _("No stock bypass paths detected — passkeys are the only stock way to sign in."),
-			"tone": "good",
-			"can_bypass": False,
-			"bypass_labels": [],
-			"degraded": False,
-		}
-
+		verdict = _verdict(
+			_("No stock bypass paths detected — passkeys are the only stock way to sign in."), "good"
+		)
 	return {"verdict": verdict, "rows": rows}
+
+
+def _verdict(headline: str, tone: str, bypass_labels: list | None = None, degraded: bool = False) -> dict:
+	return {
+		"headline": headline,
+		"tone": tone,
+		"can_bypass": bool(bypass_labels),
+		"bypass_labels": bypass_labels or [],
+		"degraded": degraded,
+	}
+
+
+def _undetermined_verdict() -> dict:
+	return _verdict(_("Security posture could not be fully determined."), "high", degraded=True)
 
 
 def _enforcement_recommendation(enforcement: str) -> str:
@@ -372,48 +337,38 @@ def _degraded_row() -> dict:
 	)
 
 
-# ---------------------------------------------------------------------------
-# reads → classify (impure)
-# ---------------------------------------------------------------------------
-
-
 def build_posture() -> dict:
-	"""Read the site's auth surface and classify it, marking failed reads degraded."""
+	"""Read the site's auth surface and classify it; a failed read marks the verdict
+	degraded instead of guessing."""
 	from passkeys import boot
 
 	settings = frappe.get_cached_doc("Passkey Settings")
-	disable_password, password_read_failed = _read_config(lambda: _system_setting("disable_user_pass_login"))
-	email_link, email_link_read_failed = _read_config(lambda: _system_setting("login_with_email_link"))
-	core_2fa_value, core_2fa_read_failed = _read_config(lambda: _system_setting("enable_two_factor_auth"))
-	core_2fa = bool(cint(core_2fa_value))
-	core_2fa_method, core_2fa_method_read_failed = (
-		_read_config(lambda: _system_setting("two_factor_method")) if core_2fa else (None, False)
-	)
-	social_providers, social_read_failed = _read_config(_enabled_social_providers, [])
-	ldap_enabled, ldap_read_failed = _read_config(_ldap_enabled, False)
-	config_read_failed = any(
-		(
-			password_read_failed,
-			email_link_read_failed,
-			core_2fa_read_failed,
-			core_2fa_method_read_failed,
-			social_read_failed,
-			ldap_read_failed,
-		)
-	)
+	failed_reads = []
+
+	def read(fetch, default=None):
+		try:
+			return fetch()
+		except Exception:
+			failed_reads.append(fetch)
+			return default
+
+	core_2fa = bool(cint(read(lambda: _system_setting("enable_two_factor_auth"))))
+	facts = {
+		"password_login_enabled": not cint(read(lambda: _system_setting("disable_user_pass_login"))),
+		"email_link_login": bool(cint(read(lambda: _system_setting("login_with_email_link")))),
+		"social_providers": read(_enabled_social_providers, []),
+		"ldap_enabled": read(_ldap_enabled, False),
+		"core_2fa_enabled": core_2fa,
+		"core_2fa_method": read(lambda: _system_setting("two_factor_method")) if core_2fa else None,
+	}
 	passkey_only_count, login_user_count = _adoption_counts()
 	return classify_posture(
 		{
+			**facts,
+			"config_read_failed": bool(failed_reads),
 			"first_factor": bool(cint(settings.login_with_passkey)),
 			"second_factor": bool(cint(settings.passkey_as_second_factor)),
 			"otp_fallback_enabled": bool(cint(settings.passkey_2fa_allow_otp_fallback)),
-			"config_read_failed": config_read_failed,
-			"password_login_enabled": not bool(cint(disable_password)),
-			"email_link_login": bool(cint(email_link)),
-			"social_providers": social_providers,
-			"ldap_enabled": ldap_enabled,
-			"core_2fa_enabled": core_2fa,
-			"core_2fa_method": core_2fa_method or None,
 			"passkey_only_user_count": passkey_only_count,
 			"login_user_count": login_user_count,
 			"enforcement_effective": boot.policy_effective(settings),
@@ -424,9 +379,8 @@ def build_posture() -> dict:
 
 
 def _adoption_counts() -> tuple[int, int]:
-	"""``(passkey_only_count, login_user_count)`` for the adoption row, counted over the
-	SAME eligible population — enabled Users excluding Administrator and Guest — so the
-	numerator can never exceed the denominator."""
+	"""``(passkey_only_count, login_user_count)`` over the same population — enabled users
+	other than Administrator and Guest — so the numerator never exceeds the denominator."""
 	from frappe.query_builder.functions import Count
 
 	User = frappe.qb.DocType("User")
@@ -450,27 +404,14 @@ def _system_setting(field: str):
 	return frappe.db.get_single_value("System Settings", field)
 
 
-def _read_config(read, default=None):
-	try:
-		return read(), False
-	except Exception:
-		return default, True
-
-
 def _enabled_social_providers() -> list:
-	"""Display labels for enabled Social Login Keys (provider_name, else the enum
-	provider, else the row name)."""
+	"""Display labels of the enabled Social Login Keys."""
 	rows = frappe.get_all(
 		"Social Login Key",
 		filters={"enable_social_login": 1},
 		fields=["name", "provider_name", "social_login_provider"],
 	)
-	labels = []
-	for row in rows:
-		label = row.get("provider_name") or row.get("social_login_provider") or row.get("name")
-		if label:
-			labels.append(str(label))
-	return labels
+	return [str(row.provider_name or row.social_login_provider or row.name) for row in rows]
 
 
 def _ldap_enabled() -> bool:

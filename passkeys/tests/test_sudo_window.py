@@ -13,7 +13,7 @@ import frappe
 from frappe.utils import set_request
 
 from passkeys import session, state
-from passkeys.passkey import PasskeyConfirmationRequired
+from passkeys.errors import PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 

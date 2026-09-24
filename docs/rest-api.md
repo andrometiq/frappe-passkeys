@@ -326,9 +326,10 @@ fallback). Rate limit: **5 / 300 s / user**.
   leave enforcement state unchanged. Incapability alerts require the applicable Block + Notify
   Admin policy. Rate limit: 30 / 3600 s / user.
 - **`passkeys.passkey.get_app_translations`** (`GET`) — the app's i18n catalog, for
-  rendering the shipped copy on v15/v16 pages. Responses are private and not stored in the
-  browser cache because the request's language can change without changing the URL. The optional
-  `version` argument remains accepted but does not enable immutable caching. Rate limit: 30 / 60 s / IP.
+  rendering the shipped copy on v15/v16 pages. Responses are never cached (`private, no-store`
+  where Frappe exposes response headers; Frappe v15 does not, and the client fetches with
+  `no-store`), because the request's language can
+  change without changing the URL. Rate limit: 30 / 60 s / IP.
 
 ---
 

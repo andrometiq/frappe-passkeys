@@ -25,7 +25,7 @@ from frappe.utils.password import update_password
 
 from passkeys import auth_hooks, passkey, session, state
 from passkeys.api import registration
-from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
+from passkeys.errors import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -581,8 +581,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def test_otp_fallback_records_risk_event_in_activity_log(self):
 		"""FIDO-downgrade telemetry: when ``fallback_to_otp`` actually runs
-		(a passkey holder chooses phishable OTP), ``_record_fallback_used`` fires and
-		writes a ``RISK_FALLBACK_USED`` row to the Activity Log. The envelope test above
+		(a passkey holder chooses phishable OTP), it writes a ``RISK_FALLBACK_USED`` row to the Activity Log. The envelope test above
 		asserts only the core-OTP hand-off; this pins that the risk-event row is real."""
 		from passkeys import notifications
 

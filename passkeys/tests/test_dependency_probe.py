@@ -120,11 +120,6 @@ class DependencyProbeFailureTest(unittest.TestCase):
 			timeout=policy.WEBAUTHN_IMPORT_TIMEOUT,
 		)
 
-	def test_missing_python_executable_is_rejected(self):
-		with patch.object(policy.sys, "executable", ""):
-			with self.assertRaisesRegex(frappe.ValidationError, "Python executable is unavailable"):
-				policy.validate_webauthn_importable()
-
 	def test_child_start_failure_is_rejected(self):
 		with patch("passkeys.policy.subprocess.run", side_effect=OSError("cannot execute")):
 			with self.assertRaisesRegex(frappe.ValidationError, "could not start: cannot execute"):

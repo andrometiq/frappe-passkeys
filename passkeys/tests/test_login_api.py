@@ -20,7 +20,7 @@ from werkzeug.wrappers import Response
 
 from passkeys import passkey, session, state
 from passkeys.api import registration
-from passkeys.passkey import CeremonyExpired, UnknownCredential, UVSetupRequired
+from passkeys.errors import CeremonyExpired, UnknownCredential, UVSetupRequired
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -397,23 +397,18 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		frappe.set_user("Guest")
 		self._request("/api/method/passkeys.passkey.get_app_translations")
 		frappe.local.lang = "fr"
-		catalog = passkey.get_app_translations(version="1")
+		catalog = passkey.get_app_translations()
 		self.assertIsInstance(catalog, dict)
 		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
 
-	def test_translations_requests_are_not_cached_with_or_without_version(self):
+	def test_translations_responses_are_not_cacheable(self):
 		from werkzeug.datastructures import Headers
 
 		frappe.set_user("Guest")
 		self._request("/api/method/passkeys.passkey.get_app_translations")
-		for version in (None, "42"):
-			with self.subTest(version=version):
-				frappe.local.response_headers = Headers()
-				passkey.get_app_translations(version=version)
-				self.assertEqual(
-					frappe.local.response_headers.get("Cache-Control"),
-					"private, no-store",
-				)
+		frappe.local.response_headers = Headers()
+		passkey.get_app_translations()
+		self.assertEqual(frappe.local.response_headers.get("Cache-Control"), "private, no-store")
 
 	def test_translations_follow_each_request_language(self):
 		frappe.set_user("Guest")
@@ -423,16 +418,16 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			side_effect=lambda lang, apps: {"language": lang, "apps": apps},
 		) as get_translations:
 			frappe.local.lang = "fr"
-			french = passkey.get_app_translations(version="same-url")
+			french = passkey.get_app_translations()
 			frappe.local.lang = "de"
-			german = passkey.get_app_translations(version="same-url")
+			german = passkey.get_app_translations()
 		self.assertEqual(french, {"language": "fr", "apps": ["passkeys"]})
 		self.assertEqual(german, {"language": "de", "apps": ["passkeys"]})
 		self.assertEqual(get_translations.call_count, 2)
 
 	def test_translations_endpoint_is_rate_limited(self):
-		"""The previously-unlimited guest translations endpoint now carries
-		frappe's @rate_limit, like its sibling guest endpoints."""
+		"""The guest translations endpoint carries frappe's @rate_limit, like its sibling
+		guest endpoints."""
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.RateLimitExceededError):
 			for _ in range(31):
@@ -500,6 +495,23 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.verify_login(begun["state_id"], credential)
 
+	def test_non_string_user_handle_is_refused_before_any_lookup(self):
+		"""A client-supplied list or dict userHandle would read as a query operator
+		(``["like", "%"]`` matches any handle); it is an unknown credential, never a match."""
+		from passkeys import ceremony
+
+		user = self._user()
+		auth, _handle = self._enroll(user)
+		for user_handle in (["like", "%"], {"handle": "x"}):
+			with self.subTest(user_handle=user_handle):
+				self.assertIsNone(ceremony.get_handle_user(user_handle))
+				begun, binder = self._begin()
+				credential = self._assert(auth, begun["options"])
+				credential["response"]["userHandle"] = user_handle
+				with self.assertRaises(UnknownCredential):
+					self._verify(begun["state_id"], credential, binder)
+				self.assertEqual(frappe.session.user, "Guest")
+
 	def test_first_factor_engine_failure_classes_collapse_to_uniform_wire_type(self):
 		from passkeys import engine
 
@@ -548,9 +560,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			passkey.begin_login()
 
 	def test_host_mismatch_writes_structured_log(self):
-		"""A host-mismatch refusal on the begin_login path writes
-		ONE structured log line (previously only the registration path logged; the
-		begin_login / begin_confirmation / verify legs were silent)."""
+		"""A host-mismatch refusal on the begin_login path writes ONE structured log line."""
 		# reset the request after us so the foreign Origin never leaks into a later
 		# test's _enroll (which begins a registration without re-setting the request).
 		self.addCleanup(set_request, method="POST", path="/api/method/passkeys.passkey.begin_login")

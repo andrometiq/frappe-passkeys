@@ -19,8 +19,7 @@ from frappe.utils.password import update_password
 
 from passkeys import confirm, session, state
 from passkeys.api import registration
-from passkeys.errors import CeremonyFailed
-from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
+from passkeys.errors import CeremonyExpired, CeremonyFailed, PasskeyConfirmationRequired
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,

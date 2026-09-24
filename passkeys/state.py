@@ -1,18 +1,13 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Ceremony / sudo / grant / uv-setup state store (folds into
-``frappe/passkey.py``).
+"""Ceremony / sudo / grant / uv-setup state store (folds into ``frappe/passkey.py``).
 
-Every single-use ``passkeys:*`` key uses **only raw ``redis.Redis`` operations
-on the made key** (``frappe.cache`` *is* a ``redis.Redis``). The wrapper's
-``set_value``/``get_value``/``delete_value`` are banned for these keys:
-``set_value`` pickles, ``delete_value`` discards the delete count, and
-``get_value`` serves a request-local copy that is provably stale after a
-remote consume (PROBE-bench). Values are JSON, never pickle. Redis
-``ex`` is the sole expiry authority — records never re-derive expiry from
-their own timestamps with the consuming worker's clock.
-"""
+Every ``passkeys:*`` key uses only raw ``redis.Redis`` operations on the made key
+(``frappe.cache`` is a ``redis.Redis``), never the wrapper's ``set_value`` /
+``get_value`` / ``delete_value``: they pickle, serve a request-local copy that is stale
+after a remote consume, and discard the delete count. Values are JSON. Redis ``ex`` is
+the sole expiry authority."""
 
 import hashlib
 import json
@@ -20,8 +15,7 @@ import json
 import frappe
 import redis
 
-# TTLs are code constants, not knobs (fixed policy); the sudo window is
-# the one settings-driven lifetime (`passkey_reauth_window`, later phase).
+# Fixed policy; only the sudo window's lifetime is a setting (``passkey_reauth_window``).
 CEREMONY_TTL = 300
 CONFIRM_CEREMONY_TTL = 180
 UV_SETUP_TTL = 180
@@ -51,11 +45,6 @@ BINDER_MAX_AGE = SECOND_FACTOR_MAX_ATTEMPTS * CEREMONY_TTL
 def new_id() -> str:
 	"""Server-issued, unguessable id (CSPRNG) — never keyed by user or challenge."""
 	return frappe.generate_hash()
-
-
-# ---------------------------------------------------------------------------
-# single-use records (atomic consume)
-# ---------------------------------------------------------------------------
 
 
 def store_ceremony(record: dict, ttl: int = CEREMONY_TTL) -> str:
@@ -118,11 +107,6 @@ def consume_grant(token_hash: str) -> dict | None:
 	return _consume_json(GRANT_PREFIX + token_hash)
 
 
-# ---------------------------------------------------------------------------
-# reusable records (sudo window; same raw treatment uniformly)
-# ---------------------------------------------------------------------------
-
-
 def set_sudo_window(sid: str, record: dict, ttl: int) -> None:
 	_put_json(SUDO_PREFIX + sid, record, ttl)
 
@@ -133,11 +117,6 @@ def get_sudo_window(sid: str) -> dict | None:
 
 def clear_sudo_window(sid: str) -> None:
 	frappe.cache.delete(_make_key(SUDO_PREFIX + sid))
-
-
-# ---------------------------------------------------------------------------
-# counters (pwfail + per-user rate shapes; TTL guaranteed at creation)
-# ---------------------------------------------------------------------------
 
 
 def bump_counter(name: str, ttl: int) -> int:
@@ -182,22 +161,12 @@ def claim_enforcement_defer(user: str, sid: str) -> bool:
 
 
 def rate_limit_user(name: str, limit: int, ttl: int) -> None:
-	"""Per-user rate limit for the authenticated endpoints. Core
-	``@rate_limit`` cannot key on ``frappe.session.user`` — it keys on IP and/or a
-	spoofable ``form_dict`` field (``frappe/rate_limiter.py:142``), which 429s a
-	NAT'd campus and is forgeable — so the app owns a cache counter keyed on the
-	session user (one per ``(endpoint, user)``), sharing :func:`bump_counter`'s
-	TTL-at-creation guarantee. The ``limit``-th call in the window passes;
-	the next raises the 429 wire contract. Eviction resets the counter — the
-	throttle fails open, exactly like the password-failure counter."""
+	"""Per-user rate limit for signed-in endpoints: core ``@rate_limit`` keys on the IP
+	or a client-controlled form field, never the session user. The ``limit``-th call in
+	the window passes; the next raises 429. Eviction resets it (fails open)."""
 	user = frappe.session.user or "Guest"
 	if bump_counter(f"{RATE_LIMIT_PREFIX}{name}:{user}", ttl) > limit:
 		raise frappe.TooManyRequestsError(frappe._("You've hit the rate limit. Please try again shortly."))
-
-
-# ---------------------------------------------------------------------------
-# guest browser binder cookie (the login-CSRF defence)
-# ---------------------------------------------------------------------------
 
 
 def read_binder_cookie() -> str | None:
@@ -246,11 +215,6 @@ def binder_matches(stored_hash: str | None) -> bool:
 		return False
 	got = read_binder_cookie()
 	return bool(got) and binder_hash(got) == stored_hash
-
-
-# ---------------------------------------------------------------------------
-# raw idioms (normative)
-# ---------------------------------------------------------------------------
 
 
 def _make_key(name: str) -> bytes:

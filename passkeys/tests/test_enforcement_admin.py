@@ -109,13 +109,6 @@ class EnforcementAdminTest(IntegrationTestCase):
 		view = enforcement_admin.set_user_exemption(user, True)
 
 		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE), "role is created lazily on first exemption")
-		# no obsolete role-wide settings row is created
-		self.assertFalse(
-			frappe.db.exists(
-				"Passkey Enforcement Role",
-				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
-			)
-		)
 		# role assigned to the user, and the scope verdict flips
 		self.assertIn(EXEMPT_ROLE, set(frappe.get_roles(user)))
 		self.assertFalse(self._in_scope(user))
@@ -134,14 +127,8 @@ class EnforcementAdminTest(IntegrationTestCase):
 		self.assertTrue(self._in_scope(user))
 		self.assertFalse(view["exempt"])
 		self.assertTrue(view["in_scope"])
-		# marker role LEFT in place for reuse; no settings row exists
+		# marker role LEFT in place for reuse
 		self.assertTrue(frappe.db.exists("Role", EXEMPT_ROLE))
-		self.assertFalse(
-			frappe.db.exists(
-				"Passkey Enforcement Role",
-				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
-			)
-		)
 
 	def test_exempt_is_idempotent_no_duplicate_rows(self):
 		user = self._user()
@@ -153,12 +140,6 @@ class EnforcementAdminTest(IntegrationTestCase):
 			"Has Role", filters={"parent": user, "role": EXEMPT_ROLE, "parenttype": "User"}
 		)
 		self.assertEqual(len(has_role), 1)
-		self.assertFalse(
-			frappe.db.exists(
-				"Passkey Enforcement Role",
-				{"parent": "Passkey Settings", "parentfield": "passkey_enforce_exempt_roles"},
-			)
-		)
 
 	def test_exempt_accepts_documented_boolean_forms(self):
 		user = self._user()

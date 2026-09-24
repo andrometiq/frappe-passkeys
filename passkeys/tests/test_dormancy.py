@@ -19,7 +19,7 @@ from frappe.utils import cint
 import passkeys.confirm as confirm
 from passkeys import auth_hooks, boot, errors, install, passkey, session, state, well_known
 from passkeys.api import credentials, registration
-from passkeys.passkey import PasskeyServedByCore
+from passkeys.errors import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
@@ -127,19 +127,6 @@ class DormantEndpointsTest(IntegrationTestCase):
 
 	def test_apple_app_site_association_refused(self):
 		self._assert_417(well_known.apple_app_site_association)
-
-	def test_typed_errors_keep_their_passkey_import_path(self):
-		for name in (
-			"CeremonyExpired",
-			"UnknownCredential",
-			"UVSetupRequired",
-			"PasskeyConfirmationRequired",
-			"PasskeyServedByCore",
-			"refuse_if_core_native",
-		):
-			with self.subTest(name=name):
-				self.assertIs(getattr(passkey, name), getattr(errors, name))
-		self.assertIs(session.PasskeyConfirmationRequired, errors.PasskeyConfirmationRequired)
 
 
 # ===========================================================================

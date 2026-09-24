@@ -59,7 +59,6 @@ class RegistrationLockingReadTest(IntegrationTestCase):
 		registration._insert_verified_credential(
 			_credential_doc(user, "lock-order"),
 			frappe._dict(passkey_max_per_user=2),
-			"explicit",
 		)
 
 		locking_reads = [query for query in captured if "for update" in query.lower()]
@@ -123,7 +122,6 @@ class RegistrationCapRaceTest(IntegrationTestCase):
 				registration._insert_verified_credential(
 					doc,
 					frappe._dict(settings),
-					"explicit",
 					authorization,
 				)
 				frappe.db.commit()

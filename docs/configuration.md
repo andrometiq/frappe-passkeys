@@ -178,9 +178,9 @@ Authentication turned on. The app guards this pairing from **both** sides:
   "Passkey as Second Factor" in Passkey Settings first.
 
 A raw `bench console` / `db_set` edit can bypass both validators and leave the
-two desynced (`passkey_as_second_factor=1` while core 2FA is off). The first-leg
-endpoint detects this at runtime and writes a once-daily error-log entry naming
-the fix; see [`operations.md`](operations.md).
+two desynced (`passkey_as_second_factor=1` while core 2FA is off). The final login
+veto still blocks enrolled users, and the security posture panel on the Passkey
+Settings page flags the missing floor.
 
 For a user with an enabled passkey, the second-factor requirement is enforced at the final login
 hook, not only by the app's login-page JavaScript. Password, email-link, social/OAuth, LDAP, and

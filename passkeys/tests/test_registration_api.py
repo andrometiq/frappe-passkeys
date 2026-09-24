@@ -10,8 +10,7 @@ import frappe
 
 from passkeys import state
 from passkeys.api import registration
-from passkeys.errors import CeremonyFailed
-from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
+from passkeys.errors import CeremonyExpired, CeremonyFailed, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache, is_signed_out_by_frappe
 from passkeys.tests.factories import make_credential, make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url

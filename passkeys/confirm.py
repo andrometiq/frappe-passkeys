@@ -1,40 +1,13 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Action-confirmation / "passkey signing" primitive.
+"""Action confirmation — the **public API** other apps use to require a fresh passkey
+before a sensitive whitelisted action (``@passkey_protected``), plus the three method
+paths the client bundle pins: ``begin_confirmation``, ``verify_confirmation`` and
+``reauth_password``. Folds into ``frappe/passkey.py`` on the core merge.
 
-This is the **public API surface** other Frappe apps use to require a fresh
-passkey confirmation before a sensitive whitelisted action — the
-"approve any other action with a passkey" primitive:
-
-    from passkeys.confirm import passkey_protected
-
-    @frappe.whitelist(methods=["POST"])
-    @passkey_protected(action="myapp.release_payment", bind_params=["payment_id"],
-                       allow_password_fallback=True, allow_sudo_window=False)
-    def release_payment(payment_id):
-        ...
-
-The decorator requires a single-use grant bound to *(this action, this session,
-the values of the declared bind_params)* before the wrapped function runs; absent/invalid, it raises
-``PasskeyConfirmationRequired`` (HTTP 401) carrying a server-computed
-``payload_fingerprint`` the client echoes back. The client half
-(``frappe.passkeys.confirm`` / ``frappe.passkeys.call`` + dialog) is the frozen
-JS bundle (``public/js/passkey_confirm.bundle.js``); this module answers the three
-whitelisted method paths that bundle pins:
-
-* ``passkeys.confirm.begin_confirmation`` — mint the assertion options + ceremony.
-* ``passkeys.confirm.verify_confirmation`` — verify the UV assertion, mint the grant.
-* ``passkeys.confirm.reauth_password``    — password fallback: seed the sudo window
-  (no action) OR mint a password-method action grant (``allow_password_fallback``).
-
-``webauthn`` (via ``passkeys.engine``) is imported **lazily inside the ceremony
-bodies** (hook-path import discipline); the decorator + ``session``/``state``
-imports are webauthn-free, so an app can decorate a method at module import time
-without pulling the crypto wheel onto its import path.
-
-Folds into ``frappe/passkey.py`` on the core merge (``frappe.passkey`` server
-namespace, ``frappe.ui.passkey`` JS namespace)."""
+``webauthn`` is imported lazily inside the ceremony bodies, so an app can decorate a
+method at import time without pulling the crypto wheel onto its import path."""
 
 import functools
 import hashlib
@@ -49,13 +22,10 @@ from frappe.utils import cint, now_datetime
 from passkeys import ceremony, policy, session, state
 from passkeys.errors import CeremonyExpired, CeremonyFailed, refuse_if_core_native
 
-# ---------------------------------------------------------------------------
-# Per-action policy registry. A protected call publishes its policy to the
-# site-scoped shared cache before returning the 401 retry contract, so a later
-# begin/reauth request can land on another web worker without changing methods
-# or display metadata. The security boundary remains the consumer, which
-# re-derives the payload hash from real kwargs and enforces method binding.
-# ---------------------------------------------------------------------------
+# Per-action policy registry. A protected call also publishes its policy to the shared
+# cache before the 401, so the begin/reauth round-trip can land on another worker. The
+# security boundary stays the consumer, which re-derives the payload hash from the real
+# call and enforces the method binding.
 
 
 @dataclass(frozen=True)
@@ -150,15 +120,14 @@ def _read_shared_action_policy(action: str) -> ActionPolicy | None:
 		return None
 
 
-# Built-in actions the app's own surfaces confirm. Registered
-# eagerly (this module is import-clean) so the minter serves them with the right
-# `methods` even when the consuming endpoint module hasn't been imported yet.
+# Built-in actions, registered eagerly so the minter serves them before the consuming
+# endpoint module is imported.
 register_action(
 	ActionPolicy(
 		action=session.MANAGE_ACTION,  # "passkeys.manage" — management surface
 		bind_params=(),
 		allow_password_fallback=True,  # first-enrollment / passkey-less users
-		allow_sudo_window=True,  # GitHub-sudo ergonomics for management
+		allow_sudo_window=True,
 		display_label="Manage passkeys",
 	)
 )
@@ -174,11 +143,6 @@ register_action(
 )
 
 
-# ===========================================================================
-# Public API — the @passkey_protected decorator other apps import
-# ===========================================================================
-
-
 def passkey_protected(
 	action: str,
 	*,
@@ -188,49 +152,28 @@ def passkey_protected(
 	display_label: str | None = None,
 	display_params: dict[str, str] | None = None,
 ):
-	"""Require a fresh passkey confirmation (or a password, when the action opts in)
-	before a whitelisted method runs.
-
-	Put this **below** ``@frappe.whitelist`` on any sensitive server method::
+	"""Require a fresh passkey confirmation before a whitelisted method runs. Put it
+	**below** ``@frappe.whitelist``::
 
 	    @frappe.whitelist(methods=["POST"])
 	    @passkey_protected(action="myapp.release_payment", bind_params=["payment_id"])
 	    def release_payment(payment_id): ...
 
-	Parameters
-	----------
-	action:
-	    A stable, globally-unique action id (namespace it with your app, e.g.
-	    ``"myapp.release_payment"``). The grant, the ceremony, and the client
-	    dialog all key on this string.
-	bind_params:
-	    The subset of the method's arguments the confirmation commits to. The
-	    grant is bound to ``sha256(canonical_json(payload))`` of the bound values
-	    (rule: docs/security.md) — a grant minted for ``payment_id="PAY-1"``
-	    cannot authorize ``"PAY-2"``.
-	    Omit for actions with no payload (the empty payload still binds action +
-	    session).
-	allow_password_fallback:
-	    ``False`` (default) — passkey assurance: a password-minted grant is refused
-	    for this action. ``True`` — an explicit opt-in to universal re-auth: a user
-	    with no passkey may satisfy the gate by re-entering their password (the
-	    dialog upsells passkey creation).
-	allow_sudo_window:
-	    ``True`` — a live full-sudo window (a fresh interactive login or a prior
-	    confirmation) satisfies the gate without a new gesture (GitHub-sudo
-	    ergonomics; the app's own ``passkeys.manage`` uses this). Default ``False``
-	    — every call needs its own gesture.
-	display_label / display_params:
-	    Optional, translated dialog metadata. ``display_params`` explicitly selects
-	    safe bound parameters and their human labels; undeclared arguments are never
-	    exposed to the client.
+	* ``action`` — a stable, app-namespaced id; the grant, ceremony and dialog key on it.
+	* ``bind_params`` — the arguments the grant commits to (``sha256`` of their canonical
+	  JSON, docs/security.md): a grant for ``payment_id="PAY-1"`` cannot authorize
+	  ``"PAY-2"``. Omitted, the grant still binds action + session.
+	* ``allow_password_fallback`` — opt in to accepting a password-minted grant, so a
+	  user without a passkey can confirm with their password.
+	* ``allow_sudo_window`` — a live full-sudo window satisfies the gate without a new
+	  gesture.
+	* ``display_label`` / ``display_params`` — translated dialog metadata; only the bound
+	  parameters named in ``display_params`` are ever shown to the client.
 
-	On a missing/invalid grant it raises :class:`PasskeyConfirmationRequired`
-	(HTTP 401) with ``{action, payload_fingerprint, methods}`` on the JSON body;
-	the ``frappe.passkeys.call`` client catches it, runs the confirmation dialog,
-	and retries once with the ``X-Passkey-Grant`` header. The grant is consumed
-	**before** the wrapped function runs — a failed action burns the gesture
-	(one gesture = one action attempt)."""
+	Without a valid grant it raises :class:`PasskeyConfirmationRequired` (401) with
+	``{action, payload_fingerprint, methods}``; ``frappe.passkeys.call`` runs the dialog
+	and retries once with the ``X-Passkey-Grant`` header. The grant is consumed before the
+	wrapped function runs, so a failed action still spends the gesture."""
 	bound_names = tuple(bind_params or ())
 	display_items = tuple((display_params or {}).items())
 	if any(name not in bound_names for name, _label in display_items):
@@ -256,25 +199,20 @@ def passkey_protected(
 		def wrapper(*args, **kwargs):
 			params = _bound_params(fn, args, kwargs, policy_)
 			_publish_action_policy(policy_)
-			_consume_or_raise(policy_, params)
+			user = session.require_authed_user()
+			if not session.consume_action_grant(
+				user,
+				policy_.action,
+				params,
+				allow_password_fallback=policy_.allow_password_fallback,
+				allow_sudo_window=policy_.allow_sudo_window,
+			):
+				_raise_confirmation_required(policy_, params)
 			return fn(*args, **kwargs)
 
 		return wrapper
 
 	return decorator
-
-
-def _consume_or_raise(policy_: ActionPolicy, params: dict) -> None:
-	user = session.require_authed_user()
-	if session.consume_action_grant(
-		user,
-		policy_.action,
-		params,
-		allow_password_fallback=policy_.allow_password_fallback,
-		allow_sudo_window=policy_.allow_sudo_window,
-	):
-		return
-	_raise_confirmation_required(policy_.action, params, policy_)
 
 
 def _bound_params(fn, args, kwargs, policy_: ActionPolicy) -> dict:
@@ -313,28 +251,23 @@ def _bound_params(fn, args, kwargs, policy_: ActionPolicy) -> dict:
 
 
 def _refuse_unbindable_call(action: str) -> None:
-	# No fingerprint and no methods: nothing the client confirms can match a
-	# payload the server cannot derive from the signature.
+	# no fingerprint and no methods: nothing confirmed can match an underivable payload
 	session._raise_confirmation_required(action, methods=[])
 
 
-def _raise_confirmation_required(action: str, params: dict, policy_: ActionPolicy) -> None:
-	"""Emit the 401 retry contract with a SERVER-computed payload fingerprint
-	the client echoes back verbatim on the confirmation round-trip."""
-	fingerprint = session.payload_hash(params)
-	methods = _confirm_methods(frappe.session.user, policy_)
+def _raise_confirmation_required(policy_: ActionPolicy, params: dict) -> None:
+	"""The 401 retry contract with a server-computed fingerprint the client echoes back."""
 	session._raise_confirmation_required(
-		action,
-		methods=methods,
-		payload_fingerprint=fingerprint,
+		policy_.action,
+		methods=_confirm_methods(frappe.session.user, policy_),
+		payload_fingerprint=session.payload_hash(params),
 		action_label=_(policy_.display_label) if policy_.display_label else None,
 		parameter_summary=_parameter_summary(policy_, params),
 	)
 
 
 def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
-	"""Authoritative per-user subset of ``["passkey", "password", "sudo"]`` the
-	dialog may offer for this action (begin-response ``methods``)."""
+	"""The per-user subset of ``passkey`` / ``password`` / ``sudo`` the dialog may offer."""
 	methods = []
 	if ceremony.enabled_credentials(user):
 		methods.append("passkey")
@@ -360,28 +293,21 @@ def _parameter_summary(policy_: ActionPolicy, params: dict) -> list[dict]:
 	return items
 
 
-# ===========================================================================
-# Whitelisted ceremony endpoints (client contract: passkeys.confirm.*)
-# ===========================================================================
-
-
 @frappe.whitelist(methods=["POST"])
 def begin_confirmation(action: str, params: object = None, payload_hash: str | None = None):
-	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``.
-	The client sends EITHER ``params`` (raw bound params — the server
-	computes the payload hash) OR ``payload_hash`` (the verbatim
-	``payload_fingerprint`` echoed from a prior 401); they are mutually exclusive
-	and **no hash is ever computed client-side**.
-
-	Returns ``{state_id, options, payload_fingerprint, methods}`` — ``options``
-	requests ``userVerification: "required"``; ``methods`` is the
-	authoritative per-user subset of ``["passkey","password","sudo"]``. Raises
-	417 ``PasskeyServedByCore`` when core serves passkeys natively."""
+	"""Mint UV-required assertion options + a ``confirm`` ceremony for ``action``. The
+	client sends EITHER raw ``params`` OR the ``payload_hash`` echoed from a prior 401 —
+	a hash is never computed client-side. Returns ``{state_id, options,
+	payload_fingerprint, methods, action_label, parameter_summary}``."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
-	state.rate_limit_user("begin_confirmation", 30, 300)  # 30/5 min/user
+	state.rate_limit_user("begin_confirmation", 30, 300)
 	action = _require_action(action)
-	fingerprint = _resolve_payload_hash(params, payload_hash)
+	if params is not None and payload_hash is not None:
+		frappe.throw(_("Send either params or a payload fingerprint, not both."), frappe.ValidationError)
+	params = _as_dict(params)
+	# A lying echoed hash only mints a grant the consumer's own recomputation rejects.
+	fingerprint = str(payload_hash) if payload_hash is not None else session.payload_hash(params or {})
 
 	from passkeys import engine
 
@@ -395,18 +321,9 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	creds = ceremony.enabled_credentials(user)
 	options, challenge_b64 = engine.build_authentication_options(
 		rp_id=rp_id,
-		allow_credentials=[
-			{"id": row.credential_id, "transports": _transports(row.transports)} for row in creds
-		],
-		user_verification=policy.UV_WIRE["confirmation"],  # "required"
-		# Pin the browser wire timeout to THIS ceremony's server-side TTL
-		# (state.CONFIRM_CEREMONY_TTL = 180 s), not the engine's 300 s default. The
-		# login/registration ceremonies inherit the 300 s default because their
-		# store_ceremony TTL is the matching 300 s CEREMONY_TTL; the confirm ceremony's
-		# TTL is shorter, so a defaulted 300 s wire timeout would let a slow hybrid
-		# cross-device confirmation (3-5 min) clear the browser gesture only to fail
-		# server-side on the already-expired ceremony. Derive it from the TTL constant
-		# so the two can never drift apart.
+		allow_credentials=ceremony.credential_descriptors(creds),
+		user_verification=policy.UV_WIRE["confirmation"],
+		# the browser gesture must not outlive this ceremony's shorter server-side TTL
 		timeout_ms=state.CONFIRM_CEREMONY_TTL * 1000,
 	)
 	state_id = state.store_ceremony(
@@ -432,26 +349,18 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 		"payload_fingerprint": fingerprint,
 		"methods": _confirm_methods(user, action_policy),
 		"action_label": _(action_policy.display_label) if action_policy.display_label else None,
-		"parameter_summary": _parameter_summary(action_policy, _as_dict(params) or {})
-		if params is not None
-		else [],
+		"parameter_summary": _parameter_summary(action_policy, params) if params is not None else [],
 	}
 
 
 @frappe.whitelist(methods=["POST"])
 def verify_confirmation(state_id: str, credential: object):
-	"""Verify the confirmation assertion and mint a single-use grant.
-
-	Ladder + sid binding + **UV bit must be 1** (a UV-less completion is a
-	server-side dead end — confirmation always requires verification) + the
-	``uv_initialized`` gate (flip iff a password-seeded sudo window accompanies
-	this session; otherwise route to the password tab). On success returns
-	``{grant: "<token>"}`` — the single-use, 180 s, user+sid+action+payload
-	bound, ``passkey``-method grant. Any failure raises the uniform typed error;
-	the client never re-POSTs an assertion."""
+	"""Verify the confirmation assertion (the UV bit must be 1) and return ``{grant}`` —
+	a single-use, 180 s, ``passkey``-method grant bound to user + sid + action +
+	payload. Any failure raises the uniform typed error."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
-	state.rate_limit_user("verify_confirmation", 30, 300)  # 30/5 min/user
+	state.rate_limit_user("verify_confirmation", 30, 300)
 
 	from passkeys import engine
 
@@ -462,37 +371,20 @@ def verify_confirmation(state_id: str, credential: object):
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
 		raise CeremonyExpired(_("That took too long — please try again."))
-	# sid + user binding: a ceremony minted for another session/user is unusable.
 	if record.get("user") != user or record.get("sid") != frappe.session.sid:
 		raise CeremonyFailed(_("Passkey could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	ceremony.enforce_request_host(record.get("origins") or [], error=CeremonyFailed)
 
-	# resolve the asserted credential: must belong to the user AND be a member of
-	# THIS ceremony's allow-list (the StrongKey credential-substitution defence).
-	cred = _resolve_ceremony_credential(record, credential, user)
-
-	result = engine.verify_authentication(
-		credential=credential,
-		expected_challenge=record["challenge_b64"],
-		expected_rp_id=record["rp_id"],
-		expected_origin=record["origins"],
-		credential_public_key=cred.public_key,
-		stored_sign_count=cint(cred.sign_count),
-		stored_backup_eligible=bool(cint(cred.backup_eligible)),
-		require_user_verification=False,  # UV enforced app-side below
-		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
-	)
-	# UV bit MUST be 1 for a confirmation — a wire-`preferred` downgrade or
-	# a non-UV authenticator cannot mint an action grant.
+	cred = ceremony.lock_allowed_credential(record, credential, user, error=CeremonyFailed)
+	hard_fail = bool(cint(settings.passkey_sign_count_hard_fail))
+	result = engine.verify_stored_assertion(credential, record, cred, sign_count_hard_fail=hard_fail)
 	if not result.user_verified:
 		raise CeremonyFailed(_("Please verify it's you to confirm this action."))
-	# uvInitialized gate (L3 §4): while `uv_initialized` is false the UV bit
-	# MUST NOT be relied upon as a verification factor. The false→true flip is
-	# allowed iff a password accompanied this session (a password/reauth-seeded
-	# sudo window); otherwise this consumed ceremony ends terminally — possession
-	# alone never mints a confirmation grant.
+	# L3 §4: while uv_initialized is false the UV bit is not a factor. The flip needs a
+	# password in this session (a password/reauth-seeded window); possession alone never
+	# mints a grant.
 	uv_flip_pending = not cint(cred.uv_initialized)
 	if uv_flip_pending:
 		window = session.get_window(user)
@@ -501,26 +393,17 @@ def verify_confirmation(state_id: str, credential: object):
 				_("Passkey confirmation could not be completed. Re-authenticate and begin again.")
 			)
 
-	# sign-count policy applies (upward-only store + flag/hard-fail).
 	ceremony.advance_credential(
 		cred.name,
 		result,
-		sign_count_hard_fail=bool(cint(settings.passkey_sign_count_hard_fail)),
+		sign_count_hard_fail=hard_fail,
+		values={"uv_initialized": 1} if uv_flip_pending else None,
 		error=CeremonyFailed,
 	)
-	if uv_flip_pending:
-		# the standard password-accompanied uv_initialized flip (the same
-		# idiom as the verified second-factor leg in passkey.py).
-		frappe.db.set_value("WebAuthn Credential", cred.name, "uv_initialized", 1, update_modified=False)
 
 	token = session.mint_action_grant(user, record["action"], record["payload_hash"], method="passkey")
-	# A completed passkey confirmation for the built-in ``passkeys.manage``
-	# action ALSO seeds the full-sudo window — the sudo-gated management endpoints
-	# (``delete_credential`` / explicit ``begin_registration``) check that window,
-	# not the grant, so without this the client's confirm→retry dance re-fails the
-	# window check. Scoped strictly to
-	# ``passkeys.manage``: a third-party action confirmation never mints a
-	# management sudo window (that would be a privilege leak).
+	# The sudo-gated management endpoints check the window, not the grant. Only the
+	# built-in action seeds it: a third-party confirmation never grants management sudo.
 	if record.get("action") == session.MANAGE_ACTION:
 		session.set_window(user, "passkey")
 	return {"grant": token}
@@ -528,27 +411,16 @@ def verify_confirmation(state_id: str, credential: object):
 
 @frappe.whitelist(methods=["POST"])
 def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: str | None = None):
-	"""Password fallback. Two modes on one endpoint:
-
-	* **No ``action``** — seed the full-sudo window for the app's own management
-	  surface, so passkey-less users and first-enrollment stay usable.
-	* **With ``action`` (+ ``payload_fingerprint``)** — mint a ``password``-method
-	  action grant bound to ``(user, sid, action, payload_hash)``, **but only when
-	  that action declared ``allow_password_fallback=True``**. An action that
-	  requires passkey-grade assurance (set_passkey_only_login) refuses here,
-	  and even if it did not, its consumer rejects any non-passkey method.
-
-	``check_password`` + a per-user failure tracker + the app throttle guard the
-	password oracle. Raises 417 when core is native."""
+	"""Password fallback. Without ``action`` it seeds the management sudo window (so
+	passkey-less users can enroll); with ``action`` + ``payload_fingerprint`` it mints a
+	``password``-method grant, only for an action that declared
+	``allow_password_fallback=True``."""
 	from frappe.utils.password import check_password
 
 	refuse_if_core_native()
 	user = session.require_authed_user()
-	state.rate_limit_user("reauth_password", 5, 300)  # 5/5 min/user
-
-	# Under site `disable_user_pass_login`, a password can no
-	# longer re-auth for management once the user holds ≥1 passkey — only the
-	# passkey grant counts. Refuse before touching the password oracle at all.
+	state.rate_limit_user("reauth_password", 5, 300)
+	# refuse before touching the password oracle
 	if not _password_reauth_allowed(user):
 		raise CeremonyFailed(
 			_("Use your passkey to confirm — password re-authentication is disabled for this account.")
@@ -568,77 +440,24 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 		action = _require_action(action)
 		policy_ = get_action_policy(action)
 		if not policy_.allow_password_fallback:
-			# passkey-only assurance action — no password grant is ever minted.
 			raise CeremonyFailed(_("This action requires a passkey — a password can't confirm it."))
 		if not payload_fingerprint:
 			frappe.throw(_("Missing confirmation payload."), frappe.ValidationError)
 		token = session.mint_action_grant(user, action, str(payload_fingerprint), method="password")
-		# The password door for ``passkeys.manage`` seeds the full-sudo window
-		# too (same as the passkey door in ``verify_confirmation``), so the sudo-gated
-		# management endpoints pass on retry. Reachable only when this user may still
-		# password-re-auth for management — the refusal above already
-		# blocks a passkey holder under ``disable_user_pass_login``.
 		if action == session.MANAGE_ACTION:
 			session.set_window(user, "reauth")
 		return {"grant": token}
 
-	# bare sudo seed: a full-sudo window seeded by a fresh password re-auth.
 	session.set_window(user, "reauth")
 	return {"seeded": True}
 
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
-def _resolve_payload_hash(params, payload_hash) -> str:
-	"""Server authority over the payload hash. ``params`` ⇒ compute the hash
-	with the pinned Python canonicalization; ``payload_hash`` ⇒ the verbatim echoed
-	fingerprint (a client lying here only mints a grant the consumer's own
-	recomputation rejects — a correctness contract, not a security one). Mutually
-	exclusive: a client supplying both is rejected outright."""
-	if params is not None and payload_hash is not None:
-		frappe.throw(_("Send either params or a payload fingerprint, not both."), frappe.ValidationError)
-	if payload_hash is not None:
-		return str(payload_hash)
-	return session.payload_hash(_as_dict(params) or {})
-
-
-def _resolve_ceremony_credential(record, credential, user):
-	cred_id = credential.get("id") or credential.get("rawId")
-	if not cred_id:
-		raise CeremonyFailed(_("Passkey could not be verified."))
-	sha = hashlib.sha256(ceremony.b64url_decode(cred_id, error=CeremonyFailed)).hexdigest()
-	if sha not in set(record.get("allow_sha256") or []):
-		raise CeremonyFailed(_("Passkey could not be verified."))
-	if not ceremony.lock_enabled_user(user):
-		raise CeremonyFailed(_("Passkey could not be verified."))
-	cred = frappe.db.get_value(
-		"WebAuthn Credential",
-		{"credential_id_sha256": sha},
-		["name", "user", "enabled", "public_key", "sign_count", "backup_eligible", "uv_initialized"],
-		as_dict=True,
-		for_update=True,
-	)
-	if (
-		not cred
-		or cred.user != user
-		or not cint(cred.enabled)
-		or not ceremony.has_matching_user_handle(credential, user)
-	):
-		raise CeremonyFailed(_("Passkey could not be verified."))
-	return cred
-
-
-def _has_enabled_passkey(user: str) -> bool:
-	"""True iff the user holds ≥1 enabled credential."""
-	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
-
-
 def _password_reauth_allowed(user: str) -> bool:
-	"""Whether :func:`reauth_password` accepts password re-auth for ``user``."""
-	return not (cint(frappe.get_system_settings("disable_user_pass_login")) and _has_enabled_passkey(user))
+	"""Under ``disable_user_pass_login`` a passkey holder can only confirm with a passkey."""
+	return not (
+		cint(frappe.get_system_settings("disable_user_pass_login"))
+		and frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1})
+	)
 
 
 def _require_action(action) -> str:
@@ -646,13 +465,6 @@ def _require_action(action) -> str:
 	if not action or not isinstance(action, str):
 		frappe.throw(_("A confirmation action is required."), frappe.ValidationError)
 	return action
-
-
-def _transports(raw) -> list:
-	try:
-		return json.loads(raw or "[]")
-	except (TypeError, ValueError):
-		return []
 
 
 def _as_dict(value):

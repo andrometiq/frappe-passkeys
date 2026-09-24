@@ -61,11 +61,10 @@ break-glass path only while site-wide password login remains enabled and Adminis
 enrolled passkey-second-factor user; rehearse console recovery before the cutover.
 
 - **Real domain migration** (the site's public host changes): update `host_name`
-  in site config and review Passkey RP ID / Passkey Origins. The RP ID does not imply
-  `https://<rp_id>`; ensure the compatible `host_name` plus explicit origins resolve to the exact,
-  non-empty set you will serve. Move
-  new host, accept that all existing passkeys are now invalid, and have users
-  re-enroll. The Passkey Settings change dialog restates the consequence.
+  in site config (and Passkey RP ID / Passkey Origins if set explicitly) to the new host, and
+  check that the resolved origins are exactly the non-empty set you will serve. Accept that all
+  existing passkeys are now invalid, and have users re-enroll. The Passkey Settings change dialog
+  restates the consequence.
 
 - **Staging clone / restore to a different host:** Passkey Settings travel with
   the database, so on the clone every login ceremony correctly **fails closed**
@@ -139,11 +138,6 @@ Structured error/log entries worth alerting on:
 - `passkeys: request host … not in configured origins` — a request reached the
   site on a host outside the configured origins (proxy misconfig, domain move,
   or a clone). Diagnose with the host-change playbook above.
-- `passkeys: 2FA floor desync` — logged once per day when
-  `passkey_as_second_factor` is on but core Two Factor Authentication has been
-  turned off out-of-band. The final login veto still blocks enrolled users, but
-  the required defence-in-depth backstop is gone; re-enable Two Factor
-  Authentication or turn off "Passkey as Second Factor".
 - Grant issued / consumed lines (logger `passkeys`) — the audit trail for the
   action-confirmation primitive.
 

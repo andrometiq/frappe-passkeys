@@ -30,9 +30,7 @@ class TestFingerprintNormalization(IntegrationTestCase):
 		self.assertEqual(well_known._fingerprints(FINGERPRINT.lower()), [FINGERPRINT])
 
 	def test_space_separated_hex_is_normalized(self):
-		# A fingerprint saved with spaces/tabs between byte pairs (the pre-1.0 parser
-		# stripped all non-hex) must still parse — not be silently dropped, which
-		# would 404 /.well-known/assetlinks.json after an upgrade.
+		# spaces/tabs between byte pairs must parse, not silently drop to a 404
 		self.assertEqual(well_known._fingerprints(FINGERPRINT.replace(":", " ")), [FINGERPRINT])
 
 	def test_keytool_sha256_label_is_stripped(self):

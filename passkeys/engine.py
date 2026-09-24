@@ -2,16 +2,11 @@
 # License: MIT. See LICENSE
 
 """WebAuthn engine — py_webauthn options/verify wrappers + app-side policy
-(folds into ``frappe/passkey.py``).
+(folds into ``frappe/passkey.py``). The only top-level ``import webauthn``: serving
+workers import this lazily inside ceremony endpoint bodies, so a broken crypto wheel
+never reaches a hook chain.
 
-This is the crypto core. In serving workers it is imported **lazily inside
-ceremony endpoint bodies only** (hook-path import discipline): a broken ``webauthn`` /
-``cryptography`` wheel must never take down the ``on_login`` / boot chains, so
-the top-level ``import webauthn`` lives here and nowhere a hook can reach.
-Mode-enable validation probes this module in an isolated child process.
-
-Normative py_webauthn (>=2.8,<3) behaviors honored here (proven, not
-re-derived — see the golden-vector pack in ``passkeys/tests/vectors/``):
+py_webauthn (>=2.8,<3) behaviors honored here (pinned by ``passkeys/tests/vectors/``):
 
 * ``verify_authentication_response`` hard-rejects sign-count regressions
   *internally*; we pass ``credential_current_sign_count=0`` to disable that and
@@ -33,6 +28,7 @@ import cbor2
 import frappe
 import webauthn
 from frappe import _
+from frappe.utils import cint
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url, options_to_json
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
 from webauthn.helpers.exceptions import (
@@ -60,26 +56,16 @@ SUPPORTED_ALGS = (
 )
 SUPPORTED_ALG_IDS = frozenset(int(a) for a in SUPPORTED_ALGS)
 
-# L3 §15.1 default; py_webauthn's own 60 s default is explicitly overridden
-# (phone-fetching hybrid users exceed short timeouts).
+# L3 §15.1 default; py_webauthn's 60 s is too short for hybrid (phone) users.
 DEFAULT_TIMEOUT_MS = 300000
 
 # WebAuthn spec cap on credential id length.
 MAX_CREDENTIAL_ID_BYTES = 1023
 
 
-# ---------------------------------------------------------------------------
-# Engine exception taxonomy. Every verification failure is a
-# ``frappe.AuthenticationError`` subclass ⇒ uniform 401 at the wire; the
-# distinct classes let the test battery assert *which* security reason fired.
-# The endpoint layer maps all of these to the uniform, non-enumerating 401
-# (only the three guest-surface types in ``passkeys.passkey`` — CeremonyExpired
-# / UnknownCredential / UVSetupRequired — carry a typed wire label).
-# ---------------------------------------------------------------------------
-
-
 class PasskeyVerificationError(frappe.AuthenticationError):
-	"""Base for every engine-side ceremony rejection."""
+	"""Base for every engine rejection (a 401). The subclasses let tests assert which check
+	fired; the login endpoints collapse them to one uniform wire type."""
 
 
 class InvalidClientData(PasskeyVerificationError):
@@ -115,11 +101,6 @@ class CredentialTooLong(PasskeyVerificationError):
 	"""Credential id exceeds the WebAuthn 1023-byte cap."""
 
 
-# ---------------------------------------------------------------------------
-# Verified-result value objects (what the endpoints persist / act on)
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class RegistrationResult:
 	credential_id: str  # base64url
@@ -153,11 +134,6 @@ class AuthenticationResult:
 	user_handle: str | None  # base64url, from the raw response.userHandle
 
 
-# ---------------------------------------------------------------------------
-# App-side clientDataJSON check
-# ---------------------------------------------------------------------------
-
-
 def _reject_cross_origin(credential: dict) -> None:
 	"""Reject ``crossOrigin: true`` or any ``topOrigin`` member, parsed from the
 	raw clientDataJSON. py_webauthn 2.8 copies crossOrigin but never reads it,
@@ -176,19 +152,10 @@ def _reject_cross_origin(credential: dict) -> None:
 		raise InvalidClientData(_("Cross-origin passkey ceremonies are not allowed."))
 
 
-def _as_challenge_bytes(challenge) -> bytes:
-	return challenge if isinstance(challenge, bytes) else base64url_to_bytes(challenge)
-
-
 def _cose_alg(public_key_bytes: bytes) -> int:
 	"""Authoritative COSE algorithm (label 3) from the credential public key —
 	never the client-reported ``publicKeyAlgorithm`` (a hostile client can lie)."""
 	return int(cbor2.loads(public_key_bytes)[3])
-
-
-# ---------------------------------------------------------------------------
-# Verification — registration
-# ---------------------------------------------------------------------------
 
 
 def verify_registration(
@@ -209,7 +176,7 @@ def verify_registration(
 	try:
 		verified = webauthn.verify_registration_response(
 			credential=json.dumps(credential),
-			expected_challenge=_as_challenge_bytes(expected_challenge),
+			expected_challenge=base64url_to_bytes(expected_challenge),
 			expected_rp_id=expected_rp_id,
 			expected_origin=expected_origin,
 			require_user_presence=require_user_presence,
@@ -254,12 +221,6 @@ def verify_registration(
 	)
 
 
-# ---------------------------------------------------------------------------
-# Verification — authentication. Shared by first-factor login,
-# second factor, and action confirmation.
-# ---------------------------------------------------------------------------
-
-
 def verify_authentication(
 	*,
 	credential: dict,
@@ -284,7 +245,7 @@ def verify_authentication(
 	try:
 		verified = webauthn.verify_authentication_response(
 			credential=json.dumps(credential),
-			expected_challenge=_as_challenge_bytes(expected_challenge),
+			expected_challenge=base64url_to_bytes(expected_challenge),
 			expected_rp_id=expected_rp_id,
 			expected_origin=expected_origin,
 			credential_public_key=base64url_to_bytes(credential_public_key),
@@ -327,10 +288,22 @@ def verify_authentication(
 	)
 
 
-# ---------------------------------------------------------------------------
-# Options construction. ``options_to_json`` emits no ``extensions``
-# member on 2.8, so the client injects ``{credProps:true}`` after parsing.
-# ---------------------------------------------------------------------------
+def verify_stored_assertion(credential: dict, record: dict, stored, *, sign_count_hard_fail: bool):
+	"""Verify an assertion against a ceremony ``record`` and a locked credential row. UV
+	is never required here; each ceremony layers its own UV policy on the result."""
+	return verify_authentication(
+		credential=credential,
+		expected_challenge=record["challenge_b64"],
+		expected_rp_id=record["rp_id"],
+		expected_origin=record["origins"],
+		credential_public_key=stored.public_key,
+		stored_sign_count=cint(stored.sign_count),
+		stored_backup_eligible=bool(cint(stored.backup_eligible)),
+		sign_count_hard_fail=sign_count_hard_fail,
+	)
+
+
+# ``options_to_json`` emits no ``extensions`` on 2.8; the client adds ``credProps``.
 
 
 def build_registration_options(
@@ -340,9 +313,8 @@ def build_registration_options(
 	user_id: bytes,
 	user_name: str,
 	user_display_name: str,
-	exclude_credentials: list | None = None,
-	resident_key: str = "required",
-	timeout_ms: int = DEFAULT_TIMEOUT_MS,
+	exclude_credentials: list,
+	resident_key: str,
 ) -> tuple[dict, str]:
 	"""Returns ``(options_json_dict, challenge_b64)``. ``authenticatorAttachment``
 	is never set (hybrid stays alive)."""
@@ -352,13 +324,13 @@ def build_registration_options(
 		user_id=user_id,
 		user_name=user_name,
 		user_display_name=user_display_name,
-		timeout=timeout_ms,
+		timeout=DEFAULT_TIMEOUT_MS,
 		attestation=AttestationConveyancePreference.NONE,
 		authenticator_selection=AuthenticatorSelectionCriteria(
 			resident_key=ResidentKeyRequirement(resident_key),
 			user_verification=UserVerificationRequirement.PREFERRED,
 		),
-		exclude_credentials=_descriptors(exclude_credentials or []),
+		exclude_credentials=_descriptors(exclude_credentials),
 		supported_pub_key_algs=list(SUPPORTED_ALGS),
 	)
 	return json.loads(options_to_json(options)), bytes_to_base64url(options.challenge)
@@ -382,27 +354,17 @@ def build_authentication_options(
 	return json.loads(options_to_json(options)), bytes_to_base64url(options.challenge)
 
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-
 def _descriptors(entries: list) -> list:
-	"""Build ``PublicKeyCredentialDescriptor`` list. Unknown transport strings
-	(e.g. a future value) are dropped from the descriptor — they are hints only
-	and are still stored verbatim on the credential row."""
-	descriptors = []
-	for entry in entries:
-		descriptors.append(
-			PublicKeyCredentialDescriptor(
-				id=base64url_to_bytes(entry["id"]),
-				transports=_known_transports(entry.get("transports")),
-			)
+	return [
+		PublicKeyCredentialDescriptor(
+			id=base64url_to_bytes(entry["id"]), transports=_known_transports(entry.get("transports"))
 		)
-	return descriptors
+		for entry in entries
+	]
 
 
 def _known_transports(transports) -> list | None:
+	"""Transport hints the library knows; unknown values stay on the row, not the wire."""
 	if not transports:
 		return None
 	known = []
@@ -410,15 +372,13 @@ def _known_transports(transports) -> list | None:
 		try:
 			known.append(AuthenticatorTransport(value))
 		except ValueError:
-			continue  # unknown hint — dropped from the descriptor, kept on the row
+			continue
 	return known or None
 
 
 def _credprops_rk(credential: dict) -> bool | None:
-	"""Read ``credProps.rk`` from the RAW credential JSON — py_webauthn drops
-	``clientExtensionResults`` at parse, so this is the only source. An
-	explicit ``credProps: null`` (or a non-object at either level) is treated as
-	unknown, never a 500, so each level is checked with ``isinstance(..., dict)``."""
+	"""``credProps.rk`` from the raw credential JSON (py_webauthn drops
+	``clientExtensionResults``); any non-object level reads as unknown."""
 	exts = credential.get("clientExtensionResults")
 	props = exts.get("credProps") if isinstance(exts, dict) else None
 	rk = props.get("rk") if isinstance(props, dict) else None

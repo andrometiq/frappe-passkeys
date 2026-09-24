@@ -1,13 +1,9 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sanctioned-hook enforcement seams (folds into ``frappe``'s
-own auth surface on the core merge).
-
-**Hook-path import discipline:** ``guard_system_settings`` rides
-``doc_events`` on System Settings ``validate`` — a hook that fires on every
-System Settings save — so this module MUST NOT import ``webauthn`` (directly or
-transitively). It imports only ``frappe``."""
+"""Sanctioned-hook enforcement seams (fold into core's own auth surface on the merge):
+the final login veto and the System Settings guard. On the every-login and every
+System Settings save paths, so this module must not import ``webauthn``."""
 
 import frappe
 from frappe import _
@@ -18,57 +14,20 @@ from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import 
 
 
 def on_login_veto(login_manager=None, **kwargs):
-	"""``on_login`` veto for ``passkey_only_login`` users.
+	"""``on_login`` veto, fired before ``make_session`` on every stock login path (v15 has
+	no ``before_login``): enrolled second-factor users must finish the passkey (or the
+	app-issued OTP fallback) leg, and ``passkey_only_login`` users need a passkey. The
+	app's own passkey legs set ``flags.passkey_login`` and pass.
 
-	Blocks password, email-link (``login_via_key``) and social (OAuth) FIRST-FACTOR
-	login for a user who opted into passkey-only sign-in. Enforced on the
-	``on_login`` hook, which ``post_login`` fires **before** ``make_session`` on all
-	three branches (develop ``auth.py:172-177``; a raising hook aborts the login
-	before any session exists) — v15 has no ``before_login``, so this seam, not
-	that one, is load-bearing.
-
-	Passwordless / step-up passkey logins are exempt: the app's own passkey paths
-	set ``frappe.local.flags.passkey_login`` before ``login_as`` (first-factor
-	``verify_login``, the ``verify_second_factor`` password→passkey step-up, and the
-	``complete_uv_setup`` repair), so a flagged user still gets in via a
-	passkey.
-
-	**Impersonation exemption** — by dispatch identity, not a marker: core's
-	``impersonate()`` calls ``login_as`` and only *afterwards* ``set_impersonated``,
-	so no impersonation marker exists at ``on_login`` time and ``LoginManager``
-	carries none of the impersonation args. A non-Guest ``frappe.session.user`` is
-	NOT by itself proof of impersonation, though: every login path other than
-	``/api/method/login`` runs on a RESUMED session (``LoginManager.__init__`` →
-	``make_session(resume=True)``, develop ``auth.py:135-138``), so at hook time
-	``frappe.session.user`` is the COOKIE HOLDER — on ``login_via_key``/OAuth that
-	may be an attacker's own throwaway session while ``login_manager.user`` is the
-	victim, and a bare non-Guest exemption would hand over any ``passkey_only``
-	account for the price of one email login key. Exempt only what is genuinely
-	distinguishable: same-user re-auth (target == session user), or a request that
-	DISPATCHED to core's exact ``impersonate`` method (RPC path plus client
-	``cmd`` consistency) after its own Administrator gate has passed. Every other
-	cross-user, non-flagged login is policed.
-
-	**No lockout** — two layers. (1) The Passkey Settings disable-guard
-	refuses any settings save that would leave no passkey-capable login mode while
-	any user is flagged, so an admin can't strand the whole cohort. (2) A flagged
-	user who loses every passkey (the per-user strand this veto blocks email-link
-	included) recovers out-of-band: a System Manager clears ``passkey_only_login``
-	on the ``WebAuthn User Handle`` row (subject to the credential-count
-	interlock), or the self-hoster clears that row / disables the app. Administrator
-	is not exempt after explicitly enrolling a passkey for second-factor use; console
-	recovery remains the break-glass path. Exception-hardened only around the
-	session-state read — a genuine veto MUST propagate to abort the
-	login."""
+	Impersonation is recognised by dispatch identity, not by a non-Guest session: on the
+	resumed-session paths (email link, OAuth) ``frappe.session.user`` is the cookie
+	holder, possibly an attacker, while ``login_manager.user`` is the victim. Only
+	same-user re-auth and a request dispatched to core's ``impersonate`` (which has its
+	own Administrator gate) are exempt. Recovery for a stranded user: docs/recovery.md."""
 	if install.dormant():
-		return  # dormant-shell: core owns the veto — silent no-op, never a throw
+		return
 	target = getattr(login_manager, "user", None) if login_manager is not None else None
 
-	# Impersonation / already-authenticated re-login: a non-Guest session at hook
-	# time is exempt ONLY for same-user re-auth or a request DISPATCHED to core's
-	# exact impersonation method (RPC path plus client cmd consistency).
-	# Resume-based paths reach here with frappe.session.user = the cookie holder
-	# (docstring above), so a bare non-Guest exemption would bypass the veto.
 	try:
 		current = frappe.session.user
 	except Exception:
@@ -114,8 +73,7 @@ def on_login_veto(login_manager=None, **kwargs):
 
 
 def _is_passkey_only(user: str) -> bool:
-	"""Read the per-user flag off the ``WebAuthn User Handle`` row. A plain
-	DB read — no ``webauthn`` import (this module rides the every-login hook path)."""
+	"""The per-user flag on the ``WebAuthn User Handle`` row."""
 	return bool(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
 
 
@@ -160,32 +118,17 @@ def _consume_allowed_otp_fallback(user: str) -> bool:
 
 
 def _is_password_reset_completion() -> bool:
-	"""Allow core's reset-key flow to finish for second-factor users only when
-	the request DISPATCHED to (not merely path-shaped like) ``update_password``.
-
-	``update_password`` verifies the reset key, rotates the password, then calls
-	``login_as``. The caller downgrades that login to Guest: recovery finishes but
-	the reset key never mints an authenticated session. Passkey-only users still
-	reach the later veto and are not exempted.
-	"""
-	# Reaching login_as after dispatch to update_password proves it already validated
-	# its key: invalid/expired keys return before the login call. Do not trust a
-	# merely matching path or a client-controlled `cmd`/`key` on another dispatch.
+	"""The request dispatched to core's ``update_password``, which validates the reset
+	key before its ``login_as``. The caller downgrades that login to Guest, so a reset key
+	never mints a session; passkey-only users still reach the later veto."""
 	return _request_is_core_method("frappe.core.doctype.user.user.update_password")
 
 
 def _request_is_core_method(method_dotted_path: str) -> bool:
-	"""True only when this request actually DISPATCHED to core's
-	``method_dotted_path`` — the path matches a core RPC route AND no client
-	``cmd`` diverted the dispatcher elsewhere. Frappe runs a truthy
-	``form_dict.cmd`` (``frappe/app.py``) BEFORE any ``/api`` route, so
-	``request.path`` alone is spoofable. ``not cmd or cmd == method`` is exactly
-	the dispatcher's own branch condition read back here: a ``cmd`` that satisfies
-	this guard is the same string ``execute_cmd`` dispatches on, so it provably ran
-	that method (and, for impersonate, its ``only_for('Administrator')`` gate).
-	Exact string compare, no normalization — fail-closed and dispatch-exact.
-	(A site that remaps this dotted path via ``override_whitelisted_methods`` is a
-	pre-existing server-config trust, out of scope; it applies to the reset path too.)"""
+	"""This request actually dispatched to core's ``method_dotted_path``. Frappe runs a
+	truthy ``form_dict.cmd`` before any ``/api`` route, so the path alone is spoofable;
+	``not cmd or cmd == method`` is the dispatcher's own branch condition, compared
+	exactly."""
 	request = getattr(frappe.local, "request", None)
 	path = getattr(request, "path", None) if request is not None else None
 	if not isinstance(path, str):
@@ -202,26 +145,13 @@ def _request_is_core_method(method_dotted_path: str) -> bool:
 
 
 def guard_system_settings(doc, method=None):
-	"""System Settings ``validate``: the reverse halves of the Passkey Settings floors.
-	Refuses flipping ``enable_two_factor_auth`` **1 → 0** while
-	``passkey_as_second_factor`` is on (it would evaporate the required
-	defence-in-depth backstop), and flipping ``disable_user_pass_login`` **0 → 1**
-	while Passkey as Second Factor is the only passkey mode (enrolled users would
-	have no login path left — ``PasskeySettings._validate_second_factor_floor`` is the
-	forward half).
-
-	Only the genuine transitions are blocked: a value staying put cannot make a
-	floor weaker, and blocking every save on an already-desynced site (a raw
-	``db_set``/console edit — console-bypass posture) would deadlock System
-	Settings entirely. The runtime 2FA desync that a console edit can still create
-	is surfaced by the leg-1 daily observation log (``passkeys.passkey``).
-
-	Every compared value is read with a locking read. Frappe has already locked
-	System Settings before ``validate``, so a concurrent Passkey Settings save
-	serializes or deadlocks (one aborts) instead of approving stale state
-	(docs/security.md)."""
+	"""System Settings ``validate``, the reverse half of the Passkey Settings floors:
+	refuse turning core 2FA off while Passkey as Second Factor is on, and refuse
+	disabling password login while that is the only passkey mode. Only a real 1→0 / 0→1
+	flip is refused, so a console-created desync never deadlocks System Settings (the
+	posture panel flags it). Values are read under row locks (docs/security.md)."""
 	if install.dormant():
-		return  # dormant-shell: core owns the floors — silent no-op
+		return
 	if not cint(doc.disable_user_pass_login) and cint(doc.enable_two_factor_auth):
 		return  # neither floor can weaken
 	modes = lock_passkey_modes()

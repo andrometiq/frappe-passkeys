@@ -1,21 +1,13 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Desk ``extend_bootinfo`` + per-user enrollment-nudge state.
-Folds into ``frappe/passkey.py`` on the core merge.
+"""Desk ``extend_bootinfo`` plus per-user nudge and enforcement state. Folds into
+``frappe/passkey.py`` on the core merge. ``extend_bootinfo`` fires on every Desk boot,
+so this module must not import ``webauthn``, directly or transitively.
 
-**Hook-path import discipline:** ``extend_bootinfo`` fires on **every**
-Desk boot, so this module MUST NOT import ``webauthn`` (directly or
-transitively). It imports only ``frappe`` plus the lightweight
-:mod:`passkeys.install`, :mod:`passkeys.notifications` and :mod:`passkeys.policy`
-modules, all webauthn-free.
-
-Per-user state is stored the twofactor way: site-wide ``DefaultValue`` rows with
-a user-prefixed key (``{user}_passkey_nudge``) under the dedicated ``__passkeys``
-parent — never user-parented ``frappe.defaults`` rows and never on the
-lazily-created handle row (a decline must be recordable before any credential
-exists). Rows are read by exact key (:func:`get_default_value`). Uninstall deletes
-every ``parent="__passkeys"`` row (``install.before_uninstall``)."""
+Per-user state is stored the twofactor way: site-wide ``DefaultValue`` rows keyed
+``{user}_passkey_nudge`` / ``{user}_passkey_enforce`` under the ``__passkeys`` parent,
+so a decline is recordable before any credential exists."""
 
 import json
 
@@ -25,14 +17,11 @@ from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 from passkeys import notifications, policy, session
 from passkeys.install import DEFAULTS_PARENT, dormant
 
-# record_nudge event vocabulary.
 NUDGE_EVENTS = ("shown", "declined", "opt_out")
 
 _EMPTY_NUDGE = {"declines": 0, "last_shown": None, "opt_out": 0}
 
-# record_enforcement event vocabulary. ``defer`` spends one grace login ("Remind me
-# later"); ``incapable`` is telemetry only (the user's device cannot create a passkey)
-# and folds no counter — the endpoint routes it to the admin advisory.
+# ``defer`` spends one grace login; ``incapable`` folds no counter (admin advisory only).
 ENFORCE_EVENTS = ("defer", "incapable")
 
 _EMPTY_ENFORCE = {"grace_used": 0}
@@ -56,71 +45,54 @@ def _nudge_key(user: str) -> str:
 	return f"{user}_passkey_nudge"
 
 
+def _load_state(key: str, empty: dict, *, for_update: bool = False) -> dict:
+	raw = get_default_value(key, for_update=for_update)
+	data = json.loads(raw) if raw else None
+	return {**empty, **data} if isinstance(data, dict) else dict(empty)
+
+
+def _lock_state(user: str, key: str, empty: dict) -> dict:
+	"""Read a state row for a read-modify-write: the User lock serializes writers and the
+	locking read bypasses a stale transaction snapshot."""
+	frappe.db.get_value("User", user, "name", for_update=True)
+	return _load_state(key, empty, for_update=True)
+
+
 def get_nudge_state(user: str) -> dict:
-	"""The user's ``{declines, last_shown, opt_out}`` nudge blob. Absent or
-	malformed ⇒ a fresh zero-state (never raises — a bad row must not brick boot)."""
-	return _parse_nudge_state(get_default_value(_nudge_key(user)))
-
-
-def _parse_nudge_state(raw) -> dict:
-	if not raw:
-		return dict(_EMPTY_NUDGE)
-	try:
-		data = json.loads(raw)
-	except (TypeError, ValueError):
-		return dict(_EMPTY_NUDGE)
-	if not isinstance(data, dict):
-		return dict(_EMPTY_NUDGE)
-	return {
-		"declines": cint(data.get("declines")),
-		"last_shown": data.get("last_shown"),
-		"opt_out": cint(data.get("opt_out")),
-	}
-
-
-def _save_nudge_state(user: str, state: dict) -> None:
-	frappe.db.set_default(_nudge_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
+	"""The user's ``{declines, last_shown, opt_out}`` nudge state."""
+	return _load_state(_nudge_key(user), _EMPTY_NUDGE)
 
 
 def record_nudge_event(user: str, event: str) -> dict:
-	"""Fold a ``record_nudge`` event into the user's state. ``shown`` is the
-	cadence counter event (a network-retried ``shown`` double-increments —
-	accepted bounded drift, never gains a prompt); ``declined`` ("Not now") only
-	refreshes the cooldown anchor (the preceding ``shown`` already counted);
-	``opt_out`` ("Don't ask again") is terminal. Returns the new state."""
+	"""Fold a nudge event into the user's state and return it. ``shown`` counts a prompt
+	(a network-retried ``shown`` may double-count — never gains a prompt); ``declined``
+	("Not now") only refreshes the cooldown anchor; ``opt_out`` is terminal."""
 	if event not in NUDGE_EVENTS:
 		frappe.throw(frappe._("Unknown nudge event."), frappe.ValidationError)
-	frappe.db.get_value("User", user, "name", for_update=True)
-	state = _parse_nudge_state(get_default_value(_nudge_key(user), for_update=True))
+	state = _lock_state(user, _nudge_key(user), _EMPTY_NUDGE)
 	if event == "shown":
-		state["declines"] = cint(state.get("declines")) + 1
+		state["declines"] = cint(state["declines"]) + 1
+	if event in ("shown", "declined"):
 		state["last_shown"] = now_datetime().isoformat()
-	elif event == "declined":
-		state["last_shown"] = now_datetime().isoformat()
-	elif event == "opt_out":
+	if event == "opt_out":
 		state["opt_out"] = 1
-	_save_nudge_state(user, state)
+	frappe.db.set_default(_nudge_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
 	return state
 
 
 def policy_effective(settings) -> str:
-	"""Resolve the ``passkey_enrollment_policy`` Select to an effective rung —
-	``off`` | ``nudge`` | ``enforce`` — evaluating ``Enforce After Date`` against the
-	server clock on every call (an at/past date ⇒ ``enforce``, before ⇒ ``nudge``; a
-	missing date fails safe to ``nudge``, never ``enforce``). A blank/unknown value ⇒
-	``nudge`` (behaviour-preserving for a settings row that predates the field, e.g.
-	before the migration patch has run)."""
-	policy = settings.passkey_enrollment_policy or "Nudge"
+	"""The effective enrollment rung — ``off`` | ``nudge`` | ``enforce``. ``Enforce After
+	Date`` is evaluated against the server clock on every call; a missing date stays
+	``nudge``, never ``enforce``."""
+	policy = settings.passkey_enrollment_policy
 	if policy == "Off":
 		return "off"
 	if policy == "Enforce":
 		return "enforce"
 	if policy == "Enforce After Date":
 		after = settings.passkey_enforce_after
-		if after and getdate(after) <= getdate(nowdate()):
-			return "enforce"
-		return "nudge"
-	return "nudge"  # "Nudge" and any unrecognised value
+		return "enforce" if after and getdate(after) <= getdate(nowdate()) else "nudge"
+	return "nudge"
 
 
 def _enforce_key(user: str) -> str:
@@ -128,44 +100,22 @@ def _enforce_key(user: str) -> str:
 
 
 def get_enforcement_state(user: str) -> dict:
-	"""The user's ``{grace_used}`` enforcement blob — how many enrollment prompts they
-	have deferred since coming in scope. Stored the twofactor way (site-wide
-	``DefaultValue`` under ``__passkeys``), exactly like the nudge state, so a decline
-	is recordable before any credential exists. Absent/malformed ⇒ a fresh zero-state."""
-	return _parse_enforcement_state(get_default_value(_enforce_key(user)))
-
-
-def _parse_enforcement_state(raw) -> dict:
-	if not raw:
-		return dict(_EMPTY_ENFORCE)
-	try:
-		data = json.loads(raw)
-	except (TypeError, ValueError):
-		return dict(_EMPTY_ENFORCE)
-	if not isinstance(data, dict):
-		return dict(_EMPTY_ENFORCE)
-	return {"grace_used": cint(data.get("grace_used"))}
-
-
-def _save_enforcement_state(user: str, state: dict) -> None:
-	frappe.db.set_default(_enforce_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
+	"""The user's ``{grace_used}`` state: prompts deferred since coming in scope."""
+	return _load_state(_enforce_key(user), _EMPTY_ENFORCE)
 
 
 def record_enforcement_defer(user: str) -> dict:
-	"""Spend one grace login ("Remind me later"). The endpoint claims a per-session
-	idempotency key first; the User lock serializes writers and the locking
-	DefaultValue read bypasses stale transaction snapshots. Returns the new state."""
-	frappe.db.get_value("User", user, "name", for_update=True)
-	state = _parse_enforcement_state(get_default_value(_enforce_key(user), for_update=True))
-	state["grace_used"] += 1
-	_save_enforcement_state(user, state)
+	"""Spend one grace login ("Remind me later"); the endpoint first claims a per-session
+	idempotency key. Returns the new state."""
+	state = _lock_state(user, _enforce_key(user), _EMPTY_ENFORCE)
+	state["grace_used"] = cint(state["grace_used"]) + 1
+	frappe.db.set_default(_enforce_key(user), json.dumps(state), parent=DEFAULTS_PARENT)
 	return state
 
 
 def clear_enforcement_state(user: str) -> None:
-	"""Drop the user's ``{user}_passkey_enforce`` grace blob so their budget is full
-	again (absent ≡ zero-state). The incapable-advisory dedup marker is not a grace
-	counter and is left untouched. The admin grace-reset endpoint is the only caller."""
+	"""Refill the user's grace budget (the admin grace reset). The incapable-advisory dedup
+	marker is not a grace counter and stays."""
 	frappe.defaults.clear_default(_enforce_key(user), parent=DEFAULTS_PARENT)
 
 
@@ -193,14 +143,9 @@ def rename_user_state(old: str, new: str, merge: bool) -> None:
 
 
 def _cadence_ok(settings, state: dict) -> bool:
-	"""Shared nudge/upsell cadence. Requires a login mode; the ordinary cadence
-	only runs while the effective policy is ``nudge`` (``Off`` ⇒ silent; ``Enforce`` /
-	post-date ⇒ the enforcement interstitial owns the surface, not the nudge). The
-	remaining thresholds come from Passkey Settings knobs (``passkey_nudge_max_prompts``
-	/ ``passkey_nudge_cooldown_days`` — never hardcoded): not opted out ∧ declines < cap
-	∧ cooldown elapsed. The **credential-count** gate is applied by the caller — the
-	enrollment nudge requires 0 credentials, the post-hybrid upsell does not (the user
-	just signed in, so they hold ≥1)."""
+	"""Shared nudge/upsell cadence: a login mode is on, the effective rung is ``nudge``
+	(under ``enforce`` the interstitial owns the surface), and the thresholds hold. The
+	caller applies any credential-count gate."""
 	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
 		return False
 	if policy_effective(settings) != "nudge":
@@ -210,26 +155,16 @@ def _cadence_ok(settings, state: dict) -> bool:
 
 def _nudge_thresholds_ok(settings, state: dict) -> bool:
 	"""Opt-out, prompt cap and cooldown shared by ordinary and degraded nudges."""
-	if cint(state.get("opt_out")):
+	if cint(state["opt_out"]) or cint(state["declines"]) >= cint(settings.passkey_nudge_max_prompts):
 		return False
-	if cint(state.get("declines")) >= cint(settings.passkey_nudge_max_prompts):
-		return False
-	last_shown = state.get("last_shown")
-	if last_shown:
-		cooldown_days = cint(settings.passkey_nudge_cooldown_days)
-		try:
-			elapsed = now_datetime() - get_datetime(last_shown)
-		except (TypeError, ValueError):
-			return True  # unparseable anchor ⇒ treat as no cooldown in force
-		if elapsed.total_seconds() < cooldown_days * 86400:
-			return False
-	return True
+	last_shown = state["last_shown"]
+	cooldown_seconds = cint(settings.passkey_nudge_cooldown_days) * 86400
+	return not last_shown or (now_datetime() - get_datetime(last_shown)).total_seconds() >= cooldown_seconds
 
 
 def nudge_eligible(user: str, settings, credential_count: int, state: dict | None = None) -> bool:
-	"""Server-side enrollment-nudge cadence gate: the shared cadence AND
-	``credential_count == 0``. The client ANDs this with its own layered capability
-	detection; the server never trusts a client capability claim for cadence."""
+	"""Enrollment-nudge cadence for a user with no passkey. The client ANDs its own
+	capability detection; cadence is never a client claim."""
 	if cint(credential_count) > 0:
 		return False
 	state = state if state is not None else get_nudge_state(user)
@@ -237,20 +172,15 @@ def nudge_eligible(user: str, settings, credential_count: int, state: dict | Non
 
 
 def upsell_eligible(user: str, settings, state: dict | None = None) -> bool:
-	"""Post-hybrid upsell cadence: the shared nudge cadence WITHOUT the
-	0-credential gate — the user just completed a hybrid (QR) assertion, so they
-	already hold ≥1 credential and ``nudge_state.eligible`` (which requires 0) is the
-	wrong signal."""
+	"""Post-hybrid (QR) upsell cadence: the nudge cadence without the zero-credential
+	gate, since the user just signed in with a passkey."""
 	state = state if state is not None else get_nudge_state(user)
 	return _cadence_ok(settings, state)
 
 
 def _user_in_enforce_scope(user: str, settings) -> bool:
-	"""Whether ``user`` falls within the enforcement scope.
-
-	The per-user marker role wins first. Otherwise privileged roles stay in scope when
-	that safeguard is enabled, before Selected Roles is evaluated. All Users is the
-	remaining fallback."""
+	"""The exemption marker role wins; then privileged roles when that safeguard is on;
+	then Selected Roles; otherwise All Users."""
 	roles = set(frappe.get_roles(user))
 	if EXEMPT_ROLE in roles:
 		return False
@@ -263,31 +193,11 @@ def _user_in_enforce_scope(user: str, settings) -> bool:
 
 
 def build_enforcement(user: str, settings, credential_count: int, nudge_state: dict | None = None) -> dict:
-	"""The server-owned enrollment-enforcement verdict — same trust model as
-	``nudge_state`` (scope, date and grace counters live server-side; the client only
-	ANDs its device-capability probe). Shape::
-
-	  {
-	      policy,
-	      effective,
-	      in_scope,
-	      blocking,
-	      grace_remaining,
-	      grace_total,
-	      allow_hybrid,
-	      incapable_policy,
-	      degrade_nudge_eligible,
-	      reason,
-	  }
-
-	``effective`` is the resolved rung (``off``/``nudge``/``enforce``); ``in_scope`` is
-	True only when the rung is ``enforce`` AND a passkey login mode is on AND the user
-	matches scope and is not exempt; ``blocking`` bites only an in-scope user who still
-	has zero passkeys and has exhausted their grace logins. ``incapable_policy``
-	(``degrade``/``block_notify``) + ``allow_hybrid`` are the §capability hinge the
-	client honors on a device that genuinely cannot create a passkey.
-	``degrade_nudge_eligible`` applies ordinary nudge thresholds to an in-scope,
-	zero-credential user under Degrade."""
+	"""The server-owned enforcement verdict; the client only ANDs its device-capability
+	probe. ``in_scope`` needs the ``enforce`` rung, a login mode and a scope match;
+	``blocking`` bites an in-scope user with no passkey and no grace left.
+	``incapable_policy`` + ``allow_hybrid`` govern a device that cannot create a passkey;
+	``degrade_nudge_eligible`` applies the nudge thresholds to such a user under Degrade."""
 	effective = policy_effective(settings)
 	mode_on = bool(cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
 	incapable_policy = (
@@ -297,7 +207,7 @@ def build_enforcement(user: str, settings, credential_count: int, nudge_state: d
 	grace_total = cint(settings.passkey_enforce_grace_logins)
 
 	in_scope = effective == "enforce" and mode_on and _user_in_enforce_scope(user, settings)
-	# Read the grace counter only for in-scope users (Off/Nudge sites pay nothing).
+	# only in-scope users pay the grace read
 	grace_used = cint(get_enforcement_state(user)["grace_used"]) if in_scope else 0
 	grace_remaining = max(0, grace_total - grace_used) if in_scope else grace_total
 	blocking = in_scope and credential_count == 0 and grace_remaining == 0
@@ -333,36 +243,11 @@ def build_enforcement(user: str, settings, credential_count: int, nudge_state: d
 
 
 def build_passkeys_boot(user: str, *, include_settings_context: bool = False) -> dict:
-	"""The desk/portal boot payload the management + nudge + settings surfaces read.
-	Server state only — no client-supplied value is echoed. This is the single
-	contract both the Desk boot flag and the portal ``/passkeys`` controller expose:
-
-	  * ``enabled``            — ANY mode on; the desk navbar + User-form section gate
-	    on it (both modes off / dormant ⇒ the management UI removes itself).
-	  * ``modes``              — ``{first_factor, second_factor}``.
-	  * ``credential_count``   — the user's ENABLED credentials.
-	  * ``passkey_only_login`` — the caller's per-user password-login-disable flag
-	    (0 when no handle row yet); the management toggle reflects it.
-	  * ``nudge_state``        — ``{declines, last_shown, opt_out, eligible}``;
-	    ``eligible`` is the SERVER cadence verdict ("never client-side-only caps").
-	  * ``post_login_method``  — the sudo window's seeding class this session
-	    (``password``/``passkey``/``weak``/``reauth``/``None``); drives the
-	    conditional-create (password only) and the fresh-login nudge window.
-	  * ``conditional_create`` — the ``passkey_conditional_create`` knob (silent
-	    upgrade); the client fails safe OFF when absent.
-	  * ``upsell_eligible``    — post-hybrid upsell cadence WITHOUT the 0-credential gate.
-	  * ``enforcement``        — the server-owned enforcement verdict
-	    ``{policy, effective, in_scope, blocking, grace_remaining, grace_total,
-	    allow_hybrid, incapable_policy, degrade_nudge_eligible, reason}``
-	    (see :func:`build_enforcement`); the post-login interstitial reads ``blocking`` the way the banner reads
-	    ``nudge_state.eligible``.
-	  * ``settings_context``   — ``{core_two_factor_auth, disable_user_pass_login,
-	    passkey_only_user_count, would_be_blocked_count}`` for the Passkey Settings form.
-	    Only the Desk boot asks for it (``include_settings_context``), and only a System
-	    Manager gets it; portal renders and everyone else get ``{}``, because the preview
-	    count evaluates every enabled user's roles.
-	  * ``rp_id``              — the resolved RP ID for ``signalAllAcceptedCredentials``.
-	"""
+	"""The ``frappe.boot.passkeys`` contract shared by the Desk boot and the portal
+	``/passkeys`` page: server state only, never an echoed client value. ``enabled`` (any
+	mode on) gates the management UI; ``post_login_method`` is this session's sudo-window
+	class; ``settings_context`` is filled only for a System Manager's Desk boot, because
+	its preview count evaluates every enabled user's roles."""
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first = bool(cint(settings.login_with_passkey))
 	second = bool(cint(settings.passkey_as_second_factor))
@@ -372,9 +257,6 @@ def build_passkeys_boot(user: str, *, include_settings_context: bool = False) ->
 		"enabled": first or second,
 		"modes": {"first_factor": first, "second_factor": second},
 		"credential_count": credential_count,
-		# The caller's own passkey_only_login flag (0 when no handle row) —
-		# the desk/portal management toggle reflects it on boot (client parity with
-		# list_credentials' payload).
 		"passkey_only_login": cint(
 			frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")
 		),
@@ -392,12 +274,8 @@ def build_passkeys_boot(user: str, *, include_settings_context: bool = False) ->
 
 
 def _settings_context(user: str, settings) -> dict:
-	"""Cross-flag banner context (``core_two_factor_auth`` /
-	``disable_user_pass_login`` / ``passkey_only_user_count``) plus the report-only
-	enforcement preview (``would_be_blocked_count``). Only the Passkey Settings form
-	reads it, and that form is System-Manager-only — so this ships an empty dict for
-	everyone else (avoids the per-boot count queries + does not expose these counts on
-	every Desk load). ``settings.js`` falls back gracefully when the fields are absent."""
+	"""Banner context and the enforcement preview for the System-Manager-only Passkey
+	Settings form; empty for everyone else."""
 	if "System Manager" not in frappe.get_roles(user):
 		return {}
 	return {
@@ -410,25 +288,15 @@ def _settings_context(user: str, settings) -> dict:
 
 
 def _would_be_blocked_count(settings) -> int:
-	"""Report-only preview (System-Manager surface only): how many in-scope users have
-	no enabled passkey yet — the blast radius of flipping to ``Enforce``. Uses the
-	same role/scope evaluator as runtime enforcement, including automatic roles and
-	Administrator. Best-effort — any error ⇒ 0 so the preview can never break the
-	settings form or a boot."""
-	try:
-		enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
-		count = 0
-		for u in frappe.get_all("User", filters={"enabled": 1}, pluck="name"):
-			if u == "Guest":
-				continue
-			if not _user_in_enforce_scope(u, settings):
-				continue
-			if u in enrolled:
-				continue
-			count += 1
-		return count
-	except Exception:
-		return 0
+	"""How many in-scope enabled users have no enabled passkey — the blast radius of
+	switching to ``Enforce``, by the same scope evaluator as runtime enforcement."""
+	enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
+	users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+	return sum(
+		1
+		for user in users
+		if user != "Guest" and user not in enrolled and _user_in_enforce_scope(user, settings)
+	)
 
 
 def _post_login_method(user: str) -> str | None:
@@ -436,19 +304,12 @@ def _post_login_method(user: str) -> str | None:
 	return window.get("seeded_by") if window else None
 
 
-def extend_bootinfo(bootinfo=None):
-	"""``extend_bootinfo`` hook: publish ``bootinfo.passkeys``. Called by
-	``frappe/sessions.py`` as ``extend_bootinfo(bootinfo=bootinfo)``.
-
-	Exception-hardened + ``CORE_NATIVE`` no-op + Guest no-op: this fires on every
-	Desk boot, so it must never raise, never import ``webauthn``, and never
-	render when core serves passkeys natively (dormant shell)."""
+def extend_bootinfo(bootinfo):
+	"""``extend_bootinfo`` hook: publish ``bootinfo.passkeys``. Never raises. A dormant
+	shell publishes nothing, so the client bundles remove themselves."""
 	try:
-		if bootinfo is None:
-			bootinfo = frappe.local.boot
 		if dormant():
-			return  # dormant-shell: publish no bootinfo.passkeys, so the desk +
-			# portal bundles self-remove on the absent `frappe.boot.passkeys` flag
+			return
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return

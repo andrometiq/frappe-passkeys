@@ -26,13 +26,8 @@ def webauthn_available() -> bool:
 
 
 def validate_webauthn_importable() -> None:
-	"""Refuse enablement unless the full ceremony engine imports in a child."""
-	if not sys.executable:
-		frappe.throw(
-			_(
-				"Cannot enable passkeys: the current Python executable is unavailable for the dependency check."
-			)
-		)
+	"""Refuse enablement unless the full ceremony engine imports, in a child process so
+	crypto never loads into the serving worker."""
 	try:
 		result = subprocess.run(
 			[sys.executable, "-c", "import passkeys.engine"],
@@ -65,18 +60,13 @@ def _raise_webauthn_import_error(reason: str, stderr=None) -> None:
 	frappe.throw(message)
 
 
-def _stderr_tail(stderr) -> str:
-	if not stderr:
-		return ""
-	if isinstance(stderr, bytes):
-		return stderr[-WEBAUTHN_IMPORT_STDERR_LIMIT:].decode("utf-8", errors="replace").strip()
-	return str(stderr)[-WEBAUTHN_IMPORT_STDERR_LIMIT:].strip()
+def _stderr_tail(stderr: bytes | None) -> str:
+	return (stderr or b"")[-WEBAUTHN_IMPORT_STDERR_LIMIT:].decode("utf-8", errors="replace").strip()
 
 
 def resolve_rp_id(settings) -> str | None:
-	"""Explicit `passkey_rp_id`, else the EXACT host of the site's configured
-	``host_name`` — never a derived registrable/parent domain;
-	widening is an explicit admin action via the knob."""
+	"""Explicit ``passkey_rp_id``, else the exact host of the site's ``host_name`` —
+	never a derived parent domain; widening is an explicit admin setting."""
 	explicit = (settings.get("passkey_rp_id") or "").strip().lower()
 	if explicit:
 		validate_rp_id_shape(explicit)
@@ -98,19 +88,15 @@ def validate_rp_id_shape(rp_id: str) -> None:
 		)
 
 
-def resolve_origins(settings, rp_id: str) -> list[str]:
-	"""Resolve exact trusted web origins without widening from the RP ID.
+def is_in_rp_scope(host: str, rp_id: str) -> bool:
+	return host == rp_id or host.endswith("." + rp_id)
 
-	The configured site origin is included when its host is inside ``rp_id``;
-	additional origins must be listed explicitly. An RP ID is a credential scope,
-	not evidence that its apex is an application origin.
-	"""
-	origins = []
+
+def resolve_origins(settings, rp_id: str) -> list[str]:
+	"""The exact trusted web origins: ``host_name``'s origin when it is inside ``rp_id``,
+	plus the explicitly listed ones. An RP ID is a credential scope, never an origin."""
 	configured = resolve_site_origin(rp_id)
-	if configured:
-		host = (urlsplit(configured).hostname or "").lower()
-		if host == rp_id or host.endswith("." + rp_id):
-			origins.append(configured)
+	origins = [configured] if configured else []
 	for line in (settings.get("passkey_origins") or "").splitlines():
 		line = line.strip()
 		canonical = canonical_web_origin(line) if line else None
@@ -121,12 +107,8 @@ def resolve_origins(settings, rp_id: str) -> list[str]:
 
 
 def canonical_web_origin(raw: str) -> str | None:
-	"""Return the browser-canonical ``scheme://host[:port]`` form, or ``None``.
-
-	Host and scheme are case-insensitive; browsers omit default ports in
-	``clientDataJSON.origin``. Canonicalizing configuration prevents a valid
-	``https://host:443`` entry from becoming an impossible exact match.
-	"""
+	"""The browser-canonical ``scheme://host[:port]`` form (lower case, default port
+	dropped, as in ``clientDataJSON.origin``), or ``None``."""
 	raw = (raw or "").strip()
 	if not raw:
 		return None
@@ -154,7 +136,7 @@ def canonical_web_origin(raw: str) -> str | None:
 
 
 def configured_site_origin() -> str | None:
-	"""Return the exact origin portion of the trusted ``host_name`` setting."""
+	"""The origin of the trusted ``host_name`` setting."""
 	raw = (frappe.conf.get("host_name") or "").strip()
 	if not raw:
 		return None
@@ -164,12 +146,11 @@ def configured_site_origin() -> str | None:
 
 
 def resolve_site_origin(rp_id: str) -> str | None:
-	"""Return ``host_name``'s origin only when it falls within the RP scope."""
+	"""``host_name``'s origin, only when it falls within the RP scope."""
 	configured = configured_site_origin()
 	if not configured:
 		return None
-	host = (urlsplit(configured).hostname or "").lower()
-	return configured if host == rp_id or host.endswith("." + rp_id) else None
+	return configured if is_in_rp_scope(urlsplit(configured).hostname or "", rp_id) else None
 
 
 def validate_origins(settings, rp_id: str | None) -> None:
@@ -197,7 +178,7 @@ def validate_origins(settings, rp_id: str | None) -> None:
 						"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
 					).format(origin)
 				)
-		if rp_id and host != rp_id and not host.endswith("." + rp_id):
+		if rp_id and not is_in_rp_scope(host, rp_id):
 			frappe.throw(
 				_(
 					"Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
@@ -210,12 +191,9 @@ def _is_dev_localhost(host: str) -> bool:
 
 
 def lock_system_setting(fieldname: str) -> int:
-	"""Lock one System Settings Single row and return its current integer value.
-
-	A plain read inside REPEATABLE READ can return the transaction's stale
-	snapshot; this locking read sees the latest commit. The floor validators take
-	the Passkey Settings lock (``lock_passkey_modes``) first, then these rows.
-	"""
+	"""Lock one System Settings field and return its latest committed integer value (a
+	plain read can return the transaction's stale snapshot). The floor validators take the
+	Passkey Settings lock first, then these rows."""
 	rows = frappe.db.sql(
 		"""select `value` from `tabSingles`
 		where `doctype` = %s and `field` = %s
@@ -225,27 +203,16 @@ def lock_system_setting(fieldname: str) -> int:
 	return cint(rows[0][0] if rows else 0)
 
 
-# ---------------------------------------------------------------------------
-# Trusted app origins (native mobile)
-# ---------------------------------------------------------------------------
-# A native Android app presents its WebAuthn origin as
-# ``android:apk-key-hash:<base64url-SHA256-of-the-signing-cert>`` — NOT
-# ``https://<rp_id>``. These lines are appended to the ``expected_origin`` list the
-# ceremony engine matches ``clientDataJSON.origin`` against, but they are EXEMPT from
-# the web-origin validator (:func:`validate_origins`): they are not URLs, and web
-# origin validation must never weaken. iOS needs no Trusted App Origin entry; it
-# presents ``https://<rp_id>``, which must itself be present in the exact web-origin
-# allowlist when that is the native app's asserted origin.
-
+# A native Android app asserts ``android:apk-key-hash:<base64url SHA-256 of the signing
+# cert>``. These Trusted App Origins join the engine's ``expected_origin`` list but never
+# the web-origin checks. iOS asserts ``https://<rp_id>``, a web origin.
 _APK_KEY_HASH_PREFIX = "android:apk-key-hash:"
 # SHA-256 is 32 bytes → 43 unpadded base64url characters.
 _APK_KEY_HASH_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
 def app_origins(settings) -> list[str]:
-	"""The configured Trusted App Origins (``passkey_app_origins``), one per line,
-	trimmed and de-duplicated. Pure read — settings-save-time shape validation is
-	owned by :func:`validate_app_origins`, never this path."""
+	"""The configured Trusted App Origins, trimmed and de-duplicated."""
 	origins: list[str] = []
 	for line in (settings.get("passkey_app_origins") or "").splitlines():
 		line = line.strip()
@@ -255,11 +222,8 @@ def app_origins(settings) -> list[str]:
 
 
 def resolve_expected_origins(settings, rp_id: str) -> list[str]:
-	"""The full ``expected_origin`` allowlist fed to the ceremony engine: the web
-	origins (:func:`resolve_origins`) plus the Trusted App Origins
-	(:func:`app_origins`). ``resolve_origins`` stays web-only, so the settings-save-time
-	web-origin validator, the request-host pre-check and the settings display mirror
-	never see an app origin — the native carve-out is strictly additive."""
+	"""The engine's ``expected_origin`` allowlist: the web origins plus the Trusted App
+	Origins."""
 	origins = resolve_origins(settings, rp_id)
 	for origin in app_origins(settings):
 		if origin not in origins:
@@ -268,15 +232,8 @@ def resolve_expected_origins(settings, rp_id: str) -> list[str]:
 
 
 def validate_app_origins(settings) -> None:
-	"""Save-time, fail-closed shape check for the Trusted App Origins. Each line
-	must be ``android:apk-key-hash:<hash>`` where ``<hash>`` is the unpadded
-	base64url SHA-256 (43 chars) of the app's signing certificate. iOS needs no
-	Trusted App Origin entry, but its asserted ``https://<rp_id>`` must be configured
-	as a web origin.
-
-	Play App Signing note: the hash MUST come from Google's app-signing certificate
-	(Play Console → App integrity → App signing), NOT the local upload key — the single
-	most common native-passkey misconfiguration."""
+	"""Save-time shape check: each line is ``android:apk-key-hash:<hash>``, the unpadded
+	base64url SHA-256 of Google's Play app-signing certificate (not the upload key)."""
 	for line in (settings.get("passkey_app_origins") or "").splitlines():
 		origin = line.strip()
 		if not origin:
@@ -296,17 +253,11 @@ def validate_app_origins(settings) -> None:
 			)
 
 
-# ---------------------------------------------------------------------------
-# UV policy (per-ceremony matrix; wire vs enforcement)
-# ---------------------------------------------------------------------------
-
-# Wire `userVerification` requested per ceremony. The wire value is
-# advisory; server enforcement is the functions below, never the wire string.
+# Wire ``userVerification`` per assertion ceremony. Advisory only: each ceremony enforces
+# UV on the verified result, never on the wire string.
 UV_WIRE = {
 	"first_factor": "preferred",
 	"second_factor": "discouraged",
-	"registration_explicit": "preferred",
-	"registration_conditional_create": "preferred",
 	"confirmation": "required",
 }
 
@@ -317,26 +268,20 @@ UV_REJECT = "reject"  # UV=0 → a UV-less assertion never yields a passwordless
 
 
 def passwordless_uv_outcome(uv_bit: bool, uv_initialized: bool) -> str:
-	"""First-factor gate. Passwordless requires **UV=1 AND uv_initialized**
-	(the L3 §4 ``uvInitialized`` MUST-NOT: a false→true flip needs a second
-	factor, so a bare UV=1 assertion never completes passwordless login by
-	itself). Returns :data:`UV_SESSION` / :data:`UV_SETUP` / :data:`UV_REJECT`."""
+	"""First-factor gate: passwordless needs UV=1 AND ``uv_initialized`` (L3 §4 — the
+	false→true flip needs a second factor)."""
 	if not uv_bit:
 		return UV_REJECT
 	return UV_SESSION if uv_initialized else UV_SETUP
 
 
 def resident_key_for_flow(flow: str) -> str:
-	"""Fixed policy: ``required`` for an explicit add (discoverable
-	first-factor credential), ``preferred`` for a conditional-create upgrade."""
+	"""``required`` for an explicit add (a discoverable first factor), ``preferred`` for
+	conditional create."""
 	return "required" if flow == "explicit" else "preferred"
 
 
-# ---------------------------------------------------------------------------
-# Sign-count policy (app-side — the library check is disabled by passing
-# credential_current_sign_count=0, else its internal hard-reject would silently
-# turn the log+flag default into permanent hard-fail).
-# ---------------------------------------------------------------------------
+# Sign-count policy, app-side (the library's own hard-reject is disabled).
 
 SIGN_COUNT_UNCHANGED = "unchanged"  # 0→0 (counter-less / synced authenticator) — pass, store 0
 SIGN_COUNT_INCREMENT = "increment"  # new > stored — pass, store new
@@ -345,8 +290,7 @@ SIGN_COUNT_REGRESSION = "regression"  # new < stored — log+flag; reject iff ha
 
 
 def classify_sign_count(stored: int, asserted: int) -> str:
-	"""Matrix. Never writes the stored counter downward (the caller stores
-	:func:`sign_count_to_store`)."""
+	"""Classify an asserted counter against the stored one."""
 	stored, asserted = int(stored), int(asserted)
 	if asserted == 0 and stored == 0:
 		return SIGN_COUNT_UNCHANGED
@@ -358,20 +302,11 @@ def classify_sign_count(stored: int, asserted: int) -> str:
 
 
 def sign_count_to_store(stored: int, asserted: int) -> int:
-	"""Upward-only: the increment case stores the new value; every other case
-	keeps the stored value (never regress the counter)."""
+	"""Upward-only: never write the stored counter downward."""
 	return int(asserted) if classify_sign_count(stored, asserted) == SIGN_COUNT_INCREMENT else int(stored)
 
 
-# ---------------------------------------------------------------------------
-# Backup eligibility / state
-# ---------------------------------------------------------------------------
-
-
 def backup_eligibility_mutated(stored_be: bool, asserted_be: bool) -> bool:
-	"""BE is write-once at registration. An assertion whose BE flag
-	differs from the stored value is a clone/forgery signal and fails the
-	ceremony (stricter-than-spec). BS-without-BE illegality is
-	caught inside py_webauthn (``InvalidBackupFlags``); this is the app-side
-	mutation check the library does not perform."""
+	"""BE is write-once at registration; a changed BE is a clone/forgery signal
+	(stricter than spec; the library checks only BS-without-BE)."""
 	return bool(stored_be) != bool(asserted_be)

@@ -321,8 +321,7 @@ real sign-in gets a random session id.
 - **Cross-origin / multi-domain serving** (Related Origin Requests) and
   identifier-first login are not implemented in this version.
 - **A console-created settings desync** (e.g. passkey 2FA on while core 2FA off)
-  is outside what validators can catch; the app surfaces it with a once-daily log
-  line rather than silently.
+  is outside what validators can catch; the security posture panel flags it.
 - **Enrollment "Enforce" is a post-login interstitial, not an authentication
   block.** The session already exists before the enforce gate runs — it raises
   friction toward enrolling a passkey (and, once grace is spent, becomes a

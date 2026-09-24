@@ -342,19 +342,12 @@ def clear_sudo_window() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def configure_nudge(
-	enrollment_nudge: int = 1,
-	max_prompts: int = 3,
-	cooldown_days: int = 30,
-	conditional_create: int = 0,
-) -> dict:
-	"""Set the enrollment-nudge knobs for ``nudge_cadence.cy.js`` (written
-	directly — the same bench rationale as :func:`configure_login`). The legacy
-	``enrollment_nudge`` flag maps onto the ``passkey_enrollment_policy`` ladder
-	(1 ⇒ ``Nudge``, 0 ⇒ ``Off``)."""
+def configure_nudge(max_prompts: int = 3, cooldown_days: int = 30, conditional_create: int = 0) -> dict:
+	"""Put the site on the ``Nudge`` policy with these knobs for the nudge specs (written
+	directly — the same bench rationale as :func:`configure_login`)."""
 	_guard()
 	values = {
-		"passkey_enrollment_policy": "Nudge" if cint(enrollment_nudge) else "Off",
+		"passkey_enrollment_policy": "Nudge",
 		"passkey_nudge_max_prompts": cint(max_prompts),
 		"passkey_nudge_cooldown_days": cint(cooldown_days),
 		"passkey_conditional_create": cint(conditional_create),
