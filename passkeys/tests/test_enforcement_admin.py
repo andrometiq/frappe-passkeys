@@ -131,8 +131,12 @@ class EnforcementAdminTest(IntegrationTestCase):
 	def test_exemption_survives_a_role_profile_sync(self):
 		# Frappe rebuilds a profile-managed user's roles on every save; a role-based
 		# marker would be dropped here.
+		role = "Passkeys Test Profile Role"
+		if not frappe.db.exists("Role", role):
+			frappe.get_doc({"doctype": "Role", "role_name": role}).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Role", role, force=1, ignore_permissions=True)
 		profile = frappe.get_doc({"doctype": "Role Profile", "role_profile": "Passkeys Test Profile"})
-		profile.append("roles", {"role": "Blogger"})
+		profile.append("roles", {"role": role})
 		profile.insert(ignore_permissions=True, ignore_if_duplicate=True)
 		self.addCleanup(frappe.delete_doc, "Role Profile", profile.name, force=1, ignore_permissions=True)
 		user = self._user()

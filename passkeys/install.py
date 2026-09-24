@@ -46,7 +46,7 @@ def check_frappe_version(current: str | None = None) -> None:
 	if floor and version < floor:
 		frappe.throw(
 			_("The passkeys app needs Frappe {0} or later on this line; this site runs {1}.").format(
-				".".join(map(str, floor)), current
+				".".join(str(part) for part in floor), current
 			)
 		)
 
