@@ -419,7 +419,6 @@
 		body.appendChild(el("p", "passkey-nudge-body", t(M.COPY.enforceBody)));
 		// Runs under the fresh-login sudo window; the gate stays open until enrollment succeeds.
 		d.set_primary_action(t(M.COPY.nudgeCta), function () { enforceCreate(d); });
-		var signOutAction = null;
 		if (!enf.blocking) {
 			d.set_secondary_action_label(M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]));
 			d.set_secondary_action(function () {
@@ -434,12 +433,11 @@
 			var notifiesAdmin = (b.enforcement || {}).incapable_policy === "block_notify";
 			d.set_secondary_action_label(t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp));
 			d.set_secondary_action(function () { onEnforceCantSetUp(b, d, body); });
-			signOutAction = d.add_custom_action(t(M.COPY.enforceSignOut), function () { frappe.app.logout(); });
+			d.add_custom_action(t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }, "passkey-sign-out");
 			// The router hides any open dialog on a route change, ignoring static/keep_open,
 			// so a blocking gate re-opens itself until the user takes one of its exits.
 			d.$wrapper.on("hidden.bs.modal", function () { if (!d._acted) d.show(); });
 		}
-		d._signOutAction = signOutAction;
 		// Bootstrap 4 drops hide() during a show transition (e.g. the re-open above), so an
 		// exit taken mid-animation closes once the modal has settled.
 		d.$wrapper.on("shown.bs.modal", function () { if (d._acted) d.hide(); });
@@ -472,8 +470,8 @@
 		var notice = el("p", "passkey-nudge-body", t(M.COPY.enforceBlockedNotice));
 		notice.setAttribute("role", "alert");
 		body.appendChild(notice);
-		if (d._signOutAction && d._signOutAction.remove) d._signOutAction.remove();
-		d._signOutAction = null;
+		// add_custom_action returns nothing, so find the button by its class.
+		d.custom_actions.find(".passkey-sign-out").remove();
 		d.set_primary_action(t(M.COPY.enforceRetry), function () { enforceCreate(d); });
 		d.set_secondary_action_label(t(M.COPY.enforceSignOut));
 		d.set_secondary_action(function () { frappe.app.logout(); });

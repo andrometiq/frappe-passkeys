@@ -275,6 +275,7 @@ def classify_posture(ctx: dict) -> dict:
 					"Set notify_admin_access_to_system_manager in site config to be emailed when "
 					"Administrator logs in. Keep a strong, vaulted password."
 				),
+				bypass_label=_("the Administrator password"),
 			)
 		)
 

@@ -430,7 +430,7 @@
 		maybeEnforceOrNudge();
 	});
 
-	// Node-only test seam; `module` is undefined in the browser.
+	// Node test seam. The asset build defines `module` in the browser too; keep startup outside this if.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { showEnforceModal: showEnforceModal, buildModal: buildModal, makeConfirmUI: makeConfirmUI, setPortalStatus: setPortalStatus, renderNudgeBanner: renderNudgeBanner, maybeEnforceOrNudge: maybeEnforceOrNudge, recordNudge: recordNudge };
 	}

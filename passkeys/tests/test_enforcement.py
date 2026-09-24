@@ -502,6 +502,17 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertTrue(self._verdict("Administrator")["in_scope"])
 		self.assertTrue(self._verdict(self._user(roles=["System Manager"]))["in_scope"])
 
+	def test_selected_implicit_roles_match_ordinary_users(self):
+		# Frappe grants All (and Desk User on newer versions) without a Has Role row.
+		user = self._user()
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
+		for role in ("All", "Desk User"):
+			if role not in frappe.get_roles(user):
+				continue
+			with self.subTest(role=role):
+				self._set_enforced_roles(role)
+				self.assertTrue(self._verdict(user)["in_scope"])
+
 	def test_defer_reads_current_database_state(self):
 		user = self._user()
 		boot.record_enforcement_defer(user)

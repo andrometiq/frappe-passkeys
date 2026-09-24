@@ -156,7 +156,7 @@
   {
    "default": "1",
    "depends_on": "eval:doc.passkey_enforce_scope!=\"All users\"",
-   "description": "Adds System Managers to the scope above, whatever it is.",
+   "description": "Adds System Managers and Administrator to the scope above, whatever it is.",
    "fieldname": "passkey_enforce_privileged_always",
    "fieldtype": "Check",
    "label": "Always require a passkey from System Managers"
@@ -289,7 +289,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-24 14:00:00.000000",
+ "modified": "2026-09-24 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

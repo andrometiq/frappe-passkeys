@@ -182,7 +182,9 @@ class ClassifyPostureTest(IntegrationTestCase):
 		self.assertEqual(row["severity"], "medium")
 		self.assertIn("named System Manager", row["recommendation"])
 		self.assertIn("notify_admin_access_to_system_manager", row["recommendation"])
-		self.assertIsNone(row["bypass_label"])
+		# the headline must not claim passkeys are the only way in while Administrator is not
+		self.assertTrue(shown["verdict"]["can_bypass"])
+		self.assertIn(row["bypass_label"], shown["verdict"]["bypass_labels"])
 
 	def test_administrator_password_row_hidden_when_covered_or_password_off(self):
 		covered = _ctx(

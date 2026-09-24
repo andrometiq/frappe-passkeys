@@ -265,10 +265,12 @@ is disabled. Frappe's own two-factor authentication behaves the same way. Treat 
 privileged credentials: issue them sparingly, rotate them, and revoke them when they are no longer
 needed.
 
-Passkey management and confirmation require a signed-in browser session. A token-authenticated
-request gets a `BrowserSessionRequired` (403) refusal from every signed-in passkey endpoint
+A user's own passkey management and confirmation require a signed-in browser session. A
+token-authenticated request gets a `BrowserSessionRequired` (403) refusal from those endpoints
 (registration, credential list, rename and delete, the passkey-only switch, password re-auth, and
-the confirmation ceremony) and from every `@passkey_protected` action. A token caller can therefore
+the confirmation ceremony) and from every `@passkey_protected` action. The System Manager
+administration endpoints (per-user exemption and grace reset, the RP ID and posture reads) accept a
+System Manager token like the rest of Frappe's administration API. A token caller can therefore
 never open a sudo window or obtain or spend a confirmation grant, even with the user's password.
 The server recognizes such a request by its session: core binds a token caller with
 `frappe.set_user`, which creates no session and sets the session id to the user name, whereas a

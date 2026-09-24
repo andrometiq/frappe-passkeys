@@ -83,6 +83,13 @@ function makeDialogClass() {
 		};
 		this.header = { find() { return { hide() {} }; } };
 		this._footer = fakeEl("div");
+		// Frappe's custom_actions is a jQuery set; find(".cls").remove() drops matching buttons.
+		this.custom_actions = {
+			find(selector) {
+				const cls = selector.replace(/^\./, "");
+				return { remove() { self._footer.children.filter((b) => b.className.split(" ").includes(cls)).forEach((b) => self._footer.removeChild(b)); } };
+			},
+		};
 		this.shown = false; this.hidden = false;
 		instances.push(this);
 	}
@@ -107,8 +114,9 @@ function makeDialogClass() {
 		if (this._secondary) this._footer.removeChild(this._secondary);
 		this._secondary = footerButton(this, this._secondaryLabel || "", fn, "btn btn-secondary btn-sm btn-modal-secondary");
 	};
-	Dialog.prototype.add_custom_action = function (label, fn) {
-		return footerButton(this, label, fn, "btn btn-default btn-sm");
+	// Like Frappe, add_custom_action returns nothing.
+	Dialog.prototype.add_custom_action = function (label, fn, cssClass) {
+		footerButton(this, label, fn, "btn btn-secondary btn-sm " + (cssClass || ""));
 	};
 	Dialog.prototype.show = function () { this.shown = true; this.hidden = false; this.showCount = (this.showCount || 0) + 1; };
 	// Bootstrap fires hide.bs.modal, then hidden.bs.modal once the modal is gone. Like
@@ -245,6 +253,8 @@ test("desk enforce: the blocking gate's escape is labelled by what it does under
 	contact.click();
 	assert.strictEqual(notify.hidden, false, "Block + Notify Admin keeps the gate up");
 	assert.ok(findNode(notify._body, (n) => n.textContent === M.COPY.enforceBlockedNotice), "the admin-notified notice is shown");
+	const signOuts = notify._footer.children.filter((b) => b.textContent === M.COPY.enforceSignOut);
+	assert.strictEqual(signOuts.length, 1, "exactly one Sign out button after Contact administrator");
 });
 
 test("desk enforce: a blocking gate stays closed once the user takes an exit", () => {

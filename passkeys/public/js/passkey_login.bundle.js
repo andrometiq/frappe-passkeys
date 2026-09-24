@@ -819,7 +819,7 @@
 	window.frappe = window.frappe || {};
 	window.frappe._passkey_login = { boot: boot, _state: state, API: API, applyLoginStatus: applyLoginStatus };
 
-	// Node-only test seam; `module` is undefined in the browser.
+	// Node test seam. The asset build defines `module` in the browser too; keep startup outside this if.
 	if (typeof module === "object" && module.exports) {
 		module.exports = {
 			state: state, runVerify: runVerify, applyLoginStatus: applyLoginStatus,

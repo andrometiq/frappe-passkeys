@@ -249,7 +249,7 @@
 	if (!f.ui.passkey.confirm) f.ui.passkey.confirm = confirm;
 	if (!f.ui.passkey.call) f.ui.passkey.call = call;
 
-	// Node-only test seam; `module` is undefined in the browser.
+	// Node test seam. The asset build defines `module` in the browser too; keep startup outside this if.
 	if (typeof module === "object" && module.exports) {
 		module.exports = { makeDialogUI: makeDialogUI };
 	}

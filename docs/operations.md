@@ -162,8 +162,10 @@ or simply leaving email-link on — not the site-wide switch.
 `validate_user_pass_login` so it counts an enabled passkey login mode as a
 surviving method, letting you turn `disable_user_pass_login` on. Passkey login
 does not go through core's `login()`, so it keeps working with the flag on;
-password, email-link, and social first-factor logins are then all refused
-site-wide.
+password first-factor login is then refused site-wide. Email-link and social login do not
+go through that check, so they stay open for any user who is neither Passkey Only nor enrolled
+with passkey as a second factor; turn them off separately (System Settings for email-link, the
+Social Login Key records for social login) if passwords are meant to be the only thing removed.
 
 **When it is safe:**
 

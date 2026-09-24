@@ -211,9 +211,12 @@ def _user_in_enforce_scope(user: str, settings) -> bool:
 	"""The exemption marker wins; then privileged roles when that safeguard is on;
 	then Selected roles; All users matches everyone else; No one matches nobody.
 	Administrator is privileged. The start date is not part of this test."""
-	roles = assigned_roles(user)
-	if EXEMPT_ROLE in roles:
+	assigned = assigned_roles(user)
+	if EXEMPT_ROLE in assigned:
 		return False
+	# Administrator holds every Role implicitly, so only its assigned rows count; everyone
+	# else is matched on effective roles, which include implicit ones such as Desk User.
+	roles = assigned if user == "Administrator" else set(frappe.get_roles(user))
 	privileged = user == "Administrator" or bool(roles & PRIVILEGED_ROLES)
 	if cint(settings.passkey_enforce_privileged_always) and privileged:
 		return True
