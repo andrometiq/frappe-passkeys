@@ -51,13 +51,6 @@
 	overflow-wrap: anywhere;
 }
 
-.passkey-confirm-actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.5rem;
-}
-
 .passkey-confirm-passkey {
 	display: inline-flex;
 	align-items: center;

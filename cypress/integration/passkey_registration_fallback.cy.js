@@ -128,7 +128,7 @@ chromium_only("registration serialization fallback", () => {
 				install_registration_fallback(win);
 			},
 		});
-		cy.get("#passkey-portal-root .passkey-empty-cta", { timeout: 20000 }).click();
+		cy.get("#passkey-portal-root .no-result .btn-primary", { timeout: 20000 }).click();
 		cy.wait("@verify_registration", { timeout: 20000 })
 			.its("response.statusCode")
 			.should("be.within", 200, 299);

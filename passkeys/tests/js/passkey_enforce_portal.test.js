@@ -307,7 +307,8 @@ test("portal boot merges the app catalog before its first paint", async () => {
 	try {
 		bootPortal({ enabled: true, credential_count: 0, nudge_state: { eligible: true } });
 		await tick();
-		const title = findNode(document.body, (n) => n.className === "passkey-nudge-title");
+		const title = findNode(document.body, (n) => n.tagName === "STRONG");
+		assert.ok((document.getElementById("passkey-portal-nudge").className || "").includes("alert-info"));
 		assert.strictEqual(title.textContent, "Connexion plus rapide");
 	} finally {
 		global.fetch = normalFetch; C.detectCapabilities = detectCapabilities;

@@ -40,9 +40,13 @@ test("cardList: one labelled list item per credential; actions only when asked f
 	assert.strictEqual(list.tagName, "UL");
 	assert.strictEqual(list.getAttribute("role"), "list");
 	assert.deepStrictEqual(list.children.map((li) => li.getAttribute("data-name")), ["WC-1", "WC-2"]);
-	assert.strictEqual(byClass(list.children[0], "passkey-badge-synced").textContent, M.COPY.syncedBadge);
+	const synced = byClass(list.children[0], "indicator-pill");
+	assert.strictEqual(synced.textContent, M.COPY.syncedBadge);
+	assert.ok(synced.className.includes("green"));
 	assert.ok(list.children[1].className.includes("passkey-card-disabled"));
-	assert.strictEqual(byClass(list.children[1], "passkey-card-flagged").getAttribute("role"), "alert");
+	const flagged = find(list.children[1], (n) => (n.className || "").includes("alert-danger"));
+	assert.strictEqual(flagged.getAttribute("role"), "alert");
+	assert.ok(byClass(list.children[1], "gray"), "a disabled credential carries the gray pill");
 
 	const rename = byClass(list.children[0], "passkey-rename");
 	assert.strictEqual(rename.getAttribute("aria-label"), "Rename passkey Phone", "icon-only action has an accessible name");
@@ -56,7 +60,8 @@ test("cardList: one labelled list item per credential; actions only when asked f
 test("emptyState: the add call to action", () => {
 	let added = 0;
 	const empty = M.emptyState(() => { added += 1; });
-	const cta = byClass(empty, "passkey-empty-cta");
+	assert.ok(empty.className.includes("text-muted") && empty.className.includes("text-center"));
+	const cta = byClass(empty, "btn-primary");
 	assert.strictEqual(cta.textContent, M.COPY.addButton);
 	cta.dispatch("click");
 	assert.strictEqual(added, 1);

@@ -725,10 +725,10 @@
 		var label = el("span", "passkey-card-label", vm.label);
 		label.setAttribute("title", vm.label);
 		labelRow.appendChild(label);
-		var badge = el("span", "passkey-badge passkey-badge-" + (vm.badge.synced ? "synced" : "device"), t(vm.badge.key));
+		var badge = el("span", "indicator-pill " + (vm.badge.synced ? "green" : "blue"), t(vm.badge.key));
 		badge.setAttribute("title", t(vm.badge.hintKey));
 		labelRow.appendChild(badge);
-		if (!vm.enabled) labelRow.appendChild(el("span", "passkey-badge passkey-badge-disabled", t(COPY.disabledBadge)));
+		if (!vm.enabled) labelRow.appendChild(el("span", "indicator-pill gray", t(COPY.disabledBadge)));
 		main.appendChild(labelRow);
 
 		var meta = el("div", "passkey-card-meta");
@@ -738,7 +738,7 @@
 			vm.lastUsed ? t(COPY.lastUsedLabel) + ": " + formatDate(vm.lastUsed) : t(COPY.lastUsedNever)));
 		main.appendChild(meta);
 		if (vm.flagged) {
-			var flagged = el("div", "passkey-card-flagged", t(COPY.flaggedBanner));
+			var flagged = el("div", "alert alert-danger", t(COPY.flaggedBanner));
 			flagged.setAttribute("role", "alert");
 			main.appendChild(flagged);
 		}
@@ -755,12 +755,10 @@
 
 	function emptyState(onAdd) {
 		var t = common().t;
-		var wrap = el("div", "passkey-empty");
-		wrap.appendChild(el("h4", "passkey-empty-title", t(COPY.emptyTitle)));
-		wrap.appendChild(el("p", "passkey-empty-body", t(COPY.emptyBody)));
-		var cta = button("primary", t(COPY.addButton), onAdd);
-		cta.className += " passkey-empty-cta";
-		wrap.appendChild(cta);
+		var wrap = el("div", "no-result text-muted text-center");
+		wrap.appendChild(el("p", "", t(COPY.emptyTitle)));
+		wrap.appendChild(el("p", "", t(COPY.emptyBody)));
+		wrap.appendChild(button("primary", t(COPY.addButton), onAdd));
 		return wrap;
 	}
 

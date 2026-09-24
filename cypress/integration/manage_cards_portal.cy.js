@@ -40,7 +40,7 @@ chromium_only("passkey management — portal /passkeys", () => {
 			expect(response.statusCode, JSON.stringify(response.body)).to.eq(200);
 		});
 		// no credentials yet ⇒ empty-state hero
-		cy.get("#passkey-portal-root .passkey-empty", { timeout: 20000 }).should("exist");
+		cy.get("#passkey-portal-root .no-result", { timeout: 20000 }).should("exist");
 	});
 
 	it("renders a card once a credential exists", () => {

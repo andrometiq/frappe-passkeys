@@ -306,20 +306,19 @@ do not depend on the DOM *nesting* staying identical.
 | `.passkey-card`, `.passkey-card-disabled` | a credential row (disabled variant) |
 | `.passkey-card-glyph` | leading icon slot |
 | `.passkey-card-label`, `.passkey-card-labelrow` | the credential name |
-| `.passkey-badge`, `.passkey-badge-synced`, `.passkey-badge-device`, `.passkey-badge-disabled` | Synced / Device-bound / Disabled badges |
+| `.indicator-pill` (`green` / `blue` / `gray`) | Synced / Device-bound / Disabled pills; the label is the pill's text |
 | `.passkey-card-meta`, `.passkey-card-provider`, `.passkey-card-created`, `.passkey-card-lastused` | provider + dates |
-| `.passkey-card-flagged` | the security-flagged notice (`role="alert"`) |
+| `.alert.alert-danger` | the security-flagged notice (`role="alert"`) |
 | `.passkey-card-actions`, `.passkey-icon-btn` | the Rename / Remove buttons |
 | `.passkey-card-add-row`, `.passkey-btn` | the "Add a passkey" row |
-| `.passkey-empty`, `.passkey-empty-title`, `.passkey-empty-body` | the zero-passkeys hero |
+| `.no-result` | the zero-passkeys empty state (centered muted text plus the add button) |
 | `.passkey-only-row`, `.passkey-only-label`, `.passkey-only-help`, `.passkey-only-toggle` | the passwordless switch |
 
 **Login button + status** (`passkey_login.bundle.js`): `.btn-passkey-login`,
 `.passkey-glyph`, `.passkey-label`, and the status line `.passkey-status`
 (`--progress` / `--success` / `--error` tone modifiers, `__icon` / `__text` parts).
 
-**Nudge banner**: `.passkey-nudge-banner`, `.passkey-nudge-title`,
-`.passkey-nudge-copy`, `.passkey-nudge-acts`.
+**Nudge banner**: `#passkey-portal-nudge` (`alert alert-info`).
 
 **The visually-hidden live region** (`.passkey-sr-only`) backs every announcement —
 never `display:none` it; screen-reader users depend on it.

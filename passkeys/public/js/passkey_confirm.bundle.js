@@ -26,25 +26,50 @@
 
 		// The engine can go straight to the password leg, so either prompt may open it.
 		function ensureDialog() {
-			if (!dialog) dialog = new window.frappe.ui.Dialog({ title: t("Confirm it's you"), size: "small" });
+			if (!dialog) {
+				dialog = new window.frappe.ui.Dialog({
+					title: t("Confirm it's you"),
+					size: "small",
+					fields: [
+						{ fieldname: "summary", fieldtype: "HTML" },
+						{ fieldname: "password", fieldtype: "Password", label: t("Password") },
+						{
+							fieldname: "alert",
+							fieldtype: "HTML",
+							options: '<div class="passkey-confirm-msg" role="alert" aria-live="assertive"></div>',
+						},
+					],
+				});
+			}
 			return dialog;
 		}
 
-		function bodyEl() { return dialog.$body.get(0); }
+		function fieldWrap(name) {
+			var field = dialog.fields_dict && dialog.fields_dict[name];
+			return field && field.$wrapper;
+		}
 
-		function render(html, reject) {
-			ensureDialog();
-			dialog.$body.html(html);
-			// Esc / backdrop / close all fire hide.bs.modal; after done() it is not a cancel.
+		function messageBox() {
+			var wrap = fieldWrap("alert");
+			var root = wrap && wrap.get && wrap.get(0);
+			return root && root.querySelector ? root.querySelector(".passkey-confirm-msg") : null;
+		}
+
+		// Esc / backdrop / close all fire hide.bs.modal; after done() it is not a cancel.
+		function armCancel(reject) {
 			var fired = false;
 			dialog.$wrapper.on("hide.bs.modal", function () {
 				if (fired || settled) return;
 				fired = true;
 				reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
 			});
+		}
+
+		function showPrompt(reject) {
+			ensureDialog();
+			armCancel(reject);
 			dialog.show();
 			C.ensureLiveRegion(document);
-			return bodyEl();
 		}
 
 		function actionName(opts) {
@@ -69,9 +94,21 @@
 		}
 
 		function showMessage(msg) {
-			var box = dialog && bodyEl().querySelector(".passkey-confirm-msg");
+			var box = dialog && messageBox();
 			if (box) box.textContent = msg;
 			C.announce(document, msg);
+		}
+
+		function primaryBtn() {
+			if (!dialog || !dialog.get_primary_btn) return null;
+			return dialog.get_primary_btn();
+		}
+
+		function tagPrimary(addClass, removeClass) {
+			var btn = primaryBtn();
+			if (!btn) return;
+			if (btn.addClass) btn.addClass(addClass);
+			if (removeClass && btn.removeClass) btn.removeClass(removeClass);
 		}
 
 		var controller = {
@@ -87,25 +124,30 @@
 						'<p class="passkey-confirm-action"><strong>' + esc(action.name) + '</strong></p>',
 						'<p class="passkey-confirm-lead">' + esc(lead) + '</p>',
 						summaryHtml(action.context.summary),
-						'<div class="passkey-confirm-actions">',
-						'<button type="button" class="btn btn-primary passkey-confirm-passkey" autofocus>' +
-							esc(t("Confirm with passkey")) + '</button>',
-						opts.canPassword
-							? '<button type="button" class="btn btn-default btn-sm passkey-confirm-usepw">' +
-								esc(t("Use your password instead")) + '</button>'
-							: "",
-						'</div>',
-						'<div class="passkey-confirm-msg" aria-live="polite"></div>',
 						'</div>',
 					].join("");
-					var el = render(html, reject);
-					var pk = el.querySelector(".passkey-confirm-passkey");
-					var pw = el.querySelector(".passkey-confirm-usepw");
-					if (pk) {
-						pk.addEventListener("click", function () { resolve("passkey"); });
-						pk.focus();
+					showPrompt(reject);
+					dialog.set_df_property("password", "hidden", 1);
+					fieldWrap("summary").html(html);
+					var polite = messageBox();
+					if (polite) {
+						polite.removeAttribute("role");
+						polite.setAttribute("aria-live", "polite");
 					}
-					if (pw) pw.addEventListener("click", function () { resolve("password"); });
+					var picked = false;
+					function pick(method) {
+						if (picked) return;
+						picked = true;
+						resolve(method);
+					}
+					dialog.set_primary_action(t("Confirm with passkey"), function () { pick("passkey"); });
+					tagPrimary("passkey-confirm-passkey", "passkey-confirm-pwgo");
+					if (opts.canPassword) {
+						dialog.set_secondary_action_label(t("Use your password instead"));
+						dialog.set_secondary_action(function () { pick("password"); });
+					}
+					var pk = primaryBtn();
+					if (pk && pk.focus) pk.focus();
 				});
 			},
 
@@ -116,32 +158,42 @@
 						'<div class="passkey-confirm" role="group" aria-label="' + esc(t("Confirm with your password")) + '">',
 						'<p class="passkey-confirm-action"><strong>' + esc(action.name) + '</strong></p>',
 						summaryHtml(action.context.summary),
-						'<label class="passkey-confirm-pwlabel" for="passkey-confirm-pw">' +
-							esc(t("Confirm your password to continue.")) + '</label>',
-						'<input type="password" id="passkey-confirm-pw" class="form-control ' +
-							'passkey-confirm-pw" autocomplete="current-password" autofocus />',
-						'<div class="passkey-confirm-actions">',
-						'<button type="button" class="btn btn-primary passkey-confirm-pwgo">' + esc(t("Confirm")) + '</button>',
-						'</div>',
-						'<div class="passkey-confirm-msg" role="alert" aria-live="assertive">' + esc(passwordMessage) + '</div>',
+						'<p class="passkey-confirm-pwlabel">' + esc(t("Confirm your password to continue.")) + '</p>',
 						'</div>',
 					].join("");
-					var el = render(html, reject);
-					var input = el.querySelector(".passkey-confirm-pw");
-					var go = el.querySelector(".passkey-confirm-pwgo");
+					showPrompt(reject);
+					dialog.set_df_property("password", "hidden", 0);
+					fieldWrap("summary").html(html);
+					var input = dialog.fields_dict.password.$input;
+					if (input && input.addClass) {
+						input.addClass("passkey-confirm-pw");
+						if (input.attr) input.attr("autocomplete", "current-password");
+					}
+					var box = messageBox();
+					if (box) {
+						box.textContent = passwordMessage;
+						box.setAttribute("role", "alert");
+						box.setAttribute("aria-live", "assertive");
+					}
+					var submitted = false;
 					function submit() {
-						var value = input ? input.value : "";
-						if (input) input.value = "";
+						if (submitted) return;
+						submitted = true;
+						var value = dialog.get_value("password") || "";
+						dialog.set_value("password", "");
 						passwordMessage = "";
 						resolve(value);
 					}
-					if (go) go.addEventListener("click", submit);
-					if (input) {
-						input.addEventListener("keydown", function (ev) {
+					dialog.set_primary_action(t("Confirm"), submit);
+					tagPrimary("passkey-confirm-pwgo", "passkey-confirm-passkey");
+					var secondary = dialog.get_secondary_btn && dialog.get_secondary_btn();
+					if (secondary && secondary.addClass) secondary.addClass("hide");
+					if (input && input.on) {
+						input.on("keydown", function (ev) {
 							if (ev.key === "Enter") { ev.preventDefault(); submit(); }
 						});
-						input.focus();
 					}
+					if (input && input.focus) input.focus();
 				});
 			},
 
@@ -153,8 +205,10 @@
 			announce: showMessage,
 
 			busy: function (on) {
-				var pk = dialog && bodyEl().querySelector(".passkey-confirm-passkey");
-				if (pk) pk.disabled = !!on;
+				var pk = primaryBtn();
+				if (!pk) return;
+				if (pk.prop) pk.prop("disabled", !!on);
+				else pk.disabled = !!on;
 			},
 
 			done: function () {

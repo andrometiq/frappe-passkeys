@@ -780,6 +780,12 @@
 			} else {
 				el.hidden = false;
 				el.className = "passkey-status passkey-status--" + view.tone;
+				var icon = el.querySelector(".passkey-status__icon");
+				if (icon) {
+					icon.className = view.tone === "progress"
+						? "passkey-status__icon spinner-border spinner-border-sm"
+						: "passkey-status__icon";
+				}
 				if (textEl) textEl.textContent = text;
 			}
 		}

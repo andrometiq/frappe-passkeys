@@ -232,8 +232,7 @@
 		wrap.appendChild(el("div", "passkey-enforcement-admin-title text-muted", t(M.COPY.enforceAdminHeading)));
 
 		var status = el("div", "passkey-enforcement-admin-status");
-		status.appendChild(el("span", "indicator-pill " + vm.indicator.color));
-		status.appendChild(el("span", "passkey-enforcement-admin-status-text", t(M.COPY[vm.indicator.textKey])));
+		status.appendChild(el("span", "indicator-pill " + vm.indicator.color, t(M.COPY[vm.indicator.textKey])));
 		wrap.appendChild(status);
 
 		var graceText = M.format(t(M.COPY.enforceAdminGrace), [vm.graceUsed, vm.graceTotal, vm.graceRemaining]);
@@ -286,14 +285,6 @@
 			d._passkeyRoot = root;
 			// Picks up changes made on another device while the dialog is open.
 			d.add_custom_action(t("Reload"), function () { refresh({ root: root }); });
-			// Esc closes the dialog when it is the topmost modal.
-			document.addEventListener("keydown", function (e) {
-				if (e.key !== "Escape" || !d.$wrapper.is(":visible")) return;
-				var visibleModals = $(".modal:visible").get();
-				if (visibleModals[visibleModals.length - 1] !== d.$wrapper.get(0)) return;
-				e.preventDefault();
-				d.hide();
-			}, true);
 			managerDialog = d;
 		}
 		managerDialog.show();
@@ -377,12 +368,11 @@
 			});
 		};
 		body.appendChild(el("p", "passkey-nudge-body", t(isUpsell ? M.COPY.upsellBody : M.COPY.nudgeBody)));
-		var actions = el("div", "passkey-nudge-actions");
 		// The CTA runs under the fresh-login sudo window: no re-prompt.
-		actions.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { d._acted = true; d.hide(); triggerAdd({}); }));
-		actions.appendChild(M.button("default", t(M.COPY.nudgeLater), function () { act(M.NUDGE_EVENTS.DECLINED); }));
-		actions.appendChild(M.button("default", t(M.COPY.nudgeNever), optOut));
-		body.appendChild(actions);
+		d.set_primary_action(t(M.COPY.nudgeCta), function () { d._acted = true; d.hide(); triggerAdd({}); });
+		d.set_secondary_action_label(t(M.COPY.nudgeLater));
+		d.set_secondary_action(function () { act(M.NUDGE_EVENTS.DECLINED); });
+		d.add_custom_action(t(M.COPY.nudgeNever), optOut);
 		// Esc / backdrop dismissal means "Not now"; hide.bs.modal catches every route.
 		d.$wrapper.on("hide.bs.modal", function () { if (!d._acted) { d._acted = true; recordNudge(M.NUDGE_EVENTS.DECLINED); } });
 		d.show();
@@ -427,13 +417,14 @@
 		});
 		var body = d.$body.get(0);
 		body.appendChild(el("p", "passkey-nudge-body", t(M.COPY.enforceBody)));
-		var actions = el("div", "passkey-nudge-actions");
 		// Runs under the fresh-login sudo window; the gate stays open until enrollment succeeds.
-		actions.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { enforceCreate(d); }));
+		d.set_primary_action(t(M.COPY.nudgeCta), function () { enforceCreate(d); });
+		var signOutAction = null;
 		if (!enf.blocking) {
-			actions.appendChild(M.button("default", M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]), function () {
+			d.set_secondary_action_label(M.format(t(M.COPY.enforceRemindLater), [enf.graceRemaining]));
+			d.set_secondary_action(function () {
 				d._acted = true; events.recordEnforcementDefer(b, enf); d.hide();
-			}));
+			});
 			// Any other dismissal is also "Remind me later"; `_acted` stops a double count.
 			d.$wrapper.on("hide.bs.modal", function () {
 				if (!d._acted) { d._acted = true; events.recordEnforcementDefer(b, enf); }
@@ -441,15 +432,14 @@
 		} else {
 			// Only Block + Notify Admin notifies an administrator.
 			var notifiesAdmin = (b.enforcement || {}).incapable_policy === "block_notify";
-			actions.appendChild(M.button("default", t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp), function () {
-				onEnforceCantSetUp(b, d, body);
-			}));
-			actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
+			d.set_secondary_action_label(t(notifiesAdmin ? M.COPY.enforceContactAdmin : M.COPY.enforceCantSetUp));
+			d.set_secondary_action(function () { onEnforceCantSetUp(b, d, body); });
+			signOutAction = d.add_custom_action(t(M.COPY.enforceSignOut), function () { frappe.app.logout(); });
 			// The router hides any open dialog on a route change, ignoring static/keep_open,
 			// so a blocking gate re-opens itself until the user takes one of its exits.
 			d.$wrapper.on("hidden.bs.modal", function () { if (!d._acted) d.show(); });
 		}
-		body.appendChild(actions);
+		d._signOutAction = signOutAction;
 		// Bootstrap 4 drops hide() during a show transition (e.g. the re-open above), so an
 		// exit taken mid-animation closes once the modal has settled.
 		d.$wrapper.on("shown.bs.modal", function () { if (d._acted) d.hide(); });
@@ -482,10 +472,11 @@
 		var notice = el("p", "passkey-nudge-body", t(M.COPY.enforceBlockedNotice));
 		notice.setAttribute("role", "alert");
 		body.appendChild(notice);
-		var actions = el("div", "passkey-nudge-actions");
-		actions.appendChild(M.button("primary", t(M.COPY.enforceRetry), function () { enforceCreate(d); }));
-		actions.appendChild(M.button("default", t(M.COPY.enforceSignOut), function () { frappe.app.logout(); }));
-		body.appendChild(actions);
+		if (d._signOutAction && d._signOutAction.remove) d._signOutAction.remove();
+		d._signOutAction = null;
+		d.set_primary_action(t(M.COPY.enforceRetry), function () { enforceCreate(d); });
+		d.set_secondary_action_label(t(M.COPY.enforceSignOut));
+		d.set_secondary_action(function () { frappe.app.logout(); });
 	}
 
 	// ------------------------------------------------------------ small utils

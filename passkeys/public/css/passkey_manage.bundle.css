@@ -87,13 +87,9 @@
 	color: var(--text-muted, #6b7280);
 }
 
-.passkey-card-flagged {
+.passkey-card .alert {
 	margin-top: 0.4rem;
-	padding: 0.35rem 0.5rem;
-	border-radius: var(--border-radius-sm, 4px);
-	background: var(--red-100, #fdecec);
-	color: var(--red-700, #b32d2d);
-	font-size: var(--text-sm, 0.82rem);
+	margin-bottom: 0;
 }
 
 .passkey-card-actions {
@@ -110,50 +106,7 @@
 	fill: none;
 }
 
-/* ----------------------------------------------------------------- badges */
-.passkey-badge {
-	display: inline-block;
-	padding: 0.1rem 0.45rem;
-	border-radius: 999px;
-	font-size: var(--text-xs, 0.7rem);
-	font-weight: 600;
-	letter-spacing: 0.01em;
-	white-space: nowrap;
-}
-
-.passkey-badge-synced {
-	background: var(--green-100, #e6f5ec);
-	color: var(--green-700, #1f7a44);
-}
-
-.passkey-badge-device {
-	background: var(--blue-100, #e7f1fd);
-	color: var(--blue-700, #1a68c4);
-}
-
-.passkey-badge-disabled {
-	background: var(--gray-200, #e9ecef);
-	color: var(--gray-700, #495057);
-}
-
 /* --------------------------------------------------------- empty / add */
-.passkey-empty {
-	text-align: center;
-	padding: 1.5rem 1rem;
-	border: 1px dashed var(--border-color, #d5dbe0);
-	border-radius: var(--border-radius-md, 6px);
-}
-
-.passkey-empty-title {
-	margin: 0 0 0.5rem;
-}
-
-.passkey-empty-body {
-	margin: 0 auto 1rem;
-	max-width: 32rem;
-	color: var(--text-muted, #6b7280);
-}
-
 .passkey-card-add-row {
 	margin-top: 1rem;
 }
@@ -170,49 +123,14 @@
 	margin-top: 0.75rem;
 }
 
-/* --------------------------------------------------------- nudge banner */
-.passkey-nudge-banner {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.5rem 0.9rem;
-	padding: 0.75rem 1rem;
-	margin: 0 0 1rem;
-	border: 1px solid var(--blue-300, #bcd8fb);
-	border-radius: var(--border-radius-md, 6px);
-	background: var(--blue-50, #f2f8ff);
-}
-
-.passkey-nudge-title {
-	font-weight: 600;
-}
-
-.passkey-nudge-copy {
-	flex: 1 1 16rem;
-	color: var(--text-muted, #4b5563);
-}
-
-.passkey-nudge-acts {
-	display: flex;
-	gap: 0.35rem;
-	flex-wrap: wrap;
-}
-
+/* --------------------------------------------------------- nudge copy */
 .passkey-nudge-body {
 	margin: 0 0 0.75rem;
 }
 
-.passkey-nudge-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.4rem;
-	justify-content: flex-end;
-}
-
 .passkey-nudge-error {
-	flex-basis: 100%;
 	margin: 0.5rem 0 0;
-	color: var(--red-700, #b32d2d);
+	color: var(--red-500, #e24c4c);
 }
 
 /* --------------------------------------------------------- portal page */
@@ -323,22 +241,13 @@
 .passkey-btn:focus-visible,
 .passkey-icon-btn:focus-visible,
 .passkey-portal-overlay button:focus-visible,
-.passkey-nudge-banner button:focus-visible {
+#passkey-portal-nudge button:focus-visible {
 	outline: 2px solid var(--primary, #2490ef);
 	outline-offset: 2px;
 }
 
-/* Frappe flips its semantic tokens (--card-bg, --text-color, --border-color) under
- * [data-theme="dark"], so the cards and dialogs adapt automatically. Only the nudge
- * banner uses a different blue ramp per theme, so it gets an explicit dark override
- * keyed off Frappe's actual mechanism (not prefers-color-scheme, which Frappe ignores). */
-[data-theme="dark"] .passkey-nudge-banner {
-	background: var(--blue-900, #16273c);
-	border-color: var(--blue-700, #2b6cb0);
-}
-[data-theme="dark"] .passkey-nudge-error {
-	color: #f5a3a3; /* red-700 is unreadable on the dark banner */
-}
+/* Frappe flips its semantic tokens (--card-bg, --text-color, --border-color, --red-500)
+ * under [data-theme="dark"], so the cards, dialogs, and nudge error follow the theme. */
 
 /* --------------------------------------------------------------------------
  * Security-posture report (Passkey Settings form): a verdict card and a collapsible

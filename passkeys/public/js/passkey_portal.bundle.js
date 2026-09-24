@@ -373,13 +373,13 @@
 		if (isPasskeyPage || document.getElementById("passkey-portal-nudge")) return;
 		var host = document.querySelector(".page_content, main, body");
 		if (!host) return;
-		var bar = el("div", "passkey-nudge-banner");
+		var bar = el("div", "alert alert-info");
 		bar.id = "passkey-portal-nudge";
 		bar.setAttribute("role", "region");
 		bar.setAttribute("aria-label", t(M.COPY.nudgeTitle));
-		bar.appendChild(el("strong", "passkey-nudge-title", t(M.COPY.nudgeTitle)));
-		bar.appendChild(el("span", "passkey-nudge-copy", t(M.COPY.nudgeBody)));
-		var acts = el("span", "passkey-nudge-acts");
+		bar.appendChild(el("strong", "", t(M.COPY.nudgeTitle)));
+		bar.appendChild(el("span", "", " " + t(M.COPY.nudgeBody)));
+		var acts = el("div", "");
 		var optingOut = false, error = null;
 		acts.appendChild(M.button("primary", t(M.COPY.nudgeCta), function () { location.href = "/passkeys"; }));
 		acts.appendChild(M.button("default", t(M.COPY.nudgeLater), function () { recordNudge(M.NUDGE_EVENTS.DECLINED); bar.remove(); }));

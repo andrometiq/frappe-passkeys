@@ -82,9 +82,34 @@ function makeDialogClass() {
 			on(type, fn) { (self._wrap[type] = self._wrap[type] || []).push(fn); return this; },
 		};
 		this.header = { find() { return { hide() {} }; } };
+		this._footer = fakeEl("div");
 		this.shown = false; this.hidden = false;
 		instances.push(this);
 	}
+	function footerButton(self, label, fn, className) {
+		const b = fakeEl("button");
+		b.className = className;
+		b.textContent = label;
+		b.addEventListener("click", fn);
+		b.remove = () => { self._footer.removeChild(b); };
+		self._footer.appendChild(b);
+		return b;
+	}
+	Dialog.prototype.set_primary_action = function (label, fn) {
+		if (this._primary) this._footer.removeChild(this._primary);
+		this._primary = footerButton(this, label, fn, "btn btn-primary btn-sm btn-modal-primary");
+	};
+	Dialog.prototype.set_secondary_action_label = function (label) {
+		this._secondaryLabel = label;
+		if (this._secondary) this._secondary.textContent = label;
+	};
+	Dialog.prototype.set_secondary_action = function (fn) {
+		if (this._secondary) this._footer.removeChild(this._secondary);
+		this._secondary = footerButton(this, this._secondaryLabel || "", fn, "btn btn-secondary btn-sm btn-modal-secondary");
+	};
+	Dialog.prototype.add_custom_action = function (label, fn) {
+		return footerButton(this, label, fn, "btn btn-default btn-sm");
+	};
 	Dialog.prototype.show = function () { this.shown = true; this.hidden = false; this.showCount = (this.showCount || 0) + 1; };
 	// Bootstrap fires hide.bs.modal, then hidden.bs.modal once the modal is gone. Like
 	// Bootstrap 4, hide() is a no-op while a show transition is running.
@@ -146,7 +171,7 @@ test("desk enforce: the explicit 'Remind me later' records ONE defer and its fol
 	Dialog.instances.length = 0;
 	mod.showEnforceDialog({}, { blocking: false, graceRemaining: 3 });
 	const d = Dialog.instances[Dialog.instances.length - 1];
-	const later = findButton(d._body, (b) => (b.className || "").includes("btn-default"));
+	const later = findButton(d._footer, (b) => (b.textContent || "").includes("Remind me later"));
 	assert.ok(later, "the 'Remind me later' button is present while grace remains");
 
 	later.click(); // records DEFER, then hides — the hide handler must see _acted and no-op
@@ -167,7 +192,7 @@ function incapableCount() {
 }
 function escapeLink(d) {
 	const labels = [M.COPY.enforceCantSetUp, M.COPY.enforceContactAdmin];
-	return findButton(d._body, (b) => labels.includes(b.textContent));
+	return findButton(d._footer, (b) => labels.includes(b.textContent));
 }
 
 test("desk enforce: a blocking gate is built static + keep_open and re-opens when the router hides it", () => {
@@ -279,7 +304,7 @@ test("desk opt-out keeps the dialog until saved; a failure shows a visible alert
 			};
 			mod.showNudgeDialog({}, false);
 			const d = Dialog.instances.at(-1);
-			const never = findButton(d._body, (b) => b.textContent === M.COPY.nudgeNever);
+			const never = findButton(d._footer, (b) => b.textContent === M.COPY.nudgeNever);
 			never.click();
 			assert.strictEqual(d.hidden, false, "dialog stays while the opt-out is in flight");
 			settle();

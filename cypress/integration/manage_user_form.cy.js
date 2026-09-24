@@ -72,9 +72,9 @@ chromium_only("passkey management — User form", () => {
 			cy.purge_server_passkeys(USER);
 			visit_user_passkeys();
 			own_passkey_root().within(() => {
-				cy.get(".passkey-empty", { timeout: 20000 }).should("exist");
-				cy.get(".passkey-empty-title").should("contain.text", "Create a passkey");
-				cy.get(".passkey-empty-cta").should("be.visible");
+				cy.get(".no-result", { timeout: 20000 }).should("exist");
+				cy.get(".no-result").should("contain.text", "Create a passkey");
+				cy.get(".no-result .btn-primary").should("be.visible");
 			});
 		});
 
@@ -88,7 +88,7 @@ chromium_only("passkey management — User form", () => {
 			visit_user_passkeys();
 			own_passkey_root().within(() => {
 				cy.get(".passkey-card", { timeout: 20000 }).should("have.length", 1);
-				cy.get(".passkey-card .passkey-badge").first().should(($b) => {
+				cy.get(".passkey-card .indicator-pill").first().should(($b) => {
 					expect($b.text().trim()).to.be.oneOf(["Synced", "Device-bound"]);
 				});
 				cy.get(".passkey-card .passkey-rename")

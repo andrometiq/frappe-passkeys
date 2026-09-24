@@ -63,12 +63,11 @@
 	height: 0.95em;
 	box-sizing: border-box;
 }
-/* Progress: a spinning ring (waiting / verifying / slow-connection). */
-.passkey-status--progress .passkey-status__icon {
-	border: 2px solid var(--gray-400, #b0b7c3);
-	border-top-color: var(--primary, #2490ef);
-	border-radius: 50%;
-	animation: passkey-status-spin 0.7s linear infinite;
+/* Progress uses Bootstrap's spinner-border on the icon (waiting / verifying). */
+.passkey-status--progress .spinner-border {
+	width: 0.95em;
+	height: 0.95em;
+	border-width: 2px;
 }
 /* Success: resolved beat — green tone + a check mark. */
 .passkey-status--success {
@@ -94,18 +93,6 @@
 .passkey-status--error .passkey-status__icon {
 	border-radius: 50%;
 	background: currentColor;
-}
-@keyframes passkey-status-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-/* Respect reduced-motion: freeze the spinner (the coloured ring is still a clear
- * "in progress" indicator) rather than animate. */
-@media (prefers-reduced-motion: reduce) {
-	.passkey-status--progress .passkey-status__icon {
-		animation: none;
-	}
 }
 
 /* Lightweight modal dialog (uv-setup, second-factor). role=dialog + focus trap in JS. */

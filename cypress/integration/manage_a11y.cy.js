@@ -57,7 +57,7 @@ chromium_only("passkey management — accessibility", () => {
 		// the glyph is decorative
 		cy.get(".passkey-card-glyph").first().should("have.attr", "aria-hidden", "true");
 		// badge carries a text equivalent, not colour alone
-		cy.get(".passkey-card .passkey-badge").first().invoke("text").should("match", /\w/);
+		cy.get(".passkey-card .indicator-pill").first().invoke("text").should("match", /\w/);
 	});
 
 	it("has a polite live region for async announcements", () => {
