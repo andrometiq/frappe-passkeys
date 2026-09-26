@@ -130,8 +130,9 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |
 
 Structured errors are in **Error Log**; filter its `method` (title) field for `passkeys:`.
-Grant audit lines also go to the `passkeys` logger, independently of the Activity Log
-transaction. Entries worth alerting on:
+Grant audit lines are also written at INFO to the `passkeys` logger, outside the Activity Log
+transaction. Frappe's default log level drops INFO, so treat the Activity Log as the record
+unless you have raised that logger's level. Entries worth alerting on:
 
 - `passkeys: request host … not in configured origins` — a request reached the
   site on a host outside the configured origins (proxy misconfig, domain move,

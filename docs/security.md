@@ -133,8 +133,9 @@ only as SHA-256, so a cache snapshot yields nothing usable. The grant is consume
 *before* the protected function runs (one gesture = one attempt), and the payload
 hash is always computed server-side with a pinned canonicalization — the client
 never computes a hash. A presented grant is consumed before checking its payload binding:
-a mismatched payload is refused and still spends the token. Confirm again before retrying;
-the signature-validation refusals described above happen before consumption.
+a mismatched payload spends the token and cannot authorize the action through that grant.
+A live sudo window can still authorize it when `allow_sudo_window=True`; otherwise, confirm again
+before retrying. The signature-validation refusals described above happen before consumption.
 The action↔challenge binding replaces the retired
 `txAuthSimple` extension: the signature commits to a challenge that names exactly
 one action and payload.

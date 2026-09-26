@@ -224,6 +224,10 @@ class CredentialManagementTest(IntegrationTestCase):
 						else:
 							self.assertIn("Disable Username/Password Login", message)
 							self.assertIn("System Settings", message)
+							self.assertIn(
+								"another enabled passkey or turn off Disable Username/Password Login", message
+							)
+							self.assertNotIn("another login method", message)
 							self.assertNotIn("passkey-only login", message)
 							self.assertNotIn("Passkey Only Login", message)
 		self.assertTrue(frappe.db.exists("WebAuthn Credential", only.name))

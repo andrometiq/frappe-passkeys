@@ -267,6 +267,6 @@ lockout guards and the credential export it writes.
 
 When removal or disabling of the last enabled passkey is refused, follow the setting named in
 the error. A per-user **Passkey Only Login** refusal requires changing that user's flag or adding
-another passkey. A site-wide **Disable Username/Password Login** refusal requires another login
-method or an administrator changing that setting in **System Settings**. Clearing the per-user
+another enabled passkey. A site-wide **Disable Username/Password Login** refusal requires adding
+another enabled passkey or turning off **Disable Username/Password Login** in **System Settings**. Clearing the per-user
 flag alone does not remove the site-wide restriction.

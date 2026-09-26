@@ -11,6 +11,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Fixed
 
+- The test-only OTP helper requires a live site-bound fallback marker matching core's pending
+  user before reading the secret, and supports only OTP App codes.
+
 - OTP fallback now completes on the stock login page: its single-use marker survives core's
   site-cache clear when the OTP submission omits `usr`.
 - Expired action confirmations show the timeout message instead of a passkey verification failure.

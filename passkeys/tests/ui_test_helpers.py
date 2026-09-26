@@ -127,18 +127,24 @@ def configure_second_factor(
 
 @frappe.whitelist(methods=["POST"])
 def get_otp_code(tmp_id: str) -> str:
-	"""Read core's pending OTP for an admin on an explicitly enabled test site."""
+	"""Read a site-bound pending OTP App code on an explicitly enabled test site."""
 	_guard()
 	import pyotp
 
-	# core's twofactor writes these unprefixed with raw frappe.cache.set, so read them raw
+	from passkeys import state
+
+	marker = state.get_otp_fallback(tmp_id)
+	if not marker or not marker.get("user"):
+		frappe.throw("No pending OTP fallback for this site.", frappe.PermissionError)
+	# Core's pending keys are raw and shared across sites on the bench.
+	if marker["user"] != frappe.safe_decode(frappe.cache.get(f"{tmp_id}_usr")):
+		frappe.throw("Pending OTP user does not match this site's fallback.", frappe.PermissionError)
+	if frappe.cache.get(f"{tmp_id}_token") is not None:
+		frappe.throw("Only OTP App codes are supported.", frappe.ValidationError)
 	secret = frappe.cache.get(f"{tmp_id}_otp_secret")
-	if secret:
-		return pyotp.TOTP(frappe.safe_decode(secret)).now()
-	token = frappe.cache.get(f"{tmp_id}_token")
-	if token is None:
+	if not secret:
 		frappe.throw("No pending OTP for this login.", frappe.ValidationError)
-	return frappe.safe_decode(token)
+	return pyotp.TOTP(frappe.safe_decode(secret)).now()
 
 
 @frappe.whitelist(methods=["POST"])

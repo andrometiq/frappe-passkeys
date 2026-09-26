@@ -21,7 +21,8 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   `id`/`rawId`, `user.id`, `userHandle`, `signature`, etc. are **base64url**.
 - **Success envelope**: Frappe wraps a whitelisted dict return as
   `{"message": <payload>}`. Login endpoints that mint a session instead return the
-  core login envelope at the top level (`message: "Logged In"`, `home_page`).
+  core login envelope at the top level (`message: "Logged In"` for System Users or
+  `message: "No App"` for Website Users, plus `home_page`).
 - **Typed errors**: a refusal carries `exc_type` (the exception class name — match on
   **that**, never on message text) plus, for the 401 retry contracts, structured keys
   at the **top level** of the body. Codes: `CeremonyExpired` (401),
@@ -86,8 +87,9 @@ Source: `passkeys/passkey.py:verify_login`. Rate limit: **10 / 60 s / IP**. Gues
 
 - **Args**: `state_id` (string), `credential` (the `PublicKeyCredential.toJSON()`
   assertion — a JSON object, or a JSON string).
-- **Success** `200`: the core login envelope at top level — `message: "Logged In"`,
-  `home_page: "/app"` (navigate there or reload); the session cookie is set.
+- **Success** `200`: the core login envelope at top level — `message: "Logged In"` for System Users
+  or `message: "No App"` for Website Users, plus `home_page` (navigate there or reload);
+  the session cookie is set.
 - **Errors** (all `401`, match on `exc_type`):
   - `CeremonyExpired` — the `state_id` was consumed/expired. Call `begin_login` again
     and run a **fresh** `get()` (never re-POST the same assertion).
@@ -134,7 +136,7 @@ to core OTP / plain login for passkey-less users). Source:
   idiom). When `verification.method == "Passkey"`, `verification.options` is the
   assertion request and `verification.fallback.otp` says whether a one-time-code
   fallback is offered; otherwise it is core's OTP/SMS/Email envelope, or a plain
-  `"Logged In"`.
+  `"Logged In"` (System Users) or `"No App"` (Website Users), with `home_page`.
 - **Errors**: `AuthenticationError` (401, incl. mode-off and bad password — uniform,
   "wrong password ⇒ no challenge").
 
@@ -170,7 +172,8 @@ Rate limit: **5 / 300 s / IP**. Guest.
 - **Complete the handoff**: POST `{"otp": "<code>", "tmp_id": "<core tmp_id>"}` to
   `/api/method/login` in the same cookie context. Use the new `tmp_id` from the OTP
   envelope, not the passkey `state_id`. Core accepts this POST without `usr`; success
-  returns `message: "Logged In"` and the session cookie.
+  returns `message: "Logged In"` for System Users or `message: "No App"` for Website Users,
+  along with `home_page` and the session cookie. Navigate to the returned `home_page`.
 
 ---
 

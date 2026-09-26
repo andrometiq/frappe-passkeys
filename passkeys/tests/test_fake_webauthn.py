@@ -271,21 +271,55 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 				ui_test_helpers.get_otp_code("pending")
 			read.assert_not_called()
 
+	def test_otp_code_helper_refuses_missing_site_marker_without_reading_core(self):
+		with (
+			patch.object(state, "get_otp_fallback", return_value=None),
+			patch.object(frappe.cache, "get") as read,
+		):
+			with self.assertRaises(frappe.PermissionError):
+				ui_test_helpers.get_otp_code("foreign")
+			read.assert_not_called()
+
+	def test_otp_code_helper_refuses_different_user_without_reading_secret(self):
+		with (
+			patch.object(state, "get_otp_fallback", return_value={"user": "local@example.com"}),
+			patch.object(frappe.cache, "get", return_value=b"foreign@example.com") as read,
+		):
+			with self.assertRaises(frappe.PermissionError):
+				ui_test_helpers.get_otp_code("foreign")
+			read.assert_called_once_with("foreign_usr")
+
 	def test_otp_code_helper_reads_core_pending_values(self):
 		import pyotp
+		from frappe import twofactor
 
 		tmp_id = frappe.generate_hash()
-		secret_key, token_key = f"{tmp_id}_otp_secret", f"{tmp_id}_token"
-		# core writes these unprefixed with raw frappe.cache.set
-		self.addCleanup(frappe.cache.delete, secret_key)
-		self.addCleanup(frappe.cache.delete, token_key)
+		user = "Administrator"
+		for suffix in ("_usr", "_pwd", "_otp_secret", "_token"):
+			self.addCleanup(frappe.cache.delete, tmp_id + suffix)
+		self.addCleanup(state.consume_otp_fallback, tmp_id)
+		state.store_otp_fallback(tmp_id, {"user": user})
 		secret = pyotp.random_base32()
-		frappe.cache.set(secret_key, secret, ex=60)
-		self.assertTrue(pyotp.TOTP(secret).verify(ui_test_helpers.get_otp_code(tmp_id), valid_window=1))
-		frappe.cache.delete(secret_key)
-		frappe.cache.set(token_key, "012345", ex=60)
-		self.assertEqual(ui_test_helpers.get_otp_code(tmp_id), "012345")
-		frappe.cache.delete(token_key)
+		with (
+			patch.object(twofactor, "get_verification_method", return_value="OTP App"),
+			patch.dict(frappe.form_dict, {"pwd": "test-password"}),
+		):
+			twofactor.cache_2fa_data(user, 123456, secret, tmp_id)
+		with patch.object(twofactor, "get_default", return_value=1):
+			code = ui_test_helpers.get_otp_code(tmp_id)
+			self.assertTrue(twofactor.confirm_otp_token(frappe._dict(user=user), code, tmp_id))
+		self.assertEqual(state.get_otp_fallback(tmp_id), {"user": user})
+		for method in ("Email", "SMS"):
+			with (
+				self.subTest(method=method),
+				patch.object(twofactor, "get_verification_method", return_value=method),
+				patch.dict(frappe.form_dict, {"pwd": "test-password"}),
+			):
+				twofactor.cache_2fa_data(user, 123456, secret, tmp_id)
+				with self.assertRaisesRegex(frappe.ValidationError, "Only OTP App"):
+					ui_test_helpers.get_otp_code(tmp_id)
+		frappe.cache.delete(tmp_id + "_token")
+		frappe.cache.delete(tmp_id + "_otp_secret")
 		with self.assertRaises(frappe.ValidationError):
 			ui_test_helpers.get_otp_code(tmp_id)
 

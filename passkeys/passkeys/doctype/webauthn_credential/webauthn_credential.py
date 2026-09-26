@@ -109,7 +109,8 @@ class WebAuthnCredential(Document):
 				if passkey_only
 				else _(
 					"Cannot {0} the only enabled passkey of {1}: Disable Username/Password Login is on "
-					"in System Settings. Add another login method or turn that setting off, then retry."
+					"in System Settings. Add another enabled passkey or turn off Disable Username/Password Login "
+					"in System Settings, then retry."
 				).format(action, self.user),
 				frappe.ValidationError,
 			)

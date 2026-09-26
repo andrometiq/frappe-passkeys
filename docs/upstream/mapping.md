@@ -76,3 +76,5 @@ Confirmation clients map `CeremonyExpired` without relying on `_server_messages`
 shared timeout copy. App-action refusals say “This action requires a signed-in browser session.”
 and “Confirm it's you to continue.” Management gates keep their management-specific copy.
 Last-credential guards retain both policy checks and name the setting that caused the refusal.
+The site-wide refusal directs users to add another enabled passkey or turn off
+Disable Username/Password Login in System Settings.
