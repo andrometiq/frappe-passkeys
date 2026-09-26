@@ -132,7 +132,10 @@ Tokens are returned once and stored
 only as SHA-256, so a cache snapshot yields nothing usable. The grant is consumed
 *before* the protected function runs (one gesture = one attempt), and the payload
 hash is always computed server-side with a pinned canonicalization — the client
-never computes a hash. The action↔challenge binding replaces the retired
+never computes a hash. A presented grant is consumed before checking its payload binding:
+a mismatched payload is refused and still spends the token. Confirm again before retrying;
+the signature-validation refusals described above happen before consumption.
+The action↔challenge binding replaces the retired
 `txAuthSimple` extension: the signature commits to a challenge that names exactly
 one action and payload.
 
@@ -250,6 +253,21 @@ settings and enforcement-admin surfaces are admin-only). Three are read-only;
 passkey-enrollment enforcement, stored as a per-user app flag; the second clears a
 user's enforcement grace-login state), which is why both carry the tighter
 30 / hour ceiling.
+
+All five use `POST /api/method/<path>` and return their payload under `message`.
+The settings reads live in `passkeys.passkeys.doctype.passkey_settings.passkey_settings`;
+append `.get_resolved_rp_id` or `.get_security_posture`. The enforcement endpoints live
+in `passkeys.enforcement_admin`.
+
+| Read | Payload |
+|---|---|
+| `get_resolved_rp_id()` | `{rp_id, configured_site_origin}` |
+| `get_security_posture()` | `{verdict: {headline, tone, can_bypass, bypass_labels, degraded}, rows: [{code, severity, what, why, recommendation, detectable, bypass_label}]}` |
+| `get_user_enforcement_admin(user)` | `{user, effective, enforcing, in_scope, exempt, grace_used, grace_total, grace_remaining, credential_count}` |
+
+`get_user_enforcement_admin` is a single-user detail read, not a bulk-list API. Its
+60/minute budget belongs to the calling administrator, across all target users; direct
+Python calls spend the same budget and raise `TooManyRequestsError` at the limit.
 
 **No account enumeration.** First-factor login is discoverable-only — it takes no
 identifier, so the begin response leaks nothing about which accounts have

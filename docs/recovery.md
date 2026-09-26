@@ -15,7 +15,10 @@ If no System Manager can sign in, go to
   account, open the lost credential, untick **Enabled**, and save. A disabled
   credential can no longer sign in and no longer counts for the passkey second
   factor or for enforcement. Prefer disabling to deleting: the row stays for
-  investigation. The owner is emailed when **Notify on Passkey Changes** is on. The
+  investigation. The owner is emailed when **Notify on Passkey Changes** is on. If outgoing
+  email is unconfigured, Desk may show an email-setup message even though the disable
+  succeeds; check the saved row. The email failure is recorded in Error Log as
+  `passkeys: change-notification email failed`; the Activity Log is written independently. The
   form refuses to disable the user's last enabled credential while their **Passkey
   Only Login** is on, or while System Settings → **Disable Username/Password Login**
   is on. Clear the per-user flag first; the site-wide case is
@@ -121,6 +124,11 @@ a policy change, not a lockout. If you really mean to retire the passkey second
 factor, untick **Passkey as Second Factor** in **Passkey Settings** first, then turn
 core two-factor authentication off.
 
+To restore the pair, enable core two-factor authentication first, then **Passkey as
+Second Factor**. Core's System Settings save also enables two-factor authentication on
+role **All**. Review that role and users' OTP setup before their next password sign-in;
+re-enabling does not restore your previous role selection.
+
 ---
 
 ## No System Manager can sign in
@@ -152,7 +160,8 @@ frappe.db.commit()
 
 They sign in as usual and fix the affected accounts in Desk. Remove the role afterwards
 if it was only for the recovery. (`bench add-system-manager` creates a *new* user; it
-does not grant the role to an existing one.)
+does not grant the role to an existing one. For an existing email, use the `add_roles`
+block above.)
 
 **3. Restore one System Manager's own account.** Use this only when nobody who can sign
 in should receive the role. It clears that one account's **Passkey Only Login** and

@@ -127,8 +127,11 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:weak_login_enrollment` | The restricted first-enrollment-on-weak-login path was used. |
 | `passkeys:password_login_by_passkey_holder` | A user who holds an enabled passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
 | `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
+| `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |
 
-Structured error/log entries worth alerting on:
+Structured errors are in **Error Log**; filter its `method` (title) field for `passkeys:`.
+Grant audit lines also go to the `passkeys` logger, independently of the Activity Log
+transaction. Entries worth alerting on:
 
 - `passkeys: request host … not in configured origins` — a request reached the
   site on a host outside the configured origins (proxy misconfig, domain move,

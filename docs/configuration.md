@@ -24,7 +24,7 @@ exports use it for integrity. Back the key up separately before enrolling produc
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
-| **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". **This is a one-way door.** Changing it after any passkey is enrolled **invalidates every enrolled passkey** — all users must re-enroll. Widen to a parent domain only as a deliberate action; the Desk shows a typed confirm dialog restating the consequence. |
+| **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". **This is a one-way door.** Changing it after any passkey is enrolled **invalidates every enrolled passkey** — all users must re-enroll. Widen to a parent domain only as a deliberate action; the Desk shows a Cancel / Yes confirmation dialog restating the consequence. |
 | **Passkey Origins** (`passkey_origins`) | *blank ⇒ no additional origins* | Exact web origins, one per line; explicit ports are allowed. The exact origin from `host_name` is included automatically only when its host equals the RP ID or is a subdomain of it. The RP ID never implies trust in `https://<rp_id>`. Enabling a login mode is refused when the resolved web-origin set is empty. Each origin must be HTTPS (`http://localhost` is allowed only under `developer_mode`) and within RP-ID scope. |
 
 For example, `host_name = https://login.example.com` and RP ID `example.com` trusts
@@ -177,6 +177,9 @@ authentication account without a local hash marker, requires core to re-authenti
 | Change notifications off while a login mode is on | The save proceeds with an orange warning: this weakens the main defence against registration hijack. |
 
 ## Per-user "Passkey Only Login"
+
+On `/passkeys`, the switch is labelled **Passwordless login only**; it is the same
+setting as **Passkey Only Login** on the WebAuthn User Handle.
 
 This is a **per-user** switch (on the user's WebAuthn User Handle row), not a
 site setting. It disables password / email-link / social first-factor login for

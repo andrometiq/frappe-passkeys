@@ -181,9 +181,11 @@ package name, Team ID, or Bundle ID change.
 
 ### 2.3 Verify
 
+Replace `example.com` with your RP host. Use GET; the app-served endpoints reject HEAD.
+
 ```bash
-curl -sI https://<RP ID>/.well-known/assetlinks.json
-curl -sI https://<RP ID>/.well-known/apple-app-site-association
+curl -s -D - -o /dev/null https://example.com/.well-known/assetlinks.json
+curl -s -D - -o /dev/null https://example.com/.well-known/apple-app-site-association
 ```
 
 Both must return `200` with `Content-Type: application/json` and **no** `3xx`.

@@ -118,7 +118,9 @@ Rate limit: **5 / 300 s / IP**. Guest.
 Active only when `passkey_as_second_factor` is on. Password first (leg 1), passkey
 step-up second (leg 2), speaking Frappe's own two-factor envelope so core paints the
 result natively. These mirror a lot of core's `login()` / `authenticate_for_2factor`;
-integrate them only if you are replacing the login page wholesale.
+integrate them only if you are replacing the login page wholesale. Enrolled users get the
+passkey step even when core's `should_run_2fa(user)` is false. Core's role/IP coverage
+controls OTP for passkey-less users and whether OTP fallback can be offered to enrolled users.
 
 ### `passkeys.passkey.login_with_password`
 
@@ -144,7 +146,8 @@ Leg 2: verify the step-up assertion, re-authenticate, mint the session. Source:
 - **Args**: `state_id` (the leg-1 `tmp_id`), `credential` (assertion JSON).
 - **Success** `200`: the core login envelope (session minted).
 - **Errors**: on a recoverable failure the `401 CeremonyExpired` body **re-arms** —
-  it carries a fresh `state_id` + `verification.options` (retry up to 3×); their
+  it carries a fresh `state_id` + `verification.options` (three attempts total: the initial
+  attempt plus at most two re-arms); their
   absence means terminal (restart at the app's password form; use OTP only through the offered
   `fallback_to_otp` flow).
 
@@ -164,6 +167,10 @@ Rate limit: **5 / 300 s / IP**. Guest.
   The handoff stores a short-lived marker bound to core's `tmp_id`; the final login hook consumes it
   once after core accepts the OTP. A direct core OTP flow has no marker and is vetoed for an enrolled
   second-factor user.
+- **Complete the handoff**: POST `{"otp": "<code>", "tmp_id": "<core tmp_id>"}` to
+  `/api/method/login` in the same cookie context. Use the new `tmp_id` from the OTP
+  envelope, not the passkey `state_id`. Core accepts this POST without `usr`; success
+  returns `message: "Logged In"` and the session cookie.
 
 ---
 
@@ -258,14 +265,14 @@ Display-only; no sudo. Rate limit: **20 / 3600 s / user**.
 
 Turn password login off/on for the account. Gated on a **passkey grant only** — never
 a password/sudo window ("a password must never disable the password-is-not-sufficient
-flag"). Enabling additionally needs ≥2 enabled passkeys.
+flag"). Enabling additionally needs ≥2 enabled passkeys and at least one passkey login mode on.
 Rate limit: **20 / 3600 s / user**.
 
 - **Args**: `enabled` (boolean).
 - **Success** `200`: `{"message": {"passkey_only_login": 1}}`.
 - **Errors**: `401 PasskeyConfirmationRequired` with `methods: ["passkey"]` and a
   `payload_fingerprint` over `{"enabled": <bool>}` — echo it **verbatim** into
-  `begin_confirmation` (below); `ValidationError` (<2 passkeys).
+  `begin_confirmation` (below); `ValidationError` (<2 enabled passkeys or both login modes off).
 
 ---
 

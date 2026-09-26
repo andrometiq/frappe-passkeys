@@ -43,6 +43,7 @@ building blocks it (and you, if you go lower-level) are built on.
 | `detectCapabilities()` | `{supported, conditionalMediation, uvpaa, hybrid}` | `null` fields mean *unknown* — never coerce to `false`. |
 | `login(opts?)` | a structured result (below) | First-factor discoverable sign-in: begin → `get()` → verify. `opts.mediation` / `opts.signal` for autofill. |
 | `beginLogin()` | `{enabled, modes, stateId, options}` | Lower-level: fetch fresh options (also the config channel). |
+| `completeUvSetup(setupId, password)` | a structured login result | Finish `uv_setup_required` with the returned `setupId` and a password collected by your UI. |
 | `verifyLogin(stateId, assertion)` | a structured result (below) | Lower-level: verify an assertion you ran yourself. |
 | `register(opts?)` | `{name, label, signal}` | Add a passkey: begin (+ re-auth if needed) → `create()` → verify. `opts.label`, `opts.flow`. |
 | `listCredentials()` | `{credentials, passkey_only_login}` | The caller's own passkeys. Not sudo-gated. |
@@ -75,6 +76,9 @@ reveals whether an account or credential exists, and neither should your UI.
 is a human-readable string (the server's own message when it sent one — e.g. the
 last-passkey delete guard — surfaced verbatim).
 
+`conditionalMediation` reads the browser's `getClientCapabilities().conditionalGet` key,
+with `isConditionalMediationAvailable()` as a fallback when the key is absent.
+
 ### Loading the assets
 
 Serve these from the app's public tree (order matters — each reads the one before):
@@ -94,8 +98,36 @@ un-hashed physical fallback for a hand-rolled page Frappe doesn't render; they l
 the browser may cache them across a deploy, so prefer the bare-name registration when you can.
 
 A **login-only** page needs just `passkey_common.bundle.js` + `passkey_headless.bundle.js`. On Desk
-and on the app's own portal pages these are already loaded for you, so
-`frappe.passkeys.headless` is simply there.
+and on authenticated website pages with a passkey mode enabled, these are already loaded.
+The portal shim also supplies `frappe.boot.passkeys` and runs the stock enrollment
+interstitial or nudge, including on custom `www` pages. You do not need a second gate;
+removing `passkey_portal.bundle.js` removes that enrollment UX, not the server's login checks.
+
+On a custom authenticated `www` page that makes POSTs during startup, bridge CSRF before
+those scripts run; core's generic token injection follows colocated JavaScript. Use the
+same pattern as `/passkeys`, with an uncached page controller:
+
+```python
+import frappe
+from frappe.sessions import get_csrf_token
+
+no_cache = 1
+
+def get_context(context):
+    if frappe.session.user == "Guest":
+        frappe.local.flags.redirect_location = "/login"
+        raise frappe.Redirect
+    context.csrf_token = get_csrf_token()
+```
+
+In the template's `page_content` block, before scripts that make requests:
+
+```html
+<script>
+  window.frappe = window.frappe || {};
+  frappe.csrf_token = {{ csrf_token | tojson }};
+</script>
+```
 
 ---
 
@@ -145,9 +177,18 @@ conditional ceremony you can cancel when the user starts typing a password:
 const ac = new AbortController();
 pk.login({ mediation: "conditional", signal: ac.signal }).then((r) => {
   if (r.ok) window.location.assign(r.redirect || "/app");
+  else if (r.kind === "uv_setup_required") {
+    status.textContent = "Sign in with your password to finish passkey setup.";
+    // Collect a password, then call pk.completeUvSetup(r.setupId, password).
+    // Handle its structured result before navigating; no session exists yet.
+  }
 });
 // call ac.abort() before starting any explicit passkey/password flow
 ```
+
+Handle `uv_setup_required` in the explicit button flow too. For a replacement password
+form on a second-factor site, use `login_with_password` → `verify_second_factor`, or the
+offered OTP flow; see [the REST contract](rest-api.md#guest--passkey-as-a-second-factor).
 
 ---
 
@@ -206,6 +247,17 @@ pk.login({ mediation: "conditional", signal: ac.signal }).then((r) => {
 </script>
 ```
 
+`listCredentials()` returns all the caller's rows, including disabled ones; the raw fields
+are listed in [the REST reference](rest-api.md#passkeysapicredentialslist_credentials).
+`credentialViewModel(cred)` returns `name`, `label`, `providerName` (null if unknown),
+`hasProvider`, `unknownProviderKey`, `badge: {synced, key, hintKey}`, `enabled`, `flagged`,
+`flaggedReason`, `discoverable`, `created`, `lastUsed`, and `a11y: {rename, del}`.
+
+Enabling **Passwordless login only** needs at least two enabled passkeys and an active
+passkey login mode. Use those checks to explain a disabled switch; the server enforces both.
+Removal is limited to 10 requests/hour/user. Its 429, like an action validation refusal,
+currently rejects with `confirmation_failed`; show the error message without retrying in a loop.
+
 ### Removing a passkey needs a confirmation engine
 
 Removing a passkey is sudo-gated. Turning passkey-only login on or off needs a
@@ -213,7 +265,13 @@ passkey grant, never a password or a sudo window. Either call may return
 `HTTP 401 PasskeyConfirmationRequired`. Both route
 through `frappe.passkeys.call`, which runs that confirmation and retries. On Desk and
 on the app's portal pages `frappe.passkeys.call` is already wired. On a **bare** page
-you wire it once from the pure engine and your own tiny modal:
+you wire it once from the pure engine and your own tiny modal. `register()` also uses
+this engine when its sudo window is absent; without it, registration rejects
+`confirmation_unavailable`. Its re-auth UI runs inside the `register()` promise.
+
+The guarded assignments below retain any installed engine. On an authenticated `www`
+page the portal bundle normally installs one first, so these keep its stock modal.
+To use your own modal, assign both methods without `||` after the portal bundle loads:
 
 ```js
 const C = frappe.passkeys_common;
@@ -234,16 +292,19 @@ frappe.passkeys.call = frappe.passkeys.call || engine.call;
 ```
 
 `ui` is a controller object, or a function returning a fresh one per confirmation. The
-engine calls every method below without checking that it exists, so implement all six:
+engine calls a supplied factory once per ceremony; clean up listeners in `done` when reusing DOM.
+Implement all six methods:
 
 | Method | Called when |
 |---|---|
-| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | Both methods are available. Resolve `"passkey"` or `"password"`; reject to cancel. |
+| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. |
 | `collectPassword({action, actionLabel, parameterSummary})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. |
 | `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
 | `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
 | `busy(isBusy)` | The passkey gesture is in progress. |
 | `done(isOk)` | The confirmation finished or failed. Close your modal here. |
+
+With only password available, the engine goes straight to `collectPassword`.
 
 `passkey_portal.bundle.js` is a full, self-contained reference implementation of
 `makeYourConfirmModal` (a `role="dialog"` overlay with focus trap and Esc handling).
@@ -278,7 +339,9 @@ not bind to the signature (missing or unexpected arguments), or whose bound name
 `**kwargs` key, is refused with `PasskeyConfirmationRequired` and no payload fingerprint, before any
 grant is consumed. Undeclared
 arguments are never returned to the client. The server emits `action_label` and `parameter_summary`, translating labels and rendering
-booleans/nulls as safe display values. These fields are presentation only: the grant remains bound
+booleans/nulls as safe display values. The 401's top-level `parameter_summary` is an array
+of `{label, value}` rows (for example `[{label: "Amount", value: "250"}]`), passed to the
+controller as `parameterSummary`; render it as text, never HTML. These fields are presentation only: the grant remains bound
 to the canonical server-side payload fingerprint. Call the method with:
 
 ```js
@@ -291,6 +354,20 @@ Prefer `call()` for decorated third-party methods. Its initial 401 publishes the
 site-scoped Redis, so the confirmation and password-fallback requests behave identically if they
 land on another worker. A direct `confirm()` is appropriate when the action policy is eagerly loaded
 on every worker; an unknown action deliberately fails closed without a password fallback.
+
+`call()` can reject with `user_cancelled`, `not_supported`, `no_credentials`,
+`confirmation_failed`, `fallback_unavailable`, or `network` (the confirmation engine's
+codes). `fallback_unavailable` means neither a passkey nor password confirmation is
+available. `confirmation_failed` also covers a protected method's refusal after successful
+confirmation; show `.message`. Expired confirmations say "That took too long — please try again."
+
+For server tests, follow the enrollment, request, confirmation and grant helpers in
+[`test_confirm_api.py`](../passkeys/tests/test_confirm_api.py), using
+[`SoftAuthenticator`](../passkeys/tests/soft_authenticator.py) to produce a UV assertion
+for `begin_confirmation` → `verify_confirmation`. Present the returned grant in
+`X-Passkey-Grant` (or `frappe.local.form_dict["_passkey_grant"]`) in the same browser-session
+fixture before calling your decorated method. Test refusal without a grant and after reuse;
+these helpers run real verification and are test fixtures, not a production bypass.
 
 ---
 
@@ -322,6 +399,13 @@ do not depend on the DOM *nesting* staying identical.
 (`--progress` / `--success` / `--error` tone modifiers, `__icon` / `__text` parts).
 
 **Nudge banner**: `#passkey-portal-nudge` (`alert alert-info`).
+
+For your own enrollment UI, call `frappe.passkeys_manage_common.enforcementDecision(
+frappe.boot.passkeys, caps)` with `caps` from `detectCapabilities()`. It returns
+`{show, blocking, variant, notifyAdmin, graceRemaining, reason}`. `show` alone does not
+mean blocking: `variant: "nudge"` is non-blocking; `variant: "enforce"` uses `blocking`
+to distinguish the required gate from grace. `notifyAdmin` requests an `incapable` report
+through `record_enforcement`; the server validates it.
 
 **The visually-hidden live region** (`.passkey-sr-only`) backs every announcement —
 never `display:none` it; screen-reader users depend on it.
