@@ -7,7 +7,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
-## [15.0.2] / [16.0.2] — Unreleased
+## [15.0.2] / [16.0.2] — 2026-09-26
 
 ### Changed
 
