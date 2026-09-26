@@ -34,8 +34,9 @@ bench --site <site> install-app passkeys
 checkout — run `bench setup requirements` for the app before enabling any mode;
 the Passkey Settings validator checks package presence on enabled settings saves. When either
 login mode changes from off to on, it also verifies that the ceremony engine imports successfully
-in a bounded child process using the bench's Python interpreter. A failure refuses the save;
-crypto is never loaded into the serving worker by this check. Ordinary saves of already-enabled
+in a bounded child process. The probe runs a fixed import with the bench's own Python interpreter,
+no request-derived arguments and no shell. A failure refuses the save; crypto is never loaded
+into the serving worker by this check. Ordinary saves of already-enabled
 modes and mode disabling do not launch the probe. This is an enablement-time check, not ongoing
 dependency or worker-health monitoring.
 

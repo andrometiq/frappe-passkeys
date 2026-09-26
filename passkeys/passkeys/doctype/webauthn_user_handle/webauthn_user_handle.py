@@ -16,7 +16,7 @@ def lock_passkey_modes() -> frappe._dict:
 	other's stale pre-change state.
 	"""
 	rows = frappe.db.sql(
-		"SELECT `field`, `value` FROM `tabSingles` WHERE `doctype` = %s FOR UPDATE",  # nosemgrep
+		"SELECT `field`, `value` FROM `tabSingles` WHERE `doctype` = %s FOR UPDATE",
 		("Passkey Settings",),
 		as_dict=True,
 	)

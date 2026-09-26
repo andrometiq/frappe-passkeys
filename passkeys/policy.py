@@ -29,12 +29,14 @@ def validate_webauthn_importable() -> None:
 	"""Refuse enablement unless the full ceremony engine imports, in a child process so
 	crypto never loads into the serving worker."""
 	try:
-		result = subprocess.run(
+		# Fixed engine import with the bench interpreter; no request-derived arguments, no shell.
+		result = subprocess.run(  # nosemgrep: frappe-subprocess-exec
 			[sys.executable, "-c", "import passkeys.engine"],
 			stdin=subprocess.DEVNULL,
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.PIPE,
 			check=False,
+			shell=False,
 			timeout=WEBAUTHN_IMPORT_TIMEOUT,
 		)
 	except subprocess.TimeoutExpired as exc:

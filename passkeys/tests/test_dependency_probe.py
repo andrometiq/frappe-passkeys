@@ -117,6 +117,7 @@ class DependencyProbeFailureTest(unittest.TestCase):
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.PIPE,
 			check=False,
+			shell=False,
 			timeout=policy.WEBAUTHN_IMPORT_TIMEOUT,
 		)
 

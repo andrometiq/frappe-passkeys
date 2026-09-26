@@ -7,6 +7,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.2] / [16.0.2] — Unreleased
+
+### Changed
+
+- The dependency probe documents why its fixed child-process import is safe, with a rule-specific
+  suppression for the Frappe Cloud Marketplace security scan; no behaviour change.
+
 ## [15.0.1] / [16.0.1] — 2026-09-26
 
 ### Fixed
@@ -83,7 +90,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.1...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.2...develop
+[15.0.2]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.2
+[16.0.2]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.2
 [15.0.1]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.1
 [16.0.1]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.1
 [15.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.0

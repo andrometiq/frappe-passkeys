@@ -6,6 +6,7 @@
 </div>
 
 <div align="center">
+	<a href="https://github.com/Andrometiq/frappe-passkeys/releases/latest"><img src="https://img.shields.io/github/v/release/Andrometiq/frappe-passkeys" alt="Latest release" /></a>
 	<a target="_blank" href="LICENSE" title="License: MIT"><img src="https://img.shields.io/badge/License-MIT-success.svg" alt="License: MIT" /></a>
 	<a href="https://github.com/Andrometiq/frappe-passkeys/actions/workflows/ci.yml"><img src="https://github.com/Andrometiq/frappe-passkeys/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 	<img src="https://img.shields.io/badge/Frappe-v15%20%C2%B7%20v16%20%C2%B7%20develop-0089FF.svg" alt="Frappe v15 · v16 · develop" />
