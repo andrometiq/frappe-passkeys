@@ -13,6 +13,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 - The dependency probe documents why its fixed child-process import is safe, with a rule-specific
   suppression for the Frappe Cloud Marketplace security scan; no behaviour change.
+- The "Why passkeys are safer" explainer moved to https://andrometiq.com/software/passkey/; the
+  security-posture panel links there, and the old GitHub Pages address redirects to it.
 
 ## [15.0.1] / [16.0.1] — 2026-09-26
 

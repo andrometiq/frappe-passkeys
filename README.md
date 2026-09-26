@@ -19,8 +19,7 @@
 
 > A passkey leaves nothing to phish, reuse, or leak: your server never receives the private key,
 > and the browser signs only for your site's real domain. Read the short, illustrated explainer:
-> **[Why passkeys are safer, and when they aren't](https://andrometiq.github.io/frappe-passkeys/why-passkeys.html)**
-> ([source](docs/why-passkeys.html)).
+> **[Why passkeys are safer, and when they aren't](https://andrometiq.com/software/passkey/)**.
 
 ## Passkeys for Frappe
 

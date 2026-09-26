@@ -69,7 +69,7 @@ function fetchResolvedRpId(frm) {
 }
 
 // The hosted explainer the report footer links to (new tab, never iframed).
-var POSTURE_THEORY_URL = "https://andrometiq.github.io/frappe-passkeys/why-passkeys.html";
+var POSTURE_THEORY_URL = "https://andrometiq.com/software/passkey/";
 
 function fetchSecurityPosture(frm) {
 	renderPosture(frm, postureNoticeCard(__("Checking your security posture…")));

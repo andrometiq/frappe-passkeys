@@ -30,8 +30,8 @@ New here? Start with [Install](install.md), then [Configuration](configuration.m
   disclosure.
 - [**WebAuthn Level 3 support**](webauthn-l3.md): which WebAuthn L3 relying-party steps and
   browser features the app supports, where each is handled, and what is not supported yet.
-- [**Why passkeys are safer**](why-passkeys.html): a short illustrated explainer for decision
-  makers.
+- [**Why passkeys are safer**](https://andrometiq.com/software/passkey/): a short illustrated
+  explainer for decision makers.
 - [**Security policy**](../SECURITY.md): how to report a vulnerability privately.
 
 ## Project
