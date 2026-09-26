@@ -7,20 +7,24 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
-## [15.0.1] / [16.0.1] — Unreleased
+## [15.0.1] / [16.0.1] — 2026-09-26
 
 ### Fixed
-
-- The test-only OTP helper requires a live site-bound fallback marker matching core's pending
-  user before reading the secret, and supports only OTP App codes.
 
 - OTP fallback now completes on the stock login page: its single-use marker survives core's
   site-cache clear when the OTP submission omits `usr`.
 - Expired action confirmations show the timeout message instead of a passkey verification failure.
-- Last-passkey refusals identify whether the per-user Passkey Only Login flag or site-wide
-  Disable Username/Password Login setting blocks removal or disabling.
+- Last-passkey refusals name the setting that blocks removal or disabling (the per-user Passkey
+  Only Login flag or site-wide Disable Username/Password Login) and the fix that satisfies it.
 - Protected app actions use action-neutral browser-session and confirmation prompts; management
-  gates retain their management wording.
+  gates keep their management wording.
+
+### Documentation
+
+- Custom UI, REST, security, operations, recovery, configuration and mobile-app docs filled in
+  where a docs-only integration hit gaps: CSRF on authenticated `www` pages, the stock enrollment
+  gate on custom pages, the autofill `uv_setup_required` branch, helper return shapes, the
+  passkey-only floors, System Manager read paths, and a GET-based association-file check.
 
 ## [15.0.0] / [16.0.0] — 2026-09-24 — First public release
 
@@ -79,6 +83,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.0...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.1...develop
+[15.0.1]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.1
+[16.0.1]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.1
 [15.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.0
 [16.0.0]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.0
