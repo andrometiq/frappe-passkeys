@@ -395,3 +395,19 @@ test("call(): retry after a confirmed grant surfaces the server message when the
 		(e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED && e.message === GUARD
 	);
 });
+
+for (const [excType, message] of [
+	["CeremonyExpired", "That took too long — please try again."],
+	["CeremonyFailed", "That passkey didn't confirm it's you. Try again, or use your password."],
+]) {
+	test(`confirmation verify ${excType} without server messages shows the right copy`, async () => {
+		const post = makePost({
+			"passkeys.confirm.begin_confirmation": [{ ok: true, body: { message: { state_id: "s", options: REQ_OPTIONS, methods: ["passkey"] } } }],
+			"passkeys.confirm.verify_confirmation": [{ ok: false, status: 401, body: { exc_type: excType } }],
+		});
+		const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI() });
+		await assert.rejects(engine.confirm("myapp.pay", {}),
+			(e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED && e.message === message);
+		assert.strictEqual(post.calls.length, 2, "never replay an assertion");
+	});
+}

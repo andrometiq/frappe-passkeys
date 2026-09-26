@@ -216,7 +216,7 @@
 		}
 		function mapVerifyError(res) {
 			var exc = res && res.body && res.body.exc_type;
-			if (C.mapServerExcType(exc) === "ceremony_expired") return err("add_expired", "That took too long — please try again.");
+			if (C.mapServerExcType(exc) === "ceremony_expired") return err("add_expired", C.CEREMONY_EXPIRED_MESSAGE);
 			return err("add_failed", C.serverMessages(res && res.body) || "Couldn't add a passkey — please try again.");
 		}
 

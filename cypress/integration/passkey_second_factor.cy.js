@@ -96,14 +96,39 @@ chromium_only("password → passkey second factor", () => {
 		cy.assert_logged_user(SF_USER);
 	});
 
-	it("offers the OTP fallback and hands off to core's OTP UI", () => {
+	it("offers the OTP fallback and completes sign-in through core's OTP UI", () => {
+		cy.intercept_frappe_method("passkeys.passkey.fallback_to_otp", "fallback_otp");
+		cy.intercept_frappe_method("login", "core_otp", (req, body) => {
+			expect(body).to.have.property("otp");
+			expect(body).to.have.property("tmp_id");
+			expect(body).not.to.have.property("usr");
+		});
 		submitPassword();
 		// the secondary action exists only because passkey_2fa_allow_otp_fallback
 		// is on AND the user is OTP-capable (server-gated).
 		cy.contains(".passkey-dialog button", "Use a verification code instead").click();
 		// core's own OTP form paints its token input — the passkey app got out of
 		// the way (dispatch to core's leg 2, no stacking).
-		cy.get("#login_token", { timeout: 15000 }).should("exist");
+		cy.get("#login_token", { timeout: 15000 }).should("be.visible");
+		cy.wait("@fallback_otp").then(({ response }) => {
+			expect(response.statusCode).to.eq(200);
+			// Read as admin, then restore the guest cookies before core's OTP submission.
+			cy.getCookies({ log: false }).then((cookies) => {
+				cy.login("Administrator", ADMIN_PW());
+				cy.call("passkeys.tests.ui_test_helpers.get_otp_code", { tmp_id: response.body.tmp_id })
+					.then((body) => {
+						cy.clearCookies({ log: false });
+						cookies.forEach(({ name, value, domain, path, secure, httpOnly, sameSite }) =>
+							cy.setCookie(name, value, { domain, path, secure, httpOnly, sameSite, log: false })
+						);
+						cy.get("#login_token").type(body.message, { log: false });
+					});
+			});
+		});
+		cy.get("#verify_token").click();
+		cy.wait("@core_otp").its("response.statusCode").should("eq", 200);
+		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
+		cy.assert_logged_user(SF_USER);
 	});
 
 	it("re-arms on a failed passkey then succeeds on a fresh gesture (no re-POST)", () => {

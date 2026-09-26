@@ -105,6 +105,11 @@ class WebAuthnCredential(Document):
 					"Cannot {0} the only enabled passkey of {1}: passwordless login is on for that"
 					" account, so this would lock them out. Clear 'Passkey Only Login' on their"
 					" WebAuthn User Handle first (or ensure another login method), then retry."
+				).format(action, self.user)
+				if passkey_only
+				else _(
+					"Cannot {0} the only enabled passkey of {1}: Disable Username/Password Login is on "
+					"in System Settings. Add another login method or turn that setting off, then retry."
 				).format(action, self.user),
 				frappe.ValidationError,
 			)

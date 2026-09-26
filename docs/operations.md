@@ -26,13 +26,17 @@ This matters for every backup, restore, and deploy.
 
 - In-flight login / registration / confirmation ceremonies and their challenges.
 - The uv-setup step-up state.
+- One-time OTP-fallback authorization markers (five-minute TTL).
 - Action-confirmation grants and the "sudo" re-auth windows.
 - The guest browser-binder cookie value hashes and the per-user
   password-failure throttle counters.
 
 A Redis flush (or a deploy that clears the cache) cancels only in-flight
 ceremonies: the worst case is a user retrying one sign-in. Nothing enrolled is
-lost. Sudo windows and grants simply have to be re-earned.
+lost. Sudo windows and grants simply have to be re-earned. The OTP-fallback prefix alone is
+registered in `persistent_cache_keys`: core's stock OTP form omits `usr`, causing a site-cache
+clear before the login veto consumes the marker. This hook preserves the marker across that
+clear, not across a Redis flush; its TTL and atomic, single-use consumption still apply.
 
 ## Before you enable passkeys on a production site
 

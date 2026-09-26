@@ -199,7 +199,7 @@ def passkey_protected(
 		def wrapper(*args, **kwargs):
 			params = _bound_params(fn, args, kwargs, policy_)
 			_publish_action_policy(policy_)
-			user = session.require_authed_user()
+			user = session.require_authed_user(_("This action requires a signed-in browser session."))
 			if not session.consume_action_grant(
 				user,
 				policy_.action,
@@ -252,7 +252,7 @@ def _bound_params(fn, args, kwargs, policy_: ActionPolicy) -> dict:
 
 def _refuse_unbindable_call(action: str) -> None:
 	# no fingerprint and no methods: nothing confirmed can match an underivable payload
-	session._raise_confirmation_required(action, methods=[])
+	session._raise_confirmation_required(action, methods=[], message=_("Confirm it's you to continue."))
 
 
 def _raise_confirmation_required(policy_: ActionPolicy, params: dict) -> None:
@@ -263,6 +263,7 @@ def _raise_confirmation_required(policy_: ActionPolicy, params: dict) -> None:
 		payload_fingerprint=session.payload_hash(params),
 		action_label=_(policy_.display_label) if policy_.display_label else None,
 		parameter_summary=_parameter_summary(policy_, params),
+		message=_("Confirm it's you to continue."),
 	)
 
 
@@ -300,7 +301,7 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	a hash is never computed client-side. Returns ``{state_id, options,
 	payload_fingerprint, methods, action_label, parameter_summary}``."""
 	refuse_if_core_native()
-	user = session.require_authed_user()
+	user = session.require_authed_user(_("This action requires a signed-in browser session."))
 	state.rate_limit_user("begin_confirmation", 30, 300)
 	action = _require_action(action)
 	if params is not None and payload_hash is not None:
@@ -359,7 +360,7 @@ def verify_confirmation(state_id: str, credential: object):
 	a single-use, 180 s, ``passkey``-method grant bound to user + sid + action +
 	payload. Any failure raises the uniform typed error."""
 	refuse_if_core_native()
-	user = session.require_authed_user()
+	user = session.require_authed_user(_("This action requires a signed-in browser session."))
 	state.rate_limit_user("verify_confirmation", 30, 300)
 
 	from passkeys import engine
@@ -418,7 +419,9 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 	from frappe.utils.password import check_password
 
 	refuse_if_core_native()
-	user = session.require_authed_user()
+	user = session.require_authed_user(
+		_("This action requires a signed-in browser session.") if action else None
+	)
 	state.rate_limit_user("reauth_password", 5, 300)
 	# refuse before touching the password oracle
 	if not _password_reauth_allowed(user):

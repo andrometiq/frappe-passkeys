@@ -200,6 +200,34 @@ class CredentialManagementTest(IntegrationTestCase):
 			credentials.delete_credential(only.name)
 		self.assertTrue(frappe.db.exists("WebAuthn Credential", only.name))
 
+	def test_last_credential_refusal_names_the_active_setting(self):
+		user = self._user()
+		only = make_credential(user)
+		handle = make_handle(user)
+		sign_in(user)
+		self._seed_sudo(user)
+		for passkey_only, site_disabled in ((1, 0), (0, 1), (1, 1)):
+			frappe.db.set_value("WebAuthn User Handle", handle.name, "passkey_only_login", passkey_only)
+			with patch("frappe.get_system_settings", return_value=site_disabled):
+				for path in ("api", "delete", "disable"):
+					with self.subTest(passkey_only=passkey_only, site_disabled=site_disabled, path=path):
+						with self.assertRaises(frappe.ValidationError) as raised:
+							if path == "api":
+								credentials.delete_credential(only.name)
+							else:
+								only._guard_last_login_method(path)
+						message = str(raised.exception)
+						if passkey_only:
+							self.assertIn(
+								"passkey-only login" if path == "api" else "Passkey Only Login", message
+							)
+						else:
+							self.assertIn("Disable Username/Password Login", message)
+							self.assertIn("System Settings", message)
+							self.assertNotIn("passkey-only login", message)
+							self.assertNotIn("Passkey Only Login", message)
+		self.assertTrue(frappe.db.exists("WebAuthn Credential", only.name))
+
 	def test_delete_non_last_credential_of_passkey_only_user_allowed(self):
 		user = self._user()
 		make_credential(user, label="one")
@@ -217,7 +245,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		make_credential(user)
 		make_credential(user)
 		sign_in(user)
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaisesRegex(PasskeyConfirmationRequired, "Confirm it's you to manage passkeys."):
 			credentials.set_passkey_only_login(1)
 		# passkey-grade only — no password / sudo fallback is offered
 		self.assertEqual(frappe.local.response.get("methods"), ["passkey"])
@@ -229,7 +257,7 @@ class CredentialManagementTest(IntegrationTestCase):
 		sign_in(user)
 		# a password-seeded sudo window must NOT satisfy the flag toggle
 		self._seed_sudo(user, seeded_by="password")
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaisesRegex(PasskeyConfirmationRequired, "Confirm it's you to manage passkeys."):
 			credentials.set_passkey_only_login(1)
 
 	def test_set_passkey_only_enable_requires_two_passkeys(self):

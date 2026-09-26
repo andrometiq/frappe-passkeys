@@ -262,6 +262,33 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 			"a test helper is guest-callable and is not a documented exception",
 		)
 
+	def test_otp_code_helper_checks_guard_before_reading_cache(self):
+		with (
+			patch.object(ui_test_helpers, "_guard", side_effect=frappe.PermissionError),
+			patch.object(frappe.cache, "get") as read,
+		):
+			with self.assertRaises(frappe.PermissionError):
+				ui_test_helpers.get_otp_code("pending")
+			read.assert_not_called()
+
+	def test_otp_code_helper_reads_core_pending_values(self):
+		import pyotp
+
+		tmp_id = frappe.generate_hash()
+		secret_key, token_key = f"{tmp_id}_otp_secret", f"{tmp_id}_token"
+		# core writes these unprefixed with raw frappe.cache.set
+		self.addCleanup(frappe.cache.delete, secret_key)
+		self.addCleanup(frappe.cache.delete, token_key)
+		secret = pyotp.random_base32()
+		frappe.cache.set(secret_key, secret, ex=60)
+		self.assertTrue(pyotp.TOTP(secret).verify(ui_test_helpers.get_otp_code(tmp_id), valid_window=1))
+		frappe.cache.delete(secret_key)
+		frappe.cache.set(token_key, "012345", ex=60)
+		self.assertEqual(ui_test_helpers.get_otp_code(tmp_id), "012345")
+		frappe.cache.delete(token_key)
+		with self.assertRaises(frappe.ValidationError):
+			ui_test_helpers.get_otp_code(tmp_id)
+
 	def test_slow_guest_echo_is_flag_gated(self):
 		# The one guest-callable GET helper must be inert off a developer_mode +
 		# allow_tests site — the deterministic-cookie flag alone does not open it.

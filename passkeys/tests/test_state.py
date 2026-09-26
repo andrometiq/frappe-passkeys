@@ -30,6 +30,15 @@ class TestStateStore(IntegrationTestCase):
 		self.assertFalse(state.claim_enforcement_defer(user, sid))
 		self.assertTrue(state.claim_enforcement_defer(user, frappe.generate_hash()))
 
+	def test_otp_fallback_survives_site_cache_clear(self):
+		tmp_id = state.new_id()
+		record = {"v": 1, "user": "otp-fallback@example.com"}
+		state.store_otp_fallback(tmp_id, record)
+		self.addCleanup(state.consume_otp_fallback, tmp_id)
+		frappe.clear_cache()
+		self.assertEqual(state.consume_otp_fallback(tmp_id), record)
+		self.assertIsNone(state.consume_otp_fallback(tmp_id))
+
 	def test_store_and_consume_round_trip(self):
 		record = {"v": 1, "type": "login", "challenge_b64": "abc", "origins": ["https://x.example"]}
 		state_id = state.store_ceremony(record)

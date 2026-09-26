@@ -65,3 +65,14 @@ Phone/QR enrollment is always offered, so the verdict has no hybrid switch.
 `enforcement.degrade_nudge_eligible` applies the ordinary nudge opt-out, cap and cooldown
 to in-scope, unenrolled users under Degrade. Both Desk and portal require this explicit
 verdict for incapable-device nudges.
+
+The stock OTP completion submits no `usr` and clears the site's non-persistent cache before
+`on_login`. Preserve the `passkeys:otp-fallback:` prefix through `persistent_cache_keys` (or its
+native equivalent); keep TTL expiry and atomic consumption. Other ceremony, uv-setup, grant,
+and sudo flows do not require a core OTP login between mint and consume. Concurrent cache
+clears may still cancel them safely, requiring a fresh ceremony or confirmation.
+
+Confirmation clients map `CeremonyExpired` without relying on `_server_messages` and reuse the
+shared timeout copy. App-action refusals say “This action requires a signed-in browser session.”
+and “Confirm it's you to continue.” Management gates keep their management-specific copy.
+Last-credential guards retain both policy checks and name the setting that caused the refusal.

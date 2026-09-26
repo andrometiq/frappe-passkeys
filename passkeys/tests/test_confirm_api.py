@@ -19,7 +19,12 @@ from frappe.utils.password import update_password
 
 from passkeys import confirm, session, state
 from passkeys.api import registration
-from passkeys.errors import CeremonyExpired, CeremonyFailed, PasskeyConfirmationRequired
+from passkeys.errors import (
+	BrowserSessionRequired,
+	CeremonyExpired,
+	CeremonyFailed,
+	PasskeyConfirmationRequired,
+)
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -416,7 +421,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			return {"shipped": order}
 
 		self._request("/api/method/myapp.ship")
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaisesRegex(PasskeyConfirmationRequired, "Confirm it's you to continue."):
 			ship(order="ORD-9")
 		# the 401 body carries the SERVER-computed fingerprint for the client to echo
 		self.assertEqual(
@@ -424,6 +429,30 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			session.payload_hash({"order": "ORD-9"}),
 		)
 		self.assertEqual(frappe.local.response.get("action"), "myapp.ship")
+
+	def test_browser_session_refusal_matches_the_surface(self):
+		user = self._user()
+		frappe.set_user(user)  # token-auth shape: sid is the user name
+
+		@confirm.passkey_protected(action="myapp.browser-session")
+		def action():
+			self.fail("Token authentication must not run the action")
+
+		for call in (
+			action,
+			lambda: confirm.begin_confirmation("myapp.browser-session"),
+			lambda: confirm.verify_confirmation("missing", {}),
+			lambda: confirm.reauth_password("unused", action="myapp.browser-session"),
+		):
+			with self.assertRaisesRegex(
+				BrowserSessionRequired, "This action requires a signed-in browser session."
+			):
+				call()
+		for call in (session.require_authed_user, lambda: confirm.reauth_password("unused")):
+			with self.assertRaisesRegex(
+				BrowserSessionRequired, "Passkey management requires a signed-in browser session."
+			):
+				call()
 
 	def test_decorator_exposes_only_explicit_safe_display_metadata(self):
 		user = self._user()
@@ -676,7 +705,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		# a second call needs a fresh ceremony — the grant was consumed
 		self._request("/api/method/myapp.ship", grant_header=token)
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaisesRegex(PasskeyConfirmationRequired, "Confirm it's you to continue."):
 			ship(order="ORD-9")
 
 	# ======================================================================

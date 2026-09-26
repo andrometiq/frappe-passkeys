@@ -7,6 +7,18 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.1] / [16.0.1] — Unreleased
+
+### Fixed
+
+- OTP fallback now completes on the stock login page: its single-use marker survives core's
+  site-cache clear when the OTP submission omits `usr`.
+- Expired action confirmations show the timeout message instead of a passkey verification failure.
+- Last-passkey refusals identify whether the per-user Passkey Only Login flag or site-wide
+  Disable Username/Password Login setting blocks removal or disabling.
+- Protected app actions use action-neutral browser-session and confirmation prompts; management
+  gates retain their management wording.
+
 ## [15.0.0] / [16.0.0] — 2026-09-24 — First public release
 
 ### Added

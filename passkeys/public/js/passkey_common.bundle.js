@@ -324,6 +324,7 @@
 
 	// Map a server typed error (exc_type — the class name is the wire value) to a
 	// client action. Clients match on exc_type ONLY, never on message text.
+	var CEREMONY_EXPIRED_MESSAGE = "That took too long — please try again.";
 	function mapServerExcType(excType) {
 		switch (excType) {
 			case "CeremonyExpired":
@@ -880,7 +881,9 @@
 						controller.announce(tr("That didn't work — please try again."));
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							serverMessages(res && res.body) ||
-								tr("That passkey didn't confirm it's you. Try again, or use your password."));
+								tr(mapServerExcType(res && res.body && res.body.exc_type) === "ceremony_expired"
+								? CEREMONY_EXPIRED_MESSAGE
+								: "That passkey didn't confirm it's you. Try again, or use your password."));
 					}
 					var grant = extractGrant(res.body);
 					if (!grant) throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Confirmation didn't complete."));
@@ -983,6 +986,7 @@
 		detectCapabilities: detectCapabilities,
 		mapDomException: mapDomException,
 		mapServerExcType: mapServerExcType,
+		CEREMONY_EXPIRED_MESSAGE: CEREMONY_EXPIRED_MESSAGE,
 		resolveIdentifierInput: resolveIdentifierInput,
 		resolveButtonMount: resolveButtonMount,
 		pickVisibleSection: pickVisibleSection,

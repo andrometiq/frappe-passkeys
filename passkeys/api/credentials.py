@@ -137,6 +137,11 @@ def _guard_last_credential(user: str, doc) -> None:
 			_(
 				"This is your only passkey and passwordless login is on for your account — "
 				"add another passkey (or turn off passkey-only login) before removing it."
+			)
+			if passkey_only
+			else _(
+				"This is your only passkey and Disable Username/Password Login is on in System Settings — "
+				"add another login method or ask your administrator to turn that setting off before removing it."
 			),
 			frappe.ValidationError,
 		)

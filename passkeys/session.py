@@ -134,14 +134,14 @@ def has_management_sudo(user: str, sid: str | None = None) -> bool:
 	return bool(window and window.get("seeded_by") in FULL_SUDO_METHODS)
 
 
-def require_authed_user() -> str:
+def require_authed_user(message: str | None = None) -> str:
 	"""The signed-in browser user; ``AuthenticationError`` for Guest and
 	``BrowserSessionRequired`` for a token-authenticated request."""
 	user = frappe.session.user
 	if not user or user in ("Guest", ""):
 		raise frappe.AuthenticationError(_("Not permitted."))
 	if not is_browser_session(user):
-		raise BrowserSessionRequired(_("Passkey management requires a signed-in browser session."))
+		raise BrowserSessionRequired(message or _("Passkey management requires a signed-in browser session."))
 	return user
 
 
@@ -255,6 +255,7 @@ def _raise_confirmation_required(
 	payload_fingerprint=None,
 	action_label: str | None = None,
 	parameter_summary: list[dict] | None = None,
+	message: str | None = None,
 ) -> None:
 	"""The typed 401 contract: structured keys ride ``frappe.local.response`` into the
 	JSON error body; clients match on ``exc_type``."""
@@ -265,4 +266,4 @@ def _raise_confirmation_required(
 		frappe.local.response["action_label"] = action_label
 	if parameter_summary:
 		frappe.local.response["parameter_summary"] = parameter_summary
-	raise PasskeyConfirmationRequired(frappe._("Confirm it's you to manage passkeys."))
+	raise PasskeyConfirmationRequired(message or _("Confirm it's you to manage passkeys."))

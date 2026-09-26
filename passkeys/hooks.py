@@ -54,6 +54,9 @@ update_website_context = [
 # Boot: publishes bootinfo.passkeys (see boot.build_passkeys_boot). Every Desk boot.
 extend_bootinfo = ["passkeys.boot.extend_bootinfo"]
 
+# Core OTP login omits usr and clears site cache before the on_login veto consumes this marker.
+persistent_cache_keys = ["passkeys:otp-fallback:"]
+
 # Session lifecycle
 # -----------------
 # Login veto: blocks non-passkey first-factor logins for a passkey_only_login user and

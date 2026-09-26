@@ -200,7 +200,7 @@ class SudoWindowTest(IntegrationTestCase):
 		user = self._user()
 		sign_in(user)
 		state.clear_sudo_window(self.sid)
-		with self.assertRaises(PasskeyConfirmationRequired):
+		with self.assertRaisesRegex(PasskeyConfirmationRequired, "Confirm it's you to manage passkeys."):
 			session.require_management_sudo(user)
 		self.assertEqual(frappe.local.response.get("action"), session.MANAGE_ACTION)
 		self.assertIn("sudo", frappe.local.response.get("methods"))
