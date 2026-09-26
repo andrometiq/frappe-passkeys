@@ -105,8 +105,9 @@ in Passkey Settings. Changing the RP ID later invalidates every enrolled passkey
 
 ### Status and supported versions
 
-This is the first public release: **15.0.0** on the `version-15` branch and **16.0.0** on
-`version-16`. CI runs the server, JavaScript, and browser end-to-end suites against Frappe v15, v16,
+Each Frappe line has its own release branch: `version-15` carries the 15.x releases and
+`version-16` the 16.x releases (see [Releases](https://github.com/Andrometiq/frappe-passkeys/releases)).
+CI runs the server, JavaScript, and browser end-to-end suites against Frappe v15, v16,
 and develop. As with any authentication change, try it on staging before you enable it on a site
 that depends on it; [Operations](docs/operations.md#before-you-enable-passkeys-on-a-production-site)
 lists what to check.
@@ -122,28 +123,11 @@ the reverse-proxy, RP ID, and origin requirements.
 
 ## Documentation
 
-- [**Install**](docs/install.md): install, upgrade, uninstall, the version matrix, and reverse-proxy
-  / RP ID / origin requirements.
-- [**Configuration**](docs/configuration.md): every Passkey Settings field, its default, and the
-  security consequence of changing it.
-- [**Custom UI**](docs/custom-ui.md): build your own passkey login and management screens with the
-  `frappe.passkeys.headless` JavaScript API, or restyle the shipped cards.
-- [**REST API**](docs/rest-api.md): the whitelisted endpoints (arguments, response shapes, CSRF,
-  rate limits) for a native app or a no-JS single-page app.
-- [**Mobile apps**](docs/mobile-apps.md): let a native iOS or Android app share the site's
-  passkeys: trusted app origins, the two well-known association files, and the endpoints.
-- [**Operations**](docs/operations.md): pre-production checks, RP ID and domain changes, backup and
-  restore, incident response, revocation, and monitoring.
-- [**Recovery**](docs/recovery.md): System Manager recovery through Desk, then Administrator
-  and account-specific console procedures when no manager can sign in.
-- [**Security**](docs/security.md): the security model in operator terms: what the app enforces,
-  what it trusts, residual risks, and disclosure.
-- [**WebAuthn Level 3 support**](docs/webauthn-l3.md): which WebAuthn L3 relying-party steps and
-  browser features the app supports, where each is handled, and what is not supported yet.
-- [**Security policy**](SECURITY.md): how to report a vulnerability privately.
-- [**Changelog**](CHANGELOG.md): what changed in each release.
-- [**Upstream proposal**](docs/upstream/): a design and validation checklist for adopting passkeys
-  in Frappe core.
+The full index is in **[docs/](docs/README.md)**. Most-used:
+
+- [**Install**](docs/install.md): install, upgrade, and reverse-proxy / RP ID / origin requirements.
+- [**Configuration**](docs/configuration.md): every Passkey Settings field and what changing it means.
+- [**Security**](docs/security.md): what the app enforces, what it trusts, and residual risks.
 
 ## Development
 
