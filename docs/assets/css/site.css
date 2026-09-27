@@ -38,6 +38,7 @@ a:hover { text-decoration: underline; }
 .brand { color: #C7CEDD; font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
 .brand svg, .footer-brand svg { flex-shrink: 0; }
 .iq { color: #3FB6DE; }
+.docs-label { color: var(--secondary); }
 .site-title { color: var(--text); border-left: 1px solid var(--line); padding-left: 24px; }
 nav { display: flex; gap: 24px; overflow-x: auto; padding-top: 0; font-size: 16px; }
 nav a { flex-shrink: 0; color: var(--secondary); padding: 4px 0; }

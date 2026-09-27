@@ -13,10 +13,11 @@
 	<header class="site-header">
 		<div class="brand-row">
 			<a class="brand" href="https://andrometiq.com/">{% include mark.html %}<span>Andromet<span class="iq">iq</span></span></a>
-			<a class="site-title" href="{{ '/' | relative_url }}">Passkeys for Frappe</a>
+			<a class="site-title" href="{{ '/' | relative_url }}">Passkeys for Frappe <span class="docs-label">Docs</span></a>
 		</div>
 		<nav aria-label="Documentation">
 			{% assign navigation = 'install|Install,configuration|Configuration,operations|Operations,recovery|Recovery,custom-ui|Custom UI,rest-api|REST API,mobile-apps|Mobile apps,security|Security,webauthn-l3|WebAuthn L3' | split: ',' %}
+			<a href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}>Docs home</a>
 			{% for item in navigation %}
 				{% assign parts = item | split: '|' %}
 				{% assign target = '/' | append: parts[0] | append: '.html' %}
