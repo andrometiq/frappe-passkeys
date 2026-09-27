@@ -7,6 +7,14 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.3] / [16.0.3] — 2026-09-27
+
+### Changed
+
+- The "Why passkeys are safer" explainer's final address is
+  https://andrometiq.com/software/passkey/why-passkeys-are-safer/; the security-posture panel, the
+  README and the docs link there, and the old GitHub Pages address redirects to it.
+
 ## [15.0.2] / [16.0.2] — 2026-09-26
 
 ### Changed
@@ -92,7 +100,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.2...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.3...develop
+[15.0.3]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.3
+[16.0.3]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.3
 [15.0.2]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.2
 [16.0.2]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.2
 [15.0.1]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.1
