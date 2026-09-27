@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'en' }}">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	{% seo %}
+	<link rel="icon" href="{{ '/assets/andrometiq-icon.png' | relative_url }}">
+	<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&amp;display=swap">
+	<link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+</head>
+<body>
+	<a class="skip-link" href="#main">Skip to content</a>
+	<header class="site-header">
+		<div class="brand-row">
+			<a class="brand" href="https://andrometiq.com/">{% include mark.html %}<span>Andromet<span class="iq">iq</span></span></a>
+			<a class="site-title" href="{{ '/' | relative_url }}">Passkeys for Frappe</a>
+		</div>
+		<nav aria-label="Documentation">
+			{% assign navigation = 'install|Install,configuration|Configuration,operations|Operations,recovery|Recovery,custom-ui|Custom UI,rest-api|REST API,mobile-apps|Mobile apps,security|Security,webauthn-l3|WebAuthn L3' | split: ',' %}
+			{% for item in navigation %}
+				{% assign parts = item | split: '|' %}
+				{% assign target = '/' | append: parts[0] | append: '.html' %}
+				<a href="{{ target | relative_url }}"{% if page.url == target %} aria-current="page"{% endif %}>{{ parts[1] }}</a>
+			{% endfor %}
+			<a href="https://github.com/Andrometiq/frappe-passkeys">GitHub</a>
+		</nav>
+	</header>
+	<main id="main" tabindex="-1">
+		{% assign repository_root = 'https://github.com/Andrometiq/frappe-passkeys/blob/develop/' %}
+		{% assign escape_prefix = '../' %}
+		{% assign path_parts = page.path | split: '/' %}
+		{% for part in path_parts offset:1 %}
+			{% assign escape_prefix = escape_prefix | prepend: '../' %}
+		{% endfor %}
+		{% assign escape_href = 'href="' | append: escape_prefix %}
+		{% assign repository_href = 'href="' | append: repository_root %}
+		{{ content | replace: escape_href, repository_href }}
+	</main>
+	<footer class="site-footer">
+		<a class="footer-brand" href="https://andrometiq.com/">{% include mark.html %}<span>Engineered at Andrometiq</span></a>
+		<p>© Andrometiq — Enabling Your Highest Potential</p>
+		<p class="source-links"><a href="https://github.com/Andrometiq/frappe-passkeys">MIT licensed · Source on GitHub</a><a href="{{ repository_root }}docs/{{ page.path | escape }}">View this page on GitHub</a></p>
+	</footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+title: Passkeys for Frappe
+description: Andrometiq documentation for passwordless login, passkey second factors, and protected actions in Frappe.
+lang: en
+url: https://andrometiq.github.io
+baseurl: /frappe-passkeys
+repository: Andrometiq/frappe-passkeys
+markdown: kramdown
+kramdown:
+  input: GFM
+plugins:
+  - jekyll-seo-tag
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-readme-index
+  - jekyll-titles-from-headings
+  - jekyll-default-layout
+  - jekyll-github-metadata
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      path: why-passkeys.html
+    values:
+      layout: null
