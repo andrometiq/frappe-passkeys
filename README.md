@@ -21,6 +21,9 @@
 > and the browser signs only for your site's real domain. Read the short, illustrated explainer:
 > **[Why passkeys are safer, and when they aren't](https://andrometiq.com/software/passkey/why-passkeys-are-safer/)**.
 
+Product page: [andrometiq.com/software/passkey](https://andrometiq.com/software/passkey/) ·
+Documentation: [andrometiq.github.io/frappe-passkeys](https://andrometiq.github.io/frappe-passkeys/)
+
 ## Passkeys for Frappe
 
 This app adds [WebAuthn / FIDO2 passkeys](https://fidoalliance.org/passkeys/) to any Frappe site.

@@ -7,6 +7,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Changed
+
+- The app's contact email is hello@andrometiq.com.
+
 ## [15.0.3] / [16.0.3] — 2026-09-27
 
 ### Changed
@@ -21,8 +25,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 - The dependency probe documents why its fixed child-process import is safe, with a rule-specific
   suppression for the Frappe Cloud Marketplace security scan; no behaviour change.
-- The "Why passkeys are safer" explainer moved to https://andrometiq.com/software/passkey/; the
-  security-posture panel links there, and the old GitHub Pages address redirects to it.
+- The "Why passkeys are safer" link in the security-posture panel points to the product page,
+  https://andrometiq.com/software/passkey/, and the old GitHub Pages address redirects there.
 
 ## [15.0.1] / [16.0.1] — 2026-09-26
 
