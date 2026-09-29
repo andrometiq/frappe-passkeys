@@ -37,7 +37,7 @@
   "passkey_max_per_user",
   "column_break_policy",
   "passkey_reauth_window",
-  "passkey_allow_first_enrollment_on_weak_login",
+  "passkey_allow_first_enrollment_on_external_login",
   "notifications_tab",
   "passkey_notify_on_change",
   "passkey_notify_password_fallback",
@@ -255,8 +255,8 @@
   },
   {
    "default": "1",
-   "description": "Lets a user with no passkey yet, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on",
-   "fieldname": "passkey_allow_first_enrollment_on_weak_login",
+   "description": "Lets a user with no enabled passkey, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on",
+   "fieldname": "passkey_allow_first_enrollment_on_external_login",
    "fieldtype": "Check",
    "label": "Allow First Passkey After Email-Link or Social Sign-in"
   },

@@ -124,7 +124,7 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:passkey_added` / `passkey_removed` / `passkey_disabled` | A credential was added, removed, or admin-disabled. |
 | `passkeys:passkey_flagged` | A sign-count regression / anomaly was recorded on a sign-in. |
 | `passkeys:fallback_used` | A passkey holder completed the second factor with a one-time code instead. |
-| `passkeys:weak_login_enrollment` | The restricted first-enrollment-on-weak-login path was used. |
+| `passkeys:external_login_enrollment` | The restricted first-enrollment-on-external-login path was used. |
 | `passkeys:password_login_by_passkey_holder` | A user who holds an enabled passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
 | `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
 | `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |

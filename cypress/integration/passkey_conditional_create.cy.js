@@ -12,7 +12,7 @@
 //   and then fulfills the same registration options with a standard virtual-auth
 //   create to prove verify_registration and the server row.
 // The ABSENCE half is enforced server-side: an email-link / OAuth login leaves only
-// a WEAK sudo window (never "password"), so `begin_registration(flow=
+// an EXTERNAL sudo window (never "password"), so `begin_registration(flow=
 // conditional_create)` is refused — no passkey can be silently minted off a
 // non-password login. CI-gated (CDP virtual authenticator); not run locally.
 
@@ -119,7 +119,7 @@ chromium_only("passkey conditional create — silent post-password enrollment", 
 		cy.login(USER, PW());
 		cy.visit_desk(USER);
 		cy.window().its("frappe").should("exist");
-		// An email-link / OAuth login seeds only a WEAK sudo window (never "password");
+		// An email-link / OAuth login seeds only an EXTERNAL sudo window (never "password");
 		// reproduce that freshness gap by clearing this session's window. The
 		// silent conditional-create ceremony must then be REFUSED server-side.
 		cy.call(CLEAR_WINDOW, {});

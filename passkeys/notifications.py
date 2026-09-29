@@ -17,7 +17,7 @@ from frappe.utils import cint, get_datetime, now_datetime
 from passkeys.install import DEFAULTS_PARENT
 
 RISK_FALLBACK_USED = "fallback_used"
-RISK_WEAK_LOGIN_ENROLLMENT = "weak_login_enrollment"
+RISK_EXTERNAL_LOGIN_ENROLLMENT = "external_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
 RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
 

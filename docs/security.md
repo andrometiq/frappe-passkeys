@@ -148,14 +148,14 @@ method's consumer remains the final method and payload authority.
 
 **The "sudo" re-auth window** (default 600 s) gates the app's own management
 surface (add/delete passkeys). It is seeded by a fresh interactive login or a
-password / passkey re-auth. A "weak" login (email link, social) seeds only the
+password / passkey re-auth. An "external" login (email link, social) seeds only the
 restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
 management power. An impersonated session (Administrator "Impersonate") cannot register a passkey
 at all, so impersonation never leaves behind a credential the user did not create.
 
 Password classification and OTP-fallback acceptance follow command dispatch precedence. A truthy
 `cmd` must be exactly `login`; only a request without a diverting command may rely on the canonical
-`/api/method/login` path. Redeeming an email-link key through that URL remains a weak login and
+`/api/method/login` path. Redeeming an email-link key through that URL remains an external login and
 cannot spend an OTP fallback marker.
 
 **Security invariants are transactionally locked.** Authentication locks the user and credential
@@ -325,17 +325,17 @@ real sign-in gets a random session id.
   blocks social/OAuth, LDAP, and email-link completions for an enrolled user because those core
   paths cannot enter this app's passkey leg. Keep passwordless "Login with Passkey" enabled for
   enrolled accounts that do not have a usable local password, or retain an operator recovery path.
-- **First-passkey enrollment can ride a weak first factor (bootstrap).** With
-  `passkey_allow_first_enrollment_on_weak_login` on (default), a session established
-  through a weak first factor — an email login link or social/OAuth sign-in — may
+- **First-passkey enrollment can ride an external first factor (bootstrap).** With
+  `passkey_allow_first_enrollment_on_external_login` on (default), a session established
+  through an external first factor — an email login link or social/OAuth sign-in — may
   enroll the account's **first** passkey without a stronger re-auth. This solves the
   chicken-and-egg where a passwordless account has nothing stronger to authorize its
   first credential. The carve-out is deliberately narrow: it applies only while
   first-factor "Login with Passkey" is on, only to a user with **zero** enabled
   credentials (every later add still needs a passkey- or password-seeded sudo
-  window), and every use records a `passkeys:weak_login_enrollment` risk event
+  window), and every use records a `passkeys:external_login_enrollment` risk event
   ([`operations.md`](operations.md)). Turn off
-  `passkey_allow_first_enrollment_on_weak_login` to require a stronger factor for the
+  `passkey_allow_first_enrollment_on_external_login` to require a stronger factor for the
   first enrollment too.
 - **A same-session password change does not revoke an already-live management sudo window**
   (≤600 s). Password+passkey login ceremonies are different: they compare the keyed password-hash

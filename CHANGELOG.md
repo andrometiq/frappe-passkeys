@@ -18,7 +18,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The app's contact email is hello@andrometiq.com.
 - Passkey Settings: "Allow First Enrollment on Weak Login" is now "Allow First Passkey After
   Email-Link or Social Sign-in", with help text that lists the sign-ins it covers; the
-  Re-authentication Window help text no longer says "sudo gate". Field names are unchanged.
+  Re-authentication Window help text no longer says "sudo gate".
+- The setting's field is renamed from `passkey_allow_first_enrollment_on_weak_login` to
+  `passkey_allow_first_enrollment_on_external_login`; a patch carries each site's value over on
+  migrate. Code that reads the old field name must switch to the new one. The matching risk event
+  is now `passkeys:external_login_enrollment` (was `passkeys:weak_login_enrollment`). A user
+  signed in by email link or social login within the ten minutes before the upgrade may need to
+  sign in again to add a first passkey.
 
 ## [15.0.3] / [16.0.3] — 2026-09-27
 

@@ -167,7 +167,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		REAL begin→verify path with the real on_login hook firing, no manual flag.
 		Without the flag a ``passkey_only_login=1`` user trips their own veto
 		(total lockout from their only login method) and every passwordless
-		session seeds a "weak" sudo window instead of "passkey"."""
+		session seeds an "external" sudo window instead of "passkey"."""
 		user = self._user()
 		auth, _handle = self._enroll(user)
 		frappe.db.set_value(
@@ -943,7 +943,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		passkey.complete_uv_setup(setup_id, PWD)
 		self.assertEqual(frappe.session.user, user)  # veto did NOT trip mid-repair
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 1)
-		# ...and seed_sudo_window classified the window as full "passkey", not "weak"
+		# ...and seed_sudo_window classified the window as full "passkey", not "external"
 		window = state.get_sudo_window(frappe.session.sid)
 		self.assertEqual((window or {}).get("seeded_by"), "passkey")
 

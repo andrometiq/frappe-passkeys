@@ -22,7 +22,7 @@ REGISTRATION_INSERT_SAVEPOINT = "passkey_registration_insert"
 @frappe.whitelist(methods=["POST"])
 def begin_registration(flow: str = "explicit"):
 	"""Issue creation options and cache the challenge for ``frappe.session.user`` (never a
-	client param). Explicit needs a full sudo window, or a weak login's restricted
+	client param). Explicit needs a full sudo window, or an external login's restricted
 	first-enrollment bootstrap; conditional-create needs a **password**-seeded window (the
 	just-typed password is the freshness proof)."""
 	refuse_if_core_native()
@@ -155,7 +155,7 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 
 def _refuse_impersonated_session() -> None:
 	"""An impersonating Administrator must never leave behind a credential the user did
-	not create (the impersonated session is weak-seeded, so it would otherwise qualify
+	not create (the impersonated session is external-seeded, so it would otherwise qualify
 	for the first-enrollment bootstrap)."""
 	if (frappe.session.get("data") or {}).get("impersonated_by"):
 		raise frappe.PermissionError(_("Passkeys cannot be registered while impersonating a user."))
@@ -173,31 +173,31 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 	seeded_by = (session.get_window(user) or {}).get("seeded_by")
 	if flow == "conditional_create":
 		is_allowed = seeded_by == "password"
-	elif seeded_by == "weak":
+	elif seeded_by == "external":
 		has_enabled_credential = frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1})
-		is_allowed = _is_weak_bootstrap_allowed(settings, has_enabled_credential)
+		is_allowed = _is_external_bootstrap_allowed(settings, has_enabled_credential)
 	else:
 		is_allowed = seeded_by in session.FULL_SUDO_METHODS
 	if not is_allowed:
 		session._raise_confirmation_required(session.MANAGE_ACTION, methods=["passkey", "password"])
-	if seeded_by == "weak":
+	if seeded_by == "external":
 		from passkeys import notifications
 
 		notifications.record_risk_event(
-			notifications.RISK_WEAK_LOGIN_ENROLLMENT,
+			notifications.RISK_EXTERNAL_LOGIN_ENROLLMENT,
 			user,
-			f"first-enrollment bootstrap via weak login by {user}",
+			f"first-enrollment bootstrap via external login by {user}",
 		)
 	return seeded_by
 
 
-def _is_weak_bootstrap_allowed(settings, has_enabled_credential) -> bool:
-	"""A weak (email-link / social) login may enroll only a first credential, and only as a
+def _is_external_bootstrap_allowed(settings, has_enabled_credential) -> bool:
+	"""An external (email-link / social) login may enroll only a first credential, and only as a
 	first factor: in second-factor-only mode that login would be vetoed on its next use,
 	locking the user out."""
 	return bool(
 		cint(settings.login_with_passkey)
-		and cint(settings.passkey_allow_first_enrollment_on_weak_login)
+		and cint(settings.passkey_allow_first_enrollment_on_external_login)
 		and not has_enabled_credential
 	)
 
@@ -244,9 +244,9 @@ def _insert_verified_credential(doc, settings, authorization: str | None = None)
 	persist."""
 	handle = _get_or_create_handle(doc.user)
 	credentials = _user_credentials(doc.user, for_update=True)
-	# Several weak-login ceremonies can begin while the census is zero; only one may
+	# Several external-login ceremonies can begin while the census is zero; only one may
 	# create the first enabled credential.
-	if authorization == "weak" and not _is_weak_bootstrap_allowed(
+	if authorization == "external" and not _is_external_bootstrap_allowed(
 		settings, any(cint(row.enabled) for row in credentials)
 	):
 		raise CeremonyFailed(

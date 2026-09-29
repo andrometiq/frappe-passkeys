@@ -310,7 +310,7 @@ def login_with_password(usr: str, pwd: str):
 		authenticate_for_2factor(user)
 		return None
 	# Plain login. The flag makes seed_sudo_window classify it "password": this path is not
-	# /api/method/login, so the core-path heuristic would otherwise seed "weak".
+	# /api/method/login, so the core-path heuristic would otherwise seed "external".
 	frappe.form_dict.pop("pwd", None)
 	frappe.local.flags.passkey_login = False
 	frappe.local.flags.passkeys_password_login = True

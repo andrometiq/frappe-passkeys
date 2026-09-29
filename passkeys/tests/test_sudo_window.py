@@ -114,14 +114,14 @@ class SudoWindowTest(IntegrationTestCase):
 		frappe.local.form_dict = frappe._dict(cmd="login")
 		self.assertTrue(session._is_core_password_login())
 
-	def test_weak_login_seeds_restricted_window(self):
+	def test_external_login_seeds_restricted_window(self):
 		user = self._user()
 		sign_in(user)
-		# no passkey flag, no cmd=login → email-link/OAuth-class weak login
+		# no passkey flag, no cmd=login → email-link/OAuth-class external login
 		session.seed_sudo_window()
 		window = session.get_window(user, self.sid)
-		self.assertEqual(window["seeded_by"], "weak")
-		# a weak window never satisfies management
+		self.assertEqual(window["seeded_by"], "external")
+		# an external window never satisfies management
 		self.assertFalse(session.has_management_sudo(user, self.sid))
 
 	def test_guest_session_seeds_nothing(self):
@@ -180,14 +180,14 @@ class SudoWindowTest(IntegrationTestCase):
 
 	# ---- check helper ----------------------------------------------
 
-	def test_management_sudo_accepts_full_refuses_weak_and_foreign(self):
+	def test_management_sudo_accepts_full_refuses_external_and_foreign(self):
 		user = self._user()
 		other = self._user()
 		for method in session.FULL_SUDO_METHODS:
 			state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": method}, ttl=600)
 			self.assertTrue(session.has_management_sudo(user, self.sid), method)
-		# weak-seeded window is refused
-		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "weak"}, ttl=600)
+		# external-seeded window is refused
+		state.set_sudo_window(self.sid, {"v": 1, "user": user, "seeded_by": "external"}, ttl=600)
 		self.assertFalse(session.has_management_sudo(user, self.sid))
 		# a window belonging to another user is refused (no cross-user reuse)
 		state.set_sudo_window(self.sid, {"v": 1, "user": other, "seeded_by": "password"}, ttl=600)

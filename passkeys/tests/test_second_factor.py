@@ -213,7 +213,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		Leg 2 (verify_second_factor) sets ``frappe.local.flags.passkey_login`` before
 		``login_as`` (passkey.py ~:549), so the REAL ``on_login`` veto EXEMPTS the mint
 		via that flag — a flagged user is not locked out of their own 2FA — and
-		``seed_sudo_window`` classifies the window "passkey", not "weak". The
+		``seed_sudo_window`` classifies the window "passkey", not "external". The
 		second-factor analog of test_login_api's passkey_only passwordless round-trip."""
 		user = self._user()
 		auth = self._enroll(user)
@@ -457,7 +457,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		# The rejected route did not burn the marker; a core OTP completion can use it.
 		self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
 
-	def test_diverted_email_key_login_seeds_only_weak_sudo(self):
+	def test_diverted_email_key_login_seeds_only_external_sudo(self):
 		from frappe.auth import LoginManager
 		from frappe.handler import execute_cmd
 		from frappe.www.login import _generate_temporary_login_link
@@ -467,12 +467,14 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._enroll(victim)
 		self.addCleanup(
 			self._set_passkey_setting,
-			"passkey_allow_first_enrollment_on_weak_login",
-			frappe.db.get_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login"),
+			"passkey_allow_first_enrollment_on_external_login",
+			frappe.db.get_single_value(
+				"Passkey Settings", "passkey_allow_first_enrollment_on_external_login"
+			),
 		)
 		self._set_passkey_setting("passkey_as_second_factor", 0)
 		self._set_passkey_setting("login_with_passkey", 1)
-		self._set_passkey_setting("passkey_allow_first_enrollment_on_weak_login", 1)
+		self._set_passkey_setting("passkey_allow_first_enrollment_on_external_login", 1)
 
 		link = _generate_temporary_login_link(victim, expiry=10)
 		key = parse_qs(urlparse(link).query)["key"][0]
@@ -489,7 +491,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		execute_cmd("frappe.www.login.login_via_key")
 
 		self.assertEqual(frappe.session.user, victim)
-		self.assertEqual(session.get_window(victim)["seeded_by"], "weak")
+		self.assertEqual(session.get_window(victim)["seeded_by"], "external")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			session.require_management_sudo(victim)
 		with self.assertRaises(PasskeyConfirmationRequired):
@@ -752,9 +754,9 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_app_plain_password_arm_seeds_password_window(self):
 		"""The app's own plain-password arm (a passkey-less, 2FA-less user's
 		LDAP-style finish in ``login_with_password``) mints a session whose sudo
-		window is classified "password", not "weak". Its endpoint path is not
+		window is classified "password", not "external". Its endpoint path is not
 		/api/method/login, so ``_classify_login_method`` would otherwise mis-seed
-		"weak" and re-fire the conditional-create nudge seconds after login."""
+		"external" and re-fire the conditional-create nudge seconds after login."""
 		user = self._user()  # no passkey enrolled, no 2FA role → plain finish
 		self._leg1(user, PWD)
 		self.assertEqual(frappe.session.user, user)

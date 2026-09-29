@@ -21,7 +21,7 @@ MANAGE_ACTION = "passkeys.manage"
 SET_PASSKEY_ONLY_ACTION = "passkeys.set_passkey_only_login"
 
 # Seeding classes. ``password``/``passkey``/``reauth`` grant a full sudo
-# window; ``weak`` (email-link / OAuth / social) seeds a window that only the
+# window; ``external`` (email-link / OAuth / social) seeds a window that only the
 # restricted first-enrollment bootstrap honours — never general management.
 FULL_SUDO_METHODS = ("password", "passkey", "reauth")
 
@@ -76,7 +76,7 @@ def clear_sudo_window(login_manager=None, **kwargs) -> None:
 def _classify_login_method() -> str:
 	"""``passkey`` when the app's own ceremony set ``flags.passkey_login``; ``password``
 	for a core username + password login (or the app's own plain-password arm, flagged
-	``passkeys_password_login``); ``weak`` for anything else — email link, OAuth, social,
+	``passkeys_password_login``); ``external`` for anything else — email link, OAuth, social,
 	and LDAP (under-granting: it only unlocks the first-enrollment bootstrap)."""
 	flags = getattr(frappe.local, "flags", None)
 	if flags is not None and flags.get("passkey_login"):
@@ -85,7 +85,7 @@ def _classify_login_method() -> str:
 		return "password"
 	if _is_core_password_login():
 		return "password"
-	return "weak"
+	return "external"
 
 
 def _is_core_password_login() -> bool:
@@ -129,7 +129,7 @@ def get_window(user: str, sid: str | None = None) -> dict | None:
 
 
 def has_management_sudo(user: str, sid: str | None = None) -> bool:
-	"""A full-sudo window is live; a ``weak``-seeded one never grants management."""
+	"""A full-sudo window is live; an ``external``-seeded one never grants management."""
 	window = get_window(user, sid)
 	return bool(window and window.get("seeded_by") in FULL_SUDO_METHODS)
 

@@ -178,8 +178,8 @@ test("nudgeDecision: a boot without the server verdict never nudges", () => {
 test("nudgeDecision: conditional create gated on server eligible ∧ knob ∧ caps ∧ password window", () => {
 	const caps = { supported: true, conditionalCreate: true };
 	assert.strictEqual(M.nudgeDecision(bootBase(), caps, NOW).allowConditionalCreate, true);
-	// email-link / weak login: window not password-seeded
-	assert.strictEqual(M.nudgeDecision(bootBase({ post_login_method: "weak" }), caps, NOW).allowConditionalCreate, false);
+	// email-link / external login: window not password-seeded
+	assert.strictEqual(M.nudgeDecision(bootBase({ post_login_method: "external" }), caps, NOW).allowConditionalCreate, false);
 	// no client capability => no silent create (Firefox story)
 	assert.strictEqual(M.nudgeDecision(bootBase(), { supported: true, conditionalCreate: false }, NOW).allowConditionalCreate, false);
 	// conditional-create knob off (server flag) => no silent create

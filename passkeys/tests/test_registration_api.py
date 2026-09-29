@@ -38,7 +38,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			"passkey_as_second_factor",
 			"passkey_rp_id",
 			"passkey_origins",
-			"passkey_allow_first_enrollment_on_weak_login",
+			"passkey_allow_first_enrollment_on_external_login",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
 		flush_settings_cache()
@@ -279,10 +279,10 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 		user = self._user()
 		sign_in(user)
-		self._seed_sudo(user, seeded_by="weak")
+		self._seed_sudo(user, seeded_by="external")
 		settings = frappe._dict(
 			login_with_passkey="1",
-			passkey_allow_first_enrollment_on_weak_login="0",
+			passkey_allow_first_enrollment_on_external_login="0",
 		)
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration._require_sudo_for_registration(settings, user, "explicit")
@@ -300,11 +300,11 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertIn("state_id", begun)
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "preferred")
 
-	def test_weak_login_bootstrap_allows_only_first_enrollment(self):
-		"""Weak-login bootstrap, BOTH directions: a weak-seeded window
+	def test_external_login_bootstrap_allows_only_first_enrollment(self):
+		"""External-login bootstrap, BOTH directions: an external-seeded window
 		(email-link / OAuth / social class) authorizes ONLY a first explicit
 		enrollment (zero existing credentials) and records the risk event; the
-		moment the user holds ≥1 credential the SAME weak window is refused —
+		moment the user holds ≥1 credential the SAME external window is refused —
 		management-grade (password/passkey/reauth) sudo is then required. A recovery
 		login must never silently mint general enrollment power."""
 		user = self._user()
@@ -314,42 +314,42 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.addCleanup(
 			frappe.db.set_single_value,
 			"Passkey Settings",
-			"passkey_allow_first_enrollment_on_weak_login",
-			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+			"passkey_allow_first_enrollment_on_external_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_external_login") or 0,
 		)
-		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 1)
 		flush_settings_cache()
 
-		# direction 1 — zero credentials + weak window → first enrollment is allowed,
-		# and the weak-login-bootstrap risk event is recorded.
-		self._seed_sudo(user, seeded_by="weak")
+		# direction 1 — zero credentials + external window → first enrollment is allowed,
+		# and the external-login-bootstrap risk event is recorded.
+		self._seed_sudo(user, seeded_by="external")
 		before = frappe.db.count("Activity Log", {"user": user})
 		begun = registration.begin_registration(flow="explicit")
 		self.assertIn("state_id", begun)
 		self.assertGreater(frappe.db.count("Activity Log", {"user": user}), before)
 		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
-		self.assertIn("passkeys:weak_login_enrollment", contents)
+		self.assertIn("passkeys:external_login_enrollment", contents)
 
 		# persist that first credential so the user now holds ≥1 enabled passkey
-		auth = SoftAuthenticator(seed="weak-bootstrap")
+		auth = SoftAuthenticator(seed="external-bootstrap")
 		credential = auth.registration(
 			challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN, credprops_rk=True
 		)
 		registration.verify_registration(begun["state_id"], credential)
 
-		# direction 2 — with ≥1 credential the SAME weak window no longer bootstraps:
+		# direction 2 — with ≥1 credential the SAME external window no longer bootstraps:
 		# a second enrollment demands management-grade sudo.
-		self._seed_sudo(user, seeded_by="weak")
+		self._seed_sudo(user, seeded_by="external")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 
 	def test_impersonated_session_cannot_register(self):
-		# Impersonation seeds a weak window, which would otherwise pass the
+		# Impersonation seeds an external window, which would otherwise pass the
 		# first-enrollment bootstrap for a user with no passkey.
 		user = self._user()
-		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 1)
 		flush_settings_cache()
-		begun, credential, _auth = self._register(user, seeded_by="weak")
+		begun, credential, _auth = self._register(user, seeded_by="external")
 		frappe.session.data.impersonated_by = "Administrator"
 		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
 		with self.assertRaises(frappe.PermissionError):
@@ -358,22 +358,22 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			registration.verify_registration(begun["state_id"], credential)
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
 
-	def test_weak_bootstrap_race_after_consume_is_terminal(self):
+	def test_external_bootstrap_race_after_consume_is_terminal(self):
 		user = self._user()
 		sign_in(user)
 		self.addCleanup(flush_settings_cache)
 		self.addCleanup(
 			frappe.db.set_single_value,
 			"Passkey Settings",
-			"passkey_allow_first_enrollment_on_weak_login",
-			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+			"passkey_allow_first_enrollment_on_external_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_external_login") or 0,
 		)
-		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 1)
 		flush_settings_cache()
 
-		self._seed_sudo(user, seeded_by="weak")
+		self._seed_sudo(user, seeded_by="external")
 		begun = registration.begin_registration(flow="explicit")
-		auth = SoftAuthenticator(seed="weak-bootstrap-race")
+		auth = SoftAuthenticator(seed="external-bootstrap-race")
 		credential = auth.registration(
 			challenge_b64=begun["options"]["challenge"],
 			rp_id=RP_ID,
@@ -389,9 +389,9 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		with self.assertRaises(CeremonyExpired):
 			registration.verify_registration(begun["state_id"], credential)
 
-	def test_weak_login_bootstrap_refused_when_knob_off(self):
-		"""Even a first enrollment is refused from a weak window when
-		``passkey_allow_first_enrollment_on_weak_login`` is off — the bootstrap is an
+	def test_external_login_bootstrap_refused_when_knob_off(self):
+		"""Even a first enrollment is refused from an external window when
+		``passkey_allow_first_enrollment_on_external_login`` is off — the bootstrap is an
 		opt-in allowance, not a default."""
 		user = self._user()
 		sign_in(user)
@@ -399,26 +399,26 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.addCleanup(
 			frappe.db.set_single_value,
 			"Passkey Settings",
-			"passkey_allow_first_enrollment_on_weak_login",
-			self._snapshot.get("passkey_allow_first_enrollment_on_weak_login") or 0,
+			"passkey_allow_first_enrollment_on_external_login",
+			self._snapshot.get("passkey_allow_first_enrollment_on_external_login") or 0,
 		)
-		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 0)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 0)
 		flush_settings_cache()
 
-		self._seed_sudo(user, seeded_by="weak")
+		self._seed_sudo(user, seeded_by="external")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 
-	def test_weak_login_bootstrap_refused_in_second_factor_only_mode(self):
+	def test_external_login_bootstrap_refused_in_second_factor_only_mode(self):
 		"""A social/email-only user cannot enroll into a state where that same
 		login is vetoed and no first-factor passkey route exists."""
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
 		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
-		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 1)
 		flush_settings_cache()
 		sign_in(user)
-		self._seed_sudo(user, seeded_by="weak")
+		self._seed_sudo(user, seeded_by="external")
 		with self.assertRaises(PasskeyConfirmationRequired):
 			registration.begin_registration(flow="explicit")
 

@@ -154,14 +154,14 @@ class RegistrationCapRaceTest(IntegrationTestCase):
 		self.assertEqual(frappe.db.count("WebAuthn Credential", {"user": self.user}), 1)
 		self.assertEqual(frappe.db.count("WebAuthn User Handle", {"user": self.user}), 1)
 
-	def test_only_one_weak_bootstrap_registration_succeeds(self):
+	def test_only_one_external_bootstrap_registration_succeeds(self):
 		results = self._race(
 			{
 				"passkey_max_per_user": 10,
 				"login_with_passkey": 1,
-				"passkey_allow_first_enrollment_on_weak_login": 1,
+				"passkey_allow_first_enrollment_on_external_login": 1,
 			},
-			authorization="weak",
+			authorization="external",
 		)
 		self.assertEqual(sorted(result[0] for result in results), ["reauth", "success"], results)
 		self.assertEqual(frappe.db.count("WebAuthn Credential", {"user": self.user}), 1)
