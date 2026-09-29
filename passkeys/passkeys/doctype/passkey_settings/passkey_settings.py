@@ -5,6 +5,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
+from frappe.utils.password import get_encryption_key
 
 from passkeys import boot, policy, state, well_known
 from passkeys.errors import refuse_if_core_native
@@ -62,10 +63,11 @@ class PasskeySettings(Document):
 			)
 		policy.validate_origins(self, rp_id)
 		policy.validate_app_origins(self)
-		if not frappe.conf.get("encryption_key"):
+		# Core's accessor creates and saves the key when site_config.json has none.
+		if not get_encryption_key():
 			frappe.throw(
 				_(
-					"Cannot enable passkeys: this site has no encryption_key. Create the site encryption key before enabling an authentication mode."
+					"Cannot enable passkeys: the encryption_key in this site's site_config.json is empty. Remove the empty entry so Frappe can create a new key, or restore the original key."
 				)
 			)
 

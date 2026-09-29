@@ -7,9 +7,18 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Fixed
+
+- Enabling a login mode on a site without an `encryption_key` no longer fails: like Frappe core,
+  the app now creates and saves the key on first need. An empty key entry is still refused, and
+  credential exports still require the original key.
+
 ### Changed
 
 - The app's contact email is hello@andrometiq.com.
+- Passkey Settings: "Allow First Enrollment on Weak Login" is now "Allow First Passkey After
+  Email-Link or Social Sign-in", with help text that lists the sign-ins it covers; the
+  Re-authentication Window help text no longer says "sudo gate". Field names are unchanged.
 
 ## [15.0.3] / [16.0.3] — 2026-09-27
 

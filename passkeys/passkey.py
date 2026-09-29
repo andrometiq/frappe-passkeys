@@ -15,6 +15,7 @@ import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
+from frappe.utils.password import get_encryption_key
 
 from passkeys import boot, ceremony, install, policy, session, state
 from passkeys.errors import CeremonyExpired, UnknownCredential, UVSetupRequired, refuse_if_core_native
@@ -507,7 +508,7 @@ def _password_version(user: str) -> str | None:
 	)
 	if not password_hash:
 		return None
-	key = frappe.conf.get("encryption_key")
+	key = get_encryption_key()
 	if not key:
 		raise frappe.AuthenticationError(
 			_("Passkeys require this site's encryption key. Contact your administrator.")

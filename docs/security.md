@@ -103,7 +103,8 @@ does not expose the password hash. The plaintext password rides the Redis ceremo
 on the second-factor leg only when `passkey_2fa_allow_otp_fallback=1` (the default) and the user is
 OTP-capable, matching core's `cache_2fa_data`, or for an external-auth user without a local password
 hash because core must re-authenticate it before session minting. Mode enablement and local-password
-ceremonies fail closed when the site has no `encryption_key`.
+ceremonies use Frappe core's `get_encryption_key()`, which creates and saves a key when
+`site_config.json` has none; an empty `encryption_key` entry fails closed.
 
 **Password-reset keys rotate a password but do not satisfy a passkey factor.** Frappe core calls
 `login_as` after a successful reset. For an enrolled second-factor user, the app lets the reset

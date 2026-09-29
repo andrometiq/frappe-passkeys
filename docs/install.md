@@ -182,7 +182,8 @@ passkeys:   from passkeys.install import import_credentials; import_credentials(
   `encryption_key`. It is not portable to another site or to a replacement encryption key. The file
   is written through a same-directory temporary file, `fsync`ed, atomically replaced, and forced to
   mode `0600`. A data-bearing uninstall/export refuses to proceed when the site has no
-  `encryption_key`; confirm the key exists in `site_config.json` before enrolling production users.
+  `encryption_key`, and verifying an export never creates one; confirm the key exists in
+`site_config.json` before enrolling production users.
 - **What it contains.** Public-key material and metadata — the credential
   public keys, signature counters, backup flags, labels, transports, AAGUID, and
   the opaque user handles with each user's *Passkey Only Login* flag. **No server

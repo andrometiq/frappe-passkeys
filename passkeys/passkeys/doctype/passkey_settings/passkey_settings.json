@@ -248,17 +248,17 @@
   },
   {
    "default": "600",
-   "description": "Seconds a fresh login or re-authentication satisfies the sudo gate for passkey management",
+   "description": "How long after a password or passkey sign-in, or a fresh password or passkey confirmation, a user can add or remove passkeys without confirming again",
    "fieldname": "passkey_reauth_window",
    "fieldtype": "Int",
    "label": "Re-authentication Window (Seconds)"
   },
   {
    "default": "1",
-   "description": "Let accounts without a usable password (social login only) enroll their first passkey shortly after an interactive login",
+   "description": "Lets a user with no passkey yet, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on",
    "fieldname": "passkey_allow_first_enrollment_on_weak_login",
    "fieldtype": "Check",
-   "label": "Allow First Enrollment on Weak Login"
+   "label": "Allow First Passkey After Email-Link or Social Sign-in"
   },
   {
    "fieldname": "notifications_tab",
@@ -289,7 +289,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-24 19:00:00.000000",
+ "modified": "2026-09-29 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

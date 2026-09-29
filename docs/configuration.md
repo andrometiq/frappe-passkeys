@@ -18,9 +18,12 @@ reusing them in System Settings, but no current-core compatibility or merge is a
 
 ## Relying Party
 
-Enabling either authentication mode also requires the site's `encryption_key`. The save is refused
-when it is absent: second-factor ceremonies bind password-hash versions with that key, and lifecycle
-exports use it for integrity. Back the key up separately before enrolling production users.
+Enabling either authentication mode also uses the site's `encryption_key`: second-factor ceremonies
+bind password-hash versions with it, and lifecycle exports use it for integrity. When
+`site_config.json` has no key, Frappe core's `get_encryption_key()` creates and saves one on save, as
+it does for any encrypted field. An entry that is present but empty is refused. Back the key up
+separately before enrolling production users, and restore the original key (not a new one) when
+recovering existing encrypted data or a credential export.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
@@ -113,7 +116,7 @@ API-key and OAuth-token requests are not subject to them (see
 | **Hard-fail on Sign Count Regression** (`passkey_sign_count_hard_fail`) | Off | Controls what happens when an authenticator presents a signature counter *lower* than the stored value (a possible clone signal). Off (default): the sign-in proceeds but the credential is flagged and its owner is emailed. On: such an assertion is rejected. A counter that is *equal and non-zero* (a replay) is always rejected regardless of this knob. |
 | **Maximum Passkeys per User** (`passkey_max_per_user`) | 10 | Per-user credential cap; registration is refused once a user reaches it. Lowering it does not delete existing rows. |
 | **Re-authentication Window (Seconds)** (`passkey_reauth_window`) | 600 | Lifetime of the "sudo" window — how long after a fresh login (or a password / passkey re-auth) the management surface lets a user add or delete passkeys without confirming again. Longer is more convenient and less strict; shorter re-prompts sooner. Does not affect action-confirmation grants, which are always single-use and short-lived. |
-| **Allow First Enrollment on Weak Login** (`passkey_allow_first_enrollment_on_weak_login`) | On | When **Login with Passkey** is also on, lets a user who signed in with a "weak" method (email link or social/OAuth) enroll their **first** passkey within a short window. It is refused on second-factor-only sites because the same weak login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
+| **Allow First Passkey After Email-Link or Social Sign-in** (`passkey_allow_first_enrollment_on_weak_login`) | On | When **Login with Passkey** is also on, lets a user with no enabled passkey who signed in by email link, social/OAuth, LDAP or any other login the app does not classify as a password or passkey login, enroll a **first** passkey within the Re-authentication Window. The app cannot re-verify those sign-ins itself, so they unlock only this one step, and each use records a risk event. It is refused on second-factor-only sites because the same weak login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
 
 ## Notifications
 
