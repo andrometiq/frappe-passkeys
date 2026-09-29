@@ -25,3 +25,18 @@ Next: choose the privacy-policy link for the marketplace listing; once #28 merge
 https://cloud.frappe.io/marketplace/apps/passkeys returns 200. Trimming the gitignored local
 context file is deferred to a later pass; its open items stay in that file until they move to
 a gitignored open-items note.
+
+## 2026-09-29 — Released 15.0.4 and 16.0.4
+- Fix: enabling a login mode no longer fails on a site without an `encryption_key`; the app uses
+  Frappe core's `get_encryption_key()`, which creates the key on first need. Export verification
+  still requires the original key.
+- Rename: the "weak login" first-passkey setting and sign-in class are now "external"
+  (`passkey_allow_first_enrollment_on_external_login`, risk event
+  `passkeys:external_login_enrollment`); a post-model-sync patch carries each site's value over.
+  Settings labels and help text reworded.
+- Three read-only Codex reviews (the last two GO); CI green on the fix branch, develop, version-15
+  and version-16. Tags v15.0.4 (`8d9afa9`) and v16.0.4 (`a8cad06`, Latest); develop `844fb32`.
+- Marketplace listing PR frappe/marketplace#28 updated to the new release commits, with the
+  upstream conflict resolved; it awaits a maintainer merge.
+Next: once #28 merges, confirm https://cloud.frappe.io/marketplace/apps/passkeys returns 200;
+choose the privacy-policy link for the listing.
