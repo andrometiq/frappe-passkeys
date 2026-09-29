@@ -8,7 +8,8 @@ all enforcement server-side. Prefer small, direct changes that keep the endpoint
 client bundles thin and put real behavior in the domain modules.
 
 Read `CONTRIBUTING.md` before starting — it owns the human process (dev setup, branch model,
-commit style, the exact test commands, releases). This guide owns the code map and the taste.
+commit style, the exact test commands, releases). This guide owns the code map and the taste;
+it does not repeat what `CONTRIBUTING.md` says.
 
 ## Main Rules
 
@@ -23,16 +24,15 @@ commit style, the exact test commands, releases). This guide owns the code map a
   bodies only, so a broken crypto wheel can never take down login or boot. The only top-level
   `import webauthn` lives in
   `engine.py`. Mode-enable validation probes the engine in a separate bounded process; it must not
-  import crypto into the serving worker. `.github/helper/import_gate.sh` enforces module-import
-  isolation in CI — keep it green.
+  import crypto into the serving worker. `import_gate.sh` enforces module-import isolation in CI —
+  keep it green.
 - All enforcement is **server-side**. The client may gate UI on site policy, but the real boundary
   is a whitelisted server check (`frappe.only_for(...)`, ownership ladders, veto hooks). Never
   trust a client-supplied identity or capability flag.
 - **Fail closed.** A consumed, expired, evicted, or unverifiable ceremony/grant returns a uniform
   typed error, never a silent pass. Do not add a skip-verification path.
-- Every behavior change ships with a test in the same change (server-side: a test that only proves
-  the client gate is not enough), and the relevant `docs/*.md` (and `CHANGELOG.md` for auth /
-  migration / origin / lifecycle changes) is updated with it.
+- Every behavior change ships with a test in the same change, and the relevant `docs/*.md` (and
+  `CHANGELOG.md` for auth / migration / origin / lifecycle changes) is updated with it.
 - Do not commit generated assets (`passkeys/public/dist/` is gitignored; CI rebuilds it) or
   scratch/plan markdown.
 
@@ -96,6 +96,10 @@ The app is layered, not an object graph. Respect the layers:
    and RP/origin config; do not scatter that state.
 4. **Attachment** — `hooks.py` + `shims/` + `public/js/*.bundle.js`. Thin glue.
 
+Before writing a feature, ask which layer owns it. A whitelisted endpoint that starts doing
+verification math, header parsing, or Redis bookkeeping inline is a smell — push it into the
+engine / policy / state module.
+
 Load-bearing invariants (do not weaken without a security review): one owner for state; single-use,
 atomic, fail-closed ceremony/grant consumption; RP ID / origins from pinned config at enable time,
 never from headers; hook-path modules import no `webauthn`.
@@ -107,11 +111,13 @@ spaces. These rules apply to any change here:
 
 - Clean over clever. Prefer explicit config over implicit behavior.
 - Keep functions small (~25 lines is a target, not a reason to split readable code) and cyclomatic
-  complexity low. Keep files roughly 100–500 lines; when a folder grows, group related files into a
-  subfolder instead of adding more same-prefix modules. Long by design — don't split them, and don't
-  let them grow further: the wire modules that fold into `frappe/passkey.py` on the core merge
-  (`passkey.py`, `confirm.py`, `install.py`) and the load-order-bearing client bundles
-  (`passkey_common`, `passkey_login`, `passkey_desk`, `passkey_manage_common` `.bundle.js`).
+  complexity low. Keep files in a workable band (roughly 100–500 lines); when a folder grows, group
+  related files into a subfolder instead of adding more same-prefix modules. The wire modules that
+  fold into `frappe/passkey.py` on the core merge (`passkey.py`, `confirm.py`, `install.py`) run
+  long by design — don't split them to satisfy the band, and don't let them grow further either. The
+  frozen client bundles (`passkey_common.bundle.js`, `passkey_login.bundle.js`,
+  `passkey_desk.bundle.js`, `passkey_manage_common.bundle.js`) are cohesive, load-order-bearing
+  components that run long by design; don't split them, and don't let them grow further.
 - Avoid abbreviations. Use the standard library and existing repo helpers before new logic. Reuse
   existing patterns; write as little new code as the change needs; delete or simplify before adding.
 - Keep comments and docstrings terse — explain only what the code doesn't already say. No banner
@@ -127,13 +133,17 @@ spaces. These rules apply to any change here:
   security-sensitive validation, or genuinely internal plumbing — not because a helper currently has
   one caller. Don't split into more helpers than the change needs; a single-use one-liner often
   reads better inline.
+- Always add or update tests for behavior changes, and make them pass. Logic and validation stay
+  server-side; a test that only proves the client gate is not enough.
+- Build the minimum working change, then iterate.
 
 ## Working Rules
 
-- The branch model is `CONTRIBUTING.md`'s: every change lands on `develop`; `version-15` /
-  `version-16` are `develop` plus one version-number commit, moved forward at release (never
-  cherry-picked, never force-pushed). One feature-detecting codebase — never write version-forked
-  logic.
+- Read `CONTRIBUTING.md` for setup, commit style, and the browserless WebAuthn test mode. The
+  branch model is its: every change lands on `develop`; `version-15` / `version-16` are
+  `develop` plus one version-number commit, moved forward at release (never cherry-picked,
+  never force-pushed). The three branches share one feature-detecting codebase — never write
+  version-forked logic.
 - Before a bug fix, find the root cause first — don't loosen a test to match new behavior.
 - Run the gates before pushing (exact invocations in `CONTRIBUTING.md` and `.github/workflows/ci.yml`):
   `pre-commit run --all-files` (ruff import-sort / lint / format — CI checks, does not fix);
@@ -143,6 +153,11 @@ spaces. These rules apply to any change here:
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets
   and personal data; CI runs a `gitleaks` secret scan over full history. Never weaken a security
   gate to make a test pass.
-- Keep docs concise and current in the same change as the behavior: operators need the workflow
-  and the security consequence quickly (`docs/`). Security model: `docs/security.md`. Core-merge
-  contract: `docs/upstream/` — update it in the same change when you touch a seam core would inherit.
+- When you change a seam core would inherit, update `docs/upstream/` in the same change.
+
+## Docs
+
+Keep docs concise and current in the same change as the behavior. Operators should find the workflow
+and the security consequence quickly (`docs/`); an agent should find the layer boundaries and safe
+edit locations from this guide and the module docstrings without reading long prose. Security model:
+`docs/security.md`. The core-merge contract: `docs/upstream/`.
