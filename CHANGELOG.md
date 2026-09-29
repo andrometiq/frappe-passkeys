@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.4] / [16.0.4] — 2026-09-29
+
 ### Fixed
 
 - Enabling a login mode on a site without an `encryption_key` no longer fails: like Frappe core,
@@ -119,7 +121,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.3...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.4...develop
+[15.0.4]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.4
+[16.0.4]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.4
 [15.0.3]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.3
 [16.0.3]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.3
 [15.0.2]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.2
