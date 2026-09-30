@@ -75,8 +75,8 @@ install the line that matches their Frappe version.
 | Branch | For |
 | --- | --- |
 | `develop` | All changes, and the target for every pull request. |
-| `version-16` | The Frappe v16 line: `develop` plus one commit that sets its version number. |
-| `version-15` | The Frappe v15 line: `develop` plus one commit that sets its version number. |
+| `version-16` | The Frappe v16 line: `develop` plus one commit that sets its version number and Frappe range. |
+| `version-15` | The Frappe v15 line: `develop` plus one commit that sets its version number and Frappe range. |
 
 Open every pull request against `develop`; changes are tested against Frappe v15, v16 and
 `develop` in CI. A release moves the version branches forward to `develop` (maintainers do this;
@@ -84,10 +84,15 @@ it never needs a force-push):
 
 ```bash
 git merge -s ours version-15 version-16 -m "chore: join release lines"   # on develop, keeps develop's tree
-git checkout -B version-15 develop   # then set __version__ = "15.x.y" and commit "chore(release): 15.x.y"
-git checkout -B version-16 develop   # then set __version__ = "16.x.y" and commit "chore(release): 16.x.y"
+git checkout -B version-15 develop   # then set __version__ = "15.x.y" and frappe = ">=15.108.0,<16.0.0"; commit "chore(release): 15.x.y"
+git checkout -B version-16 develop   # then set __version__ = "16.x.y" and frappe = ">=16.18.3,<17.0.0"; commit "chore(release): 16.x.y"
 git push origin develop version-15 version-16
 ```
+
+`develop` keeps the full `frappe = ">=15.108.0,<18.0.0"` range under
+`[tool.bench.frappe-dependencies]` in `pyproject.toml`. Each release commit narrows it to its own
+line, because the Frappe Cloud Marketplace requires a release's advertised Frappe range to equal
+that range in its release commit.
 
 If a line ever needs code that a feature check in `develop` cannot express, it stops following
 `develop` and takes its own fix commits instead.
