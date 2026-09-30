@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.5] / [16.0.5] — 2026-09-30
+
 ### Security
 
 - An impersonated session is now read-only for passkeys. Renaming or removing a passkey, the
@@ -151,7 +153,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.4...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.5...develop
+[15.0.5]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.5
+[16.0.5]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.5
 [15.0.4]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.4
 [16.0.4]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.4
 [15.0.3]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.3
