@@ -48,8 +48,9 @@ PORTAL_CSS = ("passkey_manage.bundle.css",)
 def get_context(context):
 	"""Guest ⇒ redirect to login (``/login?redirect-to=/passkeys``). Otherwise
 	expose ``context.passkeys`` = the server-truth boot payload the card component
-	consumes (enabled, modes, credential_count, nudge_state, post_login_method,
-	conditional_create, upsell_eligible, settings_context, rp_id) and append the
+	consumes (enabled, modes, credential_count, passkey_only_login, nudge_state,
+	post_login_method, impersonated, conditional_create, upsell_eligible, enforcement,
+	settings_context, rp_id) and append the
 	portal management assets. Server state only — nothing client-supplied is echoed."""
 	if install.dormant():
 		# dormant-shell: the app must not shadow core's native /passkeys — this

@@ -10,7 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import boot, state
+from passkeys import boot, session, state
 from passkeys.errors import refuse_if_core_native
 
 
@@ -68,6 +68,7 @@ def set_user_exemption(user: str, exempt: object) -> dict:
 	"""Exempt or un-exempt one user; idempotent. Returns the refreshed view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
+	session.refuse_impersonated_session()
 	state.rate_limit_user("set_user_exemption", 30, 3600)
 	user = _require_user(user)
 	boot.set_exempt(user, _coerce_bool(exempt))
@@ -79,6 +80,7 @@ def reset_enforcement_grace(user: str) -> dict:
 	"""Restore one user's full grace budget. Returns the refreshed view-model."""
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
+	session.refuse_impersonated_session()
 	state.rate_limit_user("reset_enforcement_grace", 30, 3600)
 	user = _require_user(user)
 	boot.clear_enforcement_state(user)

@@ -173,7 +173,9 @@ def passkey_protected(
 	Without a valid grant it raises :class:`PasskeyConfirmationRequired` (401) with
 	``{action, payload_fingerprint, methods}``; ``frappe.passkeys.call`` runs the dialog
 	and retries once with the ``X-Passkey-Grant`` header. The grant is consumed before the
-	wrapped function runs, so a failed action still spends the gesture."""
+	wrapped function runs, so a failed action still spends the gesture. An impersonated
+	session is refused with ``ImpersonatedSessionRefused`` (403): it can never confirm as the
+	user."""
 	bound_names = tuple(bind_params or ())
 	display_items = tuple((display_params or {}).items())
 	if any(name not in bound_names for name, _label in display_items):
@@ -200,6 +202,7 @@ def passkey_protected(
 			params = _bound_params(fn, args, kwargs, policy_)
 			_publish_action_policy(policy_)
 			user = session.require_authed_user(_("This action requires a signed-in browser session."))
+			session.refuse_impersonated_session()
 			if not session.consume_action_grant(
 				user,
 				policy_.action,
@@ -302,6 +305,7 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	payload_fingerprint, methods, action_label, parameter_summary}``."""
 	refuse_if_core_native()
 	user = session.require_authed_user(_("This action requires a signed-in browser session."))
+	session.refuse_impersonated_session()
 	state.rate_limit_user("begin_confirmation", 30, 300)
 	action = _require_action(action)
 	if params is not None and payload_hash is not None:
@@ -361,6 +365,7 @@ def verify_confirmation(state_id: str, credential: object):
 	payload. Any failure raises the uniform typed error."""
 	refuse_if_core_native()
 	user = session.require_authed_user(_("This action requires a signed-in browser session."))
+	session.refuse_impersonated_session()
 	state.rate_limit_user("verify_confirmation", 30, 300)
 
 	from passkeys import engine
@@ -422,6 +427,7 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 	user = session.require_authed_user(
 		_("This action requires a signed-in browser session.") if action else None
 	)
+	session.refuse_impersonated_session()
 	state.rate_limit_user("reauth_password", 5, 300)
 	# refuse before touching the password oracle
 	if not _password_reauth_allowed(user):

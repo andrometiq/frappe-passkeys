@@ -40,3 +40,18 @@ a gitignored open-items note.
   upstream conflict resolved; it awaits a maintainer merge.
 Next: once #28 merges, confirm https://cloud.frappe.io/marketplace/apps/passkeys returns 200;
 choose the privacy-policy link for the listing.
+
+## 2026-09-30 — Impersonation lock for 15.0.5
+- An impersonated session (core's `impersonate`) is now read-only for passkeys. The app's own
+  passkey endpoints refuse it with the typed `ImpersonatedSessionRefused`, and so does every
+  save, delete, rename or discard of the four passkey DocTypes (`ReadOnlyWhileImpersonated`
+  controller mixin). The boot payload carries `impersonated` and the Desk and portal show the
+  user's passkeys read-only. `docs/security.md` lists what is deliberately not covered: it stops
+  accidental or hidden changes while impersonating, not a determined administrator.
+- Release process: each release commit narrows `[tool.bench.frappe-dependencies] frappe` to its
+  own line, because the Frappe Cloud Marketplace now requires a release's advertised range to
+  equal its commit's. The marketplace validators were run locally against the candidate trees:
+  all checks pass.
+- Several internal review rounds; the final read-only Codex review is GO.
+Next: CI on the fix branch, then release 15.0.5 / 16.0.5 and point frappe/marketplace#28 at the
+new release commits.

@@ -359,7 +359,8 @@ on every worker; an unknown action deliberately fails closed without a password 
 `confirmation_failed`, `fallback_unavailable`, or `network` (the confirmation engine's
 codes). `fallback_unavailable` means neither a passkey nor password confirmation is
 available. `confirmation_failed` also covers a protected method's refusal after successful
-confirmation; show `.message`. Expired confirmations say "That took too long — please try again."
+confirmation and a server's refusal to start one (for example an impersonated session); show
+`.message`. Expired confirmations say "That took too long — please try again."
 
 For server tests, follow the enrollment, request, confirmation and grant helpers in
 [`test_confirm_api.py`](../passkeys/tests/test_confirm_api.py), using
@@ -393,6 +394,7 @@ do not depend on the DOM *nesting* staying identical.
 | `.passkey-card-add-row`, `.passkey-btn` | the "Add a passkey" row |
 | `.no-result` | the zero-passkeys empty state (centered muted text plus the add button) |
 | `.passkey-only-row`, `.passkey-only-label`, `.passkey-only-help`, `.passkey-only-toggle` | the passwordless switch |
+| `.passkey-impersonated`, `.passkey-impersonated-notice` | the read-only cards an impersonated session sees (no add, rename, remove or switch) |
 
 **Login button + status** (`passkey_login.bundle.js`): `.btn-passkey-login`,
 `.passkey-glyph`, `.passkey-label`, and the status line `.passkey-status`
@@ -406,6 +408,14 @@ frappe.boot.passkeys, caps)` with `caps` from `detectCapabilities()`. It returns
 mean blocking: `variant: "nudge"` is non-blocking; `variant: "enforce"` uses `blocking`
 to distinguish the required gate from grace. `notifyAdmin` requests an `incapable` report
 through `record_enforcement`; the server validates it.
+
+`frappe.boot.passkeys.impersonated` is `true` while the session impersonates the user through
+core's Impersonate (the Administrator, or on v16 any role granted the User `impersonate` permission).
+`enforcementDecision`, `nudgeDecision` and `upsellDecision` then never prompt
+(`reason: "impersonated"`), and a custom UI should hide its add, rename, remove and
+passwordless controls (`frappe.passkeys_manage_common.isImpersonated(boot)`). The server refuses
+every passkey change and confirmation from such a session with `ImpersonatedSessionRefused` (403)
+regardless; `mapServerExcType` maps it to `impersonated_session`, and the server's message says why.
 
 **The visually-hidden live region** (`.passkey-sr-only`) backs every announcement —
 never `display:none` it; screen-reader users depend on it.

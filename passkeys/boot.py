@@ -298,8 +298,9 @@ def build_passkeys_boot(user: str, *, include_settings_context: bool = False) ->
 	"""The ``frappe.boot.passkeys`` contract shared by the Desk boot and the portal
 	``/passkeys`` page: server state only, never an echoed client value. ``enabled`` (any
 	mode on) gates the management UI; ``post_login_method`` is this session's sudo-window
-	class; ``settings_context`` is filled only for a System Manager's Desk boot, because
-	its preview count evaluates every enabled user's roles."""
+	class; ``impersonated`` makes the UI read-only and silences the enrollment prompts (the
+	endpoints refuse such a session regardless); ``settings_context`` is filled only for a
+	System Manager's Desk boot, because its preview count evaluates every enabled user's roles."""
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first = bool(cint(settings.login_with_passkey))
 	second = bool(cint(settings.passkey_as_second_factor))
@@ -317,6 +318,7 @@ def build_passkeys_boot(user: str, *, include_settings_context: bool = False) ->
 			"eligible": nudge_eligible(user, settings, credential_count, state),
 		},
 		"post_login_method": _post_login_method(user),
+		"impersonated": session.is_impersonated(),
 		"conditional_create": bool(cint(settings.passkey_conditional_create)),
 		"upsell_eligible": upsell_eligible(user, settings, state),
 		"enforcement": build_enforcement(user, settings, credential_count, state),

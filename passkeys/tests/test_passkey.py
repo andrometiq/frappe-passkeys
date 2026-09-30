@@ -6,8 +6,10 @@
 from unittest.mock import patch
 
 import frappe
+from frappe.utils import cint
 
 from passkeys import boot
+from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_credential, make_handle, make_user
@@ -29,6 +31,13 @@ class PasskeyTestCase(IntegrationTestCase):
 			previous or 0,
 		)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+
+	def impersonate(self) -> None:
+		"""Flag this Administrator session the way core's ``impersonate`` does; the DocType
+		guards read only that flag, whoever impersonates whom."""
+		frappe.set_user("Administrator")
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
 
 
 class TestDocTypeSchemas(PasskeyTestCase):
@@ -264,6 +273,54 @@ class TestWebAuthnUserHandle(PasskeyTestCase):
 			self.assertIsNone(boot.get_default_value(key))
 
 
+class TestImpersonatedSessionDocTypeWrites(PasskeyTestCase):
+	"""The Desk form, list delete, ``frappe.client`` and ``/api/resource`` all write through
+	these controllers, so an impersonated session is read-only there too."""
+
+	def setUp(self):
+		super().setUp()
+		self.enable_passkey_login_mode()
+
+	def test_credential_and_handle_writes_are_refused_while_impersonating(self):
+		user = self.make_user()
+		laptop = make_credential(user, label="Laptop")
+		make_credential(user, label="Phone")
+		handle = make_handle(user)
+
+		def rename():
+			doc = frappe.get_doc("WebAuthn Credential", laptop.name)
+			doc.label = "Renamed"
+			doc.save()
+
+		def set_passkey_only():
+			doc = frappe.get_doc("WebAuthn User Handle", handle.name)
+			doc.passkey_only_login = 1
+			doc.save()
+
+		def delete_credential():
+			frappe.delete_doc("WebAuthn Credential", laptop.name)
+
+		def delete_handle():
+			frappe.delete_doc("WebAuthn User Handle", handle.name)
+
+		self.impersonate()
+		for write in (rename, set_passkey_only, delete_credential, delete_handle):
+			with self.subTest(write=write.__name__), self.assertRaises(ImpersonatedSessionRefused):
+				write()
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", laptop.name, "label"), "Laptop")
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", handle.name, "passkey_only_login"), 0)
+
+		frappe.session.data.pop("impersonated_by")
+		rename()
+		set_passkey_only()
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", laptop.name, "label"), "Renamed")
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", handle.name, "passkey_only_login"), 1)
+		delete_credential()  # "Phone" survives the last-passkey guard
+		delete_handle()
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", laptop.name))
+		self.assertFalse(frappe.db.exists("WebAuthn User Handle", handle.name))
+
+
 class TestPasskeySettingsValidation(PasskeyTestCase):
 	def setUp(self):
 		super().setUp()
@@ -436,6 +493,38 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 			passkey_origins="https://example.com",
 		)
 		doc.save()
+
+	def test_impersonated_session_cannot_save_settings_or_scope_roles(self):
+		doc = self._settings(
+			login_with_passkey=0, passkey_as_second_factor=0, passkey_origins="", passkey_app_origins=""
+		)
+		doc.append("passkey_enforce_roles", {"role": "System Manager"})
+		doc.save()
+		row = doc.passkey_enforce_roles[-1].name
+		window = cint(doc.passkey_reauth_window)
+
+		# A standalone row write (frappe.client.save, a REST delete) skips the parent's validate.
+		writes = {
+			"settings": lambda: self._settings(passkey_reauth_window=window + 60).save(),
+			"role row save": lambda: frappe.get_doc("Passkey Enforcement Role", row).save(),
+			"role row delete": lambda: frappe.delete_doc("Passkey Enforcement Role", row),
+		}
+		self.impersonate()
+		for write, call in writes.items():
+			with self.subTest(write=write), self.assertRaises(ImpersonatedSessionRefused):
+				call()
+		self.assertEqual(
+			frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window", cache=False), window
+		)
+		self.assertTrue(frappe.db.exists("Passkey Enforcement Role", row))
+
+		frappe.session.data.pop("impersonated_by")
+		for call in writes.values():
+			call()
+		self.assertEqual(
+			frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window", cache=False), window + 60
+		)
+		self.assertFalse(frappe.db.exists("Passkey Enforcement Role", row))
 
 	def test_negative_reauth_window_is_rejected(self):
 		doc = self._settings(

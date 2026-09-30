@@ -1,8 +1,8 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sudo-window semantics and the action-grant consumer. Folds into
-``frappe/passkey.py`` on the core merge.
+"""Sudo-window semantics, the impersonation guard and the action-grant consumer. Folds
+into ``frappe/passkey.py`` on the core merge.
 
 On the ``on_session_creation`` / ``on_logout`` hook chains (every login and logout),
 so it must not import ``webauthn``, directly or transitively."""
@@ -15,7 +15,11 @@ from frappe import _
 from frappe.utils import cint, now
 
 from passkeys import install, state
-from passkeys.errors import BrowserSessionRequired, PasskeyConfirmationRequired
+from passkeys.errors import (
+	BrowserSessionRequired,
+	ImpersonatedSessionRefused,
+	PasskeyConfirmationRequired,
+)
 
 MANAGE_ACTION = "passkeys.manage"
 SET_PASSKEY_ONLY_ACTION = "passkeys.set_passkey_only_login"
@@ -38,6 +42,8 @@ def seed_sudo_window(login_manager=None, **kwargs) -> None:
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return
+		# Core's impersonate lands here inside login_as, before it sets impersonated_by; its
+		# "external" window serves only registration, which refuse_impersonated_session refuses.
 		method = _classify_login_method()
 		set_window(user, method)
 		_maybe_record_password_login_risk(user, method, frappe.get_cached_doc("Passkey Settings"))
@@ -143,6 +149,51 @@ def require_authed_user(message: str | None = None) -> str:
 	if not is_browser_session(user):
 		raise BrowserSessionRequired(message or _("Passkey management requires a signed-in browser session."))
 	return user
+
+
+def is_impersonated() -> bool:
+	"""True while another user acts as the session user through core's ``impersonate``
+	(the Administrator; on v16 also any role granted the User ``impersonate`` permission).
+	False outside a session (scheduler, CLI, migrate)."""
+	session = getattr(frappe.local, "session", None)
+	data = session.get("data") if session else None
+	return bool(data and data.get("impersonated_by"))
+
+
+def refuse_impersonated_session() -> None:
+	"""An impersonated session is read-only for passkeys: it never adds, renames or removes
+	a passkey, changes a passkey record or setting, confirms as the user, or spends their
+	nudge and grace state. Endpoints call it before the rate limit, so a refusal spends no
+	counter."""
+	if is_impersonated():
+		frappe.throw(
+			_("Passkeys can't be changed or used while impersonating a user."), ImpersonatedSessionRefused
+		)
+
+
+class ReadOnlyWhileImpersonated:
+	"""Controller mixin for the passkey DocTypes: every write verb core runs a controller
+	hook for refuses an impersonated session first, whatever the permission flags and
+	whoever is impersonated. A controller that defines ``validate`` or ``on_trash`` calls
+	``super()`` first."""
+
+	def validate(self):
+		refuse_impersonated_session()
+
+	def on_trash(self):
+		refuse_impersonated_session()
+
+	def before_rename(self, old, new, merge=False):
+		refuse_impersonated_session()
+
+	def after_rename(self, old, new, merge=False):
+		# The one hook on every rename, ``validate_rename=False`` included. It runs after the
+		# rename SQL and before any commit, so the raise rolls the rename back.
+		refuse_impersonated_session()
+
+	def before_discard(self):
+		# v16+: ``Document.discard`` sets docstatus 2 directly, with no validate.
+		refuse_impersonated_session()
 
 
 def require_management_sudo(user: str) -> None:

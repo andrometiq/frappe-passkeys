@@ -7,12 +7,14 @@ from frappe.model.document import Document
 from frappe.utils import cint, strip_html
 
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
+from passkeys.session import ReadOnlyWhileImpersonated
 
 LABEL_MAX_LENGTH = 140
 
 
-class WebAuthnCredential(Document):
+class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 	def validate(self):
+		super().validate()
 		self._sanitize_label()
 		self._enforce_write_once_invariants()
 		if self._is_disabling():
@@ -26,6 +28,7 @@ class WebAuthnCredential(Document):
 			self._notify(removed=False)
 
 	def on_trash(self):
+		super().on_trash()
 		# admin/recovery interlock: a System Manager form-delete of the last
 		# enabled credential of a passkey-only user (or under disable_user_pass_login)
 		# would produce the documented total lockout — refuse with remediation. The

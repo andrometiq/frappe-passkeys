@@ -315,3 +315,53 @@ test("portal boot merges the app catalog before its first paint", async () => {
 		delete frappeObj.boot; delete frappeObj._messages; delete window.__;
 	}
 });
+
+// ------------------------------------------------------------ impersonation
+// A session impersonating the user meets no gate or banner, records nothing
+// against the user, and sees the /passkeys cards read-only.
+
+test("portal impersonation: a blocking verdict shows no gate or banner and records nothing", async () => {
+	for (const impersonated of [false, true]) {
+		global.document = bannerDoc();
+		fetchLog.length = 0;
+		frappeObj.boot = { passkeys: { enabled: true, impersonated, credential_count: 0, nudge_state: { eligible: true },
+			enforcement: { effective: "enforce", in_scope: true, blocking: true, grace_remaining: 0, incapable_policy: "block_notify" } } };
+		mod.maybeEnforceOrNudge();
+		await tick();
+		if (!impersonated) {
+			assert.ok(document.body.children.length > 0, "control: the user meets the blocking gate");
+			continue;
+		}
+		assert.strictEqual(document.body.children.length, 0);
+		assert.strictEqual(fetchLog.length, 0);
+	}
+	delete frappeObj.boot;
+});
+
+test("portal impersonation: the /passkeys cards are read-only", async () => {
+	global.fetch = (url, opts) => {
+		if (!String(url).includes("list_credentials")) return normalFetch(url, opts);
+		const message = { credentials: [{ name: "WC-1", label: "Phone", enabled: 1 }], passkey_only_login: 0 };
+		return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message }) });
+	};
+	const byClass = (root, cls) => findNode(root, (n) => (n.className || "").split(" ").includes(cls));
+	try {
+		for (const impersonated of [false, true]) {
+			global.document = bannerDoc();
+			const root = fakeEl("div");
+			root.id = "passkey-portal-root";
+			document.body.appendChild(root);
+			bootPortal({ enabled: true, impersonated, credential_count: 1, nudge_state: { eligible: false } });
+			await tick();
+			await tick();
+			assert.strictEqual(byClass(root, "passkey-card").getAttribute("data-name"), "WC-1");
+			const controls = [byClass(root, "passkey-card-actions"), byClass(root, "passkey-card-add-row"), byClass(root, "passkey-only-row")];
+			if (!impersonated) {
+				assert.ok(controls.every(Boolean), "control: the user can add, rename, remove and switch");
+				continue;
+			}
+			assert.deepStrictEqual(controls, [null, null, null]);
+			assert.strictEqual(byClass(root, "passkey-impersonated-notice").textContent, M.COPY.impersonatedNotice);
+		}
+	} finally { global.fetch = normalFetch; C.detectCapabilities = detectCapabilities; delete frappeObj.boot; }
+});

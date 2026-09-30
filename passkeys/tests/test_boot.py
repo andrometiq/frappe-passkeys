@@ -3,7 +3,7 @@
 
 """Desk boot flag + the Signal-API data endpoint:
 ``extend_bootinfo`` publishes the reconciled boot contract (``enabled``,
-``modes``, ``credential_count``, ``nudge_state``, ``post_login_method``,
+``modes``, ``credential_count``, ``nudge_state``, ``post_login_method``, ``impersonated``,
 ``conditional_create``, ``upsell_eligible``, ``settings_context``, ``rp_id``) for an authed user, no-ops for Guest, and
 ``get_signal_data`` returns the caller's own handle + enabled credential ids."""
 
@@ -79,6 +79,7 @@ class BootInfoTest(IntegrationTestCase):
 				"passkey_only_login",
 				"nudge_state",
 				"post_login_method",
+				"impersonated",
 				"conditional_create",
 				"upsell_eligible",
 				"enforcement",
@@ -113,6 +114,19 @@ class BootInfoTest(IntegrationTestCase):
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertEqual(info.passkeys["credential_count"], 0)
 		self.assertTrue(info.passkeys["nudge_state"]["eligible"])
+
+	def test_bootinfo_flags_an_impersonated_session(self):
+		user = self._user()
+		sign_in(user)
+		info = frappe._dict()
+		boot.extend_bootinfo(bootinfo=info)
+		self.assertIs(info.passkeys["impersonated"], False)
+
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		info = frappe._dict()
+		boot.extend_bootinfo(bootinfo=info)
+		self.assertIs(info.passkeys["impersonated"], True)
 
 	def test_bootinfo_is_a_noop_for_guest(self):
 		frappe.set_user("Guest")

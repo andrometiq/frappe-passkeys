@@ -40,6 +40,11 @@ class BrowserSessionRequired(frappe.PermissionError):
 	browser session (API key, Basic or OAuth bearer token)."""
 
 
+class ImpersonatedSessionRefused(frappe.PermissionError):
+	"""A passkey write, confirmation or re-auth arrived from a session that is
+	impersonating the user (core's ``impersonate``), which is read-only for passkeys."""
+
+
 class PasskeyServedByCore(frappe.ValidationError):
 	"""Every app endpoint refuses when core serves passkeys natively."""
 

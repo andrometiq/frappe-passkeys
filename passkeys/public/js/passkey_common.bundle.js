@@ -337,6 +337,8 @@
 				return "confirmation_required";
 			case "PasskeyServedByCore":
 				return "served_by_core";
+			case "ImpersonatedSessionRefused": // 403: an impersonated session is read-only for passkeys
+				return "impersonated_session";
 			default:
 				return "unknown";
 		}
@@ -809,6 +811,9 @@
 					var parsed = res && parseConfirmationRequired(res.body);
 					if (res && res.status === 417) return reject(CONFIRM_CODES.NOT_SUPPORTED, "Passkey confirmation isn't available here.");
 					if (parsed) return reject(CONFIRM_CODES.CONFIRMATION_FAILED, "Couldn't start confirmation.");
+					// A server that answered and refused (e.g. an impersonated session) says why.
+					var refused = res && serverMessages(res.body);
+					if (refused) return Promise.reject(new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, refused));
 					return reject(CONFIRM_CODES.NETWORK, "Couldn't reach the confirmation service — try again.");
 				}
 				var begin = unwrapMessage(res.body) || {};

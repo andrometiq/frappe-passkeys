@@ -30,7 +30,11 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
   (401), `CeremonyFailed` (401 — a signed-in user's registration, confirmation or password
   re-auth was refused; the session stays signed in, so the user can retry),
   `BrowserSessionRequired` (403 — the request was authenticated by an API key (`token` or `Basic`) or an OAuth bearer,
-  not a browser session), `PasskeyServedByCore` (417 — the app has stood down for native core).
+  not a browser session), `ImpersonatedSessionRefused` (403 — the session is impersonating the user
+  through core's Impersonate, open to the Administrator and, on v16, to any role granted the User
+  `impersonate` permission; every passkey write, confirmation and re-auth refuses it, while reads
+  still answer — match this `exc_type`, not the message),
+  `PasskeyServedByCore` (417 — the app has stood down for native core).
 - **Auth / CSRF**: authenticated endpoints need a logged-in browser session **and**
   `X-Frappe-CSRF-Token: <frappe.csrf_token>` on the POST. Guest login endpoints are
   CSRF-exempt but bound to an `HttpOnly` `passkey_binder` cookie the server sets on

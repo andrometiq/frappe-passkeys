@@ -150,8 +150,36 @@ method's consumer remains the final method and payload authority.
 surface (add/delete passkeys). It is seeded by a fresh interactive login or a
 password / passkey re-auth. An "external" login (email link, social) seeds only the
 restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
-management power. An impersonated session (Administrator "Impersonate") cannot register a passkey
-at all, so impersonation never leaves behind a credential the user did not create.
+management power.
+
+**An impersonated session is read-only for passkeys.** Core's "Impersonate" is open to the
+Administrator and, on Frappe v16, to any role granted the User `impersonate` permission. The lock
+stops accidental or hidden changes to the user's passkeys from that session. It is not a boundary
+against a determined administrator, who can do the same from their own session. Reads still answer.
+
+- **App endpoints.** Registering, renaming or removing a passkey, the passkey-only switch, a
+  confirmation or password re-auth, a `@passkey_protected` action, the nudge and enforcement events,
+  and the per-user exemption and grace reset refuse with `ImpersonatedSessionRefused` (403), before
+  any rate limit, so the session never spends the user's budgets, prompts or grace logins.
+- **The passkey DocTypes.** WebAuthn Credential, WebAuthn User Handle, Passkey Settings and Passkey
+  Enforcement Role refuse the session in their controllers, with the same error, on insert, save,
+  delete (the Passkey Settings Single included), rename (`validate_rename=false` included) and, on
+  v16, discard. That covers every write that goes through a document, from Desk, `frappe.client`,
+  `/api/resource` or `/api/v2`, whoever is impersonated, the Administrator included.
+- **The UI.** The boot payload carries `impersonated`, and the Desk and portal then show the
+  passkeys read-only, with no nudge or enforcement prompt. The User form hides its enforcement
+  recovery buttons and its link to the credential list.
+
+Not covered, by design:
+
+- An administrator who knows or resets the user's password (or mints API keys) and signs in
+  normally. That is an ordinary login, not an impersonated session.
+- Frappe's background bulk delete and edit (a list delete of more than 10 rows, a bulk edit of 20
+  or more) and other admin tooling that runs as a background job, such as a Scheduled Job Type or,
+  once enabled, Data Import. The job does not carry the impersonation.
+- Comments, likes, tags, shares, assignments and attachments on passkey records. They are
+  metadata, not passkey state.
+- Deleting or renaming the User, which cascades to that user's passkeys.
 
 Password classification and OTP-fallback acceptance follow command dispatch precedence. A truthy
 `cmd` must be exactly `login`; only a request without a diverting command may rely on the canonical
@@ -202,8 +230,9 @@ counter (a session-user-keyed cache token), because core's IP keying would 429 a
 whole NAT'd office off one busy user and can't attribute abuse to an account. A
 guest ceremony can never reach the per-user endpoints, so the two classes don't
 overlap. Authenticated endpoints check the session (and refuse an impersonated
-registration) before they count a call, so an unauthenticated request never spends a
-user's budget; the counter still runs before any single-use state is consumed.
+session's writes) before they count a call, so an unauthenticated request or an
+impersonated write never spends a user's budget; the counter still runs before any
+single-use state is consumed.
 `complete_uv_setup` re-checks that passwordless login is on before it spends a
 password attempt.
 

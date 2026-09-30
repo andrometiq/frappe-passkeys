@@ -27,7 +27,7 @@ def begin_registration(flow: str = "explicit"):
 	just-typed password is the freshness proof)."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
-	_refuse_impersonated_session()
+	session.refuse_impersonated_session()
 	if flow not in ("explicit", "conditional_create"):
 		frappe.throw(_("Unknown registration flow."), frappe.ValidationError)
 	state.rate_limit_user("begin_registration", 20, 3600)
@@ -79,7 +79,7 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 	registration and cross-account hijack."""
 	refuse_if_core_native()
 	session.require_authed_user()
-	_refuse_impersonated_session()
+	session.refuse_impersonated_session()
 	# before the single-use consume, so a rate-limited call never burns the live ceremony
 	state.rate_limit_user("verify_registration", 20, 3600)
 	from passkeys import engine, notifications
@@ -151,14 +151,6 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 			"display_name": frappe.db.get_value("User", user, "full_name") or user,
 		},
 	}
-
-
-def _refuse_impersonated_session() -> None:
-	"""An impersonating Administrator must never leave behind a credential the user did
-	not create (the impersonated session is external-seeded, so it would otherwise qualify
-	for the first-enrollment bootstrap)."""
-	if (frappe.session.get("data") or {}).get("impersonated_by"):
-		raise frappe.PermissionError(_("Passkeys cannot be registered while impersonating a user."))
 
 
 def _require_any_login_mode(settings) -> None:

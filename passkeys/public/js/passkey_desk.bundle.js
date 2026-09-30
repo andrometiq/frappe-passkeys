@@ -62,7 +62,8 @@
 	}
 
 	// ============================================================ card component
-	// The caller's own credentials: rename (no sudo), delete (sudo-gated), empty state, add.
+	// The caller's own credentials: rename (no sudo), delete (sudo-gated), empty state, add;
+	// read-only in an impersonated session.
 	function renderCards(container, opts) {
 		opts = opts || {};
 		if (!container) return;
@@ -79,6 +80,10 @@
 				return;
 			}
 			var payload = unwrap(res.body);
+			if (M.isImpersonated(boot())) {
+				container.appendChild(M.impersonatedView(payload.credentials, r[1]));
+				return;
+			}
 			var add = function () { triggerAdd(opts); };
 			if (!payload.credentials.length) {
 				container.appendChild(M.emptyState(add));
@@ -198,6 +203,8 @@
 				return;
 			}
 			container.appendChild(M.cardList(creds, r[1], function () { return null; }));
+			// The DocType refuses an impersonated session's writes too.
+			if (M.isImpersonated(boot())) return;
 			var link = el("a", "passkey-admin-link", t("Manage in the WebAuthn Credential list"));
 			link.href = "/app/webauthn-credential?user=" + encodeURIComponent(user);
 			container.appendChild(link);
@@ -271,7 +278,8 @@
 		});
 		actions.appendChild(resetBtn);
 
-		wrap.appendChild(actions);
+		// The recovery endpoints refuse an impersonated session.
+		if (!M.isImpersonated(boot())) wrap.appendChild(actions);
 		container.appendChild(wrap);
 	}
 
@@ -509,7 +517,8 @@
 		if (!b || b.enabled === false) return;
 		if (frappe.container && frappe.container.page) maybeNudge();
 		else $(document).one("page-change", maybeNudge);
-		refreshSignalsInSession();
+		// Signals run on this browser's authenticator, which is the impersonator's, not the user's.
+		if (!M.isImpersonated(b)) refreshSignalsInSession();
 	}
 
 	// Node test seam. The asset build wraps bundles in a CommonJS shim, so `module`

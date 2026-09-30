@@ -67,6 +67,18 @@ test("emptyState: the add call to action", () => {
 	assert.strictEqual(added, 1);
 });
 
+test("impersonatedView: the cards read-only, with no add, rename, remove or switch", () => {
+	const view = M.impersonatedView([{ name: "WC-1", label: "Phone", enabled: 1 }], {});
+	assert.strictEqual(byClass(view, "passkey-impersonated-notice").textContent, M.COPY.impersonatedNotice);
+	assert.strictEqual(byClass(view, "passkey-card").getAttribute("data-name"), "WC-1");
+	assert.strictEqual(byClass(view, "passkey-card-actions"), null);
+	assert.strictEqual(find(view, (n) => n.tagName === "BUTTON" || n.tagName === "INPUT"), null);
+
+	const empty = M.impersonatedView([], {});
+	assert.ok(find(empty, (n) => n.textContent === M.COPY.impersonatedEmpty));
+	assert.strictEqual(find(empty, (n) => n.tagName === "BUTTON"), null, "no add call to action");
+});
+
 test("passkeyOnlyRow: snaps back and asks; needs two enabled passkeys to turn on", () => {
 	const requests = [];
 	const two = { credentials: [{ enabled: 1 }, { enabled: 1 }], passkey_only_login: 0 };

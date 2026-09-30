@@ -12,10 +12,12 @@ from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
 )
+from passkeys.session import ReadOnlyWhileImpersonated
 
 
-class PasskeySettings(Document):
+class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 	def validate(self):
+		super().validate()
 		self._enforce_passkey_only_login_guard()
 		if self._any_mode_enabled():
 			self._validate_enablement()

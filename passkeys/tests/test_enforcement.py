@@ -11,6 +11,7 @@ import frappe
 from frappe.utils import add_to_date, cint, now_datetime, nowdate
 
 from passkeys import boot, enforcement_admin, notifications, passkey, state
+from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
@@ -465,6 +466,36 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.record_enforcement("defer")
+
+	def test_impersonated_session_spends_no_grace_and_reports_nothing(self):
+		# An impersonating admin must not burn the user's grace toward a lockout, nor file
+		# an incapable-device report (and admin email) about the admin's own device.
+		self._set(passkey_enforce_grace_logins=1, passkey_enforce_incapable="Block + Notify Admin")
+		user = self._user()
+		sign_in(user)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		counter = f"{state.RATE_LIMIT_PREFIX}record_enforcement:{user}"
+		self.addCleanup(state.clear_counter, counter)
+		with (
+			patch.object(state, "claim_enforcement_defer") as claim_defer,
+			patch.object(notifications, "record_enforcement_incapable") as report_incapable,
+		):
+			for event in boot.ENFORCE_EVENTS:
+				with (
+					self.subTest(event=event),
+					self.assertRaises(ImpersonatedSessionRefused),
+				):
+					passkey.record_enforcement(event)
+		claim_defer.assert_not_called()
+		report_incapable.assert_not_called()
+		self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 0})
+		self.assertEqual(self._verdict(user)["reason"], "grace")  # not blocking
+		self.assertEqual(state.get_counter(counter), 0)
+
+		frappe.session.data.pop("impersonated_by")
+		self.assertEqual(passkey.record_enforcement("defer")["enforcement_state"], {"grace_used": 1})
+		self.assertTrue(self._verdict(user)["blocking"])
 
 	# ---- report-only preview -------------------------------------------
 

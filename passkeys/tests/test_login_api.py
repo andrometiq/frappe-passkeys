@@ -20,7 +20,12 @@ from werkzeug.wrappers import Response
 
 from passkeys import passkey, session, state
 from passkeys.api import registration
-from passkeys.errors import CeremonyExpired, UnknownCredential, UVSetupRequired
+from passkeys.errors import (
+	CeremonyExpired,
+	ImpersonatedSessionRefused,
+	UnknownCredential,
+	UVSetupRequired,
+)
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -973,6 +978,34 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			login_manager.login_as(user)  # login_as → post_login → on_login veto aborts
 		self.assertNotEqual(frappe.session.user, user)  # no session minted for the flagged user
+
+	def test_core_impersonation_session_is_refused_by_passkey_writes(self):
+		"""Core's own ``impersonate`` endpoint, not a hand-set flag, so the place
+		``session.is_impersonated`` reads is pinned on every Frappe line."""
+		from frappe.auth import LoginManager
+		from frappe.core.doctype.user.user import impersonate
+		from frappe.sessions import delete_session
+
+		user = self._user()
+		frappe.set_user("Guest")
+		frappe.local.flags.pop("passkey_login", None)
+		frappe.local.flags.pop("passkeys_password_login", None)
+		self.addCleanup(setattr, frappe.local, "login_manager", getattr(frappe.local, "login_manager", None))
+		self._request("/api/method/frappe.core.doctype.user.user.impersonate")
+		frappe.local.login_manager = LoginManager()  # no sid cookie: resumes as Guest
+		frappe.local.login_manager.login_as("Administrator")  # the impersonator's own session
+		self.addCleanup(
+			delete_session, frappe.session.sid, user="Administrator", reason="passkeys test cleanup"
+		)
+		impersonate(user, reason="passkeys impersonation test")
+		self.addCleanup(delete_session, frappe.session.sid, user=user, reason="passkeys test cleanup")
+
+		self.assertEqual(frappe.session.user, user)
+		self.assertEqual(frappe.session.data.impersonated_by, "Administrator")
+		# login_as seeded the window before core set impersonated_by: external, registration-only
+		self.assertEqual(session.get_window(user)["seeded_by"], "external")
+		with self.assertRaises(ImpersonatedSessionRefused):
+			registration.begin_registration(flow="explicit")
 
 	# ======================================================================
 	# M-cmd — spoofed cmd=login at an app endpoint mints no session

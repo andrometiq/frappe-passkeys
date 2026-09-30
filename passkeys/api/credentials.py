@@ -8,8 +8,8 @@ Authenticated, JSON bodies only. Identity is resolved strictly from
 authorized by the ownership ladder with a **uniform not-found** so an
 attacker learns nothing about other users' credentials.
 
-No ceremony runs here, so no ``webauthn``. Mutations are gated on the sudo window;
-the grants that seed it come from ``confirm.py``.
+No ceremony runs here, so no ``webauthn``. Mutations are refused in an impersonated
+session and gated on the sudo window; the grants that seed it come from ``confirm.py``.
 """
 
 import frappe
@@ -82,6 +82,7 @@ def rename_credential(name: str, label: str | None):
 	the DocType label sanitizer is applied before the narrow column update."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
+	session.refuse_impersonated_session()
 	state.rate_limit_user("rename_credential", 20, 3600)  # 20/hr/user
 	doc = _own_credential(user, name)
 	if not (label or "").strip():
@@ -108,6 +109,7 @@ def delete_credential(name: str):
 	endpoint enforcement of the handle-row floor."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
+	session.refuse_impersonated_session()
 	state.rate_limit_user("delete_credential", 10, 3600)  # 10/hr/user
 	session.require_management_sudo(user)
 	doc = _own_credential(user, name)
@@ -162,6 +164,7 @@ def set_passkey_only_login(enabled: object):
 	passkeys (the ≥1 floor binds every writer via the handle-row ``validate``)."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
+	session.refuse_impersonated_session()
 	state.rate_limit_user("set_passkey_only_login", 20, 3600)  # 20/hr/user
 	enabled_int = cint(enabled)
 	payload = {"enabled": bool(enabled_int)}

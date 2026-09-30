@@ -111,6 +111,19 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		# ... and the live session CSRF token must NOT be in the (potentially cached) boot.
 		self.assertNotIn("csrf_token", ctx.boot)
 
+	# (g) An impersonated session reaches both portal surfaces flagged, so the portal
+	#     bundle renders the cards read-only and shows no prompt.
+	def test_portal_boot_flags_an_impersonated_session(self):
+		user = self._user()
+		frappe.set_user(user)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		ctx = self._ctx()
+		portal_nudge.website_context(ctx)
+		page = passkeys_page.get_context(frappe._dict(boot={}))
+		self.assertIs(ctx.boot["passkeys"]["impersonated"], True)
+		self.assertIs(page.boot["passkeys"]["impersonated"], True)
+
 	# (b) Guest render ⇒ zero passkey bytes (the nudge is authenticated-only).
 	def test_guest_render_ships_no_bundle(self):
 		frappe.set_user("Guest")

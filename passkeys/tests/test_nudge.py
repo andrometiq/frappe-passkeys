@@ -10,7 +10,8 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_to_date, now_datetime
 
-from passkeys import boot, notifications, passkey
+from passkeys import boot, notifications, passkey, state
+from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_handle, make_user, sign_in
@@ -159,6 +160,27 @@ class NudgeCadenceTest(IntegrationTestCase):
 		frappe.set_user("Guest")
 		with self.assertRaises(frappe.AuthenticationError):
 			passkey.record_nudge("shown")
+
+	def test_impersonated_session_cannot_record_nudge_events(self):
+		# An impersonating admin must not spend the user's prompt budget or opt them out.
+		user = self._user()
+		sign_in(user)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		counter = f"{state.RATE_LIMIT_PREFIX}record_nudge:{user}"
+		self.addCleanup(state.clear_counter, counter)
+		for event in boot.NUDGE_EVENTS:
+			with (
+				self.subTest(event=event),
+				self.assertRaises(ImpersonatedSessionRefused),
+			):
+				passkey.record_nudge(event)
+		self.assertIsNone(boot.get_default_value(f"{user}_passkey_nudge"))
+		self.assertTrue(boot.nudge_eligible(user, self._settings(), 0))
+		self.assertEqual(state.get_counter(counter), 0)
+
+		frappe.session.data.pop("impersonated_by")
+		self.assertEqual(passkey.record_nudge("shown")["nudge_state"]["declines"], 1)
 
 	def test_shown_preserves_opt_out_from_current_database_row(self):
 		user = self._user()

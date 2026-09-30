@@ -201,6 +201,10 @@
 			var res = r[0];
 			if (!res.ok) { mountRoot.appendChild(el("div", "passkey-cards-error", t("Couldn't load your passkeys."))); return; }
 			var payload = C.unwrapMessage(res.body) || {};
+			if (M.isImpersonated(window.frappe.boot && window.frappe.boot.passkeys)) {
+				mountRoot.appendChild(M.impersonatedView(payload.credentials || [], r[1]));
+				return;
+			}
 			if (!(payload.credentials || []).length) { mountRoot.appendChild(M.emptyState(addPasskey)); return; }
 			mountRoot.appendChild(M.cardList(payload.credentials, r[1], function (vm) {
 				return { onRename: function () { renameCard(vm); }, onDelete: function () { deleteCard(vm); } };

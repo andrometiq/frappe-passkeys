@@ -334,6 +334,52 @@ test("upsellDecision: server cadence + platform-authenticator gate", () => {
 	}
 });
 
+// ------------------------------------------------------------ impersonation
+
+test("isImpersonated: only the server's boolean true counts", () => {
+	assert.strictEqual(M.isImpersonated({ impersonated: true }), true);
+	for (const value of [false, undefined, 1, "true"]) {
+		assert.strictEqual(M.isImpersonated({ impersonated: value }), false, String(value));
+	}
+	assert.strictEqual(M.isImpersonated(null), false);
+});
+
+test("an impersonated session is never prompted, whatever the server cadence says", () => {
+	const caps = { supported: true, uvpaa: true, conditionalCreate: true };
+	const nudge = M.nudgeDecision(bootBase({ impersonated: true }), caps, NOW);
+	assert.strictEqual(nudge.showNudge, false);
+	assert.strictEqual(nudge.allowConditionalCreate, false);
+	assert.strictEqual(nudge.reason, "impersonated");
+	assert.strictEqual(M.nudgeDecision(bootBase(), caps, NOW).showNudge, true, "control: the same boot nudges the user");
+
+	const upsell = M.upsellDecision(bootBase({ impersonated: true }), caps, () => "1", NOW);
+	assert.strictEqual(upsell.showUpsell, false);
+	assert.strictEqual(upsell.reason, "impersonated");
+
+	// A blocking gate, and an incapable device under Block + Notify Admin: neither walls the
+	// impersonator in, and neither reports the impersonator's device against the user.
+	const verdicts = [
+		{ blocking: true, grace_remaining: 0 },
+		{ blocking: false, grace_remaining: 2 },
+		{ incapable_policy: "block_notify" },
+	];
+	for (const enforcement of verdicts) {
+		for (const deviceCaps of [caps, { supported: false }]) {
+			const d = M.enforcementDecision(enfBoot({ impersonated: true, enforcement }), deviceCaps);
+			assert.deepStrictEqual(
+				[d.show, d.blocking, d.notifyAdmin, d.reason],
+				[false, false, false, "impersonated"],
+				JSON.stringify([enforcement, deviceCaps])
+			);
+		}
+	}
+	assert.strictEqual(
+		M.enforcementDecision(enfBoot({ enforcement: { blocking: true, grace_remaining: 0 } }), caps).blocking,
+		true,
+		"control: the same verdict blocks the user"
+	);
+});
+
 // ---------------------------------------------------------- settings banners
 
 test("settingsBanners: RP-ID one-way-door is NOT a top banner (moved to the field description)", () => {

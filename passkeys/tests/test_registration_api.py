@@ -10,7 +10,12 @@ import frappe
 
 from passkeys import state
 from passkeys.api import registration
-from passkeys.errors import CeremonyExpired, CeremonyFailed, PasskeyConfirmationRequired
+from passkeys.errors import (
+	CeremonyExpired,
+	CeremonyFailed,
+	ImpersonatedSessionRefused,
+	PasskeyConfirmationRequired,
+)
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache, is_signed_out_by_frappe
 from passkeys.tests.factories import make_credential, make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
@@ -125,9 +130,9 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
 		for endpoint in ("begin_registration", "verify_registration"):
 			self.addCleanup(state.clear_counter, f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}")
-		with self.assertRaises(frappe.PermissionError):
+		with self.assertRaises(ImpersonatedSessionRefused):
 			registration.begin_registration(flow="explicit")
-		with self.assertRaises(frappe.PermissionError):
+		with self.assertRaises(ImpersonatedSessionRefused):
 			registration.verify_registration("state", {"response": {}})
 		for endpoint in ("begin_registration", "verify_registration"):
 			self.assertEqual(state.get_counter(f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}"), 0)

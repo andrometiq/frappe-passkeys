@@ -23,6 +23,7 @@ from passkeys.errors import (
 	BrowserSessionRequired,
 	CeremonyExpired,
 	CeremonyFailed,
+	ImpersonatedSessionRefused,
 	PasskeyConfirmationRequired,
 )
 from passkeys.tests.compat import (
@@ -859,6 +860,48 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertFalse(
 			session.consume_passkey_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
 		)
+
+	def test_impersonated_session_cannot_confirm_or_reauth(self):
+		# Even knowing (or having reset) the user's password, an impersonated session never
+		# gets a grant or a full sudo window, and spends none of the user's budgets.
+		user = self._user(with_password=True)
+		auth = self._enroll(user)
+		sign_in(user)
+		state.clear_sudo_window(self.sid)
+		begun = self._begin(session.MANAGE_ACTION)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		self.addCleanup(state.clear_password_failures, user)
+		calls = {
+			"begin_confirmation": lambda: self._begin(session.MANAGE_ACTION),
+			"verify_confirmation": lambda: self._verify(
+				begun["state_id"], self._assert(auth, begun["options"], uv=True)
+			),
+			"reauth_password": lambda: self._reauth(PWD),
+		}
+		for endpoint, call in calls.items():
+			counter = f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}"
+			self.addCleanup(state.clear_counter, counter)
+			spent = state.get_counter(counter)
+			with self.subTest(endpoint=endpoint):
+				with self.assertRaises(ImpersonatedSessionRefused):
+					call()
+				self.assertEqual(state.get_counter(counter), spent)
+
+		@confirm.passkey_protected(action="myapp.impersonated", allow_sudo_window=True)
+		def protected():
+			self.fail("An impersonated session must not run a protected action")
+
+		self._request("/api/method/myapp.impersonated")
+		with self.assertRaises(ImpersonatedSessionRefused):
+			protected()
+		self.assertFalse(session.has_management_sudo(user))
+		self.assertEqual(state.get_counter(state.PASSWORD_FAILURE_PREFIX + user), 0)
+
+		# The same session, no longer impersonated, completes the unspent ceremony.
+		frappe.session.data.pop("impersonated_by")
+		self.assertIn("grant", self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True)))
+		self.assertTrue(session.has_management_sudo(user))
 
 	def test_begin_confirmation_offers_no_password_for_passkey_only_action(self):
 		user = self._user()

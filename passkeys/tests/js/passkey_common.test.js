@@ -215,6 +215,7 @@ test("mapServerExcType matches on class name (wire exc_type), unknown delegates"
 	assert.strictEqual(C.mapServerExcType("UVSetupRequired"), "uv_setup_required");
 	assert.strictEqual(C.mapServerExcType("PasskeyConfirmationRequired"), "confirmation_required");
 	assert.strictEqual(C.mapServerExcType("PasskeyServedByCore"), "served_by_core");
+	assert.strictEqual(C.mapServerExcType("ImpersonatedSessionRefused"), "impersonated_session");
 	assert.strictEqual(C.mapServerExcType("AuthenticationError"), "unknown");
 	assert.strictEqual(C.mapServerExcType(undefined), "unknown");
 });

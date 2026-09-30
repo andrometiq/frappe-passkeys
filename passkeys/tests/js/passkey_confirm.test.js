@@ -279,6 +279,19 @@ test("begin 417 (served-by-core) -> not_supported", async () => {
 	await assert.rejects(engine.confirm("myapp.x", {}), (e) => e.code === C.CONFIRM_CODES.NOT_SUPPORTED);
 });
 
+test("begin refused with a server message (impersonated session) -> confirmation_failed with that message", async () => {
+	const message = "Passkeys can't be changed or used while impersonating a user.";
+	const post = makePost({
+		"passkeys.confirm.begin_confirmation": [{
+			ok: false, status: 403,
+			body: { exc_type: "ImpersonatedSessionRefused", _server_messages: JSON.stringify([JSON.stringify({ message })]) },
+		}],
+	});
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error("should not run")), ui: makeUI() });
+	await assert.rejects(engine.confirm("myapp.x", {}),
+		(e) => e.code === C.CONFIRM_CODES.CONFIRMATION_FAILED && e.message === message);
+});
+
 test("concurrency (A44): identical concurrent confirms share ONE ceremony", async () => {
 	let beginCount = 0;
 	const post = function (method, body) {

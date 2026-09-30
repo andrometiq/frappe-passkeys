@@ -66,6 +66,9 @@
 		createdLabel: "Added",
 		lastUsedLabel: "Last used",
 		lastUsedNever: "Never used yet",
+		// a session impersonating the user (core's Impersonate) sees the cards read-only
+		impersonatedNotice: "Passkeys are read-only while you impersonate this user.",
+		impersonatedEmpty: "This user has no passkeys.",
 		// friendly ceremony errors
 		alreadyRegistered: "This device already has a passkey for this account.",
 		addExpired: "That took too long — please try again.",
@@ -229,6 +232,11 @@
 		};
 	}
 
+	// An impersonated session is read-only for passkeys: no prompts, no management actions.
+	function isImpersonated(boot) {
+		return !!(boot && boot.impersonated === true);
+	}
+
 	// ------------------------------------------------------- nudge decisions
 	// The server owns the cadence (boot.nudge_state.eligible); the client adds capability.
 	function nudgeDecision(boot, caps) {
@@ -238,6 +246,7 @@
 		var eligible = !!boot.nudge_state && boot.nudge_state.eligible === true;
 
 		var out = { showNudge: false, allowConditionalCreate: false, reason: "", eligible: eligible };
+		if (isImpersonated(boot)) { out.reason = "impersonated"; return out; }
 		if (!eligible) out.reason = "server_ineligible";
 		else if (!supported) out.reason = "unsupported";
 		else { out.showNudge = true; out.reason = "eligible"; }
@@ -264,6 +273,8 @@
 			show: false, blocking: false, variant: "",
 			notifyAdmin: false, graceRemaining: 0, reason: "",
 		};
+		// An admin acting as the user is never gated, and never spends the user's grace.
+		if (isImpersonated(boot)) { out.reason = "impersonated"; return out; }
 		// Off / nudge / before the date / out of scope: the nudge path owns it.
 		if (enf.effective !== "enforce" || !enf.in_scope) { out.reason = "not_enforcing"; return out; }
 		var count = typeof boot.credential_count === "number" ? boot.credential_count : 0;
@@ -351,7 +362,8 @@
 		var cadence = boot.upsell_eligible === true;
 
 		var out = { showUpsell: false, reason: "" };
-		if (!flagged) out.reason = "no_flag";
+		if (isImpersonated(boot)) out.reason = "impersonated";
+		else if (!flagged) out.reason = "no_flag";
 		else if (!cadence) out.reason = "cadence_capped";
 		else if (!supported) out.reason = "unsupported";
 		else if (!uvpaaOk) out.reason = "no_platform_authenticator";
@@ -762,6 +774,18 @@
 		return wrap;
 	}
 
+	// The cards without add, rename, remove or the passwordless switch, for an impersonated
+	// session. Cosmetic: the server refuses every change from such a session.
+	function impersonatedView(creds, aaguidMap) {
+		var t = common().t;
+		var wrap = el("div", "passkey-impersonated");
+		wrap.appendChild(el("p", "passkey-impersonated-notice text-muted", t(COPY.impersonatedNotice)));
+		wrap.appendChild(creds.length
+			? cardList(creds, aaguidMap, function () { return null; })
+			: el("p", "text-muted", t(COPY.impersonatedEmpty)));
+		return wrap;
+	}
+
 	// The passwordless-login switch, from a list_credentials payload. It never flips on its
 	// own: it snaps back and asks onRequest(desired); the change shows once the sudo-gated
 	// call succeeds and the list is re-rendered.
@@ -852,6 +876,7 @@
 		backupBadge: backupBadge,
 		accessibleActionName: accessibleActionName,
 		credentialViewModel: credentialViewModel,
+		isImpersonated: isImpersonated,
 		nudgeDecision: nudgeDecision,
 		enforcementDecision: enforcementDecision,
 		shouldShowEnforcementAdmin: shouldShowEnforcementAdmin,
@@ -877,6 +902,7 @@
 		button: button,
 		cardList: cardList,
 		emptyState: emptyState,
+		impersonatedView: impersonatedView,
 		passkeyOnlyRow: passkeyOnlyRow,
 		loadAaguidMap: loadAaguidMap,
 		createEnrollmentEvents: createEnrollmentEvents,

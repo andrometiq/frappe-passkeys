@@ -13,7 +13,7 @@ import frappe
 
 from passkeys import session, state
 from passkeys.api import credentials
-from passkeys.errors import PasskeyConfirmationRequired
+from passkeys.errors import ImpersonatedSessionRefused, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
@@ -383,3 +383,48 @@ class CredentialManagementTest(IntegrationTestCase):
 		# a different user has their own counter — unaffected
 		sign_in(user_b)
 		self.assertIn("credentials", credentials.list_credentials())
+
+	# ---- impersonated session: read-only -----------------------------------
+
+	def test_impersonated_session_cannot_rename_delete_or_toggle_passkey_only(self):
+		# Every other gate is open (a full sudo window, a matching passkey grant, two
+		# passkeys), so only the impersonation guard refuses, before any rate limit.
+		user = self._user()
+		laptop = make_credential(user, label="Laptop")
+		make_credential(user, label="Phone")
+		make_handle(user)
+		sign_in(user)
+		self._seed_sudo(user)
+		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		calls = {
+			"rename_credential": lambda: credentials.rename_credential(laptop.name, "Renamed"),
+			"set_passkey_only_login": lambda: credentials.set_passkey_only_login(1),
+			"delete_credential": lambda: credentials.delete_credential(laptop.name),
+		}
+		for endpoint, call in calls.items():
+			counter = f"{state.RATE_LIMIT_PREFIX}{endpoint}:{user}"
+			self.addCleanup(state.clear_counter, counter)
+			with self.subTest(endpoint=endpoint):
+				with self.assertRaises(ImpersonatedSessionRefused):
+					call()
+				self.assertEqual(state.get_counter(counter), 0)
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", laptop.name, "label"), "Laptop")
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"), 0)
+
+		# The same session, no longer impersonated, passes every gate.
+		frappe.session.data.pop("impersonated_by")
+		for call in calls.values():
+			call()
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"), 1)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", laptop.name))
+
+	def test_impersonated_session_can_still_list_credentials(self):
+		user = self._user()
+		cred = make_credential(user)
+		sign_in(user)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		names = [row["name"] for row in credentials.list_credentials()["credentials"]]
+		self.assertEqual(names, [cred.name])

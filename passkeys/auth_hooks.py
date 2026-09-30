@@ -23,7 +23,7 @@ def on_login_veto(login_manager=None, **kwargs):
 	resumed-session paths (email link, OAuth) ``frappe.session.user`` is the cookie
 	holder, possibly an attacker, while ``login_manager.user`` is the victim. Only
 	same-user re-auth and a request dispatched to core's ``impersonate`` (which has its
-	own Administrator gate) are exempt. Recovery for a stranded user: docs/recovery.md."""
+	own permission gate) are exempt. Recovery for a stranded user: docs/recovery.md."""
 	if install.dormant():
 		return
 	target = getattr(login_manager, "user", None) if login_manager is not None else None

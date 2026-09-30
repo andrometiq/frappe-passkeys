@@ -7,6 +7,36 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Security
+
+- An impersonated session is now read-only for passkeys. Renaming or removing a passkey, the
+  passkey-only switch, confirmations, password re-auth, `@passkey_protected` actions, the
+  enrollment nudge and enforcement events, and the per-user exemption and grace reset all refuse
+  it, as registration already did, with a new typed error, `ImpersonatedSessionRefused` (403, a
+  `PermissionError`; registration used to raise a plain `PermissionError`), which the client maps
+  to `impersonated_session`. An impersonated write no longer spends the user's nudge prompts, grace
+  logins or rate limits, and a known or reset password can no longer open a management window from
+  that session.
+- The passkey DocTypes (WebAuthn Credential, WebAuthn User Handle, Passkey Settings and its
+  enforcement roles) refuse an impersonated session in their controllers, with the same error, on
+  insert, save, delete (the Passkey Settings Single included), rename (`validate_rename=false`
+  included) and v16 discard, whoever is impersonated, the Administrator included. The lock prevents
+  accidental or hidden changes while impersonating; it is not a boundary against a determined
+  administrator. `docs/security.md` lists what it leaves out by design: a normal sign-in with a
+  known or reset password or an API key, background bulk jobs, comments, tags, shares and other
+  metadata on passkey records, and User deletes and renames.
+
+### Changed
+
+- The boot payload carries `impersonated`. The Desk and portal show an impersonated user's
+  passkeys read-only, with no enrollment nudge or enforcement gate, and the User form hides its
+  enforcement recovery buttons and credential-list link.
+- A confirmation the server refuses to start now shows the server's reason
+  (`confirmation_failed`) instead of "Couldn't reach the confirmation service".
+- Each release line's `pyproject.toml` declares only its own Frappe range, as the Frappe Cloud
+  Marketplace requires: `>=15.108.0,<16.0.0` on `version-15` and `>=16.18.3,<17.0.0` on
+  `version-16`. `develop` keeps `>=15.108.0,<18.0.0`.
+
 ## [15.0.4] / [16.0.4] — 2026-09-29
 
 ### Fixed

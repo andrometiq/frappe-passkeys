@@ -8,9 +8,10 @@ grace-counter reset, both System-Manager-gated + rate-limited."""
 import frappe
 
 from passkeys import boot, enforcement_admin, state
+from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
-from passkeys.tests.factories import make_credential, make_user
+from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
 
@@ -243,6 +244,33 @@ class EnforcementAdminTest(IntegrationTestCase):
 			frappe.flags.in_test = saved_in_test
 			frappe.set_user("Administrator")
 		self.assertFalse(boot.is_exempt(user))
+
+	def test_impersonated_session_cannot_change_enforcement(self):
+		# An admin impersonating a System Manager acts as that user; the recovery writes
+		# wait for the admin's own session, while the read view stays open.
+		manager = self._user(roles=["System Manager"])
+		target = self._user()
+		boot.record_enforcement_defer(target)
+		sign_in(manager)
+		frappe.session.data.impersonated_by = "Administrator"
+		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
+		calls = {
+			"set_user_exemption": lambda: enforcement_admin.set_user_exemption(target, True),
+			"reset_enforcement_grace": lambda: enforcement_admin.reset_enforcement_grace(target),
+		}
+		for endpoint, call in calls.items():
+			counter = f"{state.RATE_LIMIT_PREFIX}{endpoint}:{manager}"
+			self.addCleanup(state.clear_counter, counter)
+			with self.subTest(endpoint=endpoint):
+				with self.assertRaises(ImpersonatedSessionRefused):
+					call()
+				self.assertEqual(state.get_counter(counter), 0)
+		self.assertFalse(boot.is_exempt(target))
+		self.assertEqual(enforcement_admin.get_user_enforcement_admin(target)["grace_used"], 1)
+
+		frappe.session.data.pop("impersonated_by")
+		self.assertTrue(calls["set_user_exemption"]()["exempt"])
+		self.assertEqual(calls["reset_enforcement_grace"]()["grace_used"], 0)
 
 	def test_unknown_user_is_rejected(self):
 		with self.assertRaises(frappe.ValidationError):

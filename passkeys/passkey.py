@@ -592,6 +592,7 @@ def record_nudge(event: str):
 	caller's server-side cadence state, shared across their browsers."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
+	session.refuse_impersonated_session()
 	state.rate_limit_user("record_nudge", 30, 3600)
 	return {"nudge_state": boot.record_nudge_event(user, event)}
 
@@ -603,6 +604,7 @@ def record_enforcement(event: str):
 	cannot create a passkey) alerts the admins under ``Block + Notify Admin``."""
 	refuse_if_core_native()
 	user = session.require_authed_user()
+	session.refuse_impersonated_session()
 	state.rate_limit_user("record_enforcement", 30, 3600)
 	from passkeys import notifications
 

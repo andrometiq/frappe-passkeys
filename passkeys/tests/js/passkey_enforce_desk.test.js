@@ -433,3 +433,91 @@ test("desk conditional create: a throwing fallback is contained and still marks 
 		delete window.PublicKeyCredential; delete frappeObj.boot;
 	}
 });
+
+// ------------------------------------------------------------ impersonation
+// A session impersonating the user must meet no gate (a blocking one would wall
+// them out of the user's Desk), record nothing against the user, and change nothing.
+
+const BLOCKING_VERDICT = {
+	credential_count: 0, nudge_state: { eligible: true }, upsell_eligible: true,
+	enforcement: { effective: "enforce", in_scope: true, blocking: true, grace_remaining: 0, incapable_policy: "block_notify" },
+};
+
+test("desk impersonation: a blocking verdict opens no gate and records nothing; signals are skipped", async () => {
+	frappeObj.container = { page: {} }; // onReady runs maybeNudge at once
+	try {
+		for (const impersonated of [false, true]) {
+			frappeObj.boot = { passkeys: Object.assign({ enabled: true, impersonated }, BLOCKING_VERDICT) };
+			Dialog.instances.length = 0;
+			fetchLog.length = 0;
+			bootHooks[0]();
+			await tick();
+			const signals = fetchLog.filter((f) => f.url.includes("get_signal_data")).length;
+			if (!impersonated) {
+				assert.strictEqual(Dialog.instances.length, 1, "control: the user meets the blocking gate");
+				assert.strictEqual(signals, 1, "control: the user's browser refreshes its signals");
+				continue;
+			}
+			assert.strictEqual(Dialog.instances.length, 0);
+			assert.strictEqual(fetchLog.length, 0, "no nudge, enforcement or signal call");
+		}
+	} finally { delete frappeObj.container; delete frappeObj.boot; }
+});
+
+function byClassName(root, cls) {
+	return findNode(root, (n) => (n.className || "").split(" ").includes(cls));
+}
+
+test("desk impersonation: the cards are read-only", async () => {
+	global.fetch = (url, opts) => {
+		if (!String(url).includes("list_credentials")) return normalFetch(url, opts);
+		const message = { credentials: [{ name: "WC-1", label: "Phone", enabled: 1 }], passkey_only_login: 0 };
+		return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message }) });
+	};
+	try {
+		for (const impersonated of [false, true]) {
+			frappeObj.boot = { passkeys: { enabled: true, impersonated } };
+			const root = fakeEl("div");
+			root.classList = { add() {} };
+			await frappeObj.passkeys.manage.renderCards(root, { root });
+			assert.strictEqual(byClassName(root, "passkey-card").getAttribute("data-name"), "WC-1");
+			const controls = [
+				byClassName(root, "passkey-card-actions"),
+				byClassName(root, "passkey-card-add-row"),
+				byClassName(root, "passkey-only-row"),
+			];
+			if (!impersonated) {
+				assert.ok(controls.every(Boolean), "control: the user can add, rename, remove and switch");
+				continue;
+			}
+			assert.deepStrictEqual(controls, [null, null, null]);
+			assert.strictEqual(byClassName(root, "passkey-impersonated-notice").textContent, M.COPY.impersonatedNotice);
+		}
+	} finally { global.fetch = normalFetch; delete frappeObj.boot; }
+});
+
+test("desk impersonation: another user's inventory and enforcement recovery offer no write controls", async () => {
+	const view = { exempt: false, in_scope: true, credential_count: 0, grace_used: 1, grace_total: 3, grace_remaining: 2 };
+	global.fetch = (url, opts) => {
+		if (!String(url).includes("get_user_enforcement_admin")) return normalFetch(url, opts);
+		return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message: view }) });
+	};
+	frappeObj.db = { get_list: () => Promise.resolve([{ name: "WC-1", label: "Phone", enabled: 1 }]) };
+	try {
+		for (const impersonated of [false, true]) {
+			frappeObj.boot = { passkeys: { enabled: true, impersonated, enforcement: { enforcing: true } } };
+			const inventory = fakeEl("div");
+			await frappeObj.passkeys.manage.renderReadOnlyInventory(inventory, "user@example.com");
+			const admin = fakeEl("div");
+			await frappeObj.passkeys.manage.renderEnforcementAdmin(admin, "user@example.com");
+			assert.strictEqual(byClassName(inventory, "passkey-card").getAttribute("data-name"), "WC-1");
+			assert.ok(byClassName(admin, "passkey-enforcement-admin-status"), "the read view stays");
+			const controls = [byClassName(inventory, "passkey-admin-link"), findButton(admin, () => true)];
+			if (!impersonated) {
+				assert.ok(controls.every(Boolean), "control: a System Manager can open the list and recover the user");
+				continue;
+			}
+			assert.deepStrictEqual(controls, [null, null]);
+		}
+	} finally { global.fetch = normalFetch; delete frappeObj.db; delete frappeObj.boot; }
+});

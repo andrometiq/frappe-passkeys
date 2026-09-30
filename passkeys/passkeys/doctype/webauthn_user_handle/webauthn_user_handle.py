@@ -6,6 +6,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from passkeys.session import ReadOnlyWhileImpersonated
+
 
 def lock_passkey_modes() -> frappe._dict:
 	"""Lock the Passkey Settings Single rows and return both login-mode flags, read current.
@@ -62,8 +64,9 @@ def lock_login_floor(user: str) -> tuple[int, list[str]]:
 	return cint(flag), list(names or [])
 
 
-class WebAuthnUserHandle(Document):
+class WebAuthnUserHandle(ReadOnlyWhileImpersonated, Document):
 	def validate(self):
+		super().validate()
 		self._enforce_immutable_identity()
 		self._enforce_credential_floor()
 
