@@ -10,16 +10,17 @@ themselves is in [`configuration.md`](configuration.md).
 |---|---|---|
 | **v15** | **v15.108.0 and newer** | Use `version-15`. |
 | **v16** | **v16.18.3 and newer** | Use `version-16`. |
-| **develop** | Integration target | Pre-release only. Moving branch-tip CI fails visibly on drift but is not a release or production-readiness attestation. |
+| **develop** | Integration target | Pre-release, for unreleased Frappe; not for production. |
 
-The app pins `webauthn==2.8.0`; changing that authentication-critical dependency requires the full
-resolver and ceremony matrix. Python `>=3.10,<3.15` is declared. These constraints describe what the
-candidate accepts, not a promise that every future Frappe patch release in the range is compatible.
+The app pins `webauthn==2.8.0`, the version CI tests on every Frappe line; changing that
+authentication-critical dependency requires the full resolver and ceremony matrix. Python
+`>=3.10,<3.15` is required.
 
 Each branch's `pyproject.toml` declares its Frappe range (`version-15`: `>=15.108.0,<16.0.0`;
 `version-16`: `>=16.18.3,<17.0.0`). Bench only warns about that range, so installing refuses a
-Frappe below the floor of its line. Release CI validates a reviewed, pinned Frappe baseline per
-branch; validate the exact Frappe patch level you deploy.
+Frappe below the floor of its line. CI runs against a reviewed, pinned Frappe commit for each line.
+A daily workflow runs the `develop` branch, where every change lands first, against the moving
+Frappe version-15 and version-16 tips and fails when an upstream change breaks a suite.
 
 ## Install
 
@@ -61,8 +62,8 @@ so a refusal leaves **zero** site state.
   prove that core implements this app's runtime handover contract. For an already-installed app to
   become dormant safely, `frappe.passkey` must also define the exact marker
   `FRAPPE_PASSKEYS_APP_HANDOVER = "frappe-passkeys-app-handover-v1"`. Without that marker, the app
-  stays active. No current core adoption patch is assumed; follow the proposal and validation
-  checklist in [`upstream/`](upstream/) for any future migration.
+  stays active. Frappe core has not adopted the app; [`upstream/`](upstream/) holds the proposal
+  and validation checklist for a future migration.
 
 ## Site configuration, reverse proxy, RP-ID and origin
 
@@ -103,6 +104,7 @@ page shows a red mismatch banner — fail-closed is always diagnosable. See
 ## Upgrade
 
 ```bash
+bench --site <site> backup --with-files
 cd apps/passkeys && git pull --ff-only && cd ../..
 bench build --app passkeys
 bench --site <site> migrate
@@ -116,10 +118,6 @@ silently — if the UI looks stale after an upgrade, run
 
 `bench migrate` runs the app's `after_migrate` hook, which syncs the User-form passkey section. An
 upgrade changes no settings; enabled modes stay enabled.
-
-Do not promote an upgrade from this command sequence alone: back up the database and private
-files, validate on staging behind your real proxy and origins, and have a tested recovery path — see
-[Operations](operations.md#before-you-enable-passkeys-on-a-production-site).
 
 ## Disable vs uninstall
 
@@ -226,7 +224,6 @@ restored verbatim (never reset to zero), and credentials are restored before han
 same-site restore under the original RP ID, authenticators users still hold continue to match the
 restored public keys.
 
-**Possible core-handoff input.** The export may be useful as a migration input for a future native
-implementation, but no current core schema or compatible importer is claimed. A future adoption
-must define and test the field mapping, preserve counters and ownership, and advertise the exact
-handover marker before the app can yield safely.
+**Possible core-handoff input.** The export can be a migration input if Frappe core implements an
+importer for it; the app yields to a native implementation only once that implementation
+advertises the exact handover marker.

@@ -7,6 +7,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Changed
+
+- The README, `docs/install.md` and `SECURITY.md` now state what CI runs on every release line and
+  what the daily upstream run checks, in place of general advice to validate on staging. Rollout
+  steps stay in `docs/operations.md`. Vulnerability reports go straight to GitHub's private
+  reporting form; the public-issue fallback is gone.
+
 ## [15.0.5] / [16.0.5] — 2026-09-30
 
 ### Security

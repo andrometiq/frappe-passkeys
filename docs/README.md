@@ -29,7 +29,7 @@ New here? Start with [Install](install.md), then [Configuration](configuration.m
 - [**Security model**](security.md): what the app enforces, what it trusts, residual risks, and
   disclosure.
 - [**WebAuthn Level 3 support**](webauthn-l3.md): which WebAuthn L3 relying-party steps and
-  browser features the app supports, where each is handled, and what is not supported yet.
+  browser features the app supports, where each is handled, and which it does not support.
 - [**Why passkeys are safer**](https://andrometiq.com/software/passkey/why-passkeys-are-safer/):
   a short illustrated explainer for decision makers.
 - [**Security policy**](../SECURITY.md): how to report a vulnerability privately.

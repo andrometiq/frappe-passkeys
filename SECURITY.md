@@ -8,15 +8,15 @@
 | `version-15` | 15.x (Frappe v15) | Yes |
 | `develop` | Integration branch | Fixed here first; not for production |
 
-Fixes land on `develop` and ship in the next 15.x / 16.x release. Validate a release against your
-exact Frappe version and topology before enabling it
-([Operations](docs/operations.md#before-you-enable-passkeys-on-a-production-site)).
+Fixes land on `develop` and ship in the next 15.x / 16.x release.
 
 ## Reporting A Vulnerability
 
 Do not disclose vulnerabilities, credentials, user data, or exploit details in a public issue.
 
-Use GitHub's private vulnerability reporting entry on this repository's **Security** tab. Include:
+Report vulnerabilities privately through GitHub's
+[private vulnerability reporting form](https://github.com/Andrometiq/frappe-passkeys/security/advisories/new),
+and include:
 
 - the affected app commit and Frappe version;
 - configuration and deployment topology relevant to the issue;
@@ -24,12 +24,8 @@ Use GitHub's private vulnerability reporting entry on this repository's **Securi
 - impact, required attacker access, and any known mitigations; and
 - whether the issue is already public or under active exploitation.
 
-If private vulnerability reporting is unavailable, open a public issue containing only a request
-for a private maintainer contact. Do not include technical details in that issue.
-
 Maintainers will acknowledge receipt, reproduce and classify the report, coordinate a fix and
-release plan, and credit the reporter when requested. This is a community project without a
-commercial support contract, so no response-time SLA is promised.
+release plan, and credit the reporter when requested.
 
 ## Scope
 

@@ -103,16 +103,24 @@ bench --site <site> install-app passkeys
 Installing is not enabling: every login mode ships off. Before you enable one, set the site's
 `host_name` (or an explicit Passkey RP ID) and check the resolved Relying Party ID and origins shown
 in Passkey Settings. Changing the RP ID later invalidates every enrolled passkey. Details:
-[`docs/install.md`](docs/install.md) and [`docs/configuration.md`](docs/configuration.md).
+[`docs/install.md`](docs/install.md), [`docs/configuration.md`](docs/configuration.md), and the
+[rollout checklist](docs/operations.md#before-you-enable-passkeys-on-a-production-site).
 
 ### Status and supported versions
 
 Each Frappe line has its own release branch: `version-15` carries the 15.x releases and
 `version-16` the 16.x releases (see [Releases](https://github.com/Andrometiq/frappe-passkeys/releases)).
-CI runs the server, JavaScript, and browser end-to-end suites against Frappe v15, v16,
-and develop. As with any authentication change, try it on staging before you enable it on a site
-that depends on it; [Operations](docs/operations.md#before-you-enable-passkeys-on-a-production-site)
-lists what to check.
+
+How releases are tested:
+
+- **Every pull request, and every push to `develop`, `version-15`, or `version-16`,** runs the
+  server test suite, an install, uninstall, and credential-restore cycle on a clean site, and the
+  Cypress browser end-to-end suite against pinned Frappe v15, v16, and develop commits. The same CI
+  runs the JavaScript unit tests, ruff and Frappe's Semgrep rules, a dependency vulnerability audit,
+  and a secret scan of the full history.
+- **A release is tagged only from a commit whose CI is green** on its release branch.
+- **A daily workflow** runs `develop`, where every change lands first, against the moving Frappe
+  version-15 and version-16 tips, and fails when an upstream change breaks a suite.
 
 | Frappe | Branch | Supported |
 | --- | --- | --- |
@@ -137,16 +145,13 @@ Install the app, run `pre-commit install`, and run the suites before you push. T
 for the server, JavaScript unit, and Cypress suites are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md#development-setup).
 
-Release CI runs every suite against pinned Frappe v15, v16, and develop baselines. A separate daily
-workflow tests the moving upstream branches and reports drift; it does not replace staging
-validation of the exact version you deploy.
+What CI runs is listed under [Status and supported versions](#status-and-supported-versions).
 
 ## Upstream intent
 
 The app is designed so Frappe core can adopt it: its layout mirrors the intended home in
 `frappe/frappe`, and [`docs/upstream/`](docs/upstream/) maps each piece to its core equivalent.
-That proposal must be reviewed and validated against the core revision of any future change; no
-current core compatibility is assumed.
+That mapping is a proposal; Frappe core has not adopted it.
 
 The app is built to hand over cleanly if core ships passkeys natively. A fresh install is refused
 when the Frappe tree contains a `frappe.passkey` module. An installed app goes dormant only when

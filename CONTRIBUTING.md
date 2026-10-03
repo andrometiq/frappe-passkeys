@@ -26,9 +26,11 @@ cd apps/passkeys
 pre-commit install
 ```
 
-Run the suites before you push. Release CI exercises reviewed, pinned Frappe v15, v16, and develop
-baselines; the moving-tip workflow fails visibly on drift but does not expand the supported release
-range or attest a release candidate:
+Run the suites before you push. CI runs the server and Cypress suites against each reviewed, pinned
+Frappe commit (v15, v16, and develop). The daily Upstream Drift workflow runs `develop` against the
+moving Frappe version-15 and version-16 tips and fails when upstream drift breaks a suite; the
+Frappe develop-tip result is reported without failing the run. Neither changes the supported release
+range:
 
 ```bash
 # From the bench root: also verifies the runner's result, not just its exit status
