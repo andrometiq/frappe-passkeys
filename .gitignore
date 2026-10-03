@@ -33,3 +33,6 @@ Thumbs.db
 # cypress run artifacts
 cypress/screenshots/
 cypress/videos/
+
+# agent work log — local only, never committed
+WORKLOG.md
