@@ -289,6 +289,48 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 				ui_test_helpers.get_otp_code("foreign")
 			read.assert_called_once_with("foreign_usr")
 
+	def _otp_code_with_clock(self, secret, times):
+		"""Call get_otp_code with the helper's own clock binding replaced (never the shared module)."""
+		with (
+			patch.object(ui_test_helpers, "_guard"),
+			patch.object(state, "get_otp_fallback", return_value={"user": "Administrator"}),
+			patch.object(frappe.cache, "get", side_effect=[b"Administrator", None, secret.encode()]),
+			patch.object(ui_test_helpers, "time") as clock,
+		):
+			clock.time.side_effect = times
+			return ui_test_helpers.get_otp_code("pending"), clock.sleep
+
+	def test_otp_code_helper_waits_for_next_step(self):
+		import pyotp
+
+		secret = "JBSWY3DPEHPK3PXP"
+		totp = pyotp.TOTP(secret)
+		for now, wait in ((30028, 2), (30020.5, 9.5)):
+			with self.subTest(now=now):
+				code, sleep = self._otp_code_with_clock(secret, [now, now + wait])
+				sleep.assert_called_once_with(wait)
+				self.assertEqual(code, totp.at(now + wait))
+				# still valid after a gap that would have crossed the old step's boundary
+				self.assertTrue(totp.verify(code, for_time=now + wait + 8))
+
+	def test_otp_code_helper_returns_current_step_without_waiting(self):
+		import pyotp
+
+		secret = "JBSWY3DPEHPK3PXP"
+		# 25 s left, and exactly OTP_CODE_MIN_VALIDITY (10 s) left: no wait
+		for now in (30005, 30020):
+			with self.subTest(now=now):
+				code, sleep = self._otp_code_with_clock(secret, [now])
+				sleep.assert_not_called()
+				self.assertEqual(code, pyotp.TOTP(secret).at(now))
+
+	def test_otp_code_helper_previous_step_is_rejected_by_default(self):
+		import pyotp
+
+		totp = pyotp.TOTP("JBSWY3DPEHPK3PXP")
+		boundary = 30030
+		self.assertFalse(totp.verify(totp.at(boundary - 1), for_time=boundary + 1))
+
 	def test_otp_code_helper_reads_core_pending_values(self):
 		import pyotp
 		from frappe import twofactor
@@ -306,6 +348,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		):
 			twofactor.cache_2fa_data(user, 123456, secret, tmp_id)
 		with patch.object(twofactor, "get_default", return_value=1):
+			# real clock end to end: the helper leaves the code valid long enough for core
 			code = ui_test_helpers.get_otp_code(tmp_id)
 			self.assertTrue(twofactor.confirm_otp_token(frappe._dict(user=user), code, tmp_id))
 		self.assertEqual(state.get_otp_fallback(tmp_id), {"user": user})

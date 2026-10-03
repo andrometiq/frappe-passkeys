@@ -97,10 +97,11 @@ chromium_only("password → passkey second factor", () => {
 	});
 
 	it("offers the OTP fallback and completes sign-in through core's OTP UI", () => {
+		let fallbackTmpId;
 		cy.intercept_frappe_method("passkeys.passkey.fallback_to_otp", "fallback_otp");
 		cy.intercept_frappe_method("login", "core_otp", (req, body) => {
 			expect(body).to.have.property("otp");
-			expect(body).to.have.property("tmp_id");
+			expect(body.tmp_id).to.eq(fallbackTmpId);
 			expect(body).not.to.have.property("usr");
 		});
 		submitPassword();
@@ -112,6 +113,7 @@ chromium_only("password → passkey second factor", () => {
 		cy.get("#login_token", { timeout: 15000 }).should("be.visible");
 		cy.wait("@fallback_otp").then(({ response }) => {
 			expect(response.statusCode).to.eq(200);
+			fallbackTmpId = response.body.tmp_id;
 			// Read as admin, then restore the guest cookies before core's OTP submission.
 			cy.getCookies({ log: false }).then((cookies) => {
 				cy.login("Administrator", ADMIN_PW());
@@ -126,7 +128,9 @@ chromium_only("password → passkey second factor", () => {
 			});
 		});
 		cy.get("#verify_token").click();
-		cy.wait("@core_otp").its("response.statusCode").should("eq", 200);
+		cy.wait("@core_otp").then(({ response }) => {
+			expect(response.statusCode, JSON.stringify(response.body)).to.eq(200);
+		});
 		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
 		cy.assert_logged_user(SF_USER);
 	});

@@ -29,6 +29,8 @@ from frappe.utils import cint
 
 from passkeys.tests.compat import flush_settings_cache
 
+OTP_CODE_MIN_VALIDITY = 10
+
 
 def _guard() -> None:
 	"""Admin-only; require explicit development and test-site flags outside tests."""
@@ -127,7 +129,11 @@ def configure_second_factor(
 
 @frappe.whitelist(methods=["POST"])
 def get_otp_code(tmp_id: str) -> str:
-	"""Read a site-bound pending OTP App code on an explicitly enabled test site."""
+	"""Read a site-bound pending OTP App code on an explicitly enabled test site.
+
+	Core accepts only the current TOTP step, so when fewer than ``OTP_CODE_MIN_VALIDITY``
+	seconds remain, wait for the next step: the code must survive the UI typing and submitting it.
+	"""
 	_guard()
 	import pyotp
 
@@ -144,7 +150,13 @@ def get_otp_code(tmp_id: str) -> str:
 	secret = frappe.cache.get(f"{tmp_id}_otp_secret")
 	if not secret:
 		frappe.throw("No pending OTP for this login.", frappe.ValidationError)
-	return pyotp.TOTP(frappe.safe_decode(secret)).now()
+	totp = pyotp.TOTP(frappe.safe_decode(secret))
+	now = time.time()
+	remaining = totp.interval - now % totp.interval
+	if remaining < OTP_CODE_MIN_VALIDITY:
+		time.sleep(remaining)
+		now = time.time()
+	return totp.at(now)
 
 
 @frappe.whitelist(methods=["POST"])
