@@ -140,6 +140,17 @@ spaces. These rules apply to any change here:
   the server-test wrapper in `CONTRIBUTING.md` (Python suite plus result validation);
   `node --test passkeys/tests/js/*.test.js` (client-logic suite); and the Cypress run — keep
   `cypress.config.js` at `retries: 0` and `testIsolation: true`.
+- A local pass is not CI green. Before calling a branch or release green, confirm the CI workflow
+  itself ran and passed on every branch (a Pages deploy run is not CI). Reproduce a CI-only failure
+  locally on a CI-like site (fresh default settings, non-`.localhost` site name) instead of iterating
+  on CI, and don't call it flaky until you have found the mechanism.
+- Frappe core DOM and endpoints differ between maintenance branches: UI specs feature-detect. When
+  diagnosing a run, read the Frappe source at the exact ref that run used (the pinned commit in
+  `ci.yml`, or the branch tip for an upstream-drift run), not a local bench snapshot.
+- Which URL goes where: the product page `https://andrometiq.com/software/passkey/` fills
+  website/homepage fields; the explainer `https://andrometiq.com/software/passkey/why-passkeys-are-safer/`
+  is only for "why passkeys are safer" links (posture panel, README/docs); the docs site
+  `https://andrometiq.github.io/frappe-passkeys/` fills documentation fields.
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets
   and personal data; CI runs a `gitleaks` secret scan over full history. Never weaken a security
   gate to make a test pass.
