@@ -133,7 +133,11 @@ spaces. These rules apply to any change here:
 - The branch model is `CONTRIBUTING.md`'s: every change lands on `develop`; `version-15` /
   `version-16` are `develop` plus one version-number commit, moved forward at release (never
   cherry-picked, never force-pushed). One feature-detecting codebase — never write version-forked
-  logic.
+  logic. Why: per-branch cherry-picks drifted the lines apart and risked a fix missing from one;
+  the detection checks cost about 1% of the code, mostly in tests. Split a line off only when one
+  version needs a genuinely different feature or design (not just a renamed API), or when a
+  version goes maintenance-only (e.g. `version-15` once v17 ships). Re-check this at each new
+  Frappe major.
 - Before a bug fix, find the root cause first — don't loosen a test to match new behavior.
 - Run the gates before pushing (exact invocations in `CONTRIBUTING.md` and `.github/workflows/ci.yml`):
   `pre-commit run --all-files` (ruff import-sort / lint / format — CI checks, does not fix);

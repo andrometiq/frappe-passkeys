@@ -8,9 +8,21 @@ frappe.ui.form.on("Passkey Settings", {
 		frm.set_df_property("passkey_app_origins", "description", __(
 			"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
 		));
+		var rpIdField = frm.fields_dict.passkey_rp_id;
+		if (rpIdField && rpIdField.$input) {
+			rpIdField.$input.off("blur.passkeys").on("blur.passkeys", function () {
+				// The control writes typed text to the doc on a debounce; commit it before comparing.
+				Promise.resolve(frm.set_value("passkey_rp_id", rpIdField.get_input_value() || ""))
+					.then(function () { confirmRpIdChange(frm); });
+			});
+		}
 		paintBanners(frm);
-		fetchResolvedRpId(frm); // boot can be stale; repaints when it lands
+		fetchResolvedRpId(frm); // repaints when it lands
+		fetchSettingsContext(frm);
 		fetchSecurityPosture(frm); // the verdict reads SAVED state
+	},
+	after_save: function (frm) {
+		pollEnforcementPreview(frm, frm.doc.__onload && frm.doc.__onload.passkeys_preview_after_scan);
 	},
 	// Repaint on any knob change so the banners stay live before save.
 	login_with_passkey: paintBanners,
@@ -24,6 +36,11 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_enforce_privileged_always: paintBanners,
 	passkey_enforce_incapable: paintBanners,
 	validate: function (frm) {
+		if (rpIdChangeUnconfirmed(frm)) {
+			frappe.validated = false;
+			confirmRpIdChange(frm);
+			return;
+		}
 		var result = frappe.passkeys_manage_common.validateAndroidFingerprints(frm.doc.passkey_android_cert_fingerprints);
 		if (!result.valid) {
 			frappe.throw(__(
@@ -32,29 +49,38 @@ frappe.ui.form.on("Passkey Settings", {
 			));
 		}
 	},
-	passkey_rp_id: function (frm) {
-		paintBanners(frm);
-		// One-way door: a new RP ID invalidates every passkey, so confirm before it can be saved.
-		if (frm.doc.__islocal || !frm.doc.passkey_rp_id) return;
-		if (frm._passkey_rpid_ack === frm.doc.passkey_rp_id) return;
-		var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
-		var proceeded = false;
-		var d = frappe.warn(
-			__("Change the RP ID?"),
-			__(frappe.passkeys_manage_common.COPY.rpIdOneWayDoor),
-			function () { proceeded = true; frm._passkey_rpid_ack = frm.doc.passkey_rp_id; },
-			__("Yes, change it"),
-			true // set_danger: Cancel is the safe default
-		);
-		// Any dismissal reverts the field so a backed-out change can never be saved.
-		d.$wrapper.on("hide.bs.modal", function () {
-			if (proceeded) return;
-			// Ack the reverted value first so set_value's change event doesn't reopen the warn.
-			frm._passkey_rpid_ack = saved;
-			frm.set_value("passkey_rp_id", saved);
-		});
-	},
+	// Repaint per keystroke; the one-way-door confirm waits for blur (or save), so typing
+	// a new RP ID raises it once, not once per character.
+	passkey_rp_id: paintBanners,
 });
+
+function rpIdChangeUnconfirmed(frm) {
+	var value = frm.doc.passkey_rp_id || "";
+	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
+	return !frm.doc.__islocal && value !== saved && frm._passkey_rpid_ack !== value;
+}
+
+// One-way door: a new RP ID invalidates every passkey, so confirm before it can be saved.
+function confirmRpIdChange(frm) {
+	if (!rpIdChangeUnconfirmed(frm) || frm._passkey_rpid_dialog_open) return;
+	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
+	var proceeded = false;
+	frm._passkey_rpid_dialog_open = true;
+	var d = frappe.warn(
+		__("Change the RP ID?"),
+		__(frappe.passkeys_manage_common.COPY.rpIdOneWayDoor),
+		function () { proceeded = true; frm._passkey_rpid_ack = frm.doc.passkey_rp_id || ""; },
+		__("Yes, change it"),
+		true // set_danger: Cancel is the safe default
+	);
+	// Any dismissal reverts the field so a backed-out change can never be saved.
+	d.$wrapper.on("hide.bs.modal", function () {
+		frm._passkey_rpid_dialog_open = false;
+		if (proceeded) return;
+		frm._passkey_rpid_ack = saved;
+		frm.set_value("passkey_rp_id", saved);
+	});
+}
 
 function fetchResolvedRpId(frm) {
 	frappe.call({
@@ -66,6 +92,65 @@ function fetchResolvedRpId(frm) {
 			paintBanners(frm);
 		},
 	});
+}
+
+function fetchSettingsContext(frm, onContext) {
+	var doc = frm.doc;
+	var modified = doc.modified;
+	var request = (frm._passkey_context_request || 0) + 1;
+	frm._passkey_context_request = request;
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_settings_context",
+		callback: function (r) {
+			if (frm.doc !== doc || doc.modified !== modified) return;
+			var result = request === frm._passkey_context_request && r && r.message;
+			if (onContext) return onContext(result);
+			if (!result) return;
+			frm._passkey_settings_context = result;
+			paintBanners(frm);
+		},
+	});
+}
+
+function recalculateEnforcementPreview(frm, button) {
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.recalculate_enforcement_preview",
+		btn: $(button),
+		callback: function (response) {
+			frappe.show_alert({ message: __("Recounting in the background…"), indicator: "blue" });
+			pollEnforcementPreview(frm, response.message.after_scan);
+		},
+	});
+}
+
+function pollEnforcementPreview(frm, threshold) {
+	var doc = frm.doc;
+	var modified = doc.modified;
+	var attempts = 0;
+	var poll = {};
+	if (frm._passkey_preview_poll) clearTimeout(frm._passkey_preview_poll.timer);
+	frm._passkey_preview_poll = poll;
+	function isCurrent() {
+		return frm._passkey_preview_poll === poll && frm.doc === doc &&
+			doc.modified === modified && !(frm.is_dirty && frm.is_dirty());
+	}
+	function schedule() {
+		poll.timer = setTimeout(function () {
+			if (!isCurrent()) return;
+			attempts += 1;
+			fetchSettingsContext(frm, function (result) {
+				if (!isCurrent()) return;
+				if (result) {
+					frm._passkey_settings_context = result;
+					paintBanners(frm);
+					var preview = result.enforcement_preview;
+					if (preview && typeof threshold === "number" && Number(preview.scan) > threshold) return;
+				}
+				if (attempts < 10) schedule();
+			});
+		}, 3000);
+	}
+	schedule();
 }
 
 // The hosted explainer the report footer links to (new tab, never iframed).
@@ -213,7 +298,15 @@ function paintBanners(frm) {
 	var order = { error: 0, warning: 1, info: 2 };
 	var banners = M.settingsBanners(frm.doc, ctx).sort(function (a, b) { return order[a.level] - order[b.level]; });
 	fillHost(host, banners.map(function (bn) {
-		return bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
+		var banner = bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
+		if (bn.muted) banner.classList.add("text-muted");
+		if (bn.action === "recalculate") {
+			var button = settingsElement("button", "btn btn-xs btn-default ml-2", __("Recalculate"));
+			button.type = "button";
+			button.addEventListener("click", function () { recalculateEnforcementPreview(frm, button); });
+			banner.appendChild(button);
+		}
+		return banner;
 	}));
 	paintResolvedConfig(frm, ctx);
 }
@@ -251,18 +344,15 @@ function bannerEl(level, msg) {
 	return div;
 }
 
-// The settingsBanners context. Cross-flag data comes from boot.passkeys.settings_context,
-// which the server sends to System Managers.
+// Cross-flag data is fetched only when the settings form opens.
 function buildContext(frm) {
 	var boot = frappe.boot.passkeys || {};
-	var sc = boot.settings_context || {};
+	var sc = frm._passkey_settings_context || {};
 	// Mirrors policy.resolve_rp_id: the explicit RP ID, else the server's resolution.
 	// Never window.location.hostname, which is not what the server uses.
 	var explicit = (frm.doc.passkey_rp_id || "").trim().toLowerCase();
 	var serverRpId = frm._passkey_server_rpid !== undefined ? frm._passkey_server_rpid : boot.rp_id;
-	var siteOrigin = frm._passkey_server_site_origin !== undefined
-		? frm._passkey_server_site_origin
-		: sc.configured_site_origin;
+	var siteOrigin = frm._passkey_server_site_origin;
 	return {
 		currentHost: window.location.hostname,
 		currentOrigin: window.location.origin,
@@ -271,7 +361,10 @@ function buildContext(frm) {
 		coreTwoFactor: sc.core_two_factor_auth,
 		disablePassLogin: sc.disable_user_pass_login,
 		passkeyOnlyUserCount: sc.passkey_only_user_count,
-		wouldBeBlockedCount: sc.would_be_blocked_count,
+		enforcementPreview: sc.enforcement_preview && {
+			count: sc.enforcement_preview.count,
+			computed_at: frappe.datetime.str_to_user(sc.enforcement_preview.computed_at),
+		},
 	};
 }
 

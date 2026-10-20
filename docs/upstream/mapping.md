@@ -78,3 +78,7 @@ and “Confirm it's you to continue.” Management gates keep their management-s
 Last-credential guards retain both policy checks and name the setting that caused the refusal.
 The site-wide refusal directs users to add another enabled passkey or turn off
 Disable Username/Password Login in System Settings.
+
+The settings enrollment preview is separate from boot: System Manager POST endpoints read its
+cached count or enqueue a refresh. Preserve the after-save and daily-long job triggers and the
+rate-limited Recalculate, and keep the scheduler target free of `webauthn` imports.

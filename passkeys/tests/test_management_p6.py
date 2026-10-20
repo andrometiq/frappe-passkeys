@@ -13,7 +13,12 @@ import frappe
 
 from passkeys import ceremony, confirm, notifications, state
 from passkeys.api import credentials
-from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	activity_log_count,
+	arrange_mode_floor,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 PWD = "Secret_passw0rd_9x!"
@@ -67,10 +72,10 @@ class NotificationTest(_Base):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 0)
 		flush_settings_cache()
-		before = frappe.db.count("Activity Log", {"user": user})
+		before = activity_log_count({"user": user})
 		notifications.notify_credential_added(user, "Phone")
 		self.assertEqual(self.sent, [])
-		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before + 1)
+		self.assertEqual(activity_log_count({"user": user}), before + 1)
 
 	def test_removed_email_on_endpoint_delete(self):
 		user = self._user()
@@ -108,10 +113,10 @@ class NotificationTest(_Base):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_fallback", 0)
 		flush_settings_cache()
-		before = frappe.db.count("Activity Log", {"user": user})
+		before = activity_log_count({"user": user})
 		notifications.record_risk_event(notifications.RISK_FALLBACK_USED, user, "otp fallback")
 		self.assertEqual(self.sent, [])
-		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before + 1)
+		self.assertEqual(activity_log_count({"user": user}), before + 1)
 
 	def test_change_email_survives_activity_log_failure(self):
 		user = self._user()

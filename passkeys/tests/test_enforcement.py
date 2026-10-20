@@ -5,15 +5,17 @@
 per-user rung (scope, System Managers, Starting on, Everyone else), exempt-role
 membership, grace-login budget, and the ``record_enforcement`` endpoint."""
 
+import json
 from unittest.mock import patch
 
 import frappe
-from frappe.utils import add_to_date, cint, now_datetime, nowdate
+from frappe.utils import add_to_date, cint, get_datetime, now_datetime, nowdate
 
 from passkeys import boot, enforcement_admin, notifications, passkey, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.passkeys.doctype.passkey_settings import passkey_settings
+from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
@@ -413,9 +415,7 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		):
 			passkey.record_enforcement("incapable")
 		sign_in("Administrator")
-		self.assertTrue(
-			frappe.db.exists("Activity Log", {"user": user, "content": "passkeys:enforce_incapable_device"})
-		)
+		self.assertTrue(activity_log_count({"user": user, "content": "passkeys:enforce_incapable_device"}))
 
 	def test_incapable_admin_advisory_is_deduped_within_the_window(self):
 		# A single incapable user must not flood admins: the client once-guard resets per
@@ -499,15 +499,279 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	# ---- report-only preview -------------------------------------------
 
-	def test_would_be_blocked_count_preview_for_system_manager(self):
-		self._user()  # in scope, 0 creds — counted
-		make_credential(self._user())  # enrolled ⇒ excluded from the count
+	def _clear_preview_cache(self):
+		key = f"passkeys:test-enforcement-preview:{frappe.generate_hash(length=12)}"
+		cache_key = patch.object(boot, "ENFORCEMENT_PREVIEW_KEY", key)
+		cache_key.start()
+		self.addCleanup(cache_key.stop)
+		self.addCleanup(frappe.cache.delete, frappe.cache.make_key(key))
+		for method in ("get_settings_context", "recalculate_enforcement_preview"):
+			key = f"{state.RATE_LIMIT_PREFIX}{method}:Administrator"
+			state.clear_counter(key)
+			self.addCleanup(state.clear_counter, key)
+
+	def test_settings_context_reads_empty_cache_without_computing(self):
+		self._clear_preview_cache()
 		sign_in("Administrator")
-		info = frappe._dict()
-		boot.extend_bootinfo(bootinfo=info)
-		count = info.passkeys["settings_context"]["would_be_blocked_count"]
-		self.assertIsInstance(count, int)
-		self.assertGreaterEqual(count, 1)  # at least our zero-credential test user
+		with (
+			patch.object(boot, "refresh_enforcement_preview") as preview,
+			patch.object(frappe, "get_all") as scan,
+			patch.object(frappe, "enqueue") as enqueue,
+		):
+			context = passkey_settings.get_settings_context()
+		self.assertIsNone(context["enforcement_preview"])
+		self.assertNotIn("configured_site_origin", context)
+		preview.assert_not_called()
+		scan.assert_not_called()
+		enqueue.assert_not_called()
+
+	def test_background_preview_counts_saved_scope_and_enabled_credentials(self):
+		self._clear_preview_cache()
+		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
+		role = "Passkeys Preview Test Role"
+		frappe.get_doc({"doctype": "Role", "role_name": role}).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Role", role, force=1, ignore_permissions=True)
+		self._set_enforced_roles(role)
+		self._user([role])  # counted
+		make_credential(self._user([role]), enabled=0)  # also counted
+		make_credential(self._user([role]))  # enrolled
+		self._user()  # outside selected roles
+		exempt = self._user([role])
+		boot.set_exempt(exempt, True)
+		self.addCleanup(boot.set_exempt, exempt, False)
+		disabled = self._user([role])
+		frappe.db.set_value("User", disabled, "enabled", 0)
+		sign_in("Administrator")
+		boot.refresh_enforcement_preview()
+		preview = passkey_settings.get_settings_context()["enforcement_preview"]
+		self.assertEqual(preview["count"], 2)
+		self.assertEqual(set(preview), {"count", "computed_at", "scan"})
+		self.assertLessEqual(get_datetime(preview["computed_at"]), now_datetime())
+		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
+		self.assertGreater(frappe.cache.ttl(name), boot.ENFORCEMENT_PREVIEW_TTL - 60)
+		self.assertLessEqual(frappe.cache.ttl(name), boot.ENFORCEMENT_PREVIEW_TTL)
+
+	def test_preview_only_shows_the_current_saved_policy(self):
+		self._clear_preview_cache()
+		self._user()
+		boot.refresh_enforcement_preview()
+		self.assertGreater(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
+		self._set(passkey_enforce_scope="No one", passkey_enforce_privileged_always=0)
+		self.assertIsNone(boot.settings_banner_context()["enforcement_preview"])
+		boot.refresh_enforcement_preview()
+		self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
+
+	def test_older_policy_job_finishing_last_cannot_replace_current_preview(self):
+		self._clear_preview_cache()
+		self._user()
+		old_settings = frappe.get_doc("Passkey Settings")
+		self._set(passkey_enforce_scope="No one", passkey_enforce_privileged_always=0)
+		boot.refresh_enforcement_preview()
+		current_preview = boot.settings_banner_context()["enforcement_preview"]
+		self.assertEqual(current_preview["count"], 0)
+		get_doc = frappe.get_doc
+		with patch.object(
+			frappe,
+			"get_doc",
+			side_effect=lambda *args, **kwargs: (
+				old_settings if args == ("Passkey Settings",) else get_doc(*args, **kwargs)
+			),
+		):
+			boot.refresh_enforcement_preview()
+		old_signature = boot.enforcement_preview_signature(old_settings)
+		old_result = frappe.cache.hmget(
+			frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY), [f"result:{old_signature}"]
+		)[0]
+		self.assertGreater(json.loads(old_result)["count"], 0)
+		self.assertEqual(boot.settings_banner_context()["enforcement_preview"], current_preview)
+
+	def test_earlier_scan_finishing_last_keeps_later_same_policy_result(self):
+		self._clear_preview_cache()
+		user = self._user()
+		earlier = "2026-10-20 10:00:00.000000"
+		later = "2026-10-20 09:00:00.000000"
+
+		def scan(doctype, **kwargs):
+			if doctype == "WebAuthn Credential":
+				return []
+			with (
+				patch.object(frappe.utils, "now", return_value=later),
+				patch.object(frappe, "get_all", side_effect=[[user], [user]]),
+			):
+				boot.refresh_enforcement_preview()
+			return [user]
+
+		with (
+			patch.object(frappe.utils, "now", return_value=earlier),
+			patch.object(frappe, "get_all", side_effect=scan),
+		):
+			boot.refresh_enforcement_preview()
+		self.assertEqual(
+			boot.settings_banner_context()["enforcement_preview"],
+			{"count": 0, "computed_at": later, "scan": 2},
+		)
+
+	def test_later_scan_replaces_earlier_result_when_clock_goes_backwards(self):
+		self._clear_preview_cache()
+		user = self._user()
+		earlier = "2026-10-20 10:00:00.000000"
+		later = "2026-10-20 09:00:00.000000"
+		with (
+			patch.object(frappe.utils, "now", return_value=earlier),
+			patch.object(frappe, "get_all", side_effect=[[], [user]]),
+		):
+			boot.refresh_enforcement_preview()
+		self.assertEqual(
+			boot.settings_banner_context()["enforcement_preview"],
+			{"count": 1, "computed_at": earlier, "scan": 1},
+		)
+		with (
+			patch.object(frappe.utils, "now", return_value=later),
+			patch.object(frappe, "get_all", side_effect=[[user], [user]]),
+		):
+			boot.refresh_enforcement_preview()
+		self.assertEqual(
+			boot.settings_banner_context()["enforcement_preview"],
+			{"count": 0, "computed_at": later, "scan": 2},
+		)
+
+	def test_reset_drops_an_inflight_scan_after_a_new_scan_publishes(self):
+		self._clear_preview_cache()
+		user = self._user()
+		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
+		frappe.cache.hincrby(name, "seq", 49)
+
+		def scan(doctype, **kwargs):
+			if doctype == "WebAuthn Credential":
+				return []
+			self.assertEqual(boot.get_enforcement_preview_scan(), 50)
+			frappe.cache.delete(name)
+			with patch.object(frappe, "get_all", side_effect=[[user], [user]]):
+				boot.refresh_enforcement_preview()
+			self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
+			return [user]
+
+		with patch.object(frappe, "get_all", side_effect=scan):
+			boot.refresh_enforcement_preview()
+		preview = boot.settings_banner_context()["enforcement_preview"]
+		self.assertEqual((preview["count"], preview["scan"]), (0, 1))
+
+	def test_scan_from_before_a_reset_never_publishes_even_with_a_reused_number(self):
+		self._clear_preview_cache()
+		user = self._user()
+		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
+
+		def scan(doctype, **kwargs):
+			if doctype == "WebAuthn Credential":
+				return []
+			# Reset mid-scan, then enough new scans that the in-flight number (1) is reused.
+			frappe.cache.delete(name)
+			with patch.object(frappe, "get_all", side_effect=[[user], [user]] * 2):
+				boot.refresh_enforcement_preview()
+				boot.refresh_enforcement_preview()
+			return [user]
+
+		with patch.object(frappe, "get_all", side_effect=scan):
+			boot.refresh_enforcement_preview()
+		preview = boot.settings_banner_context()["enforcement_preview"]
+		self.assertEqual((preview["count"], preview["scan"]), (0, 2))
+
+	def test_reset_removes_previous_results_and_scan_counter(self):
+		self._clear_preview_cache()
+		with patch.object(frappe, "get_all", return_value=[]):
+			boot.refresh_enforcement_preview()
+		self.assertIsNotNone(boot.settings_banner_context()["enforcement_preview"])
+		self.assertEqual(boot.get_enforcement_preview_scan(), 1)
+		frappe.cache.delete(frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY))
+		self.assertIsNone(boot.settings_banner_context()["enforcement_preview"])
+		self.assertEqual(boot.get_enforcement_preview_scan(), 0)
+
+	def test_settings_onload_sets_current_preview_scan(self):
+		self._clear_preview_cache()
+		settings = self._settings()
+		settings.onload()
+		self.assertEqual(settings.get_onload()["passkeys_preview_after_scan"], 0)
+		frappe.cache.hincrby(frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY), "seq", 1)
+		settings.onload()
+		self.assertEqual(settings.get_onload()["passkeys_preview_after_scan"], 1)
+
+	def test_preview_skips_scan_when_modes_or_enforcement_are_off(self):
+		self._clear_preview_cache()
+		for settings in (
+			{"login_with_passkey": 0, "passkey_as_second_factor": 0},
+			{
+				"login_with_passkey": 1,
+				"passkey_enforce_scope": "No one",
+				"passkey_enforce_privileged_always": 0,
+			},
+		):
+			with self.subTest(settings=settings):
+				self._set(**settings)
+				with patch.object(frappe, "get_all") as scan:
+					boot.refresh_enforcement_preview()
+				scan.assert_not_called()
+				self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
+
+	def test_dormant_preview_does_not_read_settings_or_scan(self):
+		with (
+			patch.object(boot, "dormant", return_value=True),
+			patch.object(frappe, "get_doc") as settings,
+			patch.object(frappe, "get_all") as scan,
+		):
+			boot.refresh_enforcement_preview()
+		settings.assert_not_called()
+		scan.assert_not_called()
+
+	def test_settings_save_and_recalculate_enqueue_preview(self):
+		self._clear_preview_cache()
+		sign_in("Administrator")
+		with (
+			patch.object(frappe, "enqueue") as enqueue,
+			patch.object(boot, "refresh_enforcement_preview") as preview,
+		):
+			frappe.get_doc("Passkey Settings").save(ignore_permissions=True)
+			enqueue.assert_called_once_with(
+				"passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True
+			)
+			enqueue.reset_mock()
+			self.assertEqual(boot.get_enforcement_preview_scan(), 0)
+			key = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
+			self.assertEqual(frappe.cache.hincrby(key, "seq", 1), 1)
+			enqueue.side_effect = lambda *args, **kwargs: frappe.cache.hincrby(key, "seq", 1)
+			self.assertEqual(passkey_settings.recalculate_enforcement_preview(), {"after_scan": 1})
+			self.assertEqual(boot.get_enforcement_preview_scan(), 2)
+			enqueue.assert_called_once()
+		preview.assert_not_called()
+
+	def test_settings_preview_endpoints_enforce_rate_limits(self):
+		self._clear_preview_cache()
+		sign_in("Administrator")
+		for endpoint, limit, operation in (
+			(passkey_settings.get_settings_context, 30, "settings_banner_context"),
+			(passkey_settings.recalculate_enforcement_preview, 3, "enqueue_enforcement_preview"),
+		):
+			with self.subTest(endpoint=endpoint.__name__), patch.object(boot, operation) as action:
+				for _ in range(limit):
+					endpoint()
+				self.assertEqual(action.call_count, limit)
+				with self.assertRaises(frappe.TooManyRequestsError):
+					endpoint()
+				self.assertEqual(action.call_count, limit)
+
+	def test_settings_preview_endpoints_refuse_non_system_managers(self):
+		sign_in(self._user())
+		# v15's frappe.only_for is a no-op while flags.in_test is set.
+		saved_in_test = getattr(frappe.flags, "in_test", False)
+		frappe.flags.in_test = False
+		self.addCleanup(setattr, frappe.flags, "in_test", saved_in_test)
+		with patch.object(frappe, "enqueue") as enqueue:
+			for endpoint in (
+				passkey_settings.get_settings_context,
+				passkey_settings.recalculate_enforcement_preview,
+			):
+				with self.subTest(endpoint=endpoint.__name__), self.assertRaises(frappe.PermissionError):
+					endpoint()
+		enqueue.assert_not_called()
 
 	def test_administrator_scope_uses_assigned_roles_not_every_role(self):
 		# get_roles("Administrator") returns every Role, which used to put Administrator

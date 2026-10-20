@@ -4,6 +4,20 @@ app_publisher = "Frappe Passkeys Contributors"
 app_description = "Passkey (WebAuthn) authentication for Frappe"
 app_email = "hello@andrometiq.com"
 app_license = "MIT"
+app_color = "#4F46E5"
+
+# Read for the logo only (About dialog, v16+). Passkeys is a login add-on with no home of its
+# own, so has_permission keeps it off the apps screen for everyone. Not app_logo_url: core counts
+# those hooks to pick the navbar logo, and a third one flips an ERPNext site to Frappe's.
+add_to_apps_screen = [
+	{
+		"name": app_name,
+		"logo": "/assets/passkeys/images/passkeys-logo.svg",
+		"title": app_title,
+		"route": "/desk/passkey-settings",
+		"has_permission": "passkeys.boot.hide_from_apps_screen",
+	}
+]
 
 # Desk assets. Order is load-bearing: each bundle reads globals set by the ones above it
 # (passkey_common → manage_common → headless → confirm → desk). Bare bundle names let
@@ -53,6 +67,8 @@ update_website_context = [
 
 # Boot: publishes bootinfo.passkeys (see boot.build_passkeys_boot). Every Desk boot.
 extend_bootinfo = ["passkeys.boot.extend_bootinfo"]
+
+scheduler_events = {"daily_long": ["passkeys.boot.refresh_enforcement_preview"]}
 
 # Core OTP login omits usr and clears site cache before the on_login veto consumes this marker.
 persistent_cache_keys = ["passkeys:otp-fallback:"]

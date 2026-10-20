@@ -4,8 +4,11 @@
 """Desk boot flag + the Signal-API data endpoint:
 ``extend_bootinfo`` publishes the reconciled boot contract (``enabled``,
 ``modes``, ``credential_count``, ``nudge_state``, ``post_login_method``, ``impersonated``,
-``conditional_create``, ``upsell_eligible``, ``settings_context``, ``rp_id``) for an authed user, no-ops for Guest, and
+``conditional_create``, ``upsell_eligible``, ``rp_id``) for an authed user, no-ops for Guest, and
 ``get_signal_data`` returns the caller's own handle + enabled credential ids."""
+
+import os
+from unittest.mock import patch
 
 import frappe
 
@@ -83,7 +86,6 @@ class BootInfoTest(IntegrationTestCase):
 				"conditional_create",
 				"upsell_eligible",
 				"enforcement",
-				"settings_context",
 				"rp_id",
 			},
 		)
@@ -134,23 +136,21 @@ class BootInfoTest(IntegrationTestCase):
 		boot.extend_bootinfo(bootinfo=info)
 		self.assertIsNone(info.get("passkeys"))
 
-	def test_system_manager_context_includes_only_compatible_site_origin(self):
-		previous = frappe.conf.get("host_name")
-		self.addCleanup(setattr, frappe.conf, "host_name", previous)
-		sign_in("Administrator")
-
-		frappe.conf.host_name = "https://admin.example.com"
+	def test_system_manager_boot_never_scans_users(self):
+		user = self._user()
+		frappe.get_doc("User", user).add_roles("System Manager")
+		sign_in(user)
+		frappe.get_roles(user)  # warm this user's role cache
 		info = frappe._dict()
-		boot.extend_bootinfo(bootinfo=info)
-		self.assertEqual(
-			info.passkeys["settings_context"]["configured_site_origin"],
-			"https://admin.example.com",
-		)
-
-		frappe.conf.host_name = "https://outside.example.net"
-		info = frappe._dict()
-		boot.extend_bootinfo(bootinfo=info)
-		self.assertIsNone(info.passkeys["settings_context"]["configured_site_origin"])
+		with (
+			patch.object(boot, "refresh_enforcement_preview") as preview,
+			patch.object(frappe, "get_all", wraps=frappe.get_all) as get_all,
+		):
+			boot.extend_bootinfo(info)
+		preview.assert_not_called()
+		self.assertIsNotNone(info.get("passkeys"))
+		self.assertNotIn("settings_context", info.passkeys)
+		self.assertFalse(any(call.args and call.args[0] == "User" for call in get_all.call_args_list))
 
 	def test_post_login_method_reflects_the_sudo_window(self):
 		user = self._user()
@@ -200,3 +200,17 @@ class BootInfoTest(IntegrationTestCase):
 				payload = boot.build_passkeys_boot(user)
 				self.assertEqual(payload["nudge_state"]["eligible"], bool(first or second))
 				self.assertEqual(payload["upsell_eligible"], bool(first or second))
+
+
+class AppsScreenEntryTest(IntegrationTestCase):
+	def test_logo_reaches_the_about_dialog_but_no_tile_shows(self):
+		from frappe.utils.change_log import get_versions
+
+		entry = frappe.get_hooks("add_to_apps_screen", app_name="passkeys")[0]
+		logo = entry["logo"]
+		self.assertTrue(os.path.isfile(frappe.get_app_path("passkeys", "public", *logo.split("/")[3:])))
+		self.assertFalse(frappe.get_attr(entry["has_permission"])())
+		self.assertFalse(frappe.get_hooks("app_logo_url", app_name="passkeys"))
+		versions = get_versions()["passkeys"]
+		if "logo" in versions:  # v16+ About dialog
+			self.assertEqual(versions["logo"], logo)

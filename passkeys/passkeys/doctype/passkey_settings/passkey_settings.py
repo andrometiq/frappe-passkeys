@@ -16,6 +16,12 @@ from passkeys.session import ReadOnlyWhileImpersonated
 
 
 class PasskeySettings(ReadOnlyWhileImpersonated, Document):
+	def onload(self):
+		self.set_onload("passkeys_preview_after_scan", boot.get_enforcement_preview_scan())
+
+	def on_update(self):
+		boot.enqueue_enforcement_preview()
+
 	def validate(self):
 		super().validate()
 		self._enforce_passkey_only_login_guard()
@@ -224,3 +230,21 @@ def get_security_posture() -> dict:
 	from passkeys import posture
 
 	return posture.build_posture()
+
+
+@frappe.whitelist(methods=["POST"])
+def get_settings_context() -> dict:
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	state.rate_limit_user("get_settings_context", 30, 60)
+	return boot.settings_banner_context()
+
+
+@frappe.whitelist(methods=["POST"])
+def recalculate_enforcement_preview() -> dict:
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	state.rate_limit_user("recalculate_enforcement_preview", 3, 60)
+	after_scan = boot.get_enforcement_preview_scan()
+	boot.enqueue_enforcement_preview()
+	return {"after_scan": after_scan}

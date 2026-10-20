@@ -52,6 +52,7 @@ if importlib.util.find_spec("webauthn") is not None:
     sys.exit(1)
 
 HOOK_KEYS = {
+    "scheduler_events",
     "after_install",
     "after_migrate",
     "after_request",

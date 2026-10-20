@@ -552,18 +552,32 @@ test("settingsBanners: Block+Notify incapable policy warns; report-only preview 
 			passkey_enforce_incapable: "Block + Notify Admin",
 			passkey_enforce_privileged_always: 1,
 		},
-		{ wouldBeBlockedCount: 7 }
+		{ enforcementPreview: { count: 7, computed_at: "2026-10-20T10:00:00" } }
 	);
 	assert.ok(b.some((x) => x.key === M.COPY.enforceBlockIncapable && x.level === "warning"));
 	const preview = b.find((x) => x.key === M.COPY.enforcePreview);
 	assert.ok(preview && preview.level === "info");
-	assert.deepStrictEqual(preview.args, [7]);
+	assert.deepStrictEqual(preview.args, [7, "2026-10-20T10:00:00"]);
+	assert.strictEqual(preview.action, "recalculate");
+});
+
+test("settingsBanners: uncached and zero previews stay informational with a recalculate action", () => {
+	const doc = { login_with_passkey: 1, passkey_enforce_scope: "All users" };
+	const keys = (ctx) => M.settingsBanners(doc, ctx).map((x) => x.key);
+	assert.ok(!keys({}).includes(M.COPY.enforcePreviewPending), "nothing before the form has fetched the context");
+	const pending = M.settingsBanners(doc, { enforcementPreview: null }).find((x) => x.key === M.COPY.enforcePreviewPending);
+	assert.deepStrictEqual(pending, { level: "info", key: "Not counted yet", args: [], muted: true, action: "recalculate" });
+	const cached = M.settingsBanners(doc, { enforcementPreview: { count: 0, computed_at: "2026-10-20T10:00:00" } }).find((x) => x.key === M.COPY.enforcePreview);
+	assert.strictEqual(cached.level, "info");
+	assert.strictEqual(cached.muted, false);
+	assert.strictEqual(cached.action, "recalculate");
+	assert.deepStrictEqual(cached.args, [0, "2026-10-20T10:00:00"]);
 });
 
 test("settingsBanners: no enforcement banners when scope is No one and privileged is off", () => {
 	const nudge = M.settingsBanners(
 		{ login_with_passkey: 1, passkey_enforce_scope: "No one", passkey_enforce_privileged_always: 0, passkey_everyone_else: "Nudge" },
-		{ wouldBeBlockedCount: 3 }
+		{ enforcementPreview: { count: 3, computed_at: "2026-10-20T10:00:00" } }
 	);
 	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforcePrivilegedOutside, M.COPY.enforcePreview].indexOf(x.key) !== -1));
 });
@@ -847,18 +861,6 @@ test("signalCredentialState keeps registration/deletion parity, including an emp
 	});
 });
 
-// ------------------------------------------------------------------ C8 (note)
-// The RP-ID "one-way door" confirm now GATES the save: on Cancel/Esc/backdrop the
-// passkey_settings.js handler reverts passkey_rp_id to its last-saved value via
-// `frm.set_value(...)` on the dialog's `hide.bs.modal`, and acks the reverted value
-// first so the re-fired change event short-circuits (no re-prompt loop). That path
-// is frappe-form + frappe.warn (bootstrap modal) bound, so it cannot run under
-// `node --test` (no bench/jsdom). MANUAL CHECK on a bench:
-//   1. Open Passkey Settings on a saved doc, change the RP ID, Cancel the warn →
-//      the field snaps back to the saved value and the doc is NOT dirty.
-//   2. Change it again, click "Yes, change it" → the value sticks and can be saved.
-//   3. Esc / click-outside the warn behaves like Cancel (reverts).
-
 for (const eligible of [true, false, undefined]) {
 	test(`enforcementDecision: Degrade requires explicit server eligibility (${eligible})`, () => {
 		const d = M.enforcementDecision(enfBoot({ enforcement: { degrade_nudge_eligible: eligible } }), { supported: false });
@@ -867,3 +869,251 @@ for (const eligible of [true, false, undefined]) {
 		assert.strictEqual(d.reason, eligible === true ? "incapable_degrade" : "incapable_degrade_capped");
 	});
 }
+
+
+test("settings form fetches context on demand and recalculates only on request", () => {
+	const fs = require("node:fs");
+	const vm = require("node:vm");
+	const calls = [];
+	const alerts = [];
+	let handlers;
+	let paints = 0;
+	const context = {
+		frappe: {
+			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
+			boot: { passkeys: { rp_id: "example.com" } },
+			passkeys_manage_common: M,
+			call: (options) => { calls.push(options); },
+			show_alert: (options) => { alerts.push(options); },
+			datetime: { str_to_user: (value) => `user:${value}` },
+		},
+		window: { location: { hostname: "example.com", origin: "https://example.com" } },
+		__: (text) => text,
+		$: (button) => button,
+	};
+	vm.createContext(context);
+	vm.runInContext(fs.readFileSync(require.resolve("../../public/js/passkey_settings.js"), "utf8"), context);
+	context.paintBanners = () => { paints += 1; };
+	context.fetchSecurityPosture = () => {};
+	const frm = { doc: {}, fields_dict: {}, set_df_property: () => {} };
+	handlers.refresh(frm);
+	assert.strictEqual(calls.length, 2);
+	assert.ok(calls[0].method.endsWith(".get_resolved_rp_id"));
+	assert.ok(calls[1].method.endsWith(".get_settings_context"));
+	const preview = { count: 4, computed_at: "2026-10-20T10:00:00" };
+	calls[1].callback({ message: { enforcement_preview: preview, core_two_factor_auth: true } });
+	assert.strictEqual(paints, 2);
+	assert.deepStrictEqual(
+		{ ...context.buildContext(frm).enforcementPreview },
+		{ count: 4, computed_at: "user:2026-10-20T10:00:00" }
+	);
+	assert.strictEqual(context.buildContext(frm).coreTwoFactor, true);
+	let pollArgs;
+	context.pollEnforcementPreview = (...args) => { pollArgs = args; };
+	context.recalculateEnforcementPreview(frm, {});
+	assert.ok(calls[2].method.endsWith(".recalculate_enforcement_preview"));
+	assert.strictEqual(alerts.length, 0);
+	const afterScan = 10;
+	calls[2].callback({ message: { after_scan: afterScan } });
+	assert.deepStrictEqual(pollArgs, [frm, afterScan]);
+	assert.strictEqual(alerts[0].message, "Recounting in the background…");
+});
+
+for (const changedRpId of ["new.example.com", ""]) {
+test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "blank"})`, async () => {
+	const fs = require("node:fs");
+	const vm = require("node:vm");
+	let handlers;
+	let blur;
+	const warns = [];
+	const context = {
+		frappe: {
+			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
+			boot: { passkeys: {} },
+			passkeys_manage_common: M,
+			call: () => {},
+			warn: (...args) => {
+				const dialog = { $wrapper: { on: (_event, handler) => { dialog.hide = handler; } } };
+				warns.push({ args, dialog });
+				return dialog;
+			},
+		},
+		window: { location: { hostname: "example.com", origin: "https://example.com" } },
+		__: (text) => text,
+	};
+	vm.createContext(context);
+	vm.runInContext(fs.readFileSync(require.resolve("../../public/js/passkey_settings.js"), "utf8"), context);
+	context.paintBanners = () => {};
+	context.fetchResolvedRpId = () => {};
+	context.fetchSettingsContext = () => {};
+	context.fetchSecurityPosture = () => {};
+	const values = [];
+	const input = { off: () => input, on: (_event, handler) => { blur = handler; return input; } };
+	let typed = "example.com";
+	const frm = {
+		doc: { passkey_rp_id: "example.com" },
+		fields_dict: { passkey_rp_id: { $input: input, get_input_value: () => typed } },
+		set_df_property: () => {},
+		set_value: (field, value) => { values.push(value); frm.doc[field] = value; },
+	};
+	handlers.refresh(frm);
+	assert.strictEqual(handlers.passkey_rp_id.name, "paintBanners", "typing only repaints the banners");
+	// Typed but not yet debounced into the doc: blur commits the input's text first.
+	typed = changedRpId;
+	assert.strictEqual(warns.length, 0);
+	blur();
+	blur();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.strictEqual(frm.doc.passkey_rp_id, changedRpId, "blur commits the typed RP ID");
+	assert.strictEqual(warns.length, 1, "one confirm per change, not per blur");
+	warns[0].dialog.hide();
+	assert.deepStrictEqual(values.slice(-1), ["example.com"], "Cancel reverts to the saved RP ID");
+	typed = "example.com";
+
+	frm.doc.passkey_rp_id = changedRpId;
+	context.frappe.validated = true;
+	handlers.validate(frm);
+	assert.strictEqual(context.frappe.validated, false, "an unconfirmed change cannot be saved");
+	assert.strictEqual(warns.length, 2);
+	warns[1].args[2]();
+	warns[1].dialog.hide();
+	context.frappe.validated = true;
+	handlers.validate(frm);
+	assert.strictEqual(context.frappe.validated, true, "a confirmed change saves");
+	assert.strictEqual(frm.doc.passkey_rp_id, changedRpId);
+});
+
+}
+
+function previewPollingForm() {
+	const calls = [];
+	const timers = new Map();
+	let timerId = 0;
+	let handlers;
+	const paints = [];
+	const frm = { doc: { name: "Passkey Settings", modified: "2026-10-20 10:00:00.000000", __onload: { passkeys_preview_after_scan: 10 } }, is_dirty: () => false };
+	const context = {
+		frappe: {
+			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
+			call: (options) => { calls.push(options); },
+			show_alert: () => {},
+		},
+		__: (text) => text,
+		$: (button) => button,
+		setTimeout: (callback, delay) => {
+			assert.strictEqual(delay, 3000);
+			timers.set(++timerId, callback);
+			return timerId;
+		},
+		clearTimeout: (id) => timers.delete(id),
+	};
+	require("node:vm").createContext(context);
+	require("node:vm").runInContext(require("node:fs").readFileSync(
+		require.resolve("../../public/js/passkey_settings.js"), "utf8"
+	), context);
+	context.paintBanners = (form) => { paints.push(form._passkey_settings_context); };
+	return { context, frm, handlers, calls, timers, paints, tick() {
+		assert.strictEqual(timers.size, 1);
+		const [id, callback] = timers.entries().next().value;
+		timers.delete(id);
+		callback();
+	} };
+}
+
+for (const trigger of ["recalculate", "save"]) {
+	for (const staleScan of [9, 10]) {
+		test(`settings ${trigger} waits for its threshold and repaints (stale scan ${staleScan})`, () => {
+			const h = previewPollingForm();
+			const threshold = 10;
+			h.frm._passkey_settings_context = {
+				enforcement_preview: { count: 2, computed_at: "2026-10-20 09:00:00.000000" },
+			};
+			if (trigger === "save") {
+				h.frm.doc.__onload.passkeys_preview_after_scan = threshold;
+				h.handlers.after_save(h.frm);
+			} else {
+				h.context.recalculateEnforcementPreview(h.frm, {});
+				h.calls.shift().callback({ message: { after_scan: threshold } });
+			}
+			h.tick();
+			assert.ok(h.calls[0].method.endsWith(".get_settings_context"));
+			const stale = { enforcement_preview: { count: 3, scan: staleScan, computed_at: "2026-10-20 12:00:00.000000" } };
+			h.calls.shift().callback({ message: stale });
+			assert.strictEqual(h.paints.at(-1), stale);
+			h.tick();
+			const updated = { enforcement_preview: { count: 5, scan: 11, computed_at: "2026-10-20 09:00:00.000000" } };
+			h.calls.shift().callback({ message: updated });
+			assert.strictEqual(h.frm._passkey_settings_context, updated);
+			assert.strictEqual(h.paints.at(-1), updated);
+			assert.strictEqual(h.timers.size, 0);
+		});
+	}
+}
+
+test("settings preview polling stops at ten requests and replaces an existing loop", () => {
+	const h = previewPollingForm();
+	h.handlers.after_save(h.frm, "Passkey Settings", "Passkey Settings");
+	h.handlers.after_save(h.frm, "Passkey Settings", "Passkey Settings");
+	for (let i = 0; i < 10; i++) {
+		h.tick();
+		h.calls.at(-1).callback({ message: { enforcement_preview: { count: i, computed_at: "2026-10-20 09:00:00.000000" } } });
+	}
+	assert.strictEqual(h.calls.length, 10);
+	assert.strictEqual(h.timers.size, 0);
+});
+
+for (const change of ["document", "modified", "dirty"]) {
+	test(`settings preview polling ignores a response after changing ${change}`, () => {
+		const h = previewPollingForm();
+		h.handlers.after_save(h.frm, "Passkey Settings", "Passkey Settings");
+		h.tick();
+		if (change === "modified") h.frm.doc.modified = "2026-10-20 11:00:00.000000";
+		if (change === "document") h.frm.doc = { name: "another" };
+		if (change === "dirty") h.frm.is_dirty = () => true;
+		h.calls[0].callback({ message: { enforcement_preview: { count: 5, scan: 11, computed_at: "2026-10-20 10:00:00.000000" } } });
+		assert.strictEqual(h.paints.length, 0);
+		assert.strictEqual(h.timers.size, 0);
+	});
+}
+
+
+test("settings preview polling stops when the first preview appears", () => {
+	const h = previewPollingForm();
+	h.handlers.after_save(h.frm, "Passkey Settings", "Passkey Settings");
+	h.tick();
+	h.calls.shift().callback({ message: { enforcement_preview: null } });
+	h.tick();
+	const updated = { enforcement_preview: { count: 0, scan: 11, computed_at: "2026-10-20 10:00:00.000000" } };
+	h.calls.shift().callback({ message: updated });
+	assert.strictEqual(h.paints.at(-1), updated);
+	assert.strictEqual(h.timers.size, 0);
+});
+
+
+test("a delayed refresh cannot replace a newer polled preview", () => {
+	const h = previewPollingForm();
+	h.handlers.after_save(h.frm, "Passkey Settings", "Passkey Settings");
+	h.context.fetchSettingsContext(h.frm);
+	const refresh = h.calls.shift();
+	h.tick();
+	const updated = { enforcement_preview: { count: 5, scan: 11, computed_at: "2026-10-20 10:00:00.000000" } };
+	h.calls.shift().callback({ message: updated });
+	refresh.callback({ message: { enforcement_preview: null } });
+	assert.strictEqual(h.frm._passkey_settings_context, updated);
+	assert.strictEqual(h.paints.at(-1), updated);
+	assert.strictEqual(h.timers.size, 0);
+});
+
+test("settings save without onload threshold repaints for the full polling window", () => {
+	const h = previewPollingForm();
+	delete h.frm.doc.__onload;
+	h.handlers.after_save(h.frm);
+	for (let i = 0; i < 10; i++) {
+		h.tick();
+		const result = { enforcement_preview: { count: i, scan: 100 + i, computed_at: "2026-10-20 12:00:00" } };
+		h.calls.at(-1).callback({ message: result });
+		assert.strictEqual(h.paints.at(-1), result);
+	}
+	assert.strictEqual(h.calls.length, 10);
+	assert.strictEqual(h.timers.size, 0);
+});

@@ -266,8 +266,8 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 
 	def test_disable_guard_blocks_removing_the_last_passkey_mode(self):
 		user = self._user(passkey_only=True)
-		snap = frappe.db.get_singles_dict("Passkey Settings")
-		self.addCleanup(self._restore_settings, snap)
+		# The refused save writes nothing, so there is nothing to restore. A restore cleanup
+		# would run after tearDown's commit and leak this test's mode-on value to later modules.
 		settings = frappe.get_doc("Passkey Settings")
 		settings.login_with_passkey = 0
 		settings.passkey_as_second_factor = 0
@@ -291,9 +291,3 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.db.set_value("WebAuthn User Handle", handle, "passkey_only_login", 0)
 		self._guest_context()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
-
-	def _restore_settings(self, snap):
-		frappe.set_user("Administrator")
-		for field in ("login_with_passkey", "passkey_as_second_factor"):
-			frappe.db.set_single_value("Passkey Settings", field, snap.get(field) or 0)
-		flush_settings_cache()

@@ -14,7 +14,7 @@ from frappe.utils import set_request
 
 from passkeys import session, state
 from passkeys.errors import PasskeyConfirmationRequired
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 
@@ -148,9 +148,9 @@ class SudoWindowTest(IntegrationTestCase):
 		# knob OFF (default) → nothing recorded
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 0)
 		flush_settings_cache()
-		before = frappe.db.count("Activity Log", {"user": user})
+		before = activity_log_count({"user": user})
 		seed_as_password()
-		self.assertEqual(frappe.db.count("Activity Log", {"user": user}), before)
+		self.assertEqual(activity_log_count({"user": user}), before)
 
 		# knob ON → the risk event is recorded
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_password_login", 1)

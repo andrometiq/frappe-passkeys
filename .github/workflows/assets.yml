@@ -1,0 +1,22 @@
+# Prebuilt assets for benches that install with Frappe's Pilot (Frappe Cloud). Pilot downloads
+# the archive for the checked-out commit instead of building on the server, and the Frappe Cloud
+# Marketplace check requires one for every advertised release commit. The archives live on the
+# `assets-<branch>` pre-releases this workflow maintains; do not edit those.
+#
+# Pinned to a reviewed Pilot commit, like the other actions here; bump it when Pilot changes the
+# archive format the Marketplace check expects.
+
+name: App assets
+
+on:
+  push:
+    branches: [develop, version-15, version-16]
+
+permissions:
+  contents: read
+
+jobs:
+  assets:
+    permissions:
+      contents: write # create the assets-<branch> pre-release and upload the archive
+    uses: frappe/pilot/.github/workflows/app-assets.yml@93d59074b6fd5296936877e346d054f699b574f6 # develop, 2026-10-20

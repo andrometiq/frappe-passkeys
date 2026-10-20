@@ -16,7 +16,12 @@ from passkeys.errors import (
 	ImpersonatedSessionRefused,
 	PasskeyConfirmationRequired,
 )
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache, is_signed_out_by_frappe
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	activity_log_count,
+	flush_settings_cache,
+	is_signed_out_by_frappe,
+)
 from passkeys.tests.factories import make_credential, make_user, sign_in
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url
 
@@ -328,10 +333,10 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		# direction 1 — zero credentials + external window → first enrollment is allowed,
 		# and the external-login-bootstrap risk event is recorded.
 		self._seed_sudo(user, seeded_by="external")
-		before = frappe.db.count("Activity Log", {"user": user})
+		before = activity_log_count({"user": user})
 		begun = registration.begin_registration(flow="explicit")
 		self.assertIn("state_id", begun)
-		self.assertGreater(frappe.db.count("Activity Log", {"user": user}), before)
+		self.assertGreater(activity_log_count({"user": user}), before)
 		contents = set(frappe.get_all("Activity Log", filters={"user": user}, pluck="content"))
 		self.assertIn("passkeys:external_login_enrollment", contents)
 

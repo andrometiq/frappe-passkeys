@@ -15,6 +15,7 @@ except ImportError:  # v15
 __all__ = [
 	"IntegrationTestCase",
 	"WebAuthnAssertMixin",
+	"activity_log_count",
 	"arrange_clean_login_policy",
 	"arrange_mode_floor",
 	"arrange_saveable_system_settings",
@@ -140,3 +141,10 @@ def arrange_saveable_system_settings(testcase):
 
 	testcase.addCleanup(_set, dict.fromkeys(blank))
 	_set({field: fallbacks[field] for field in blank})
+
+
+def activity_log_count(filters: dict) -> int:
+	"""Activity Log rows matching ``filters``. Read through the document API: on develop
+	Activity Log is a virtual DocType backed by a separate log store, so there is no
+	``tabActivity Log`` for ``frappe.db`` to count."""
+	return len(frappe.get_all("Activity Log", filters=filters, pluck="name"))

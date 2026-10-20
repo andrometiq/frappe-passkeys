@@ -155,18 +155,16 @@ class PortalNudgeContextTest(IntegrationTestCase):
 		self.assertEqual(ctx.web_include_css, list(PORTAL_CSS))
 		self.assertNotIn("passkeys", ctx.boot)  # short-circuited before the boot build
 
-	# (f) The enforcement preview evaluates every enabled user's roles; only the Desk
-	#     boot (the Passkey Settings form) needs it, so portal renders never compute it,
-	#     even for a System Manager.
+	# (f) Neither Desk nor portal boot computes the admin enrollment preview.
 	def test_portal_render_skips_the_settings_preview_for_system_manager(self):
 		frappe.set_user("Administrator")
-		with patch.object(boot, "_would_be_blocked_count") as preview:
+		with patch.object(boot, "refresh_enforcement_preview") as preview:
 			ctx = self._ctx()
 			portal_nudge.website_context(ctx)
 			page = passkeys_page.get_context(frappe._dict(boot={}))
 			desk = frappe._dict()
 			boot.extend_bootinfo(bootinfo=desk)
-		self.assertEqual(ctx.boot["passkeys"]["settings_context"], {})
-		self.assertEqual(page.passkeys["settings_context"], {})
-		self.assertEqual(preview.call_count, 1)  # the Desk boot only
-		self.assertIn("would_be_blocked_count", desk.passkeys["settings_context"])
+		self.assertNotIn("settings_context", ctx.boot["passkeys"])
+		self.assertNotIn("settings_context", page.passkeys)
+		preview.assert_not_called()
+		self.assertNotIn("settings_context", desk.passkeys)

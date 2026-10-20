@@ -10,6 +10,7 @@ Per-user state is stored the twofactor way: site-wide ``DefaultValue`` rows keye
 ``__passkeys`` parent, so a decline is recordable before any credential exists and an
 exemption survives Role Profile syncs."""
 
+import hashlib
 import json
 
 import frappe
@@ -17,6 +18,29 @@ from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
 from passkeys import notifications, policy, session
 from passkeys.install import DEFAULTS_PARENT, dormant
+
+ENFORCEMENT_PREVIEW_KEY = "passkeys:enforcement-preview"
+ENFORCEMENT_PREVIEW_TTL = 8 * 24 * 60 * 60
+# Scans are numbered within an epoch that is born with the hash, so a scan begun before an
+# eviction or flush can never publish into the hash that replaced it.
+_ENFORCEMENT_PREVIEW_START = """
+redis.call("HSETNX", KEYS[1], "epoch", ARGV[1])
+local scan = redis.call("HINCRBY", KEYS[1], "seq", 1)
+redis.call("EXPIRE", KEYS[1], ARGV[2])
+return {redis.call("HGET", KEYS[1], "epoch"), scan}
+"""
+_ENFORCEMENT_PREVIEW_PUBLISH = """
+if redis.call("HGET", KEYS[1], "epoch") ~= ARGV[5] then
+    return 0
+end
+local previous = redis.call("HGET", KEYS[1], "scan:" .. ARGV[1])
+if previous and tonumber(previous) > tonumber(ARGV[2]) then
+    return 0
+end
+redis.call("HSET", KEYS[1], "scan:" .. ARGV[1], ARGV[2], "result:" .. ARGV[1], ARGV[3])
+redis.call("EXPIRE", KEYS[1], ARGV[4])
+return 1
+"""
 
 NUDGE_EVENTS = ("shown", "declined", "opt_out")
 
@@ -29,6 +53,11 @@ _EMPTY_ENFORCE = {"grace_used": 0}
 
 # Privileged roles stay in enrollment scope by default.
 PRIVILEGED_ROLES = {"System Manager"}
+
+
+def hide_from_apps_screen() -> bool:
+	"""``add_to_apps_screen`` permission hook: the entry exists for its logo, never as a tile."""
+	return False
 
 
 def get_default_value(key: str, *, for_update: bool = False) -> str | None:
@@ -294,13 +323,12 @@ def build_enforcement(user: str, settings, credential_count: int, nudge_state: d
 	}
 
 
-def build_passkeys_boot(user: str, *, include_settings_context: bool = False) -> dict:
+def build_passkeys_boot(user: str) -> dict:
 	"""The ``frappe.boot.passkeys`` contract shared by the Desk boot and the portal
 	``/passkeys`` page: server state only, never an echoed client value. ``enabled`` (any
 	mode on) gates the management UI; ``post_login_method`` is this session's sudo-window
 	class; ``impersonated`` makes the UI read-only and silences the enrollment prompts (the
-	endpoints refuse such a session regardless); ``settings_context`` is filled only for a
-	System Manager's Desk boot, because its preview count evaluates every enabled user's roles."""
+	endpoints refuse such a session regardless)."""
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first = bool(cint(settings.login_with_passkey))
 	second = bool(cint(settings.passkey_as_second_factor))
@@ -322,34 +350,77 @@ def build_passkeys_boot(user: str, *, include_settings_context: bool = False) ->
 		"conditional_create": bool(cint(settings.passkey_conditional_create)),
 		"upsell_eligible": upsell_eligible(user, settings, state),
 		"enforcement": build_enforcement(user, settings, credential_count, state),
-		"settings_context": _settings_context(user, settings) if include_settings_context else {},
 		"rp_id": policy.resolve_rp_id(settings),
 	}
 
 
-def _settings_context(user: str, settings) -> dict:
-	"""Banner context and the enforcement preview for the System-Manager-only Passkey
-	Settings form; empty for everyone else."""
-	if "System Manager" not in frappe.get_roles(user):
-		return {}
+def enforcement_preview_signature(settings) -> str:
+	inputs = (
+		cint(settings.login_with_passkey),
+		cint(settings.passkey_as_second_factor),
+		settings.passkey_enforce_scope or "No one",
+		cint(settings.passkey_enforce_privileged_always),
+		sorted(row.role for row in (settings.passkey_enforce_roles or [])),
+	)
+	return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()[:16]
+
+
+def settings_banner_context() -> dict:
+	"""Settings-form context; the enforcement preview is read only from cache."""
+	signature = enforcement_preview_signature(frappe.get_doc("Passkey Settings"))
+	scan, result = frappe.cache.hmget(
+		frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY), [f"scan:{signature}", f"result:{signature}"]
+	)
+	preview = {**json.loads(result), "scan": int(scan)} if result is not None else None
 	return {
 		"core_two_factor_auth": bool(cint(frappe.get_system_settings("enable_two_factor_auth"))),
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),
-		"configured_site_origin": policy.resolve_site_origin(policy.resolve_rp_id(settings) or ""),
 		"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
-		"would_be_blocked_count": _would_be_blocked_count(settings),
+		"enforcement_preview": preview,
 	}
 
 
-def _would_be_blocked_count(settings) -> int:
-	"""How many in-scope enabled users have no enabled passkey — the blast radius of
-	switching to ``Enforce``, by the same scope evaluator as runtime enforcement."""
-	enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
-	users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
-	return sum(
-		1
-		for user in users
-		if user != "Guest" and user not in enrolled and _user_in_enforce_scope(user, settings)
+def enqueue_enforcement_preview() -> None:
+	# No job_id dedupe: rq's lookup of a just-finished job can raise, which would fail the
+	# settings save; the job is idempotent and the Recalculate endpoint is rate-limited.
+	frappe.enqueue("passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True)
+
+
+def get_enforcement_preview_scan() -> int:
+	return int(frappe.cache.hmget(frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY), ["seq"])[0] or 0)
+
+
+def refresh_enforcement_preview() -> None:
+	"""Cache the saved policy's enrollment count using the runtime scope evaluator."""
+	if dormant():
+		return
+	name = frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY)
+	epoch, scan = frappe.cache.register_script(_ENFORCEMENT_PREVIEW_START)(
+		keys=[name], args=[frappe.generate_hash(length=16), ENFORCEMENT_PREVIEW_TTL]
+	)
+	computed_at = frappe.utils.now()
+	settings = frappe.get_doc("Passkey Settings")
+	count = 0
+	if (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)) and is_enforcing(
+		settings
+	):
+		enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
+		users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+		count = sum(
+			1
+			for user in users
+			if user != "Guest" and user not in enrolled and _user_in_enforce_scope(user, settings)
+		)
+	signature = enforcement_preview_signature(settings)
+	frappe.cache.register_script(_ENFORCEMENT_PREVIEW_PUBLISH)(
+		keys=[name],
+		args=[
+			signature,
+			scan,
+			json.dumps({"count": count, "computed_at": computed_at}),
+			ENFORCEMENT_PREVIEW_TTL,
+			epoch,
+		],
 	)
 
 
@@ -367,6 +438,6 @@ def extend_bootinfo(bootinfo):
 		user = frappe.session.user
 		if not user or user in ("Guest", ""):
 			return
-		bootinfo.passkeys = build_passkeys_boot(user, include_settings_context=True)
+		bootinfo.passkeys = build_passkeys_boot(user)
 	except Exception:
 		frappe.log_error(title="passkeys: extend_bootinfo failed")

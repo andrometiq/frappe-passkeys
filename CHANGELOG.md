@@ -7,8 +7,28 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Fixed
+
+- System Manager desk loads no longer scan every user. The settings enforcement preview is
+  counted in the background (after a save, daily, or on **Recalculate**) and cached for the saved
+  policy with the time counting started; the open form picks up the new count. A recount that
+  started earlier never replaces a newer one.
+- Sites set up before 15.0.0 could not save Passkey Settings: the old "All Users" scope value is no
+  longer an option, so "Require a passkey from" showed blank. A patch maps the old enrollment
+  policy to the new settings, clears the System Manager enforcement flag for non-enforcing
+  policies, and carries over exemptions from the old Passkey Enforcement Exempt role.
+- Changing or clearing the RP ID asks for confirmation once, when you leave the field or save, instead of on
+  every keystroke.
+
+### Added
+
+- The app's logo and colour show in Frappe's About dialog (v16+). Passkeys does not add a tile to
+  the apps screen.
+
 ### Changed
 
+- Verified against current Frappe develop: its hashed session ids, the new Activity Log store and
+  the Frappe fix that ignores a client-sent `validate_rename`.
 - The README, `docs/install.md` and `SECURITY.md` now state what CI runs on every release line and
   what the daily upstream run checks, in place of general advice to validate on staging. Rollout
   steps stay in `docs/operations.md`. Vulnerability reports go straight to GitHub's private

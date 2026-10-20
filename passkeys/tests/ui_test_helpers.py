@@ -22,6 +22,7 @@ DocType validator. ``webauthn`` is never imported here (hook-path
 discipline is not at stake, but the parity is cheap)."""
 
 import functools
+import inspect
 import time
 
 import frappe
@@ -519,9 +520,14 @@ def clear_all_test_sessions() -> dict:
 	cache_purged = len(frappe.cache.hkeys("session") or [])
 
 	sids = frappe.qb.from_("Sessions").select("sid").run(pluck=True)
+	# develop stores a hash of the sid and takes it as ``sid_hash``; older cores store the raw sid.
+	stored = "sid_hash" in inspect.signature(delete_session).parameters
 	now = frappe.utils.now()
 	for sid in sids:
-		delete_session(sid, reason="Cleared for UI test isolation")
+		if stored:
+			delete_session(sid_hash=sid, reason="Cleared for UI test isolation")
+		else:
+			delete_session(sid, reason="Cleared for UI test isolation")
 		# Close the in-flight-straggler resurrect (observed on CI's frappe-v15
 		# cells, reproduced raw with curl): core's delete_session REMOVES the
 		# sid's `last_db_session_update` marker, and v15's Session.update gates

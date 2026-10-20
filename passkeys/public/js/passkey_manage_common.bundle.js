@@ -157,7 +157,8 @@
 			"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create " +
 			"a passkey (and cannot use a phone) will be blocked rather than nudged.",
 		enforcePreview:
-			"This policy would require a passkey from {0} in-scope user(s) who do not have one yet.",
+			"The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}.",
+		enforcePreviewPending: "Not counted yet",
 	};
 
 	// {0}/{1} placeholders; the caller translates first.
@@ -437,9 +438,14 @@
 			if (doc.passkey_enforce_incapable === "Block + Notify Admin") {
 				banners.push({ level: "warning", key: COPY.enforceBlockIncapable });
 			}
-			if (typeof ctx.wouldBeBlockedCount === "number") {
-				banners.push({ level: "info", key: COPY.enforcePreview, args: [ctx.wouldBeBlockedCount] });
-			}
+			var preview = ctx.enforcementPreview; // undefined until the form has fetched it
+			if (preview !== undefined) banners.push({
+				level: "info",
+				key: preview ? COPY.enforcePreview : COPY.enforcePreviewPending,
+				args: preview ? [preview.count, preview.computed_at] : [],
+				muted: !preview,
+				action: "recalculate",
+			});
 		}
 
 		if (!anyMode) {

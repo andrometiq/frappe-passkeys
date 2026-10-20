@@ -168,6 +168,11 @@ model, commit-message conventions, and how to run the test suites.
 
 Next planned feature: Secure Payment Confirmation (SPC) for `@passkey_protected` actions. The browser shows the payee and amount in its own dialog, and the signature covers them. SPC works today in Chrome and Edge (desktop and Android), not in Safari, Firefox, or any iOS browser. Elsewhere the current confirmation flow is the fallback. A per-action option will make SPC mandatory; unsupported browsers are then told which browsers support it.
 
+Also planned:
+
+- Several mobile apps per site. Today the settings take one Android app (with any number of signing certificates) and one iOS app.
+- Related Origins (WebAuthn Level 3), so one passkey can sign in on sites under different domains. Sites under one parent domain can already share an RP ID.
+
 ## License
 
 [MIT](LICENSE)

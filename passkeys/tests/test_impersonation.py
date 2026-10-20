@@ -8,6 +8,7 @@ the write, and the Administrator, whom core's permission checks skip. Each reque
 ``execute_cmd``; a refused request rolls back, as core's request handler does."""
 
 import importlib
+import inspect
 import json
 from unittest.mock import patch
 
@@ -33,6 +34,14 @@ ROLE_ROW = "Passkey Enforcement Role"
 
 def has_discard() -> bool:
 	return hasattr(importlib.import_module("frappe.desk.form.save"), "discard")
+
+
+def core_honours_client_validate_rename() -> bool:
+	"""Older cores pass the client's ``validate_rename`` through ``Document.rename``;
+	frappe 2dc7ba21e2 (v16.52.0+, develop) drops it, so core checks allow_rename itself."""
+	from frappe.model.document import Document
+
+	return "validate_rename=validate_rename" in inspect.getsource(Document.rename)
 
 
 class ImpersonationTestCase(IntegrationTestCase):
@@ -322,17 +331,24 @@ class TestAdministrator(ImpersonationTestCase):
 				)
 				self.assertTrue(frappe.db.exists(CREDENTIAL, self.credential.name))
 
-			# Without impersonation core renames it: the refusals above closed a real path.
+			# Without impersonation an older core renames it: the refusals above closed a
+			# real path. A newer core ignores the client flag and refuses on its own.
 			new_name = frappe.generate_hash()
-			self.dispatch(
+			control = lambda: self.dispatch(  # noqa: E731
 				cmd,
 				method="rename",
 				dt=CREDENTIAL,
 				dn=self.credential.name,
 				args=rename_args(new_name, False),
 			)
-		self.assertFalse(frappe.db.exists(CREDENTIAL, self.credential.name))
-		self.assertTrue(frappe.db.exists(CREDENTIAL, new_name))
+			if core_honours_client_validate_rename():
+				control()
+				self.assertFalse(frappe.db.exists(CREDENTIAL, self.credential.name))
+				self.assertTrue(frappe.db.exists(CREDENTIAL, new_name))
+			else:
+				with self.assertRaisesRegex(frappe.ValidationError, "not allowed to be renamed"):
+					control()
+				self.assertTrue(frappe.db.exists(CREDENTIAL, self.credential.name))
 
 	def test_discards_are_refused(self):
 		if not has_discard():
