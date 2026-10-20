@@ -12,6 +12,7 @@ import traceback
 import frappe
 
 from passkeys.api import registration
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_user
 
@@ -37,7 +38,9 @@ class RegistrationLockingReadTest(IntegrationTestCase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def _capture_queries(self):
@@ -102,7 +105,7 @@ class RegistrationCapRaceTest(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where `user` = %s", self.user)
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where `user` = %s", self.user)
-		frappe.delete_doc("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
+		delete_fixture("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.commit()
 
 	def _race(self, settings: dict, authorization: str | None = None) -> list:

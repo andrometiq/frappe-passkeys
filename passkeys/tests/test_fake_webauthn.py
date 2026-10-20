@@ -18,6 +18,7 @@ from frappe.utils import set_request
 
 from passkeys import engine, passkey, state
 from passkeys.tests import fake_webauthn, ui_test_helpers
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
@@ -62,7 +63,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+			delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 		self._set_disable_user_pass_login(self._ss_disable)
 		frappe.db.commit()
 
@@ -172,7 +173,9 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 
 	def test_guard_refuses_a_non_system_manager(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		frappe.set_user(user)
 		self.addCleanup(frappe.set_user, "Administrator")
 		# v15's frappe.only_for is a no-op while flags.in_test is set (v16+ dropped

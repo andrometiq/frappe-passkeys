@@ -14,6 +14,7 @@ import frappe
 
 from passkeys import boot, passkey, state
 from passkeys.install import DEFAULTS_PARENT
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
@@ -57,7 +58,9 @@ class BootInfoTest(IntegrationTestCase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_nudge"}
 		)

@@ -35,6 +35,7 @@ from passkeys.api import credentials
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
 )
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, arrange_saveable_system_settings
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
@@ -63,7 +64,7 @@ class _SweptBase(IntegrationTestCase):
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+			delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", cint(self._mode_snapshot[0]))
 		frappe.db.set_single_value(
 			"Passkey Settings", "passkey_as_second_factor", cint(self._mode_snapshot[1])
@@ -318,7 +319,9 @@ class LockingReadTest(_SweptBase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def _locking_reads(self) -> list[str]:

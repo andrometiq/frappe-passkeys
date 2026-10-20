@@ -15,6 +15,7 @@ import frappe
 from frappe.utils import set_request
 
 from passkeys import auth_hooks
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -55,7 +56,7 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.db.delete("WebAuthn Credential", {"user": "Administrator"})
 		frappe.db.delete("WebAuthn User Handle", {"user": "Administrator"})
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
+			delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", self._mode_snapshot[0] or 0)
 		frappe.db.set_single_value(
 			"Passkey Settings", "passkey_as_second_factor", self._mode_snapshot[1] or 0
@@ -69,7 +70,9 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 
 	def _user(self, *, passkey_only=False) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		make_credential(user)
 		make_handle(user, passkey_only_login=1 if passkey_only else 0)
 		return user

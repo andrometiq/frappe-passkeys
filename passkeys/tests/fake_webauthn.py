@@ -42,6 +42,7 @@ from frappe.utils import cint, set_request
 
 from passkeys import passkey, session, state
 from passkeys.api import credentials, registration
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import ES256, SoftAuthenticator, b64url_decode
@@ -168,8 +169,8 @@ def round_trip(
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
 		if frappe.db.exists("User", user):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
-		frappe.db.commit()  # durable past the caller's per-test rollback (login_as committed)
+			delete_fixture("User", user, force=1, ignore_permissions=True)
+		frappe.db.commit()  # login_as committed the fixtures; make their deletion durable
 
 
 # ---------------------------------------------------------------------------

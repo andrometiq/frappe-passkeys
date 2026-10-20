@@ -14,6 +14,7 @@ from frappe.utils import set_request
 
 from passkeys import session, state
 from passkeys.errors import PasskeyConfirmationRequired
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
@@ -42,7 +43,9 @@ class SudoWindowTest(IntegrationTestCase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	# ---- seeding at on_session_creation ----------------------------

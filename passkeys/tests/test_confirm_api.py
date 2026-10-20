@@ -26,6 +26,7 @@ from passkeys.errors import (
 	ImpersonatedSessionRefused,
 	PasskeyConfirmationRequired,
 )
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -80,7 +81,9 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		user = make_user()
 		if with_password:
 			update_password(user, PWD)
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def _enroll(self, user, seed="c1", uv=True) -> SoftAuthenticator:

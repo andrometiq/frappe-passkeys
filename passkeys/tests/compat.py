@@ -8,9 +8,9 @@ import frappe
 from frappe.utils import cint
 
 try:
-	from frappe.tests import IntegrationTestCase
+	from frappe.tests import IntegrationTestCase as FrappeIntegrationTestCase
 except ImportError:  # v15
-	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
+	from frappe.tests.utils import FrappeTestCase as FrappeIntegrationTestCase
 
 __all__ = [
 	"IntegrationTestCase",
@@ -24,6 +24,17 @@ __all__ = [
 ]
 
 
+class IntegrationTestCase(FrappeIntegrationTestCase):
+	"""Restore committed class fixtures before Frappe's rollback cleanup."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		from passkeys.tests.committed_state import capture, restore
+
+		cls.addClassCleanup(restore, capture(), f"{cls.__module__}.{cls.__qualname__}")
+
+
 class WebAuthnAssertMixin:
 	"""Shared soft-authenticator assertion builder for the request-cycle harnesses
 	(login / second-factor / confirm), which all pin the same test RP."""
@@ -35,16 +46,11 @@ class WebAuthnAssertMixin:
 
 
 def flush_settings_cache():
-	"""Immediately drop the ``Passkey Settings`` document-cache entry.
+	"""Immediately invalidate Passkey Settings, including transactional reads.
 
-	``frappe.clear_document_cache`` deletes the redis key once, but ALSO schedules
-	the same delete on ``db.after_commit``/``after_rollback``. The test runner rolls
-	each test back to a savepoint, and ``after_rollback`` fires only on a FULL
-	rollback — so a document-cache entry populated from in-transaction (or a
-	committed-poisoned) read can survive between tests and make a settings-dependent
-	test read the wrong modes ("Passkeys are not enabled" while its setUp set them
-	on). Deleting the key directly here keeps the invalidation immediate, not
-	deferred, so suites stay deterministic even on a poisoned local site.
+	Frappe registers ``addClassCleanup(_rollback_db)``: rollback happens once per
+	class, not between tests. Clear the shared cache explicitly so a settings
+	read from one test cannot survive into the next.
 	"""
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 	frappe.cache.delete_value("document_cache::Passkey Settings::Passkey Settings")
@@ -97,7 +103,7 @@ def arrange_clean_login_policy(testcase):
 	The last-login-method guard (``_guard_last_login_method``) refuses dropping the
 	final enabled credential of a user while site-wide ``disable_user_pass_login`` is
 	on. An earlier module can leave that setting on — committed past the runner's
-	per-test rollback, or merely cached on ``frappe.local.system_settings`` (which the
+	class-end rollback, or merely cached on ``frappe.local.system_settings`` (which the
 	rollback does not clear, and which ``flush_settings_cache`` does not touch). A test
 	that deletes a credential as arrangement, without pinning the setting, then trips
 	the guard under whatever test order the active Frappe branch happens to pick — the

@@ -14,6 +14,7 @@ import frappe
 from frappe.utils import cint
 
 from passkeys import install
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -136,7 +137,9 @@ class TestUninstallGuards(IntegrationTestCase):
 
 	def _make_user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def test_blocks_while_any_user_is_passkey_only(self):
@@ -192,17 +195,9 @@ class TestCredentialExportImport(IntegrationTestCase):
 		return user
 
 	def _purge_user(self, user: str) -> None:
-		# import_credentials commits, so the restored rows escape the harness rollback;
-		# commit the row deletion too, then best-effort delete the User (which can raise
-		# on its links) — the passkey_only_login=1 handle is what must never survive.
 		frappe.db.delete("WebAuthn Credential", {"user": user})
 		frappe.db.delete("WebAuthn User Handle", {"user": user})
-		frappe.db.commit()
-		try:
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True)
-			frappe.db.commit()
-		except Exception:
-			frappe.db.rollback()
+		delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 
 	def _export_path(self) -> str:
 		path = frappe.get_site_path(

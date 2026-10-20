@@ -21,6 +21,7 @@ from passkeys import auth_hooks, boot, errors, install, passkey, session, state,
 from passkeys.api import credentials, registration
 from passkeys.errors import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
@@ -149,7 +150,9 @@ class DormantHooksTest(IntegrationTestCase):
 
 	def _user(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def test_on_login_veto_noop_instead_of_throwing(self):

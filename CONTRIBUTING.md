@@ -40,6 +40,21 @@ node --test passkeys/tests/js/*.test.js            # dependency-free client-logi
 # Cypress end-to-end: see .github/workflows/ci.yml for the exact invocation
 ```
 
+The server wrapper compares committed settings and test fixtures with the site's baseline before
+the run and names any changes. It checks cleanup even when tests fail and preserves the suite's
+failure status. To check one module, append `--module passkeys.tests.test_install` to the wrapper
+command. Run it from the bench root on a clean, dedicated test site, without concurrent writers.
+Additions, changed contents and removals all fail the guard; a dirty baseline is not cleaned by
+this command. The shared scopes include all Passkey/System Settings Singles, all `__default`
+rows (including `lang`), complete enforcement-role children and complete owned fixture rows.
+
+All integration tests import `IntegrationTestCase` from `passkeys.tests.compat`. Overrides of
+`setUpClass` must call `super().setUpClass()` before mutation. Its finalizer rolls back pending
+test writes first, deletes newly committed fixtures, restores raw settings scopes, commits only
+that cleanup, then clears Frappe caches. Cleanup failures surface as test errors. Keep per-test
+restores needed by later tests in the same class; delete fixtures permanently to avoid archives.
+The finalizer reports restored scopes and deleted fixture counts with the responsible class.
+
 ## Browserless WebAuthn test mode
 
 Most of the Python suite exercises the *real* ceremonies without a browser through a bench-guarded

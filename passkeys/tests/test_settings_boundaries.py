@@ -32,6 +32,7 @@ from frappe.utils import add_to_date, now_datetime, nowdate
 from passkeys import boot, session, state
 from passkeys.api import registration
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_resolved_rp_id
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
@@ -124,7 +125,9 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 
 	def _user(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def test_begin_registration_allows_below_cap_refuses_at_cap(self):
@@ -177,7 +180,9 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 
 	def _user(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def _seed(self, user):
@@ -279,7 +284,9 @@ class NudgeBoundaryTest(IntegrationTestCase):
 
 	def _user(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete,
 			"DefaultValue",
@@ -384,7 +391,9 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 
 	def _user(self):
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete,
 			"DefaultValue",

@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
-# Fail closed when a Frappe test runner prints failure but exits successfully.
+# Check the runner's result and committed fixture cleanup.
 
 set -euo pipefail
 
-if [[ $# -ne 1 || -z "$1" ]]; then
-	echo "usage: $0 <site>" >&2
+if [[ $# -lt 1 || -z "$1" ]]; then
+	echo "usage: $0 <site> [run-tests options]" >&2
 	exit 2
 fi
 
 site=$1
-output_file=$(mktemp)
-trap 'rm -f "$output_file"' EXIT
+shift
+output_dir=$(mktemp -d)
+output_file="$output_dir/suite"
+trap 'rm -rf "$output_dir"' EXIT
 
-if bench --site "$site" run-tests --app passkeys 2>&1 | tee "$output_file"; then
+if bench --site "$site" execute passkeys.tests.committed_state.snapshot > "$output_dir/before"; then
+	:
+else
+	snapshot_status=$?
+	echo "server tests: could not snapshot committed state before the suite" >&2
+	exit "$snapshot_status"
+fi
+
+if bench --site "$site" run-tests --app passkeys "$@" 2>&1 | tee "$output_file"; then
 	bench_status=0
 else
 	bench_status=$?
@@ -20,10 +30,7 @@ fi
 
 if (( bench_status != 0 )); then
 	echo "server tests: bench exited with status $bench_status" >&2
-	exit "$bench_status"
-fi
-
-python - "$output_file" <<'PY'
+elif python - "$output_file" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -46,3 +53,25 @@ if not summary:
 if summary.group(1) == "FAILED":
 	raise SystemExit("server tests: unittest reported a FAILED final summary")
 PY
+then
+	bench_status=0
+else
+	bench_status=$?
+fi
+
+guard_status=0
+if ! bench --site "$site" execute passkeys.tests.committed_state.snapshot > "$output_dir/after"; then
+	echo "server tests: could not snapshot committed state after the suite" >&2
+	guard_status=1
+elif diff -u --label 'committed state before' --label 'committed state after' \
+	"$output_dir/before" "$output_dir/after"; then
+	echo "server tests: no committed-state leaks"
+else
+	echo "server tests: committed-state leak (removed/changed baseline rows marked -, added/changed rows marked +)" >&2
+	guard_status=1
+fi
+
+if (( bench_status != 0 )); then
+	exit "$bench_status"
+fi
+exit "$guard_status"

@@ -26,6 +26,7 @@ from frappe.utils.password import update_password
 from passkeys import auth_hooks, passkey, session, state
 from passkeys.api import registration
 from passkeys.errors import CeremonyExpired, PasskeyConfirmationRequired
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -73,15 +74,13 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.addCleanup(self._restore)
 
 	def tearDown(self):
-		# leg 2 mints a session via login_as, which COMMITS mid-test — sweep the
-		# committed rows AFTER the runner's rollback (mirrors test_login_api).
+		# Session creation commits these fixtures before the class-end rollback.
 		super().tearDown()
 		sign_in("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
-		frappe.db.commit()
+			delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 
 	# -- settings plumbing --------------------------------------------------
 
@@ -102,12 +101,23 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def _ensure_2fa_role(self) -> str:
 		name = "Passkey 2FA Test Role"
-		if not frappe.db.exists("Role", name):
+		original = frappe.db.get_value("Role", name, "two_factor_auth", as_dict=True)
+
+		def restore_role():
+			if original is None:
+				delete_fixture("Role", name, force=1, ignore_permissions=True, delete_permanently=True)
+			else:
+				frappe.db.set_value(
+					"Role", name, "two_factor_auth", original.two_factor_auth, update_modified=False
+				)
+
+		self.addCleanup(restore_role)
+		if original is None:
 			frappe.get_doc(
 				{"doctype": "Role", "role_name": name, "two_factor_auth": 1, "desk_access": 0}
 			).insert(ignore_permissions=True)
-		elif not frappe.db.get_value("Role", name, "two_factor_auth"):
-			frappe.db.set_value("Role", name, "two_factor_auth", 1)
+		else:
+			frappe.db.set_value("Role", name, "two_factor_auth", 1, update_modified=False)
 		return name
 
 	def _restore(self):
@@ -134,6 +144,11 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def _user(self, *, otp_capable=False) -> str:
 		user = make_user()
+		self.addCleanup(
+			frappe.db.delete,
+			"DefaultValue",
+			{"parent": "__2fa", "defkey": ["in", [user + "_otplogin", user + "_otpsecret"]]},
+		)
 		update_password(user, PWD)
 		if otp_capable:
 			frappe.get_doc("User", user).add_roles(self._role)

@@ -13,6 +13,7 @@ import frappe
 
 from passkeys import ceremony, confirm, notifications, state
 from passkeys.api import credentials
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	activity_log_count,
@@ -33,7 +34,8 @@ class _Base(IntegrationTestCase):
 		user = make_user()
 		self.addCleanup(
 			lambda u=user: (
-				frappe.db.exists("User", u) and frappe.delete_doc("User", u, force=1, ignore_permissions=True)
+				frappe.db.exists("User", u)
+				and delete_fixture("User", u, force=1, ignore_permissions=True, delete_permanently=True)
 			)
 		)
 		return user

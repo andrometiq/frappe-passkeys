@@ -16,6 +16,7 @@ from passkeys.errors import (
 	ImpersonatedSessionRefused,
 	PasskeyConfirmationRequired,
 )
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	activity_log_count,
@@ -55,7 +56,9 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def _seed_sudo(self, user, seeded_by="password"):

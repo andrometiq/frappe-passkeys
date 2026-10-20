@@ -8,6 +8,7 @@ import frappe
 from passkeys import boot
 from passkeys.patches.v15_0 import map_old_enrollment_policy as policy_patch
 from passkeys.patches.v15_0 import rename_first_enrollment_setting as rename_patch
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_user
 
@@ -142,9 +143,13 @@ class TestMapOldEnrollmentPolicy(IntegrationTestCase):
 		role = "Passkey Enforcement Exempt"
 		if not frappe.db.exists("Role", role):
 			frappe.get_doc({"doctype": "Role", "role_name": role}).insert(ignore_permissions=True)
-			self.addCleanup(frappe.delete_doc, "Role", role, force=1, ignore_permissions=True)
+			self.addCleanup(
+				delete_fixture, "Role", role, force=1, ignore_permissions=True, delete_permanently=True
+			)
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(boot.set_exempt, user, False)
 		frappe.get_doc("User", user).add_roles(role)
 		self.assertFalse(boot.is_exempt(user))

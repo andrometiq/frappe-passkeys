@@ -10,6 +10,7 @@ import traceback
 import frappe
 
 from passkeys import boot
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_user
 
@@ -26,7 +27,7 @@ class NudgeStateConcurrencyTest(IntegrationTestCase):
 		super().tearDown()
 		frappe.set_user("Administrator")
 		boot.clear_user_state(self.user)
-		frappe.delete_doc("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
+		delete_fixture("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.commit()
 
 	def _race(self, *writers):

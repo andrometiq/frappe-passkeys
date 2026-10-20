@@ -26,6 +26,7 @@ from passkeys.errors import (
 	UnknownCredential,
 	UVSetupRequired,
 )
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
@@ -59,18 +60,13 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.addCleanup(self._restore)
 
 	def tearDown(self):
-		# verify_login / complete_uv_setup mint a session via login_as, which
-		# COMMITS mid-test — credential/handle/user rows then survive the test
-		# runner's rollback (super().tearDown()). Sweep them AFTER the rollback
-		# and commit, so nothing leaks into the bench or trips the global unique
-		# index on a later test/module (registration_api reuses seed "primary").
+		# Session creation commits these fixtures before the class-end rollback.
 		super().tearDown()
 		sign_in("Administrator")
 		frappe.db.sql("delete from `tabWebAuthn Credential` where user like 'passkey-test-%%'")
 		frappe.db.sql("delete from `tabWebAuthn User Handle` where user like 'passkey-test-%%'")
 		for user in frappe.get_all("User", filters={"email": ["like", "passkey-test-%"]}, pluck="name"):
-			frappe.delete_doc("User", user, force=1, ignore_permissions=True, delete_permanently=True)
-		frappe.db.commit()  # must survive past the runner's per-test rollback
+			delete_fixture("User", user, force=1, ignore_permissions=True, delete_permanently=True)
 
 	def _restore(self):
 		sign_in("Administrator")
@@ -92,7 +88,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def _user(self) -> str:
 		user = make_user()
 		update_password(user, PWD)
-		return user  # cleanup is the committing tearDown sweep (login_as commits)
+		return user
 
 	def _enroll(self, user, seed="primary", uv=True):
 		"""Register a discoverable credential through the real registration
@@ -412,7 +408,9 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			.insert(ignore_permissions=True)
 			.name
 		)
-		self.addCleanup(frappe.delete_doc, "Translation", name, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "Translation", name, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return source
 
 	def test_translations_endpoint_serves_app_strings_for_guest(self):

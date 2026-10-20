@@ -22,12 +22,14 @@ DocType validator. ``webauthn`` is never imported here (hook-path
 discipline is not at stake, but the parity is cheap)."""
 
 import functools
+import hashlib
 import inspect
 import time
 
 import frappe
 from frappe.utils import cint
 
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import flush_settings_cache
 
 OTP_CODE_MIN_VALIDITY = 10
@@ -226,7 +228,7 @@ def delete_test_user(email: str) -> dict:
 	frappe.db.delete("WebAuthn Credential", {"user": email})
 	frappe.db.delete("WebAuthn User Handle", {"user": email})
 	if frappe.db.exists("User", email):
-		frappe.delete_doc("User", email, force=1, ignore_permissions=True, delete_permanently=True)
+		delete_fixture("User", email, force=1, ignore_permissions=True)
 	frappe.db.commit()
 	return {"ok": 1}
 
@@ -519,6 +521,7 @@ def clear_all_test_sessions() -> dict:
 	# after an in-flight straggler lands.
 	cache_purged = len(frappe.cache.hkeys("session") or [])
 
+	started = frappe.utils.now()
 	sids = frappe.qb.from_("Sessions").select("sid").run(pluck=True)
 	# develop stores a hash of the sid and takes it as ``sid_hash``; older cores store the raw sid.
 	stored = "sid_hash" in inspect.signature(delete_session).parameters
@@ -548,14 +551,26 @@ def clear_all_test_sessions() -> dict:
 	# dropping the hash wholesale is safe.
 	frappe.cache.delete_key("session")
 	frappe.set_user("Guest")
-	# Survivors are named (no session data) so a failed wipe says whose login raced it.
-	left = frappe.db.sql("select user, lastupdate, status from tabSessions", as_dict=True)
+	# Survivors are described without session data: whether the wipe saw them (a delete that
+	# did not take) or not (a login that landed during the wipe), plus a short fingerprint.
+	seen = set(sids)
+	left = [
+		{
+			"user": row.user,
+			"lastupdate": row.lastupdate,
+			"status": row.status,
+			"in_snapshot": row.sid in seen,
+			"fingerprint": hashlib.sha256(row.sid.encode()).hexdigest()[:8],
+		}
+		for row in frappe.db.sql("select sid, user, lastupdate, status from tabSessions", as_dict=True)
+	]
 	return {
 		"cleared": len(sids),
 		"cache_purged": cache_purged,
 		"remaining": len(left),
 		"left": left,
-		"at": frappe.utils.now(),
+		"started": started,
+		"finished": frappe.utils.now(),
 	}
 
 
@@ -592,7 +607,7 @@ def clear_test_translation(name: str) -> dict:
 	"""Delete a Translation row created by :func:`set_test_translation`."""
 	_guard()
 	if name and frappe.db.exists("Translation", name):
-		frappe.delete_doc("Translation", name, force=1, ignore_permissions=True)
+		delete_fixture("Translation", name, force=1, ignore_permissions=True)
 		frappe.db.commit()
 	return {"ok": 1}
 

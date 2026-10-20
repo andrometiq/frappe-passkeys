@@ -11,6 +11,7 @@ from frappe.utils import cint
 from passkeys import boot
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, arrange_clean_login_policy
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
@@ -18,7 +19,9 @@ from passkeys.tests.factories import make_credential, make_handle, make_user
 class PasskeyTestCase(IntegrationTestCase):
 	def make_user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user
 
 	def enable_passkey_login_mode(self) -> None:

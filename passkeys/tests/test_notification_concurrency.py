@@ -12,6 +12,7 @@ import frappe
 
 from passkeys import notifications
 from passkeys.install import DEFAULTS_PARENT
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase
 from passkeys.tests.factories import make_user
 
@@ -31,7 +32,7 @@ class IncapableNotificationConcurrencyTest(IntegrationTestCase):
 			"DefaultValue",
 			{"parent": DEFAULTS_PARENT, "defkey": notifications.incapable_notify_key(self.user)},
 		)
-		frappe.delete_doc("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
+		delete_fixture("User", self.user, force=1, ignore_permissions=True, delete_permanently=True)
 		frappe.db.commit()
 
 	def _marker(self):

@@ -10,6 +10,7 @@ import frappe
 from passkeys import boot, enforcement_admin, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
@@ -73,7 +74,9 @@ class EnforcementAdminTest(IntegrationTestCase):
 
 	def _user(self, roles=None) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete,
 			"DefaultValue",
@@ -135,11 +138,20 @@ class EnforcementAdminTest(IntegrationTestCase):
 		role = "Passkeys Test Profile Role"
 		if not frappe.db.exists("Role", role):
 			frappe.get_doc({"doctype": "Role", "role_name": role}).insert(ignore_permissions=True)
-		self.addCleanup(frappe.delete_doc, "Role", role, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "Role", role, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		profile = frappe.get_doc({"doctype": "Role Profile", "role_profile": "Passkeys Test Profile"})
 		profile.append("roles", {"role": role})
 		profile.insert(ignore_permissions=True, ignore_if_duplicate=True)
-		self.addCleanup(frappe.delete_doc, "Role Profile", profile.name, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture,
+			"Role Profile",
+			profile.name,
+			force=1,
+			ignore_permissions=True,
+			delete_permanently=True,
+		)
 		user = self._user()
 		user_doc = frappe.get_doc("User", user)
 		if user_doc.meta.has_field("role_profiles"):

@@ -15,6 +15,7 @@ from passkeys import boot, enforcement_admin, notifications, passkey, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.passkeys.doctype.passkey_settings import passkey_settings
+from passkeys.tests.committed_state import delete_fixture, restore_rows
 from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
@@ -39,6 +40,12 @@ _FIELDS = (
 class EnforcementVerdictTest(IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		self._roles = frappe.db.get_values(
+			"Passkey Enforcement Role",
+			{"parent": "Passkey Settings", "parenttype": "Passkey Settings"},
+			"*",
+			as_dict=True,
+		)
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
 		settings = frappe.get_doc("Passkey Settings")
 		settings.passkey_rp_id = RP_ID
@@ -58,16 +65,15 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 
 	def _restore(self):
-		# This battery's record_enforcement legs send an admin advisory (frappe.sendmail
-		# enqueues + commits), which durably commits the modes-on Passkey Settings write
-		# past the runner's per-test savepoint rollback. Restore the pre-test snapshot and
-		# COMMIT it, mirroring test_passkey_only_veto/_SweptBase, so the modes never leak.
-		# Raw writes: the snapshot is whatever the previous test left, which need not pass
-		# the settings validators, so a validated save() could refuse to put it back.
+		# Mail delivery can commit; restore settings for the next test in this class.
 		sign_in("Administrator")
 		for field in _FIELDS:
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
-		frappe.db.delete("Passkey Enforcement Role", {"parent": "Passkey Settings"})
+		restore_rows(
+			"Passkey Enforcement Role",
+			{"parent": "Passkey Settings", "parenttype": "Passkey Settings"},
+			self._roles,
+		)
 		flush_settings_cache()
 		frappe.db.commit()  # must survive past the (per-class) rollback
 
@@ -81,7 +87,9 @@ class EnforcementVerdictTest(IntegrationTestCase):
 
 	def _user(self, roles=None) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_enforce"}
 		)
@@ -530,7 +538,9 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
 		role = "Passkeys Preview Test Role"
 		frappe.get_doc({"doctype": "Role", "role_name": role}).insert(ignore_permissions=True)
-		self.addCleanup(frappe.delete_doc, "Role", role, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "Role", role, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self._set_enforced_roles(role)
 		self._user([role])  # counted
 		make_credential(self._user([role]), enabled=0)  # also counted
@@ -828,7 +838,9 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		scope_role = "Passkeys Test Scope Role"
 		if not frappe.db.exists("Role", scope_role):
 			frappe.get_doc({"doctype": "Role", "role_name": scope_role}).insert(ignore_permissions=True)
-		self.addCleanup(frappe.delete_doc, "Role", scope_role, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "Role", scope_role, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self._set(passkey_enforce_scope="Selected roles", passkey_enforce_privileged_always=0)
 		self._set_enforced_roles(scope_role)
 		self.assertFalse(self._verdict("Administrator")["in_scope"])

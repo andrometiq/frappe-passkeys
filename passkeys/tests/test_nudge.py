@@ -13,6 +13,7 @@ from frappe.utils import add_to_date, now_datetime
 from passkeys import boot, notifications, passkey, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_handle, make_user, sign_in
 
@@ -50,7 +51,9 @@ class NudgeCadenceTest(IntegrationTestCase):
 
 	def _user(self) -> str:
 		user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		self.addCleanup(
 			frappe.db.delete, "DefaultValue", {"parent": DEFAULTS_PARENT, "defkey": f"{user}_passkey_nudge"}
 		)
@@ -210,7 +213,9 @@ class NudgeCadenceTest(IntegrationTestCase):
 	def test_user_rename_moves_all_default_state(self):
 		old = self._user()
 		new = f"renamed-{old}"
-		self.addCleanup(frappe.delete_doc, "User", new, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", new, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		expected = self._seed_state(old)
 		frappe.rename_doc("User", old, new)
 		self.assertEqual(self._state(new), expected)

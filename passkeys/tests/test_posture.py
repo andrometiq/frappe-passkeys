@@ -10,6 +10,7 @@ from unittest.mock import patch
 import frappe
 
 from passkeys import posture
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase
 
 # A fully-locked-down baseline: passwordless first factor on, no other stock login
@@ -276,7 +277,9 @@ class AdoptionCountsTest(IntegrationTestCase):
 		)
 		user.flags.no_welcome_mail = True
 		user.insert(ignore_permissions=True)
-		self.addCleanup(frappe.delete_doc, "User", user.name, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", user.name, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		return user.name
 
 	def _passkey_only_handle(self, user: str) -> None:
@@ -286,7 +289,12 @@ class AdoptionCountsTest(IntegrationTestCase):
 		# flip the flag directly — the enabled-credential floor is irrelevant to counting
 		frappe.db.set_value("WebAuthn User Handle", handle.name, "passkey_only_login", 1)
 		self.addCleanup(
-			frappe.delete_doc, "WebAuthn User Handle", handle.name, force=1, ignore_permissions=True
+			delete_fixture,
+			"WebAuthn User Handle",
+			handle.name,
+			force=1,
+			ignore_permissions=True,
+			delete_permanently=True,
 		)
 
 	def test_numerator_never_exceeds_the_denominator(self):

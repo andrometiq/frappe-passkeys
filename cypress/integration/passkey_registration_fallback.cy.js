@@ -99,7 +99,6 @@ chromium_only("registration serialization fallback", () => {
 
 	after(() => {
 		cy.login(USER, PW());
-		cy.visit_desk(USER);
 		cy.purge_server_passkeys(USER);
 		cy.disable_virtual_authenticator();
 		cy.clearCookies();

@@ -17,6 +17,7 @@ from passkeys import confirm, passkey, session, state
 from passkeys.api import credentials, registration
 from passkeys.errors import BrowserSessionRequired
 from passkeys.tests import fake_webauthn
+from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
@@ -29,7 +30,9 @@ class TokenAuthTest(IntegrationTestCase):
 		super().setUp()
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.user = make_user()
-		self.addCleanup(frappe.delete_doc, "User", self.user, force=1, ignore_permissions=True)
+		self.addCleanup(
+			delete_fixture, "User", self.user, force=1, ignore_permissions=True, delete_permanently=True
+		)
 		update_password(self.user, PWD)
 		self.api_key, self.api_secret = frappe.generate_hash(length=15), frappe.generate_hash(length=15)
 		user_doc = frappe.get_doc("User", self.user)
