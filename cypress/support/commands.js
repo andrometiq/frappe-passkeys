@@ -249,7 +249,10 @@ Cypress.Commands.add("clear_all_test_sessions", (attempt = 0) =>
 			}
 			expect(res.status, "clear_all_test_sessions status").to.eq(200);
 			const message = res.body && res.body.message;
-			expect(message && message.remaining, "server sessions remaining after wipe").to.eq(0);
+			expect(
+				message && message.remaining,
+				`server sessions remaining after wipe: ${JSON.stringify(message)}`
+			).to.eq(0);
 			return message;
 		})
 );

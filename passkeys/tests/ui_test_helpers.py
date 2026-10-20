@@ -548,8 +548,15 @@ def clear_all_test_sessions() -> dict:
 	# dropping the hash wholesale is safe.
 	frappe.cache.delete_key("session")
 	frappe.set_user("Guest")
-	remaining = len(frappe.qb.from_("Sessions").select("sid").run(pluck=True))
-	return {"cleared": len(sids), "cache_purged": cache_purged, "remaining": remaining}
+	# Survivors are named (no session data) so a failed wipe says whose login raced it.
+	left = frappe.db.sql("select user, lastupdate, status from tabSessions", as_dict=True)
+	return {
+		"cleared": len(sids),
+		"cache_purged": cache_purged,
+		"remaining": len(left),
+		"left": left,
+		"at": frappe.utils.now(),
+	}
 
 
 @frappe.whitelist(methods=["POST"])
