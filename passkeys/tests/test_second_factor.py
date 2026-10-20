@@ -686,8 +686,12 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_floor_reverse_system_settings_refuses_disabling_passwords_when_sf_only(self):
 		# SF is the only passkey mode (setUp): enrolled users would have no login path left
 		arrange_saveable_system_settings(self)
+		# On a site without language/time_zone, arrange_saveable_system_settings commits in its
+		# cleanup, which runs after these restores; put both saved flags back before that commit.
 		original = frappe.db.get_single_value("System Settings", "login_with_email_link")
 		self.addCleanup(frappe.db.set_single_value, "System Settings", "login_with_email_link", original)
+		disabled = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		self.addCleanup(frappe.db.set_single_value, "System Settings", "disable_user_pass_login", disabled)
 		ss = frappe.get_doc("System Settings")
 		ss.login_with_email_link = 1  # core requires a surviving login path first
 		ss.disable_user_pass_login = 1
