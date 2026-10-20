@@ -743,6 +743,52 @@ class EnforcementVerdictTest(IntegrationTestCase):
 			enqueue.assert_called_once()
 		preview.assert_not_called()
 
+	def _full_preview_queue(self, queue):
+		frappe.msgprint("Unrelated queue notice")
+		frappe.throw("Too many queued background jobs.", title="Queue Overloaded", exc=frappe.QueueOverloaded)
+
+	def test_settings_save_succeeds_when_preview_queue_is_full(self):
+		sign_in("Administrator")
+		settings = frappe.get_doc("Passkey Settings")
+		settings.passkey_enforce_grace_logins = 7
+		with (
+			patch.object(frappe.local, "message_log", []),
+			patch.dict(frappe.flags, {"mute_messages": False}),
+			patch(
+				"frappe.utils.background_jobs._check_queue_size", side_effect=self._full_preview_queue
+			) as capacity,
+		):
+			frappe.msgprint("Unrelated save notice")
+			settings.save(ignore_permissions=True)
+			self.assertEqual(
+				[message.message for message in frappe.local.message_log],
+				["Unrelated save notice", "Unrelated queue notice"],
+			)
+		capacity.assert_called_once()
+		self.assertEqual(
+			cint(frappe.db.get_single_value("Passkey Settings", "passkey_enforce_grace_logins")), 7
+		)
+
+	def test_recalculate_reports_full_preview_queue(self):
+		sign_in("Administrator")
+		with (
+			patch.object(frappe.local, "message_log", []),
+			patch.dict(frappe.flags, {"mute_messages": False}),
+			patch(
+				"frappe.utils.background_jobs._check_queue_size", side_effect=self._full_preview_queue
+			) as capacity,
+		):
+			with self.assertRaisesRegex(frappe.QueueOverloaded, "recount could not start"):
+				passkey_settings.recalculate_enforcement_preview()
+			self.assertEqual(len(frappe.local.message_log), 2)
+			self.assertEqual(frappe.local.message_log[0].message, "Unrelated queue notice")
+			self.assertIn("recount could not start", frappe.local.message_log[1].message)
+		capacity.assert_called_once()
+
+	def test_preview_enqueue_does_not_hide_other_errors(self):
+		with patch.object(frappe, "enqueue", side_effect=RuntimeError("queue unavailable")):
+			self.assertRaises(RuntimeError, boot.enqueue_enforcement_preview)
+
 	def test_settings_preview_endpoints_enforce_rate_limits(self):
 		self._clear_preview_cache()
 		sign_in("Administrator")

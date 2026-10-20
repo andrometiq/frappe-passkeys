@@ -65,6 +65,12 @@ def lock_login_floor(user: str) -> tuple[int, list[str]]:
 
 
 class WebAuthnUserHandle(ReadOnlyWhileImpersonated, Document):
+	def on_trash(self):
+		super().on_trash()
+		user = frappe.db.get_value("WebAuthn User Handle", self.name, "user", for_update=True)
+		if frappe.db.get_value("WebAuthn Credential", {"user": user}, "name", for_update=True):
+			frappe.throw(_("Remove this user's passkeys before deleting their WebAuthn User Handle."))
+
 	def validate(self):
 		super().validate()
 		self._enforce_immutable_identity()

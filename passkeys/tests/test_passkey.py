@@ -11,7 +11,7 @@ from frappe.utils import cint
 from passkeys import boot
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, arrange_clean_login_policy
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -252,9 +252,25 @@ class TestWebAuthnUserHandle(PasskeyTestCase):
 		user = self.make_user()
 		self.assertRaises(frappe.ValidationError, make_handle, user, passkey_only_login=1)
 
+	def test_handle_delete_requires_removing_all_credentials(self):
+		arrange_clean_login_policy(self)
+		for enabled in (1, 0):
+			with self.subTest(enabled=enabled):
+				user = self.make_user()
+				handle = make_handle(user)
+				credential = make_credential(user, enabled=enabled)
+				with self.assertRaisesRegex(frappe.ValidationError, "Remove this user's passkeys"):
+					frappe.delete_doc("WebAuthn User Handle", handle.name, force=1, ignore_permissions=True)
+				self.assertTrue(frappe.db.exists("WebAuthn User Handle", handle.name))
+				self.assertTrue(frappe.db.exists("WebAuthn Credential", credential.name))
+				credential.delete(ignore_permissions=True)
+				handle.delete(ignore_permissions=True)
+				self.assertFalse(frappe.db.exists("WebAuthn User Handle", handle.name))
+
 	def test_user_trash_cascades(self):
 		user = self.make_user()
 		make_credential(user)
+		make_credential(user, enabled=0)
 		make_handle(user)
 		default_keys = (
 			f"{user}_passkey_nudge",
@@ -282,6 +298,7 @@ class TestImpersonatedSessionDocTypeWrites(PasskeyTestCase):
 		self.enable_passkey_login_mode()
 
 	def test_credential_and_handle_writes_are_refused_while_impersonating(self):
+		arrange_clean_login_policy(self)
 		user = self.make_user()
 		laptop = make_credential(user, label="Laptop")
 		make_credential(user, label="Phone")
@@ -316,6 +333,11 @@ class TestImpersonatedSessionDocTypeWrites(PasskeyTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", laptop.name, "label"), "Renamed")
 		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", handle.name, "passkey_only_login"), 1)
 		delete_credential()  # "Phone" survives the last-passkey guard
+		handle.reload()
+		handle.passkey_only_login = 0
+		handle.save()
+		for name in frappe.get_all("WebAuthn Credential", filters={"user": user}, pluck="name"):
+			frappe.delete_doc("WebAuthn Credential", name)
 		delete_handle()
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", laptop.name))
 		self.assertFalse(frappe.db.exists("WebAuthn User Handle", handle.name))

@@ -380,10 +380,21 @@ def settings_banner_context() -> dict:
 	}
 
 
-def enqueue_enforcement_preview() -> None:
+def enqueue_enforcement_preview() -> bool:
 	# No job_id dedupe: rq's lookup of a just-finished job can raise, which would fail the
 	# settings save; the job is idempotent and the Recalculate endpoint is rate-limited.
-	frappe.enqueue("passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True)
+	try:
+		frappe.enqueue("passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True)
+	except frappe.QueueOverloaded as exc:
+		message_id = getattr(exc, "__frappe_exc_id", None)
+		if message_id:
+			frappe.local.message_log[:] = [
+				message
+				for message in frappe.local.message_log
+				if message.get("__frappe_exc_id") != message_id
+			]
+		return False
+	return True
 
 
 def get_enforcement_preview_scan() -> int:

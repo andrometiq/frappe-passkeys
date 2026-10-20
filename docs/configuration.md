@@ -74,7 +74,9 @@ The enforcement preview counts users in the background on save, daily, or when y
 shown, with the time counting started; a policy without one shows **Not counted yet**. After a
 save or recount the open form checks every three seconds, up to ten times, for the new count. A
 recount that started earlier never replaces a newer one, and if the cache is cleared the preview
-shows **Not counted yet** until the next count.
+shows **Not counted yet** until the next count. A full job queue does not prevent saving the
+policy, but its preview may remain uncounted or keep the previous count for that policy.
+**Recalculate** reports when the recount cannot start; retry after queue capacity is available.
 
 For sites upgrading from before 15.0.0, the migration maps the old enrollment policy and scope
 to these settings. Non-enforcing policies also turn off **Always require a passkey from System

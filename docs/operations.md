@@ -14,7 +14,9 @@ This matters for every backup, restore, and deploy.
   flags, labels, and metadata. These are the authoritative record. No server
   secret is stored; a public key is useless to an attacker who steals a backup.
 - `WebAuthn User Handle` rows — the opaque 64-byte user handles and the per-user
-  *Passkey Only Login* flag.
+  *Passkey Only Login* flag. Deleting a handle requires removing all of that user's
+  credentials first, including disabled ones: a credential without its handle can no
+  longer sign in without a password.
 - `Passkey Settings` — every knob.
 - Per-user enrollment-nudge state, enforcement grace counters and incapable-device
   notification markers (default-value rows under the `__passkeys` parent). User renames

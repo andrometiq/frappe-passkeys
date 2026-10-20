@@ -9,6 +9,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Fixed
 
+- Saving Passkey Settings no longer fails when the job queue is full; Recalculate reports when
+  the enforcement preview recount cannot start.
+- Deleting a WebAuthn User Handle now requires removing the user's passkeys first, including
+  disabled passkeys, so existing passkeys cannot lose their passwordless login identity.
 - System Manager desk loads no longer scan every user. The settings enforcement preview is
   counted in the background (after a save, daily, or on **Recalculate**) and cached for the saved
   policy with the time counting started; the open form picks up the new count. A recount that

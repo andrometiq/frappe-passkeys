@@ -25,6 +25,7 @@ import hashlib
 import queue
 import threading
 import time
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import cint
@@ -159,6 +160,72 @@ class HandleLockSerializationTest(_SweptBase):
 			kwargs["host"] = conf.db_host or "127.0.0.1"
 			kwargs["port"] = cint(conf.db_port) or 3306
 		return pymysql.connect(**kwargs)
+
+	def test_handle_delete_after_concurrent_user_rename_keeps_credentials_identity(self):
+		# Model MariaDB 10.6 semantics on both sides of the rename.
+		snapshot_isolation = frappe.db.sql("show session variables like 'innodb_snapshot_isolation'")
+		if snapshot_isolation:
+			self.addCleanup(
+				frappe.db.sql,
+				"set session innodb_snapshot_isolation = %s",
+				(snapshot_isolation[0][1],),
+			)
+			frappe.db.sql("set session innodb_snapshot_isolation = OFF")
+		user = make_user()
+		renamed = user.replace("@", "-renamed@")
+		handle = make_handle(user)
+		credential = make_credential(user)
+		frappe.db.commit()
+		site, sites_path = frappe.local.site, frappe.local.sites_path
+		snapshot_ready = threading.Event()
+		rename_done = threading.Event()
+		outcomes = queue.Queue()
+
+		def delete_handle():
+			frappe.init(site, sites_path=sites_path)
+			frappe.connect()
+			try:
+				frappe.set_user("Administrator")
+				if frappe.db.sql("show variables like 'innodb_snapshot_isolation'"):
+					frappe.db.sql("set session innodb_snapshot_isolation = OFF")
+				frappe.db.sql("set session transaction isolation level repeatable read")
+				frappe.db.rollback()
+				self.assertEqual(frappe.get_doc("WebAuthn User Handle", handle.name).user, user)
+				snapshot_ready.set()
+				if not rename_done.wait(timeout=20):
+					raise TimeoutError("User rename did not finish")
+				self.assertEqual(frappe.get_doc("WebAuthn User Handle", handle.name).user, user)
+				try:
+					frappe.delete_doc("WebAuthn User Handle", handle.name, force=1, ignore_permissions=True)
+				except frappe.ValidationError as exc:
+					outcomes.put(str(exc))
+				else:
+					outcomes.put("deleted")
+			except Exception as exc:
+				outcomes.put(f"error: {exc!r}")
+				snapshot_ready.set()
+			finally:
+				frappe.db.rollback()
+				frappe.destroy()
+
+		deleter = threading.Thread(target=delete_handle)
+		deleter.start()
+		try:
+			self.assertTrue(snapshot_ready.wait(timeout=10), "Delete snapshot was not established")
+			if not outcomes.empty():
+				self.fail(outcomes.get_nowait())
+			# Frappe develop queues an owner-field sweep after a User rename and refuses to delete
+			# the user while it is pending; no worker runs here, and this test needs only the links.
+			with patch.object(frappe, "enqueue"):
+				frappe.rename_doc("User", user, renamed)
+			frappe.db.commit()
+		finally:
+			rename_done.set()
+			deleter.join(timeout=25)
+		self.assertFalse(deleter.is_alive(), "Handle deletion deadlocked")
+		self.assertIn("Remove this user's passkeys", outcomes.get_nowait())
+		self.assertEqual(frappe.db.get_value("WebAuthn User Handle", handle.name, "user"), renamed)
+		self.assertEqual(frappe.db.get_value("WebAuthn Credential", credential.name, "user"), renamed)
 
 	def test_delete_guard_queues_on_a_held_handle_row_lock(self):
 		user = make_user()

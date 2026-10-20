@@ -246,5 +246,11 @@ def recalculate_enforcement_preview() -> dict:
 	frappe.only_for("System Manager")
 	state.rate_limit_user("recalculate_enforcement_preview", 3, 60)
 	after_scan = boot.get_enforcement_preview_scan()
-	boot.enqueue_enforcement_preview()
+	if not boot.enqueue_enforcement_preview():
+		frappe.throw(
+			_(
+				"The enforcement preview recount could not start because the job queue is full. Try again later."
+			),
+			frappe.QueueOverloaded,
+		)
 	return {"after_scan": after_scan}
