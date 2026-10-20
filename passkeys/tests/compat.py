@@ -19,6 +19,7 @@ __all__ = [
 	"arrange_clean_login_policy",
 	"arrange_mode_floor",
 	"arrange_saveable_system_settings",
+	"bust_system_settings_cache",
 	"flush_settings_cache",
 	"is_signed_out_by_frappe",
 ]
@@ -54,6 +55,19 @@ def flush_settings_cache():
 	"""
 	frappe.clear_document_cache("Passkey Settings", "Passkey Settings")
 	frappe.cache.delete_value("document_cache::Passkey Settings::Passkey Settings")
+
+
+def bust_system_settings_cache():
+	"""Drop every cached copy of System Settings in this process, synchronously.
+
+	``clear_document_cache`` deletes the Redis key and ``frappe.local.system_settings``,
+	but v16+ read System Settings through ``frappe.client_cache``, whose in-process copy is
+	only dropped when the asynchronous invalidation message arrives; a read right after a
+	write can return the old value (seen in CI as a leaked ``disable_user_pass_login``)."""
+	frappe.clear_document_cache("System Settings", "System Settings")
+	frappe.local.system_settings = None
+	if getattr(frappe, "client_cache", None):
+		frappe.client_cache.delete_value(frappe.get_document_cache_key("System Settings", "System Settings"))
 
 
 def is_signed_out_by_frappe(exc) -> bool:
@@ -116,8 +130,7 @@ def arrange_clean_login_policy(testcase):
 
 	def _set(value):
 		frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None  # bust the request-local singles cache
+		bust_system_settings_cache()
 
 	testcase.addCleanup(_set, cint(original))
 	_set(0)
@@ -142,8 +155,7 @@ def arrange_saveable_system_settings(testcase):
 		for field, value in values.items():
 			frappe.db.set_single_value("System Settings", field, value)
 		frappe.db.commit()
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None
+		bust_system_settings_cache()
 
 	testcase.addCleanup(_set, dict.fromkeys(blank))
 	_set({field: fallbacks[field] for field in blank})

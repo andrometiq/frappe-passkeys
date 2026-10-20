@@ -30,6 +30,7 @@ from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
+	bust_system_settings_cache,
 	flush_settings_cache,
 	is_signed_out_by_frappe,
 )
@@ -923,8 +924,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		def set_disable_user_pass_login(value):
 			frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
-			frappe.clear_document_cache("System Settings", "System Settings")
-			frappe.local.system_settings = None
+			bust_system_settings_cache()
 
 		self.addCleanup(set_disable_user_pass_login, original)
 		set_disable_user_pass_login(1)

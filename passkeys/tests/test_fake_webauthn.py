@@ -19,7 +19,7 @@ from frappe.utils import set_request
 from passkeys import engine, passkey, state
 from passkeys.tests import fake_webauthn, ui_test_helpers
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, bust_system_settings_cache, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
 
@@ -45,8 +45,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 
 	def _set_disable_user_pass_login(self, value):
 		frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None  # bust the request-local singles cache
+		bust_system_settings_cache()
 
 	def tearDown(self):
 		# round_trip / verify_login mint a session via login_as, which COMMITS mid-test —

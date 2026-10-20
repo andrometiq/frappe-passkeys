@@ -31,6 +31,7 @@ from passkeys.tests.compat import (
 	IntegrationTestCase,
 	WebAuthnAssertMixin,
 	arrange_saveable_system_settings,
+	bust_system_settings_cache,
 	flush_settings_cache,
 )
 from passkeys.tests.factories import make_user, sign_in
@@ -89,8 +90,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		if method is not None:
 			frappe.db.set_single_value("System Settings", "two_factor_method", method)
 		frappe.db.set_single_value("System Settings", "disable_user_pass_login", disable_pass)
-		frappe.local.system_settings = None  # bust the request-local cache
-		frappe.clear_document_cache("System Settings", "System Settings")
+		bust_system_settings_cache()
 
 	def _sync_settings(self):
 		flush_settings_cache()

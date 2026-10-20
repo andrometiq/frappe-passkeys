@@ -18,6 +18,7 @@ from passkeys.tests.compat import (
 	IntegrationTestCase,
 	activity_log_count,
 	arrange_mode_floor,
+	bust_system_settings_cache,
 	flush_settings_cache,
 )
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
@@ -221,8 +222,7 @@ class ReauthUnderDisableUserPassTest(_Base):
 
 	def _set_disable(self, value):
 		frappe.db.set_single_value("System Settings", "disable_user_pass_login", value)
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None  # bust the request-local singles cache
+		bust_system_settings_cache()
 
 	def test_reauth_password_refused_for_a_passkey_holder(self):
 		user = self._user()

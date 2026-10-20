@@ -14,6 +14,7 @@ from frappe.utils import cint
 from passkeys.tests.compat import (
 	IntegrationTestCase,
 	arrange_saveable_system_settings,
+	bust_system_settings_cache,
 	flush_settings_cache,
 )
 
@@ -67,8 +68,7 @@ class SettingsFloorConcurrencyTest(IntegrationTestCase):
 			frappe.db.set_single_value("System Settings", field, value)
 		frappe.db.commit()  # independent workers must see the arranged rows
 		flush_settings_cache()
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None
+		bust_system_settings_cache()
 
 	def _arrange_both_modes_on(self, **overrides):
 		# email-link login keeps core's own "a login method must remain" check satisfied

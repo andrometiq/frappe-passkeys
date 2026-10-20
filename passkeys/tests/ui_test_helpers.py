@@ -30,7 +30,7 @@ import frappe
 from frappe.utils import cint
 
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import flush_settings_cache
+from passkeys.tests.compat import bust_system_settings_cache, flush_settings_cache
 
 OTP_CODE_MIN_VALIDITY = 10
 
@@ -124,8 +124,7 @@ def configure_second_factor(
 	}
 	for field, value in values.items():
 		frappe.db.set_single_value("Passkey Settings", field, value)
-	frappe.local.system_settings = None
-	frappe.clear_document_cache("System Settings", "System Settings")
+	bust_system_settings_cache()
 	commit_passkey_settings()
 	return values
 
@@ -172,8 +171,7 @@ def teardown_second_factor() -> dict:
 	frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 0)
 	frappe.db.set_single_value("Passkey Settings", "passkey_2fa_allow_otp_fallback", 0)
 	frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
-	frappe.local.system_settings = None
-	frappe.clear_document_cache("System Settings", "System Settings")
+	bust_system_settings_cache()
 	commit_passkey_settings()
 	return {"ok": 1}
 

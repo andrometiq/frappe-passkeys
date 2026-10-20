@@ -15,7 +15,12 @@ from frappe.utils import cint
 
 from passkeys import install
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	arrange_mode_floor,
+	bust_system_settings_cache,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -132,8 +137,7 @@ class TestUninstallGuards(IntegrationTestCase):
 		would leak into later modules and trip ``_guard_last_login_method`` there
 		(mirrors ``test_management_p6._set_disable`` / ``test_second_factor._set_system_2fa``)."""
 		frappe.db.set_single_value("System Settings", field, value)
-		frappe.clear_document_cache("System Settings", "System Settings")
-		frappe.local.system_settings = None  # bust the request-local singles cache
+		bust_system_settings_cache()
 
 	def _make_user(self) -> str:
 		user = make_user()
