@@ -7,6 +7,26 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Security
+
+- Refuse OAuth password-grant bearer-token insertion for passkey-only users, enrolled passkey
+  second-factor users, and sites with password login disabled. This closes the bypass on older
+  supported Frappe versions whose OAuth password validator skips the final login veto.
+
+### Fixed
+
+- Guest endpoints share an IPv6 /64 rate limit, preventing address rotation within that subnet
+  from bypassing the app limit while retaining full IPs in audit records.
+- Email identifiers are trimmed and lowercased before password authentication; username aliases
+  and `Administrator` retain their case.
+- Passkey Settings rejects negative or excessive integer values, including re-authentication
+  windows longer than one hour.
+
+### Tests
+
+- Added correct-password regressions for the core login API, `cmd=login`, and OAuth
+  password-grant token insertion. These must pass on every supported Frappe revision.
+
 ## [15.0.6] / [16.0.6] — 2026-10-20
 
 ### Fixed

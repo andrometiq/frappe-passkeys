@@ -307,6 +307,13 @@ so one user cannot probe another's credentials.
 
 ## API keys and OAuth tokens
 
+OAuth password-grant token creation is guarded before insertion, including on older supported
+Frappe releases whose password-grant validator skips `post_login`. The guard shares the login
+veto's account policy: passkey-only users and enrolled passkey second-factor users cannot mint
+a token using only a password. Site-wide password-login disablement also refuses this grant.
+The grant type comes from the request form consumed by core's OAuth token endpoint;
+authorization-code and refresh-token grants are unchanged.
+
 Passkeys protect interactive sign-in only. Token-authenticated API requests (an API key and secret
 sent as `Authorization: token …` or `Basic …`, or an OAuth `Bearer` token) are not subject to
 passkey sign-in checks, even when enrollment is enforced, a user is Passkey Only, or password login

@@ -551,6 +551,37 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		)
 		self.assertFalse(frappe.db.exists("Passkey Enforcement Role", row))
 
+	def test_numeric_settings_reject_out_of_range_and_accept_boundaries(self):
+		bounds = {
+			"passkey_max_per_user": 100,
+			"passkey_nudge_cooldown_days": 365,
+			"passkey_nudge_max_prompts": 100,
+			"passkey_enforce_grace_logins": 100,
+			"passkey_reauth_window": 3600,
+		}
+		for fieldname in bounds:
+			self.addCleanup(
+				frappe.db.set_single_value, "Passkey Settings", fieldname, self._snapshot.get(fieldname)
+			)
+		for fieldname, maximum in bounds.items():
+			for value in (-1, maximum + 1, 0, maximum):
+				with self.subTest(fieldname=fieldname, value=value):
+					doc = self._settings(
+						login_with_passkey=0,
+						passkey_as_second_factor=0,
+						passkey_origins="",
+						passkey_app_origins="",
+						**{fieldname: value},
+					)
+					if value < 0 or value > maximum:
+						with self.assertRaisesRegex(frappe.ValidationError, "must be between"):
+							doc.save()
+					else:
+						doc.save()
+						self.assertEqual(
+							cint(frappe.db.get_single_value("Passkey Settings", fieldname)), value
+						)
+
 	def test_negative_reauth_window_is_rejected(self):
 		doc = self._settings(
 			login_with_passkey=0,

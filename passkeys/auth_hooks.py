@@ -2,8 +2,8 @@
 # License: MIT. See LICENSE
 
 """Sanctioned-hook enforcement seams (fold into core's own auth surface on the merge):
-the final login veto and the System Settings guard. On the every-login and every
-System Settings save paths, so this module must not import ``webauthn``."""
+the final login veto, OAuth password-grant guard and System Settings guard. On the
+every-login and System Settings save paths, so this module must not import ``webauthn``."""
 
 import frappe
 from frappe import _
@@ -46,7 +46,8 @@ def on_login_veto(login_manager=None, **kwargs):
 	if not target or target in ("Guest", ""):
 		return  # Guest/empty are not logins
 
-	if _must_use_passkey_second_factor(target):
+	restrictions = get_password_login_restrictions(target)
+	if "second_factor" in restrictions:
 		if _is_password_reset_completion():
 			# Core rotates the password and then calls login_as(). Let the reset
 			# transaction finish, but downgrade that login_as() to Guest so possession
@@ -65,9 +66,38 @@ def on_login_veto(login_manager=None, **kwargs):
 	if target == "Administrator":
 		return
 
-	if _is_passkey_only(target):
+	if "passkey_only" in restrictions:
 		frappe.throw(
 			_("This account signs in with a passkey. Please use your passkey to continue."),
+			frappe.AuthenticationError,
+		)
+
+
+def get_password_login_restrictions(user: str) -> set[str]:
+	"""Shared account policy; core login enforces the site-wide password switch."""
+	restrictions = set()
+	if _must_use_passkey_second_factor(user):
+		restrictions.add("second_factor")
+	if user != "Administrator" and _is_passkey_only(user):
+		restrictions.add("passkey_only")
+	if cint(frappe.get_system_settings("disable_user_pass_login")):
+		restrictions.add("site_disabled")
+	return restrictions
+
+
+def guard_oauth_password_grant(doc, method=None):
+	"""Core's token endpoint passes request.form to OAuthlib, before token insertion."""
+	if install.dormant():
+		return
+	form = getattr(getattr(frappe.local, "request", None), "form", None)
+	grant_type = (
+		form.get("grant_type")
+		if form is not None and "grant_type" in form
+		else frappe.form_dict.get("grant_type")
+	)
+	if grant_type == "password" and get_password_login_restrictions(doc.user):
+		frappe.throw(
+			_("Password sign-in is not allowed for this account. Sign in using the site's login page."),
 			frappe.AuthenticationError,
 		)
 

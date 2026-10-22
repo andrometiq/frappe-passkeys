@@ -977,6 +977,46 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			login_manager.login_as(user)  # login_as → post_login → on_login veto aborts
 		self.assertNotEqual(frappe.session.user, user)  # no session minted for the flagged user
 
+	def test_password_off_api_login_refuses_correct_password(self):
+		self._assert_core_password_route_refused("/api/method/login")
+
+	def test_password_off_cmd_login_refuses_correct_password(self):
+		self._assert_core_password_route_refused("/", cmd="login")
+
+	def _assert_core_password_route_refused(self, path, cmd=None):
+		from frappe.auth import LoginManager
+
+		from passkeys.tests.compat import bust_system_settings_cache
+
+		user = self._user()
+		self._enroll(user)
+		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		two_factor = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
+		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
+		try:
+			for site_disabled in (0, 1):
+				with self.subTest(site_disabled=site_disabled):
+					frappe.db.set_value(
+						"WebAuthn User Handle", {"user": user}, "passkey_only_login", 1 - site_disabled
+					)
+					frappe.db.set_single_value("System Settings", "disable_user_pass_login", site_disabled)
+					bust_system_settings_cache()
+					frappe.set_user("Guest")
+					frappe.local.flags.pop("passkey_login", None)
+					self._request("/api/method/passkeys.passkey.begin_login")
+					manager = LoginManager()
+					manager.authenticate(user=user, pwd=PWD)
+					self.assertEqual(manager.user, user)
+					self._request(path)
+					frappe.form_dict.update(usr=user, pwd=PWD, cmd=cmd)
+					with self.assertRaises(frappe.AuthenticationError):
+						LoginManager()
+					self.assertNotEqual(frappe.session.user, user)
+		finally:
+			frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
+			frappe.db.set_single_value("System Settings", "enable_two_factor_auth", two_factor)
+			bust_system_settings_cache()
+
 	def test_core_impersonation_session_is_refused_by_passkey_writes(self):
 		"""Core's own ``impersonate`` endpoint, not a hand-set flag, so the place
 		``session.is_impersonated`` reads is pinned on every Frappe line."""

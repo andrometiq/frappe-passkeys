@@ -29,10 +29,9 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 			self._validate_enablement()
 		else:
 			self._validate_inactive_origins()
-		self._validate_reauth_window()
+		self._validate_numeric_bounds()
 		well_known.validate_association_settings(self)
 		self._validate_second_factor_floor()
-		self._validate_enrollment_policy()
 		self._warn_risky_combinations()
 		self._warn_enforcement_risks()
 
@@ -43,13 +42,6 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		"""True when scope is not ``No one`` or System Managers are always included.
 		Independent of whether Starting on has been reached."""
 		return boot.is_enforcing(self)
-
-	def _validate_enrollment_policy(self):
-		"""Hard guards on enrollment. Grace sign-ins cannot be negative. A blank
-		Starting on means immediately. (The inert-requirement heads-ups are
-		non-blocking — see ``_warn_enforcement_risks``.)"""
-		if cint(self.passkey_enforce_grace_logins) < 0:
-			frappe.throw(_("Grace sign-ins cannot be negative. Use 0 to block immediately."))
 
 	def _validate_enablement(self):
 		"""Enabling any mode requires an importable webauthn, a resolved
@@ -92,9 +84,18 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		if self.passkey_app_origins:
 			policy.validate_app_origins(self)
 
-	def _validate_reauth_window(self):
-		if cint(self.passkey_reauth_window) < 0:
-			frappe.throw(_("Re-auth Window cannot be negative."), frappe.ValidationError)
+	def _validate_numeric_bounds(self):
+		for fieldname, maximum, label in (
+			("passkey_max_per_user", 100, _("Maximum Passkeys per User")),
+			("passkey_nudge_cooldown_days", 365, _("Days between prompts")),
+			("passkey_nudge_max_prompts", 100, _("Maximum prompts per user")),
+			("passkey_enforce_grace_logins", 100, _("Grace sign-ins")),
+			("passkey_reauth_window", 3600, _("Re-authentication Window (Seconds)")),
+		):
+			if not 0 <= cint(self.get(fieldname)) <= maximum:
+				frappe.throw(
+					_("{0} must be between 0 and {1}.").format(label, maximum), frappe.ValidationError
+				)
 
 	def _validate_second_factor_floor(self):
 		"""The enforcement floor is structural — passkey second factor

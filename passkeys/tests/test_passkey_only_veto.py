@@ -12,11 +12,11 @@ disable-guard that prevents lockout; one demonstrates the out-of-band recovery
 escape."""
 
 import frappe
-from frappe.utils import set_request
+from frappe.utils import add_to_date, now_datetime, set_request
 
 from passkeys import auth_hooks
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, bust_system_settings_cache, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -97,6 +97,69 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		self._guest_context()
 		with self.assertRaises(frappe.AuthenticationError):
 			auth_hooks.on_login_veto(login_manager=_LM(user))
+
+	def test_oauth_password_grant_token_insert_refuses_passkey_only_user(self):
+		self._assert_oauth_token_insert(self._user(passkey_only=True), "password", refused=True)
+
+	def test_oauth_password_grant_token_insert_allows_unrestricted_user(self):
+		self._assert_oauth_token_insert(self._user(), "password", refused=False)
+
+	def test_oauth_authorization_code_token_insert_allows_passkey_only_user(self):
+		self._assert_oauth_token_insert(self._user(passkey_only=True), "authorization_code", refused=False)
+
+	def test_oauth_password_grant_token_insert_refuses_site_disabled_passwords(self):
+		self._assert_oauth_token_insert(self._user(), "password", refused=True, site_disabled=1)
+
+	def test_oauth_authorization_code_token_insert_allows_site_disabled_passwords(self):
+		self._assert_oauth_token_insert(self._user(), "authorization_code", refused=False, site_disabled=1)
+
+	def test_oauth_password_grant_token_insert_refuses_enrolled_second_factor_user(self):
+		user = self._user()
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+		flush_settings_cache()
+		self._assert_oauth_token_insert(user, "password", refused=True)
+
+	def test_oauth_password_grant_uses_body_despite_merged_form_override(self):
+		self._assert_oauth_token_insert(
+			self._user(passkey_only=True), "authorization_code", refused=True, body_grant="password"
+		)
+
+	def _assert_oauth_token_insert(self, user, grant_type, *, refused, site_disabled=0, body_grant=None):
+		"""Insert the real bearer-token DocType through its registered before_insert hook."""
+		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		request, form = getattr(frappe.local, "request", None), frappe.local.form_dict
+		token = frappe.generate_hash(length=32)
+		try:
+			frappe.db.set_single_value("System Settings", "disable_user_pass_login", site_disabled)
+			bust_system_settings_cache()
+			self._guest_context()
+			set_request(
+				method="POST",
+				path="/api/method/frappe.integrations.oauth2.get_token",
+				data={"grant_type": body_grant} if body_grant else {},
+			)
+			frappe.local.form_dict = frappe._dict(grant_type=grant_type)
+			doc = frappe.get_doc(
+				{
+					"doctype": "OAuth Bearer Token",
+					"user": user,
+					"access_token": token,
+					"expires_in": 3600,
+					"expiration_time": add_to_date(now_datetime(), seconds=3600),
+				}
+			)
+			if refused:
+				with self.assertRaises(frappe.AuthenticationError):
+					doc.insert(ignore_permissions=True)
+				self.assertFalse(frappe.db.exists("OAuth Bearer Token", {"access_token": token}))
+			else:
+				doc.insert(ignore_permissions=True)
+				self.assertTrue(frappe.db.exists("OAuth Bearer Token", {"access_token": token}))
+		finally:
+			frappe.db.delete("OAuth Bearer Token", {"access_token": token})
+			frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
+			bust_system_settings_cache()
+			frappe.local.request, frappe.local.form_dict = request, form
 
 	# ---- exemptions -------------------------------------------------------
 

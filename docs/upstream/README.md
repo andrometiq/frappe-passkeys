@@ -92,3 +92,9 @@ module a safe automatic handover for existing sites.
 Historical Frappe issues and PRs can inform design, but their status and review conclusions must be
 checked live before citing them in a PR. Do not describe a closed or stale proposal as approved
 without a current maintainer decision.
+
+## Request hardening to preserve
+
+Core adoption must preserve the app's IPv6 /64 guest limits, email-only lowercase normalization,
+OAuth password-grant token insertion guard, and integer settings bounds documented in
+[`configuration.md`](../configuration.md#request-hardening-and-numeric-limits).

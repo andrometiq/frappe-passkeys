@@ -230,3 +230,29 @@ Settings mode changes lock the Single rows before checking flagged users; and th
 System Settings floor checks read each other's values with locking reads. These locks make concurrent
 verification, registration, deletion, flag changes, and settings saves serialize instead of each
 committing from a stale snapshot.
+
+### Request hardening and numeric limits
+
+Guest endpoint limits also count IPv6 addresses together by /64; IPv4 limits are unchanged.
+Credential audit records and notification emails retain the full client IP. Frappe's own
+IP-based login tracker remains under core control; the app does not monkeypatch it.
+Email login identifiers are trimmed and lowercased before authentication. Non-email usernames
+(including `Administrator`) are trimmed but retain their case. Discoverable passkey login takes
+no identifier; subsequent fallback legs use the canonical user stored by the server.
+
+Login redirects remain core-sanitised by `frappe.utils.sanitise_redirect`; the app leaves core's login handler unchanged.
+
+All five integer settings require values within these inclusive ranges when saved:
+
+| Setting | Range | Reason for upper bound |
+| --- | --- | --- |
+| Maximum Passkeys per User | 0–100 | Allows many devices while bounding credential lists. |
+| Maximum prompts per user | 0–100 | Keeps dismissible prompting finite and practical. |
+| Grace sign-ins | 0–100 | Allows a staged rollout without an effectively unlimited grace budget. |
+| Days between prompts | 0–365 | Allows up to annual reminders. |
+| Re-authentication Window (Seconds) | 0–3600 | Limits reuse of fresh authentication to one hour. |
+
+Zero retains existing semantics: the credential cap defaults to 10, the re-authentication
+window defaults to 600 seconds, zero prompts disables nudges, zero cooldown allows immediate
+repeat prompting, and zero grace blocks deferral immediately. Existing out-of-range settings
+must be corrected before their next save; this change does not rewrite stored configuration.

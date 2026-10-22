@@ -94,6 +94,9 @@ after_request = ["passkeys.cookie_determinism.strip_stale_sid_reseed"]
 # Document Events
 # ---------------
 doc_events = {
+	"OAuth Bearer Token": {
+		"before_insert": "passkeys.auth_hooks.guard_oauth_password_grant",
+	},
 	"User": {
 		# Without this cascade, Link integrity blocks User deletion.
 		"on_trash": "passkeys.passkey.cascade_delete_user_artifacts",

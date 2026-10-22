@@ -770,6 +770,11 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	# the app's plain-password arm seeds a "password" sudo window
 	# ======================================================================
 
+	def test_email_identifier_is_trimmed_and_lowercased_before_authentication(self):
+		user = self._user()
+		self._leg1("  " + user.upper() + "  ", PWD)
+		self.assertEqual(frappe.session.user, user)
+
 	def test_app_plain_password_arm_seeds_password_window(self):
 		"""The app's own plain-password arm (a passkey-less, 2FA-less user's
 		LDAP-style finish in ``login_with_password``) mints a session whose sudo

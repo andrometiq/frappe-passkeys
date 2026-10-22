@@ -13,12 +13,12 @@ import hmac
 
 import frappe
 from frappe import _
-from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 from frappe.utils.password import get_encryption_key
 
-from passkeys import boot, ceremony, install, policy, session, state
+from passkeys import boot, ceremony, install, policy, request_security, session, state
 from passkeys.errors import CeremonyExpired, UnknownCredential, UVSetupRequired, refuse_if_core_native
+from passkeys.request_security import rate_limit
 
 
 def cascade_delete_user_artifacts(doc, method=None):
@@ -291,7 +291,7 @@ def login_with_password(usr: str, pwd: str):
 	if frappe.get_hooks("before_login"):
 		login_manager.run_trigger("before_login")
 	# tracker accounting, uniform failures, Administrator handling — never reimplemented
-	login_manager.authenticate(user=usr, pwd=pwd)
+	login_manager.authenticate(user=request_security.normalize_login_identifier(usr), pwd=pwd)
 	user = login_manager.user
 	if login_manager.force_user_to_reset_password():
 		reset_doc = frappe.get_doc("User", user)

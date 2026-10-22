@@ -32,10 +32,10 @@ import re
 
 import frappe
 from frappe import _
-from frappe.rate_limiter import rate_limit
 from werkzeug.wrappers import Response
 
 from passkeys.errors import refuse_if_core_native
+from passkeys.request_security import rate_limit
 
 # assetlinks.json relations: get_login_creds is the one that shares credentials
 # between the site and the app; handle_all_urls is App Links / deep-linking —
