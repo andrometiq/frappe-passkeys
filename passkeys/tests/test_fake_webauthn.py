@@ -267,7 +267,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 	def test_otp_code_helper_checks_guard_before_reading_cache(self):
 		with (
 			patch.object(ui_test_helpers, "_guard", side_effect=frappe.PermissionError),
-			patch.object(frappe.cache, "get") as read,
+			patch.object(ui_test_helpers, "_core_pending") as read,
 		):
 			with self.assertRaises(frappe.PermissionError):
 				ui_test_helpers.get_otp_code("pending")
@@ -276,7 +276,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 	def test_otp_code_helper_refuses_missing_site_marker_without_reading_core(self):
 		with (
 			patch.object(state, "get_otp_fallback", return_value=None),
-			patch.object(frappe.cache, "get") as read,
+			patch.object(ui_test_helpers, "_core_pending") as read,
 		):
 			with self.assertRaises(frappe.PermissionError):
 				ui_test_helpers.get_otp_code("foreign")
@@ -285,7 +285,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 	def test_otp_code_helper_refuses_different_user_without_reading_secret(self):
 		with (
 			patch.object(state, "get_otp_fallback", return_value={"user": "local@example.com"}),
-			patch.object(frappe.cache, "get", return_value=b"foreign@example.com") as read,
+			patch.object(ui_test_helpers, "_core_pending", return_value="foreign@example.com") as read,
 		):
 			with self.assertRaises(frappe.PermissionError):
 				ui_test_helpers.get_otp_code("foreign")
@@ -296,7 +296,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		with (
 			patch.object(ui_test_helpers, "_guard"),
 			patch.object(state, "get_otp_fallback", return_value={"user": "Administrator"}),
-			patch.object(frappe.cache, "get", side_effect=[b"Administrator", None, secret.encode()]),
+			patch.object(ui_test_helpers, "_core_pending", side_effect=["Administrator", None, secret]),
 			patch.object(ui_test_helpers, "time") as clock,
 		):
 			clock.time.side_effect = times
@@ -339,12 +339,21 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 
 		tmp_id = frappe.generate_hash()
 		user = "Administrator"
+
+		def drop(suffix):
+			# both storage forms: site-namespaced on newer Frappe, raw on older lines
+			frappe.cache.delete_value(tmp_id + suffix)
+			frappe.cache.delete(tmp_id + suffix)
+
 		for suffix in ("_usr", "_pwd", "_otp_secret", "_token"):
-			self.addCleanup(frappe.cache.delete, tmp_id + suffix)
+			self.addCleanup(drop, suffix)
 		self.addCleanup(state.consume_otp_fallback, tmp_id)
 		state.store_otp_fallback(tmp_id, {"user": user})
 		secret = pyotp.random_base32()
+		# an OTP App user who already finished setup (``{user}_otplogin``), as the UI
+		# scaffolding arranges; newer core adds an email step before first setup
 		with (
+			patch.object(twofactor, "get_default", return_value=1),
 			patch.object(twofactor, "get_verification_method", return_value="OTP App"),
 			patch.dict(frappe.form_dict, {"pwd": "test-password"}),
 		):
@@ -363,9 +372,9 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 				twofactor.cache_2fa_data(user, 123456, secret, tmp_id)
 				with self.assertRaisesRegex(frappe.ValidationError, "Only OTP App"):
 					ui_test_helpers.get_otp_code(tmp_id)
-		frappe.cache.delete(tmp_id + "_token")
-		frappe.cache.delete(tmp_id + "_otp_secret")
-		with self.assertRaises(frappe.ValidationError):
+		drop("_token")
+		drop("_otp_secret")
+		with self.assertRaisesRegex(frappe.ValidationError, "No pending OTP"):
 			ui_test_helpers.get_otp_code(tmp_id)
 
 	def test_slow_guest_echo_is_flag_gated(self):

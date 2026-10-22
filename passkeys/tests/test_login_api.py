@@ -859,7 +859,8 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		user = self._user()
 		auth, _ = self._enroll(user)
-		del get_login_attempt_tracker(user, raise_locked_exception=False).login_failed_count
+		# core's public reset (a property deleter before Frappe develop, a cache delete after)
+		get_login_attempt_tracker(user, raise_locked_exception=False).add_success_attempt()
 
 		for _n in range(3):
 			begun, binder = self._begin()
@@ -985,11 +986,15 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 	def _assert_core_password_route_refused(self, path, cmd=None):
 		from frappe.auth import LoginManager
+		from frappe.handler import handle as core_cmd_dispatch
 
 		from passkeys.tests.compat import bust_system_settings_cache
 
 		user = self._user()
 		self._enroll(user)
+		# Frappe develop dropped the legacy ``cmd=login`` route: core never runs a password
+		# login there, so the property is "no session", with no veto left to raise.
+		core_runs_login = cmd is None or self._core_routes_cmd_login(path, cmd)
 		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 		two_factor = frappe.db.get_single_value("System Settings", "enable_two_factor_auth")
 		frappe.db.set_single_value("System Settings", "enable_two_factor_auth", 0)
@@ -1009,13 +1014,36 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 					self.assertEqual(manager.user, user)
 					self._request(path)
 					frappe.form_dict.update(usr=user, pwd=PWD, cmd=cmd)
-					with self.assertRaises(frappe.AuthenticationError):
-						LoginManager()
+					if core_runs_login:
+						with self.assertRaises(frappe.AuthenticationError):
+							LoginManager()
+					else:
+						self.assertNotEqual(LoginManager().user, user)
+						core_cmd_dispatch()  # core's cmd dispatcher skips "login"
 					self.assertNotEqual(frappe.session.user, user)
 		finally:
 			frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
 			frappe.db.set_single_value("System Settings", "enable_two_factor_auth", two_factor)
 			bust_system_settings_cache()
+
+	def _core_routes_cmd_login(self, path, cmd):
+		"""Whether this Frappe line's LoginManager runs a password login for ``cmd``."""
+		from frappe.auth import LoginManager
+
+		class _LoginRan(Exception):
+			pass
+
+		user = frappe.session.user
+		self._request(path)
+		frappe.form_dict.update(cmd=cmd)
+		try:
+			with patch.object(LoginManager, "login", side_effect=_LoginRan):
+				LoginManager()
+		except _LoginRan:
+			return True
+		finally:
+			frappe.set_user(user)
+		return False
 
 	def test_core_impersonation_session_is_refused_by_passkey_writes(self):
 		"""Core's own ``impersonate`` endpoint, not a hand-set flag, so the place

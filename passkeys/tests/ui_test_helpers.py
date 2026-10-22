@@ -129,6 +129,16 @@ def configure_second_factor(
 	return values
 
 
+def _core_pending(key: str):
+	"""One of core's pending 2FA values (``{tmp_id}_usr`` and so on), wherever this
+	Frappe line keeps it: site-namespaced through ``cache.set_value`` on newer lines,
+	else the raw bench-wide key."""
+	value = frappe.cache.get_value(key, expires=True)  # expiring: never pinned in frappe.local
+	if value is None:
+		value = frappe.cache.get(key)  # nosemgrep: frappe-cache-breaks-multitenancy
+	return frappe.safe_decode(value) if isinstance(value, bytes) else value
+
+
 @frappe.whitelist(methods=["POST"])
 def get_otp_code(tmp_id: str) -> str:
 	"""Read a site-bound pending OTP App code on an explicitly enabled test site.
@@ -144,15 +154,15 @@ def get_otp_code(tmp_id: str) -> str:
 	marker = state.get_otp_fallback(tmp_id)
 	if not marker or not marker.get("user"):
 		frappe.throw("No pending OTP fallback for this site.", frappe.PermissionError)
-	# Core's pending keys are raw and shared across sites on the bench.
-	if marker["user"] != frappe.safe_decode(frappe.cache.get(f"{tmp_id}_usr")):
+	# Older core keeps its pending keys raw, shared across sites on the bench.
+	if marker["user"] != _core_pending(f"{tmp_id}_usr"):
 		frappe.throw("Pending OTP user does not match this site's fallback.", frappe.PermissionError)
-	if frappe.cache.get(f"{tmp_id}_token") is not None:
+	if _core_pending(f"{tmp_id}_token") is not None:
 		frappe.throw("Only OTP App codes are supported.", frappe.ValidationError)
-	secret = frappe.cache.get(f"{tmp_id}_otp_secret")
+	secret = _core_pending(f"{tmp_id}_otp_secret")
 	if not secret:
 		frappe.throw("No pending OTP for this login.", frappe.ValidationError)
-	totp = pyotp.TOTP(frappe.safe_decode(secret))
+	totp = pyotp.TOTP(secret)
 	now = time.time()
 	remaining = totp.interval - now % totp.interval
 	if remaining < OTP_CODE_MIN_VALIDITY:

@@ -125,7 +125,11 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		)
 
 	def _assert_oauth_token_insert(self, user, grant_type, *, refused, site_disabled=0, body_grant=None):
-		"""Insert the real bearer-token DocType through its registered before_insert hook."""
+		"""Insert the real bearer-token DocType through its registered before_insert hook.
+
+		Rows are found by ``user`` (a fresh fixture user per test): Frappe develop hashes
+		``access_token`` at rest in the controller's ``before_insert``, so the raw token
+		is not a lookup key on every line."""
 		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 		request, form = getattr(frappe.local, "request", None), frappe.local.form_dict
 		token = frappe.generate_hash(length=32)
@@ -151,12 +155,12 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 			if refused:
 				with self.assertRaises(frappe.AuthenticationError):
 					doc.insert(ignore_permissions=True)
-				self.assertFalse(frappe.db.exists("OAuth Bearer Token", {"access_token": token}))
+				self.assertFalse(frappe.db.exists("OAuth Bearer Token", {"user": user}))
 			else:
 				doc.insert(ignore_permissions=True)
-				self.assertTrue(frappe.db.exists("OAuth Bearer Token", {"access_token": token}))
+				self.assertTrue(frappe.db.exists("OAuth Bearer Token", {"user": user}))
 		finally:
-			frappe.db.delete("OAuth Bearer Token", {"access_token": token})
+			frappe.db.delete("OAuth Bearer Token", {"user": user})
 			frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
 			bust_system_settings_cache()
 			frappe.local.request, frappe.local.form_dict = request, form

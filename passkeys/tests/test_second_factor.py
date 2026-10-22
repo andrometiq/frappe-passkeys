@@ -799,7 +799,8 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		user = self._user()
 		auth = self._enroll(user)
-		del get_login_attempt_tracker(user, raise_locked_exception=False).login_failed_count
+		# core's public reset (a property deleter before Frappe develop, a cache delete after)
+		get_login_attempt_tracker(user, raise_locked_exception=False).add_success_attempt()
 
 		resp, binder = self._leg1(user, PWD)
 		sid = resp["tmp_id"]
