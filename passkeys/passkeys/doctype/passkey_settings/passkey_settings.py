@@ -7,7 +7,7 @@ from frappe.model.document import Document
 from frappe.utils import cint
 from frappe.utils.password import get_encryption_key
 
-from passkeys import boot, policy, state, well_known
+from passkeys import boot, policy, rp_admin, session, state, well_known
 from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_passkey_mode_floor,
@@ -218,6 +218,7 @@ def get_resolved_rp_id() -> dict:
 	rp_id = policy.resolve_rp_id(settings)
 	return {
 		"rp_id": rp_id,
+		"site_rp_id": policy.get_site_rp_id(settings),
 		"configured_site_origin": policy.resolve_site_origin(rp_id or ""),
 	}
 
@@ -255,3 +256,22 @@ def recalculate_enforcement_preview() -> dict:
 			frappe.QueueOverloaded,
 		)
 	return {"after_scan": after_scan}
+
+
+@frappe.whitelist(methods=["POST"])
+def get_rp_id_change_impact(
+	rp_id: str, passkey_origins: str | None = None, passkey_app_origins: str | None = None
+) -> dict:
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	state.rate_limit_user("get_rp_id_change_impact", 30, 60)
+	return rp_admin.rp_id_change_impact(rp_id, passkey_origins, passkey_app_origins)
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_stale_passkeys(site_rp_id: str) -> dict:
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	session.refuse_impersonated_session()
+	state.rate_limit_user("remove_stale_passkeys", 3, 60)
+	return rp_admin.remove_stale_passkeys(site_rp_id)

@@ -61,6 +61,38 @@ class ClassifyPostureTest(IntegrationTestCase):
 		self.assertFalse(result["verdict"]["can_bypass"])
 		self.assertEqual(_codes(result), ["no_mode", "custom_apps"])
 
+	def test_off_site_has_a_high_verdict_before_bypass_classification(self):
+		for reason in ("host_outside_rp", "no_valid_origins", "no_rp_id"):
+			with self.subTest(reason=reason):
+				problem = {"status": "off", "reason": reason, "rp_id": "example.com"}
+				result = posture.classify_posture(_ctx(rp_scope_problem=problem, password_login_enabled=True))
+				self.assertEqual(result["verdict"]["tone"], "high")
+				self.assertEqual(
+					result["verdict"]["headline"],
+					"Passkeys are off on this site: its address isn't covered by the RP ID.",
+				)
+				self.assertEqual(_codes(result), ["site_not_covered", "custom_apps"])
+				row = result["rows"][0]
+				self.assertEqual(row["severity"], "high")
+				self.assertIn("passkey requirements are paused", row["why"])
+				if reason == "no_valid_origins":
+					self.assertEqual(
+						row["why"],
+						"None of this site's origins is a valid address inside the RP ID example.com, so passkey requirements are paused.",
+					)
+
+	def test_operational_app_or_web_path_does_not_report_site_off(self):
+		for status in ("app_only", "web_works"):
+			result = posture.classify_posture(_ctx(rp_scope_problem={"status": status}))
+			self.assertNotIn("site_not_covered", _codes(result))
+			self.assertEqual(result["verdict"]["tone"], "good")
+
+	def test_disabled_modes_take_precedence_over_rp_problem(self):
+		result = posture.classify_posture(
+			_ctx(first_factor=False, second_factor=False, rp_scope_problem={"status": "off"})
+		)
+		self.assertEqual(_codes(result), ["no_mode", "custom_apps"])
+
 	def test_password_login_is_a_first_factor_bypass(self):
 		result = posture.classify_posture(_ctx(password_login_enabled=True))
 		self.assertTrue(result["verdict"]["can_bypass"])
@@ -230,6 +262,22 @@ class BuildPostureSmokeTest(PinnedSiteRp, IntegrationTestCase):
 		self.assertIn("can_bypass", result["verdict"])
 		# the honest-limit disclaimer is always present
 		self.assertTrue(any(r["code"] == "custom_apps" for r in result["rows"]))
+
+	def test_build_posture_reads_operational_rp(self):
+		from passkeys.tests.compat import flush_settings_cache
+
+		for field in ("login_with_passkey", "passkey_app_origins"):
+			original = frappe.db.get_single_value("Passkey Settings", field)
+			self.addCleanup(frappe.db.set_single_value, "Passkey Settings", field, original)
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 1)
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "outside.test")
+		frappe.db.set_single_value("Passkey Settings", "passkey_app_origins", "")
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
+			self.assertIn("site_not_covered", _codes(posture.build_posture()))
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "example.com")
+		flush_settings_cache()
+		self.assertNotIn("site_not_covered", _codes(posture.build_posture()))
 
 	def test_config_read_failure_returns_degraded_verdict(self):
 		with patch("passkeys.posture._enabled_social_providers", side_effect=RuntimeError("read failed")):

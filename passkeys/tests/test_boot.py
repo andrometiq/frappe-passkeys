@@ -45,6 +45,7 @@ class BootInfoTest(PinnedSiteRp, IntegrationTestCase):
 		for field in (
 			"passkey_rp_id",
 			"passkey_origins",
+			"passkey_app_origins",
 			"login_with_passkey",
 			"passkey_as_second_factor",
 			"passkey_enforce_scope",
@@ -53,7 +54,7 @@ class BootInfoTest(PinnedSiteRp, IntegrationTestCase):
 			"passkey_nudge_max_prompts",
 			"passkey_nudge_cooldown_days",
 		):
-			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
+			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field))
 		flush_settings_cache()
 
 	def _user(self) -> str:
@@ -90,6 +91,7 @@ class BootInfoTest(PinnedSiteRp, IntegrationTestCase):
 				"upsell_eligible",
 				"enforcement",
 				"rp_id",
+				"site_rp_id",
 			},
 		)
 		self.assertTrue(pk["enabled"])  # login_with_passkey on ⇒ any-mode gate true
@@ -225,6 +227,54 @@ class BootInfoTest(PinnedSiteRp, IntegrationTestCase):
 		flush_settings_cache()
 		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
 			self.assertIsNone(passkey.get_signal_data())
+
+	def test_rp_alert_is_manager_only_and_keeps_operational_status(self):
+		user = self._user()
+		cases = [
+			("example.com", "https://outside.test", "", "", "off", "host_outside_rp"),
+			(
+				"example.com",
+				"https://outside.test",
+				"",
+				"android:apk-key-hash:" + "A" * 43,
+				"app_only",
+				"host_outside_rp",
+			),
+			(
+				"example.com",
+				"https://outside.test",
+				"https://example.com",
+				"",
+				"web_works",
+				"host_outside_rp",
+			),
+			("example.com", "http://example.com", "", "", "web_works", None),
+			("example.com", "", "", "", "off", "no_valid_origins"),
+			("", "", "", "", "off", "no_rp_id"),
+		]
+		for rp, host, origins, apps, status, reason in cases:
+			with self.subTest(status=status, reason=reason, host=host):
+				for field, value in (
+					("passkey_rp_id", rp),
+					("passkey_origins", origins),
+					("passkey_app_origins", apps),
+				):
+					frappe.db.set_single_value("Passkey Settings", field, value)
+				flush_settings_cache()
+				with patch.dict(frappe.conf, {"host_name": host, "developer_mode": 0}):
+					regular = boot.build_passkeys_boot(user)
+					manager = boot.build_passkeys_boot("Administrator")
+				self.assertNotIn("rp_alert", regular)
+				self.assertEqual(manager["rp_alert"]["status"], status)
+				self.assertEqual(manager["rp_alert"]["reason"], reason)
+				self.assertEqual(manager["rp_id"], rp or None)
+				self.assertEqual(manager["site_rp_id"], None if status == "off" else rp)
+				self.assertEqual(regular["site_rp_id"], manager["site_rp_id"])
+
+	def test_rp_alert_is_null_when_modes_are_disabled(self):
+		frappe.db.set_single_value("Passkey Settings", "login_with_passkey", 0)
+		flush_settings_cache()
+		self.assertIsNone(boot.build_passkeys_boot("Administrator")["rp_alert"])
 
 
 class AppsScreenEntryTest(IntegrationTestCase):

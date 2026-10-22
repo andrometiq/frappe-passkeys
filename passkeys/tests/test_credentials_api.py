@@ -66,6 +66,54 @@ class CredentialManagementTest(PinnedSiteRp, IntegrationTestCase):
 		self.assertIn(cred_a.name, names)
 		self.assertNotIn(cred_b.name, names)
 
+	def test_list_reports_rp_staleness_separately_from_enabled(self):
+		user = self._user()
+		cases = [
+			("Example.COM", 1, False, True),
+			("example.com", 0, False, False),
+			("old.example.com", 1, True, False),
+			("old.example.com", 0, True, False),
+			("", 1, True, False),
+		]
+		rows = [
+			(make_credential(user, rp_id=rp, enabled=enabled), stale, usable)
+			for rp, enabled, stale, usable in cases
+		]
+		sign_in(user)
+		result = credentials.list_credentials()
+		self.assertEqual(result["site_rp_id"], "example.com")
+		by_name = {row["name"]: row for row in result["credentials"]}
+		for doc, stale, usable in rows:
+			with self.subTest(name=doc.name):
+				self.assertEqual(by_name[doc.name]["rp_id"] or "", doc.rp_id or "")
+				self.assertIs(by_name[doc.name]["stale"], stale)
+				self.assertIs(by_name[doc.name]["usable"], usable)
+
+	def test_list_off_marks_every_row_stale_and_unusable(self):
+		from passkeys.tests.compat import flush_settings_cache
+
+		original_apps = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original_apps)
+		user = self._user()
+		make_credential(user)
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "outside.test")
+		frappe.db.set_single_value("Passkey Settings", "passkey_app_origins", "")
+		flush_settings_cache()
+		sign_in(user)
+		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
+			result = credentials.list_credentials()
+		self.assertIsNone(result["site_rp_id"])
+		self.assertIs(result["credentials"][0]["stale"], True)
+		self.assertIs(result["credentials"][0]["usable"], False)
+
+	def test_owner_can_still_remove_a_flagged_stale_credential(self):
+		user = self._user()
+		row = make_credential(user, rp_id="other.example", flagged=1)
+		sign_in(user)
+		self._seed_sudo(user)
+		self.assertEqual(credentials.delete_credential(row.name), {"deleted": row.name})
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", row.name))
+
 	def test_list_carries_server_resolved_provider(self):
 		"""Each row ships a `provider` key resolved from the vendored
 		AAGUID snapshot — a mapped AAGUID names its provider; an unmapped or

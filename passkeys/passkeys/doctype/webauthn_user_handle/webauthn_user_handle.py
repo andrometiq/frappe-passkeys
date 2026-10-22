@@ -11,7 +11,7 @@ from passkeys.session import ReadOnlyWhileImpersonated
 
 
 def lock_passkey_modes() -> frappe._dict:
-	"""Lock the Passkey Settings Single rows and return both login-mode flags, read current.
+	"""Lock the Passkey Settings Single rows and return login modes and RP settings, read current.
 
 	Mode-floor writers (Passkey Settings saves, passkey-only flag enables, the
 	System Settings floor guards) take it before any handle or credential lock. It
@@ -25,6 +25,7 @@ def lock_passkey_modes() -> frappe._dict:
 	)
 	values = {row.field: row.value for row in rows}
 	return frappe._dict(
+		**{field: values.get(field) for field in policy.RP_SETTINGS_FIELDS},
 		login_with_passkey=cint(values.get("login_with_passkey")),
 		passkey_as_second_factor=cint(values.get("passkey_as_second_factor")),
 	)

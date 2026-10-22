@@ -76,7 +76,7 @@
    "label": "Relying Party"
   },
   {
-   "description": "Changing the RP ID invalidates every existing passkey. This cannot be undone. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
+   "description": "Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
    "fieldname": "passkey_rp_id",
    "fieldtype": "Data",
    "label": "Passkey RP ID"
@@ -289,7 +289,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-29 16:00:00.000000",
+ "modified": "2026-10-22 22:30:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

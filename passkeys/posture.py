@@ -82,6 +82,18 @@ def classify_posture(ctx: dict) -> dict:
 			"rows": rows,
 		}
 
+	problem = ctx.get("rp_scope_problem")
+	if problem and problem["status"] == "off":
+		rows.extend([_site_not_covered_row(problem), _custom_apps_row()])
+		return {
+			"verdict": _verdict(
+				_("Passkeys are off on this site: its address isn't covered by the RP ID."),
+				"high",
+				degraded=config_read_failed,
+			),
+			"rows": rows,
+		}
+
 	if pw_is_bypass:
 		rows.append(
 			_row(
@@ -361,6 +373,25 @@ def _degraded_row() -> dict:
 	)
 
 
+def _site_not_covered_row(problem):
+	why = _(
+		"This site's address isn't covered by the RP ID {0}, so no passkey can sign in here and passkey requirements are paused."
+	)
+	if problem["reason"] == "no_valid_origins":
+		why = _(
+			"None of this site's origins is a valid address inside the RP ID {0}, so passkey requirements are paused."
+		)
+	return _row(
+		"site_not_covered",
+		"high",
+		_("Passkeys are off on this site."),
+		why.format(problem["rp_id"] or ""),
+		_(
+			"Set the Passkey RP ID to cover this site's address, or set host_name back. Passkeys made for another RP ID stay unusable."
+		),
+	)
+
+
 def build_posture() -> dict:
 	"""Read the site's auth surface and classify it; a failed read marks the verdict
 	degraded instead of guessing."""
@@ -390,6 +421,7 @@ def build_posture() -> dict:
 		{
 			**facts,
 			"config_read_failed": bool(failed_reads),
+			"rp_scope_problem": policy.get_rp_scope_problem(settings),
 			"first_factor": bool(cint(settings.login_with_passkey)),
 			"second_factor": bool(cint(settings.passkey_as_second_factor)),
 			"otp_fallback_enabled": bool(cint(settings.passkey_2fa_allow_otp_fallback)),

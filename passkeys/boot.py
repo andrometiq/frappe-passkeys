@@ -16,7 +16,7 @@ import json
 import frappe
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
-from passkeys import ceremony, notifications, policy, session
+from passkeys import ceremony, notifications, policy, rp_admin, session
 from passkeys.install import DEFAULTS_PARENT, dormant
 
 ENFORCEMENT_PREVIEW_KEY = "passkeys:enforcement-preview"
@@ -353,6 +353,12 @@ def build_passkeys_boot(user: str) -> dict:
 		"upsell_eligible": upsell_eligible(user, settings, state),
 		"enforcement": build_enforcement(user, settings, credential_count, state),
 		"rp_id": policy.resolve_rp_id(settings),
+		"site_rp_id": policy.get_site_rp_id(settings),
+		**(
+			{"rp_alert": policy.get_rp_scope_problem(settings)}
+			if "System Manager" in frappe.get_roles(user)
+			else {}
+		),
 	}
 
 
@@ -370,7 +376,8 @@ def enforcement_preview_signature(settings) -> str:
 
 def settings_banner_context() -> dict:
 	"""Settings-form context; the enforcement preview is read only from cache."""
-	signature = enforcement_preview_signature(frappe.get_doc("Passkey Settings"))
+	settings = frappe.get_doc("Passkey Settings")
+	signature = enforcement_preview_signature(settings)
 	scan, result = frappe.cache.hmget(
 		frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY), [f"scan:{signature}", f"result:{signature}"]
 	)
@@ -380,6 +387,7 @@ def settings_banner_context() -> dict:
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),
 		"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
 		"enforcement_preview": preview,
+		"stale_passkeys": rp_admin.stale_passkey_summary(settings),
 	}
 
 

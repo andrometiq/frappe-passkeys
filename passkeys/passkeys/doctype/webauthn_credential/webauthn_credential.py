@@ -13,6 +13,10 @@ from passkeys.session import ReadOnlyWhileImpersonated
 LABEL_MAX_LENGTH = 140
 
 
+class FlaggedPasskeyKept(frappe.ValidationError):
+	pass
+
+
 class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 	def validate(self):
 		super().validate()
@@ -40,6 +44,14 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		# cascade uses raw ``frappe.db.delete``, which does NOT fire this hook, so
 		# deleting a User is never blocked by it.
 		self._guard_last_login_method("delete")
+		# delete_doc may load a removed row from its earlier repeatable-read snapshot.
+		current = frappe.db.get_value(
+			self.doctype, self.name, ["name", "flagged"], as_dict=True, for_update=True
+		)
+		if not current:
+			raise frappe.DoesNotExistError(doctype=self.doctype)
+		if self.flags.passkeys_remove_stale and cint(current.flagged):
+			raise FlaggedPasskeyKept
 
 	def after_delete(self):
 		# Owner notification is sent even when a System Manager removes

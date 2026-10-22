@@ -16,7 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import aaguid, session, state
+from passkeys import aaguid, policy, session, state
 from passkeys.errors import refuse_if_core_native
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import (
 	lock_login_floor,
@@ -44,6 +44,7 @@ def list_credentials():
 		fields=[
 			"name",
 			"label",
+			"rp_id",
 			"enabled",
 			"flagged",
 			"flagged_reason",
@@ -59,12 +60,16 @@ def list_credentials():
 	# Server-resolved provider display name from the vendored AAGUID
 	# snapshot (aaguid.py — the single source of truth; the client's providerFor
 	# prefers this over its own map lookup). None ⇒ generic "Unknown provider".
+	site_rp_id = policy.get_site_rp_id()
 	for row in rows:
+		row["stale"] = policy.is_stale(row.rp_id, site_rp_id)
+		row["usable"] = bool(cint(row.enabled) and not row["stale"])
 		row["provider"] = aaguid.provider_name(row.get("aaguid"))
 	# The caller's current passkey_only_login flag (0 when no handle row yet)
 	# — the management toggle reads it from this payload (client parity with boot).
 	return {
 		"credentials": rows,
+		"site_rp_id": site_rp_id,
 		"passkey_only_login": cint(
 			frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")
 		),
