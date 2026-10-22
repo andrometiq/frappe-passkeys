@@ -817,6 +817,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_rp_change_prevents_retry_and_session_for_bad_and_good_assertions(self):
 		for valid in (False, True):
 			with self.subTest(valid=valid):
+				frappe.set_user("Administrator")
 				self._set_passkey_setting("passkey_rp_id", RP_ID)
 				user = self._user()
 				auth = self._enroll(user, seed=str(valid))
@@ -834,6 +835,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_stale_only_password_leg_uses_plain_or_core_otp(self):
 		for otp in (False, True):
 			with self.subTest(otp=otp):
+				frappe.set_user("Administrator")
 				user = self._user(otp_capable=otp)
 				self._enroll(user, seed=str(otp))
 				frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")

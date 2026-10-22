@@ -78,7 +78,7 @@ class ClassifyPostureTest(IntegrationTestCase):
 				if reason == "no_valid_origins":
 					self.assertEqual(
 						row["why"],
-						"None of this site's origins is a valid address inside the RP ID example.com, so passkey requirements are paused.",
+						"None of this site's origins is inside the RP ID example.com, so passkey requirements are paused.",
 					)
 
 	def test_operational_app_or_web_path_does_not_report_site_off(self):

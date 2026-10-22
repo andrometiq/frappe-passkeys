@@ -30,6 +30,7 @@ app_include_js = [
 	"passkey_headless.bundle.js",
 	"passkey_confirm.bundle.js",
 	"passkey_desk.bundle.js",
+	"passkey_site_alert.bundle.js",
 ]
 app_include_css = [
 	"passkey_confirm.bundle.css",

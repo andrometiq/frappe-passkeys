@@ -931,7 +931,8 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
 			boot: { passkeys: {} },
 			passkeys_manage_common: M,
-			call: () => {},
+			passkeys_common: require("../../public/js/passkey_common.bundle.js"),
+			call: options => options.callback({ message: { stop: { passkeys: 0, users: 0 }, start: { passkeys: 0, users: 0 }, new_off: false } }),
 			warn: (...args) => {
 				const dialog = { $wrapper: { on: (_event, handler) => { dialog.hide = handler; } } };
 				warns.push({ args, dialog });
@@ -1116,4 +1117,35 @@ test("settings save without onload threshold repaints for the full polling windo
 	}
 	assert.strictEqual(h.calls.length, 10);
 	assert.strictEqual(h.timers.size, 0);
+});
+
+test("RP provenance determines staleness, independently of enabled and flagged", () => {
+	for (const [rp, site, stale] of [[" Example.COM ", "example.com", false], ["erp.example.com", "example.com", true], ["", "example.com", true], ["example.com", null, true]]) {
+		assert.strictEqual(M.isStale(rp, site), stale);
+		const vm = M.credentialViewModel({ rp_id: rp, enabled: 0, flagged: 1 }, { siteRpId: site });
+		assert.strictEqual(vm.stale, stale);
+		assert.strictEqual(vm.usable, false);
+		assert.strictEqual(vm.rpId, rp);
+	}
+	const vm = M.credentialViewModel({ rp_id: "old.test", enabled: 1, stale: false, usable: true });
+	assert.strictEqual(vm.stale, false, "wire booleans are authoritative");
+	assert.strictEqual(vm.usable, true);
+});
+
+test("staleNotice prioritizes off, then stale-only, and stays absent for mixed rows", () => {
+	assert.strictEqual(M.staleNotice({ site_rp_id: null, credentials: [] }), "siteOffNotice");
+	assert.strictEqual(M.staleNotice({ site_rp_id: "new.test", credentials: [{ stale: true, usable: false }] }), "staleNudgeBody");
+	assert.strictEqual(M.staleNotice({ site_rp_id: "new.test", credentials: [{ stale: true, usable: false }, { stale: false, usable: true }] }), null);
+	assert.strictEqual(M.staleNotice({ site_rp_id: "new.test", credentials: [{ stale: false, usable: false }] }), null);
+});
+
+test("Signals skip absent payloads and an explicit off RP; response RP wins over boot", () => {
+	const calls = [];
+	const PKC = { signalAllAcceptedCredentials: (p) => calls.push(p), signalCurrentUserDetails: (p) => calls.push(p) };
+	for (const data of [null, {}, { signal: null }, { rp_id: null, user_handle: "u", credential_ids: [], name: "user" }]) {
+		assert.deepStrictEqual(M.signalCredentialState(PKC, data, "stale.boot"), { accepted: false, details: false });
+	}
+	assert.deepStrictEqual(calls, []);
+	M.signalCredentialState(PKC, { rp_id: "current.test", user_handle: "u", credential_ids: [] }, "stale.boot");
+	assert.deepStrictEqual(calls, [{ rpId: "current.test", userId: "u", allAcceptedCredentialIds: [] }]);
 });

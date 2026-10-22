@@ -53,7 +53,7 @@
 	}
 
 	function fireSignal(data) {
-		M.signalCredentialState(window.PublicKeyCredential, data, boot().rp_id || location.hostname);
+		M.signalCredentialState(window.PublicKeyCredential, data, boot().site_rp_id);
 	}
 	function refreshSignalsInSession() {
 		post(METHODS.getSignalData, {}).then(function (res) {
@@ -86,7 +86,7 @@
 			}
 			var add = function () { triggerAdd(opts); };
 			if (!payload.credentials.length) {
-				container.appendChild(M.emptyState(add));
+				container.appendChild(M.enrollmentPrompt(payload, add));
 				return;
 			}
 			container.appendChild(M.cardList(payload.credentials, r[1], function (vm) {
@@ -95,9 +95,7 @@
 					onDelete: function () { deleteCard(vm, opts); },
 				};
 			}));
-			var addRow = el("div", "passkey-card-add-row");
-			addRow.appendChild(M.button("primary", t(M.COPY.addButton), add));
-			container.appendChild(addRow);
+			container.appendChild(M.enrollmentPrompt(payload, add));
 			container.appendChild(M.passkeyOnlyRow(payload, function (desired) { confirmPasskeyOnly(desired, opts); }));
 		});
 	}
@@ -124,7 +122,7 @@
 		var d = new frappe.ui.Dialog({
 			title: t(M.COPY.deleteConfirmTitle),
 			indicator: "red",
-			fields: [{ fieldtype: "HTML", options: "<p>" + escapeHtml(M.format(t(M.COPY.deleteConfirmBody), [vm.label])) + "</p>" }],
+			fields: [{ fieldtype: "HTML", options: "<p>" + escapeHtml(M.format(t(vm.stale ? M.COPY.deleteStaleConfirmBody : M.COPY.deleteConfirmBody), [vm.label])) + "</p>" }],
 			primary_action_label: t(M.COPY.deleteConfirmCta),
 			primary_action: function () {
 				d.hide();
@@ -191,7 +189,7 @@
 		return Promise.all([
 			frappe.db.get_list("WebAuthn Credential", {
 				filters: { user: user },
-				fields: ["name", "label", "enabled", "flagged", "flagged_reason", "backup_state", "aaguid", "last_used_at", "creation"],
+				fields: ["name", "label", "rp_id", "enabled", "flagged", "flagged_reason", "backup_state", "aaguid", "last_used_at", "creation"],
 				order_by: "creation asc",
 				limit: 200,
 			}),
@@ -202,7 +200,7 @@
 				container.appendChild(el("div", "passkey-cards-empty-admin", t("This user has no passkeys.")));
 				return;
 			}
-			container.appendChild(M.cardList(creds, r[1], function () { return null; }));
+			container.appendChild(M.cardList(creds, r[1], function () { return null; }, boot().site_rp_id));
 			// The DocType refuses an impersonated session's writes too.
 			if (M.isImpersonated(boot())) return;
 			var link = el("a", "passkey-admin-link", t("Manage in the WebAuthn Credential list"));

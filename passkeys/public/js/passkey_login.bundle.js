@@ -324,9 +324,9 @@
 			}
 			return;
 		}
-		if (kind === "unknown_credential") {
-			// On the device but gone from the server: say so and ask the provider to prune it.
-			signalUnknownCredential(cred);
+		if (kind === "unknown_credential" || kind === "credential_not_for_site") {
+			// Only a missing credential may be pruned; an RP revert heals a stale one.
+			if (kind === "unknown_credential") signalUnknownCredential(cred);
 			applyLoginStatus(C.loginStatusForServerKind(kind));
 			rearmAfterVisibleFailure();
 			return;

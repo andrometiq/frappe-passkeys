@@ -62,6 +62,11 @@
 		deleteConfirmBody: "You won't be able to sign in with {0} after this.",
 		deleteConfirmCta: "Remove passkey",
 		flaggedBanner: "This passkey was flagged and disabled for your security.",
+		staleNote: "Made for {0}, doesn't work on this site",
+		staleNudgeBody: "Your passkeys were made for another address and don't work on this site.",
+		staleNudgeCta: "Add a passkey for this site",
+		siteOffNotice: "Passkeys don't work on this site right now. Ask your administrator to check the passkey settings.",
+		deleteStaleConfirmBody: "{0} was made for another address and doesn't work on this site.",
 		disabledBadge: "Disabled",
 		createdLabel: "Added",
 		lastUsedLabel: "Last used",
@@ -118,10 +123,10 @@
 			"Turn off password sign-in for your account. Needs at least two passkeys so a " +
 			"lost device never locks you out.",
 		passkeyOnlyNeedsTwo:
-			"Add at least two enabled passkeys before turning off password sign-in.",
+			"Add at least two passkeys that work on this site before turning off password sign-in.",
 		// settings banners — keyed; args filled by the matrix
 		rpIdOneWayDoor:
-			"Changing the RP ID invalidates every existing passkey. This cannot be undone.",
+			"Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back.",
 		rpIdUnresolved:
 			"No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in " +
 			"will fail. Fix it one of two ways: set host_name in the site config " +
@@ -206,6 +211,10 @@
 		return format(tr(key), [label || ""]);
 	}
 
+	function isStale(rpId, siteRpId) {
+		return !siteRpId || String(rpId || "").trim().toLowerCase() !== String(siteRpId).trim().toLowerCase();
+	}
+
 	// Per-credential card view-model; values stay raw (the DOM layer formats them).
 	function credentialViewModel(cred, opts) {
 		opts = opts || {};
@@ -213,6 +222,8 @@
 		var tr = typeof opts.translate === "function" ? opts.translate : function (s) { return s; };
 		var label = cred.label || providerFor(cred, opts.aaguidMap) || tr(COPY.unknownProvider);
 		var providerName = providerFor(cred, opts.aaguidMap);
+		var enabled = cred.enabled === undefined ? true : isTruthy(cred.enabled);
+		var stale = typeof cred.stale === "boolean" ? cred.stale : isStale(cred.rp_id, opts.siteRpId);
 		return {
 			name: cred.name,
 			label: label,
@@ -220,7 +231,8 @@
 			hasProvider: providerName !== null,
 			unknownProviderKey: COPY.unknownProvider,
 			badge: backupBadge(cred),
-			enabled: cred.enabled === undefined ? true : isTruthy(cred.enabled),
+			enabled: enabled, rpId: cred.rp_id || "", stale: stale,
+			usable: typeof cred.usable === "boolean" ? cred.usable : enabled && !stale,
 			flagged: isTruthy(cred.flagged),
 			flaggedReason: cred.flagged_reason || null,
 			discoverable: cred.discoverable || "Unknown",
@@ -474,7 +486,7 @@
 		return origins;
 	}
 
-	// Turning passkey-only on needs two enabled credentials; turning it off is always allowed.
+	// Turning passkey-only on needs two usable credentials; turning it off is always allowed.
 	function passkeyOnlyAvailability(enabledCount, current) {
 		enabledCount = cint(enabledCount);
 		var needsTwo = !current && enabledCount < 2;
@@ -645,7 +657,7 @@
 	// none; Safari 26 can leave the promise unsettled).
 	function signalCredentialState(PKC, data, defaultRpId) {
 		var source = data && (data.signal || data);
-		var rpId = source && (source.rp_id || source.rpId) || defaultRpId || null;
+		var rpId = source && (source.rp_id !== undefined ? source.rp_id : source.rpId || defaultRpId);
 		var result = { accepted: false, details: false };
 		if (!PKC || !rpId) return result;
 		var accepted = signalPayload(data);
@@ -719,19 +731,19 @@
 	}
 
 	// The <ul> of cards. actionsFor(vm) returns {onRename, onDelete}, or null for read-only.
-	function cardList(creds, aaguidMap, actionsFor) {
+	function cardList(creds, aaguidMap, actionsFor, siteRpId) {
 		var t = common().t;
 		var list = el("ul", "passkey-card-list");
 		list.setAttribute("role", "list");
 		creds.forEach(function (cred) {
-			var vm = credentialViewModel(cred, { aaguidMap: aaguidMap, translate: t });
+			var vm = credentialViewModel(cred, { aaguidMap: aaguidMap, translate: t, siteRpId: siteRpId });
 			list.appendChild(cardElement(vm, actionsFor(vm), t));
 		});
 		return list;
 	}
 
 	function cardElement(vm, actions, t) {
-		var card = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled"));
+		var card = el("li", "passkey-card" + (vm.enabled ? "" : " passkey-card-disabled") + (vm.stale ? " passkey-card-stale" : ""));
 		card.setAttribute("data-name", vm.name);
 		var glyph = el("span", "passkey-card-glyph");
 		glyph.setAttribute("aria-hidden", "true");
@@ -755,6 +767,7 @@
 		meta.appendChild(el("span", "passkey-card-lastused",
 			vm.lastUsed ? t(COPY.lastUsedLabel) + ": " + formatDate(vm.lastUsed) : t(COPY.lastUsedNever)));
 		main.appendChild(meta);
+		if (vm.stale) main.appendChild(el("div", "passkey-stale-note", format(t(COPY.staleNote), [vm.rpId])));
 		if (vm.flagged) {
 			var flagged = el("div", "alert alert-danger", t(COPY.flaggedBanner));
 			flagged.setAttribute("role", "alert");
@@ -771,6 +784,19 @@
 		return card;
 	}
 
+	function staleNotice(payload) {
+		if (!payload.site_rp_id) return "siteOffNotice";
+		var rows = (payload.credentials || []).map(function (c) { return credentialViewModel(c, { siteRpId: payload.site_rp_id }); });
+		return rows.some(function (c) { return c.stale; }) && !rows.some(function (c) { return c.usable; }) ? "staleNudgeBody" : null;
+	}
+	function enrollmentPrompt(payload, onAdd) {
+		var key = staleNotice(payload), t = common().t;
+		if (!key && !payload.credentials.length) return emptyState(onAdd);
+		var node = el("div", key ? "alert alert-info" : "passkey-card-add-row");
+		if (key) node.appendChild(el("p", "", t(COPY[key])));
+		if (payload.site_rp_id) node.appendChild(button("primary", t(key ? COPY.staleNudgeCta : COPY.addButton), onAdd));
+		return node;
+	}
 	function emptyState(onAdd) {
 		var t = common().t;
 		var wrap = el("div", "no-result text-muted text-center");
@@ -797,7 +823,7 @@
 	// call succeeds and the list is re-rendered.
 	function passkeyOnlyRow(payload, onRequest) {
 		var t = common().t;
-		var enabledCount = payload.credentials.filter(function (c) { return credentialViewModel(c).enabled; }).length;
+		var enabledCount = payload.credentials.filter(function (c) { return credentialViewModel(c, { siteRpId: payload.site_rp_id }).usable; }).length;
 		var current = !!payload.passkey_only_login;
 		var availability = passkeyOnlyAvailability(enabledCount, current);
 		var row = el("div", "passkey-only-row");
@@ -882,6 +908,7 @@
 		backupBadge: backupBadge,
 		accessibleActionName: accessibleActionName,
 		credentialViewModel: credentialViewModel,
+		isStale: isStale, staleNotice: staleNotice, enrollmentPrompt: enrollmentPrompt,
 		isImpersonated: isImpersonated,
 		nudgeDecision: nudgeDecision,
 		enforcementDecision: enforcementDecision,

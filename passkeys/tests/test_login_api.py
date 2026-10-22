@@ -1159,6 +1159,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_uv_setup_rp_binding_and_legacy_refusal(self):
 		for change in ("unchanged", "changed", "legacy"):
 			with self.subTest(change=change):
+				frappe.set_user("Administrator")
 				frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", RP_ID)
 				flush_settings_cache()
 				user = self._user()

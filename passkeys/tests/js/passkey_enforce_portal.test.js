@@ -341,7 +341,7 @@ test("portal impersonation: a blocking verdict shows no gate or banner and recor
 test("portal impersonation: the /passkeys cards are read-only", async () => {
 	global.fetch = (url, opts) => {
 		if (!String(url).includes("list_credentials")) return normalFetch(url, opts);
-		const message = { credentials: [{ name: "WC-1", label: "Phone", enabled: 1 }], passkey_only_login: 0 };
+		const message = { site_rp_id: "example.com", credentials: [{ name: "WC-1", label: "Phone", enabled: 1, stale: false, usable: true }], passkey_only_login: 0 };
 		return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message }) });
 	};
 	const byClass = (root, cls) => findNode(root, (n) => (n.className || "").split(" ").includes(cls));
@@ -365,3 +365,19 @@ test("portal impersonation: the /passkeys cards are read-only", async () => {
 		}
 	} finally { global.fetch = normalFetch; C.detectCapabilities = detectCapabilities; delete frappeObj.boot; }
 });
+
+for (const site_rp_id of [null, "current.test"]) {
+	test(`portal renders stale notices and Add visibility (${site_rp_id})`, async () => {
+		const payload = { site_rp_id, credentials: [{ name: "old", rp_id: "old.test", enabled: 1, stale: true, usable: false }] };
+		global.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message: payload }) });
+		try {
+			global.document = bannerDoc();
+			const root = fakeEl("div"); root.id = "passkey-portal-root"; document.body.appendChild(root);
+			bootPortal({ enabled: true, nudge_state: { eligible: false } });
+			await tick(); await tick();
+			assert.ok(findNode(root, n => n.className.includes("passkey-card-stale")));
+			assert.ok(findNode(root, n => n.textContent === M.COPY[site_rp_id ? "staleNudgeBody" : "siteOffNotice"]));
+			assert.strictEqual(!!findButton(root, n => n.textContent === M.COPY.staleNudgeCta), !!site_rp_id);
+		} finally { global.fetch = normalFetch; }
+	});
+}

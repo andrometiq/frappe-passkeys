@@ -127,6 +127,7 @@ function primeVerify(opts) {
 }
 
 const fakeCred = {
+	id: "cred-1", response: { userHandle: "handle" },
 	authenticatorAttachment: "platform",
 	toJSON() { return { id: "cred-1", type: "public-key", response: {} }; },
 };
@@ -197,4 +198,24 @@ test("login boot clears a stale hybrid upsell flag before sign-in", async () => 
 	window.frappe._passkey_login.boot();
 	assert.strictEqual(localStorage.getItem(M.UPSELL_FLAG_KEY), null);
 	await tick();
+});
+
+test("stale credential gets its own status and never prunes the authenticator", async () => {
+	const calls = [];
+	window.PublicKeyCredential = { signalUnknownCredential: (p) => calls.push(p) };
+	assert.strictEqual(C.mapServerExcType("CredentialNotForThisSite"), "credential_not_for_site");
+	primeVerify({ blockRearm: true });
+	installCall({ status: 401, data: { exc_type: "CredentialNotForThisSite" } });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
+	await tick();
+	assert.deepStrictEqual(calls, []);
+	assert.strictEqual(mod.state.status.state, "stale");
+	assert.strictEqual(mod.state.status.view().text, "This passkey was made for another address and doesn't work on this site.");
+	assert.strictEqual(mod.state.slowTimer, null);
+	primeVerify({ blockRearm: true });
+	installCall({ status: 401, data: { exc_type: "UnknownCredential" } });
+	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
+	await tick();
+	assert.strictEqual(calls.length, 1, "positive control: an actually missing passkey still signals");
+	delete window.PublicKeyCredential;
 });

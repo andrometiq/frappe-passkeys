@@ -29,7 +29,7 @@
 			manageMethods: M ? M.MANAGE_METHODS : {},
 			signalCredentialState: function (data) {
 				var boot = f.boot && f.boot.passkeys;
-				if (M) M.signalCredentialState(window.PublicKeyCredential, data, boot && boot.rp_id);
+				if (M) M.signalCredentialState(window.PublicKeyCredential, data, boot && boot.site_rp_id);
 			},
 			translate: C.t,
 		});

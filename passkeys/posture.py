@@ -378,9 +378,7 @@ def _site_not_covered_row(problem):
 		"This site's address isn't covered by the RP ID {0}, so no passkey can sign in here and passkey requirements are paused."
 	)
 	if problem["reason"] == "no_valid_origins":
-		why = _(
-			"None of this site's origins is a valid address inside the RP ID {0}, so passkey requirements are paused."
-		)
+		why = _("None of this site's origins is inside the RP ID {0}, so passkey requirements are paused.")
 	return _row(
 		"site_not_covered",
 		"high",

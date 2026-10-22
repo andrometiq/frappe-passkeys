@@ -79,9 +79,9 @@ test("impersonatedView: the cards read-only, with no add, rename, remove or swit
 	assert.strictEqual(find(empty, (n) => n.tagName === "BUTTON"), null, "no add call to action");
 });
 
-test("passkeyOnlyRow: snaps back and asks; needs two enabled passkeys to turn on", () => {
+test("passkeyOnlyRow: snaps back and asks; needs two usable passkeys to turn on", () => {
 	const requests = [];
-	const two = { credentials: [{ enabled: 1 }, { enabled: 1 }], passkey_only_login: 0 };
+	const two = { credentials: [{ enabled: 1, usable: true }, { enabled: 1, usable: true }], passkey_only_login: 0 };
 	const toggle = byClass(M.passkeyOnlyRow(two, (d) => requests.push(d)), "passkey-only-toggle");
 	assert.strictEqual(toggle.getAttribute("role"), "switch");
 	assert.strictEqual(toggle.disabled, undefined);
@@ -90,9 +90,9 @@ test("passkeyOnlyRow: snaps back and asks; needs two enabled passkeys to turn on
 	assert.strictEqual(toggle.checked, false, "never flips before the server confirms");
 	assert.deepStrictEqual(requests, [true]);
 
-	const one = { credentials: [{ enabled: 1 }, { enabled: 0 }], passkey_only_login: 0 };
+	const one = { credentials: [{ enabled: 1, usable: true }, { enabled: 0, usable: false }], passkey_only_login: 0 };
 	assert.strictEqual(byClass(M.passkeyOnlyRow(one, () => {}), "passkey-only-toggle").disabled, true);
-	const on = { credentials: [{ enabled: 1 }], passkey_only_login: 1 };
+	const on = { credentials: [{ enabled: 1, usable: true }], passkey_only_login: 1 };
 	assert.strictEqual(byClass(M.passkeyOnlyRow(on, () => {}), "passkey-only-toggle").disabled, undefined, "turning it off is always allowed");
 });
 
@@ -114,4 +114,47 @@ test("createEnrollmentEvents: one defer per verdict, one incapable report per pa
 
 	const offline = M.createEnrollmentEvents(() => Promise.reject(new Error("offline")));
 	assert.strictEqual(await offline.recordNudge(M.NUDGE_EVENTS.SHOWN), null, "recordNudge never rejects");
+});
+
+test("stale cards keep actions and flagged warning; disabled current-RP has no stale note", () => {
+	const rows = [
+		{ name: "current", rp_id: "example.com", enabled: 0, stale: false, usable: false },
+		{ name: "old", rp_id: "old.test", enabled: 0, stale: true, usable: false, flagged: 1 },
+	];
+	const list = M.cardList(rows, {}, () => ({ onRename() {}, onDelete() {} }));
+	assert.strictEqual(byClass(list.children[0], "passkey-card-stale"), null);
+	assert.strictEqual(byClass(list.children[0], "passkey-stale-note"), null);
+	assert.ok(byClass(list.children[0], "gray"));
+	assert.ok(byClass(list.children[1], "passkey-card-stale"));
+	assert.strictEqual(byClass(list.children[1], "passkey-stale-note").textContent, "Made for old.test, doesn't work on this site");
+	assert.ok(byClass(list.children[1], "alert-danger"));
+	assert.ok(byClass(list.children[1], "passkey-delete"));
+});
+
+test("enrollment prompt shows stale-only CTA, hides Add when off even for empty inventory", () => {
+	let adds = 0;
+	const payload = { site_rp_id: "new.test", credentials: [{ stale: true, usable: false }] };
+	const notice = M.enrollmentPrompt(payload, () => adds++);
+	assert.ok(byClass(notice, "alert-info"));
+	assert.ok(find(notice, n => n.textContent === M.COPY.staleNudgeBody));
+	const add = find(notice, n => n.tagName === "BUTTON");
+	assert.strictEqual(add.textContent, "Add a passkey for this site");
+	add.dispatch("click");
+	assert.strictEqual(adds, 1);
+	for (const credentials of [[], payload.credentials]) {
+		const off = M.enrollmentPrompt({ site_rp_id: null, credentials }, () => adds++);
+		assert.ok(find(off, n => n.textContent === M.COPY.siteOffNotice));
+		assert.strictEqual(find(off, n => n.tagName === "BUTTON"), null);
+	}
+});
+
+test("passwordless switch counts usable rows, never stale or disabled rows", () => {
+	const payload = { site_rp_id: "new.test", credentials: [
+		{ enabled: 1, usable: true, stale: false },
+		{ enabled: 1, usable: false, stale: true },
+		{ enabled: 0, usable: false, stale: false },
+	] };
+	assert.strictEqual(byClass(M.passkeyOnlyRow(payload, () => {}), "passkey-only-toggle").disabled, true);
+	payload.credentials.push({ enabled: 1, usable: true, stale: false });
+	assert.strictEqual(byClass(M.passkeyOnlyRow(payload, () => {}), "passkey-only-toggle").disabled, undefined);
 });

@@ -329,6 +329,8 @@
 		switch (excType) {
 			case "CeremonyExpired":
 				return "ceremony_expired";
+			case "CredentialNotForThisSite":
+				return "credential_not_for_site";
 			case "UnknownCredential":
 				return "unknown_credential";
 			case "UVSetupRequired":
@@ -450,6 +452,7 @@
 			text: "That passkey didn't work here — it may have been removed. Sign in another way.",
 			tone: "error", visible: true, terminal: true,
 		},
+		stale: { text: "This passkey was made for another address and doesn't work on this site.", tone: "error", visible: true, terminal: true },
 		unsupported: {
 			text: "This device can't use passkeys yet — sign in with your password instead.",
 			tone: "error", visible: true, terminal: true,
@@ -462,12 +465,13 @@
 	// ceremony_expired re-arm.
 	var LOGIN_TRANSITIONS = {
 		idle: ["waiting", "verifying"],
-		waiting: ["verifying", "cancelled", "removed", "unsupported", "failed", "idle"],
-		verifying: ["verifying_slow", "waiting", "success", "cancelled", "removed", "unsupported", "failed", "idle"],
-		verifying_slow: ["waiting", "success", "cancelled", "removed", "unsupported", "failed", "idle"],
+		waiting: ["verifying", "cancelled", "removed", "stale", "unsupported", "failed", "idle"],
+		verifying: ["verifying_slow", "waiting", "success", "cancelled", "removed", "stale", "unsupported", "failed", "idle"],
+		verifying_slow: ["waiting", "success", "cancelled", "removed", "stale", "unsupported", "failed", "idle"],
 		success: [], // terminal — the page is redirecting
 		cancelled: ["idle", "waiting", "verifying"],
 		removed: ["idle", "waiting", "verifying"],
+		stale: ["idle", "waiting", "verifying"],
 		unsupported: ["idle", "waiting", "verifying"],
 		failed: ["idle", "waiting", "verifying"],
 	};
@@ -497,9 +501,9 @@
 		return "failed";
 	}
 
-	// Every server refusal but unknown_credential collapses to "failed" (enumeration-safe).
+	// Existing credentials from another RP must never be pruned from the authenticator.
 	function loginStatusForServerKind(kind) {
-		return kind === "unknown_credential" ? "removed" : "failed";
+		return kind === "unknown_credential" ? "removed" : kind === "credential_not_for_site" ? "stale" : "failed";
 	}
 
 	// ------------------------------------------------------- signal builders

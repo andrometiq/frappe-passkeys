@@ -205,12 +205,11 @@
 				mountRoot.appendChild(M.impersonatedView(payload.credentials || [], r[1]));
 				return;
 			}
-			if (!(payload.credentials || []).length) { mountRoot.appendChild(M.emptyState(addPasskey)); return; }
+			if (!(payload.credentials || []).length) { mountRoot.appendChild(M.enrollmentPrompt(payload, addPasskey)); return; }
 			mountRoot.appendChild(M.cardList(payload.credentials, r[1], function (vm) {
 				return { onRename: function () { renameCard(vm); }, onDelete: function () { deleteCard(vm); } };
 			}));
-			var addRow = el("div", "passkey-card-add-row");
-			addRow.appendChild(M.button("primary", t(M.COPY.addButton), addPasskey));
+			var addRow = M.enrollmentPrompt(payload, addPasskey);
 			// For changes made on another device while the page is open.
 			addRow.appendChild(M.button("default", t("Reload"), function () { render(); }));
 			mountRoot.appendChild(addRow);
@@ -263,7 +262,7 @@
 
 	function deleteCard(vm) {
 		var modal = buildModal({ title: t(M.COPY.deleteConfirmTitle) });
-		modal.body.appendChild(el("p", "", M.format(t(M.COPY.deleteConfirmBody), [vm.label])));
+		modal.body.appendChild(el("p", "", M.format(t(vm.stale ? M.COPY.deleteStaleConfirmBody : M.COPY.deleteConfirmBody), [vm.label])));
 		modal.actions.appendChild(M.button("primary", t(M.COPY.deleteConfirmCta), function () {
 			modal.close();
 			setPortalStatus(t("Confirming it's you…"), "pending");

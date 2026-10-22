@@ -384,3 +384,27 @@ test("detectCapabilities(): passes through the injected probe", async () => {
 	const h = H.createHeadless(base({ post: makePost({}), capabilities: () => Promise.resolve({ supported: true, uvpaa: false }) }));
 	assert.deepStrictEqual(await h.detectCapabilities(), { supported: true, uvpaa: false });
 });
+
+test("browser headless Signals use site_rp_id and honor response RP after an RP change", async () => {
+	const calls = [];
+	let data = { user_handle: "u", credential_ids: [] };
+	const f = {
+		boot: { passkeys: { rp_id: "old.test", site_rp_id: "new.test" } },
+		passkeys_manage_common: M,
+		passkeys_common: { ...C, post: () => Promise.resolve({ ok: true, body: { message: data } }) },
+		passkeys: { call: () => Promise.resolve({ deleted: "credential" }) },
+	};
+	const window = { frappe: f, PublicKeyCredential: { signalAllAcceptedCredentials: p => calls.push(p) } };
+	vm.runInNewContext(fs.readFileSync(require.resolve("../../public/js/passkey_headless.bundle.js"), "utf8"), { window });
+	await f.passkeys.headless.removeCredential("credential");
+	assert.strictEqual(calls[0].rpId, "new.test");
+	data = { ...data, rp_id: "response.test" };
+	await f.passkeys.headless.removeCredential("credential");
+	assert.strictEqual(calls[1].rpId, "response.test");
+	data = null;
+	await f.passkeys.headless.removeCredential("credential");
+	f.boot.passkeys.site_rp_id = null;
+	data = { user_handle: "u", credential_ids: [] };
+	await f.passkeys.headless.removeCredential("credential");
+	assert.strictEqual(calls.length, 2, "off payload and off boot never prune using the old RP");
+});

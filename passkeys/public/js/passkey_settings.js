@@ -1,5 +1,5 @@
 // The Passkey Settings form: the banners from passkey_manage_common's settingsBanners,
-// the security-posture report and the RP-ID one-way-door confirm.
+// the security-posture report and the RP-ID impact confirmation.
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
@@ -20,8 +20,10 @@ frappe.ui.form.on("Passkey Settings", {
 		fetchResolvedRpId(frm); // repaints when it lands
 		fetchSettingsContext(frm);
 		fetchSecurityPosture(frm); // the verdict reads SAVED state
+		pickupRpSuggestion(frm);
 	},
 	after_save: function (frm) {
+		frm._passkey_rpid_suggestion = null;
 		pollEnforcementPreview(frm, frm.doc.__onload && frm.doc.__onload.passkeys_preview_after_scan);
 	},
 	// Repaint on any knob change so the banners stay live before save.
@@ -49,7 +51,7 @@ frappe.ui.form.on("Passkey Settings", {
 			));
 		}
 	},
-	// Repaint per keystroke; the one-way-door confirm waits for blur (or save), so typing
+	// Repaint per keystroke; the impact confirmation waits for blur (or save), so typing
 	// a new RP ID raises it once, not once per character.
 	passkey_rp_id: paintBanners,
 });
@@ -57,28 +59,73 @@ frappe.ui.form.on("Passkey Settings", {
 function rpIdChangeUnconfirmed(frm) {
 	var value = frm.doc.passkey_rp_id || "";
 	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
-	return !frm.doc.__islocal && value !== saved && frm._passkey_rpid_ack !== value;
+	return !frm.doc.__islocal && value !== saved && frm._passkey_rpid_ack !== rpCandidate(frm);
 }
 
-// One-way door: a new RP ID invalidates every passkey, so confirm before it can be saved.
+function rpCandidate(frm) {
+	return JSON.stringify([frm.doc.passkey_rp_id || "", frm.doc.passkey_origins || "", frm.doc.passkey_app_origins || ""]);
+}
+
 function confirmRpIdChange(frm) {
 	if (!rpIdChangeUnconfirmed(frm) || frm._passkey_rpid_dialog_open) return;
 	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
-	var proceeded = false;
+	var value = frm.doc.passkey_rp_id || "";
+	var candidate = rpCandidate(frm);
 	frm._passkey_rpid_dialog_open = true;
-	var d = frappe.warn(
-		__("Change the RP ID?"),
-		__(frappe.passkeys_manage_common.COPY.rpIdOneWayDoor),
-		function () { proceeded = true; frm._passkey_rpid_ack = frm.doc.passkey_rp_id || ""; },
-		__("Yes, change it"),
-		true // set_danger: Cancel is the safe default
-	);
-	// Any dismissal reverts the field so a backed-out change can never be saved.
-	d.$wrapper.on("hide.bs.modal", function () {
-		frm._passkey_rpid_dialog_open = false;
-		if (proceeded) return;
-		frm._passkey_rpid_ack = saved;
-		frm.set_value("passkey_rp_id", saved);
+	frm._passkey_rpid_error = null;
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_rp_id_change_impact",
+		args: { rp_id: value, passkey_origins: frm.doc.passkey_origins || "", passkey_app_origins: frm.doc.passkey_app_origins || "" },
+		callback: function (r) {
+			if (candidate !== rpCandidate(frm) || !r || !r.message) {
+				frm._passkey_rpid_dialog_open = false;
+				return;
+			}
+			var proceeded = false;
+			var d = frappe.warn(__("Change the RP ID?"), rpImpactMessage(r.message), function () {
+				proceeded = true;
+				if (candidate === rpCandidate(frm)) frm._passkey_rpid_ack = candidate;
+			}, __("Yes, change it"), true);
+			d.$wrapper.on("hide.bs.modal", function () {
+				frm._passkey_rpid_dialog_open = false;
+				if (!proceeded && candidate === rpCandidate(frm)) frm.set_value("passkey_rp_id", saved);
+			});
+		},
+		error: function (r) {
+			frm._passkey_rpid_dialog_open = false;
+			if (candidate !== rpCandidate(frm)) return;
+			var body = r.responseJSON || r;
+			if (body.exc_type !== "ValidationError") return;
+			frm._passkey_rpid_error_candidate = candidate;
+			frm._passkey_rpid_error = frappe.passkeys_common.serverMessages(body) || __("Check the RP ID and origins.");
+			paintBanners(frm);
+		},
+	});
+}
+
+function rpImpactMessage(impact) {
+	var lines = [__(frappe.passkeys_manage_common.COPY.rpIdOneWayDoor)];
+	lines.push(impact.stop.passkeys ? __("{0} passkey(s) of {1} user(s) will stop working on this site.",
+		[impact.stop.passkeys, impact.stop.users]) : __("No passkeys stop working."));
+	if (impact.start.passkeys) lines.push(__("{0} passkey(s) of {1} user(s) made for {2} will work again.",
+		[impact.start.passkeys, impact.start.users, impact.new_rp_id]));
+	if (impact.new_off) lines.push(__("Passkeys would be off on this site with this RP ID."));
+	return lines.map(function (line) { return frappe.passkeys_common.escapeHtml(line); }).join("<br>");
+}
+
+function pickupRpSuggestion(frm) {
+	var storage;
+	var value;
+	try {
+		storage = window.sessionStorage;
+		value = storage && storage.getItem("passkeys:suggest_rp_id");
+		if (value) storage.removeItem("passkeys:suggest_rp_id");
+	} catch (_) { return; }
+	if (!value) return;
+	frm._passkey_rpid_suggestion = value;
+	Promise.resolve(frm.set_value("passkey_rp_id", value)).then(function () {
+		paintBanners(frm);
+		frm.scroll_to_field("passkey_rp_id");
 	});
 }
 
@@ -316,9 +363,12 @@ function paintBanners(frm) {
 function paintResolvedConfig(frm, ctx) {
 	var field = frm.get_field("resolved_rp_html");
 	if (!field) return;
+	if (frm._passkey_rpid_error_candidate !== rpCandidate(frm)) frm._passkey_rpid_error = null;
+	var input = frm.fields_dict.passkey_rp_id && frm.fields_dict.passkey_rp_id.$input;
+	if (input) input.attr("aria-invalid", frm._passkey_rpid_error ? "true" : "false");
 	var rpId = ctx.resolvedRpId;
 	var origins = ctx.resolvedOrigins.length ? ctx.resolvedOrigins : null;
-	if (!rpId && !origins) {
+	if (!rpId && !origins && !frm._passkey_rpid_suggestion && !frm._passkey_rpid_error) {
 		field.html(); // nothing resolves yet: the field's own static note
 		return;
 	}
@@ -333,7 +383,26 @@ function paintResolvedConfig(frm, ctx) {
 	}
 	var box = settingsElement("div");
 	box.appendChild(line);
+	if (frm._passkey_rpid_suggestion) box.appendChild(settingsElement("p", "text-muted small",
+		__("Suggested from this site's address ({0}). Review it, then save.", [frm._passkey_rpid_suggestion])));
+	if (frm._passkey_rpid_error) {
+		var error = settingsElement("p", "help-box", frm._passkey_rpid_error);
+		error.setAttribute("role", "alert");
+		box.appendChild(error);
+	}
+	var stale = (frm._passkey_settings_context || {}).stale_passkeys;
+	var canRemove = stale && stale.removable && !frappe.passkeys_manage_common.isImpersonated((frappe.boot || {}).passkeys);
+	if (stale && stale.passkeys) {
+		var staleLine = settingsElement("p", "text-muted small", __("{0} passkey(s) of {1} user(s) were made for another RP ID and don't work on this site.", [stale.passkeys, stale.users]));
+		if (canRemove) {
+			var button = settingsElement("button", "btn btn-xs btn-default ml-2 passkey-remove-stale", __("Remove stale passkeys"));
+			button.type = "button";
+			staleLine.appendChild(button);
+		}
+		box.appendChild(staleLine);
+	}
 	field.html(box.innerHTML);
+	if (canRemove) field.$wrapper.find(".passkey-remove-stale").on("click", function () { removeStalePasskeys(frm, stale); });
 }
 
 function bannerEl(level, msg) {
@@ -379,4 +448,25 @@ function settingsElement(tag, className, text) {
 	if (className) node.className = className;
 	if (text != null) node.textContent = text;
 	return node;
+}
+
+function removeStalePasskeys(frm, stale) {
+	var dialog = new frappe.ui.Dialog({
+		title: __("Remove stale passkeys?"),
+		fields: [{ fieldtype: "HTML", options: frappe.passkeys_common.escapeHtml(__("Remove {0} passkey(s) that don't work on this site? Their owners get the usual email that a passkey was removed. Flagged passkeys are kept for review. This can't be undone.", [stale.removable])) }],
+		primary_action_label: __("Remove passkeys"),
+		primary_action: function () {
+			frappe.call({
+				method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.remove_stale_passkeys",
+				args: { site_rp_id: stale.site_rp_id },
+				btn: dialog.get_primary_btn(),
+				callback: function (r) {
+					dialog.hide();
+					frappe.show_alert({ message: __("Removed {0} passkey(s).", [r.message.removed]), indicator: "green" });
+					fetchSettingsContext(frm);
+				},
+			});
+		},
+	});
+	dialog.show();
 }

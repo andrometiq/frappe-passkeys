@@ -45,6 +45,26 @@
 	background: var(--card-bg, #fff);
 }
 
+.passkey-card-stale {
+	background: var(--control-bg, #f7f8fa);
+}
+.passkey-card-stale .passkey-card-label,
+.passkey-card-stale .passkey-card-glyph,
+.passkey-stale-note {
+	color: var(--text-muted, #6b7280);
+}
+.passkey-stale-note {
+	margin-top: 0.35rem;
+}
+.passkey-site-alert {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin: 0.75rem;
+	border-left: 4px solid var(--orange-500, #f5a623);
+}
+
 .passkey-card-disabled {
 	opacity: 0.65;
 }

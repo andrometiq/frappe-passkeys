@@ -471,7 +471,7 @@ function byClassName(root, cls) {
 test("desk impersonation: the cards are read-only", async () => {
 	global.fetch = (url, opts) => {
 		if (!String(url).includes("list_credentials")) return normalFetch(url, opts);
-		const message = { credentials: [{ name: "WC-1", label: "Phone", enabled: 1 }], passkey_only_login: 0 };
+		const message = { site_rp_id: "example.com", credentials: [{ name: "WC-1", label: "Phone", enabled: 1, stale: false, usable: true }], passkey_only_login: 0 };
 		return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message }) });
 	};
 	try {
@@ -521,3 +521,35 @@ test("desk impersonation: another user's inventory and enforcement recovery offe
 		}
 	} finally { global.fetch = normalFetch; delete frappeObj.db; delete frappeObj.boot; }
 });
+
+test("desk Signals use operational boot RP, never the page hostname or legacy RP", async () => {
+	const calls = [];
+	window.PublicKeyCredential = { signalAllAcceptedCredentials: p => calls.push(p) };
+	global.location = window.location = { hostname: "wrong.hostname" };
+	frappeObj.container = { page: {} };
+	global.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message: { user_handle: "u", credential_ids: [] } }) });
+	try {
+		for (const site_rp_id of [null, "current.test"]) {
+			frappeObj.boot = { passkeys: { enabled: true, rp_id: "wrong.legacy", site_rp_id } };
+			bootHooks[0]();
+			await tick();
+		}
+		assert.deepStrictEqual(calls, [{ rpId: "current.test", userId: "u", allAcceptedCredentialIds: [] }]);
+	} finally { global.fetch = normalFetch; delete window.PublicKeyCredential; delete frappeObj.boot; }
+});
+
+for (const site_rp_id of [null, "current.test"]) {
+	test(`desk renders stale notices and Add visibility (${site_rp_id})`, async () => {
+		const payload = { site_rp_id, credentials: [{ name: "old", rp_id: "old.test", enabled: 1, stale: true, usable: false }] };
+		global.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ message: payload }) });
+		frappeObj.boot = { passkeys: {} };
+		const root = fakeEl("div"); root.classList = { add() {} };
+		try {
+			await frappeObj.passkeys.manage.renderCards(root, { root });
+			assert.ok(byClassName(root, "passkey-card-stale"));
+			assert.ok(findNode(root, n => n.textContent === M.COPY[site_rp_id ? "staleNudgeBody" : "siteOffNotice"]));
+			assert.strictEqual(!!findButton(root, n => n.textContent === M.COPY.staleNudgeCta), !!site_rp_id);
+			assert.strictEqual(byClassName(root, "passkey-only-toggle").disabled, true);
+		} finally { global.fetch = normalFetch; delete frappeObj.boot; }
+	});
+}

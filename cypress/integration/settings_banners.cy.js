@@ -61,10 +61,14 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 
 	it("raises a loud confirm when the RP ID is changed", () => {
 		cy.visit("/app/passkey-settings");
-		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id'] input")
+		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id'] input");
+		cy.window().then(win => win.cur_frm.set_value("passkey_origins", "https://changed.example.com"));
+		cy.intercept_frappe_method("passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_rp_id_change_impact", "rpImpact");
+		cy.get("[data-fieldname='passkey_rp_id'] input")
 			.clear()
 			.type("changed.example.com")
 			.blur();
+		cy.wait("@rpImpact").its("response.statusCode").should("eq", 200);
 		// frappe.warn renders a modal with the invalidation consequence
 		cy.get(".modal-dialog", { timeout: 20000 }).should("be.visible");
 		cy.get(".modal-dialog").should("contain.text", "invalidates every existing passkey");
