@@ -14,7 +14,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now
 
-from passkeys import install, state
+from passkeys import ceremony, install, state
 from passkeys.errors import (
 	BrowserSessionRequired,
 	ImpersonatedSessionRefused,
@@ -56,7 +56,7 @@ def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
 	with their password. Off by default, so the hot login path pays no extra read."""
 	if method != "password" or not cint(settings.passkey_notify_password_login):
 		return
-	if not frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}):
+	if not ceremony.has_usable_credential(user):
 		return
 	from passkeys import notifications
 

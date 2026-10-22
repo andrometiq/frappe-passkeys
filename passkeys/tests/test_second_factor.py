@@ -813,3 +813,71 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
 		self.assertEqual(int(fresh.login_failed_count or 0), 2)
+
+	def test_rp_change_prevents_retry_and_session_for_bad_and_good_assertions(self):
+		for valid in (False, True):
+			with self.subTest(valid=valid):
+				self._set_passkey_setting("passkey_rp_id", RP_ID)
+				user = self._user()
+				auth = self._enroll(user, seed=str(valid))
+				response, binder = self._leg1(user, PWD)
+				credential = self._assert(auth, response["verification"]["options"])
+				if not valid:
+					credential["response"]["signature"] = b64url(b"invalid")
+				self._set_passkey_setting("passkey_rp_id", "changed.example.com")
+				with patch.object(passkey, "_mint_session") as mint, self.assertRaises(CeremonyExpired):
+					self._leg2(response["tmp_id"], credential, binder)
+				mint.assert_not_called()
+				self.assertNotIn("state_id", frappe.local.response)
+				self.assertNotIn("verification", frappe.local.response)
+
+	def test_stale_only_password_leg_uses_plain_or_core_otp(self):
+		for otp in (False, True):
+			with self.subTest(otp=otp):
+				user = self._user(otp_capable=otp)
+				self._enroll(user, seed=str(otp))
+				frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")
+				response, _ = self._leg1(user, PWD)
+				if otp:
+					self.assertNotEqual(response["verification"]["method"], "Passkey")
+				else:
+					self.assertEqual(frappe.session.user, user)
+					self.assertNotIn("verification", response)
+
+	def test_off_begin_login_has_no_cookie_or_error_log(self):
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		self._set_passkey_setting("passkey_origins", "")
+		self._set_passkey_setting("passkey_app_origins", "")
+		self._request("/api/method/passkeys.passkey.begin_login")
+		with (
+			patch.dict(frappe.conf, {"host_name": "https://outside.test"}),
+			patch.object(frappe, "log_error") as log,
+		):
+			self.assertEqual(
+				passkey.begin_login(),
+				{"enabled": False, "modes": {"first_factor": False, "second_factor": False}},
+			)
+		log.assert_not_called()
+		self.assertNotIn(state.BINDER_COOKIE, frappe.local.cookie_manager.cookies)
+
+	def test_second_factor_rechecks_rp_after_successful_assertion(self):
+		user = self._user()
+		auth = self._enroll(user)
+		response, binder = self._leg1(user, PWD)
+		credential = self._assert(auth, response["verification"]["options"])
+		reauthenticate = passkey._reauthenticate_before_mint
+
+		def change_after_reauthentication(record):
+			reauthenticate(record)
+			frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "changed.example.com")
+
+		with (
+			patch.object(passkey, "_reauthenticate_before_mint", side_effect=change_after_reauthentication),
+			patch.object(passkey, "_mint_session") as mint,
+			self.assertRaises(CeremonyExpired),
+		):
+			self._leg2(response["tmp_id"], credential, binder)
+		mint.assert_not_called()
+		self.assertNotIn("state_id", frappe.local.response)
+		self.assertNotIn("verification", frappe.local.response)

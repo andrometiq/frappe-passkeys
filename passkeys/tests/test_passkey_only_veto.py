@@ -16,7 +16,12 @@ from frappe.utils import add_to_date, now_datetime, set_request
 
 from passkeys import auth_hooks
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, bust_system_settings_cache, flush_settings_cache
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	PinnedSiteRp,
+	bust_system_settings_cache,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -28,7 +33,7 @@ class _LM:
 		self.user = user
 
 
-class PasskeyOnlyVetoTest(IntegrationTestCase):
+class PasskeyOnlyVetoTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._mode_snapshot = (
@@ -361,3 +366,97 @@ class PasskeyOnlyVetoTest(IntegrationTestCase):
 		frappe.db.set_value("WebAuthn User Handle", handle, "passkey_only_login", 0)
 		self._guest_context()
 		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
+
+	def test_stale_only_lifts_both_vetoes_and_oauth_but_mixed_still_refuses(self):
+		user = self._user(passkey_only=True)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+		flush_settings_cache()
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")
+		self._guest_context()
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
+		self._assert_oauth_token_insert(user, "password", refused=False)
+		self._assert_oauth_token_insert(user, "password", refused=True, site_disabled=1)
+		frappe.set_user("Administrator")
+		make_credential(user)
+		self._guest_context()
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM(user))
+		self._assert_oauth_token_insert(user, "password", refused=True)
+
+	def test_origin_spoofs_never_change_veto_or_oauth_policy(self):
+		from unittest.mock import patch
+
+		user = self._user(passkey_only=True)
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+		flush_settings_cache()
+		for usable in (True, False):
+			frappe.db.set_value(
+				"WebAuthn Credential", {"user": user}, "rp_id", "example.com" if usable else "old.example.com"
+			)
+			for header in ("Host", "Origin", "X-Forwarded-Host", "X-Forwarded-Proto"):
+				for parameter in ("host_name", "rp_id", "cmd"):
+					with self.subTest(usable=usable, header=header, parameter=parameter):
+						self._guest_context()
+						set_request(
+							method="POST", path="/api/method/login", headers={header: "attacker.test"}
+						)
+						frappe.local.form_dict = frappe._dict(
+							{parameter: "attacker.test", "grant_type": "password"}
+						)
+						with patch.object(frappe, "get_system_settings", return_value=0):
+							self.assertEqual(
+								auth_hooks.get_password_login_restrictions(user),
+								{"passkey_only", "second_factor"} if usable else set(),
+							)
+							for invoke in (
+								lambda: auth_hooks.on_login_veto(login_manager=_LM(user)),
+								lambda: auth_hooks.guard_oauth_password_grant(frappe._dict(user=user)),
+							):
+								if usable:
+									with self.assertRaises(frappe.AuthenticationError):
+										invoke()
+								else:
+									self.assertIsNone(invoke())
+
+	def test_off_lifts_restrictions_but_app_only_keeps_them(self):
+		from unittest.mock import patch
+
+		user = self._user(passkey_only=True)
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		frappe.db.set_single_value(
+			"Passkey Settings",
+			{"passkey_as_second_factor": 1, "passkey_origins": "", "passkey_app_origins": ""},
+		)
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://outside.test"}):
+			self._guest_context()
+			self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM(user)))
+			self._assert_oauth_token_insert(user, "password", refused=False)
+			frappe.db.set_single_value(
+				"Passkey Settings", "passkey_app_origins", "android:apk-key-hash:" + "a" * 43
+			)
+			flush_settings_cache()
+			with self.assertRaises(frappe.AuthenticationError):
+				auth_hooks.on_login_veto(login_manager=_LM(user))
+			self._assert_oauth_token_insert(user, "password", refused=True)
+
+	def test_administrator_stale_only_lifts_second_factor_without_changing_exemption(self):
+		from passkeys.tests.committed_state import restore_rows
+
+		filters = {"user": "Administrator"}
+		rows = frappe.db.get_values("WebAuthn Credential", filters, "*", as_dict=True)
+		self.addCleanup(restore_rows, "WebAuthn Credential", filters, rows)
+		frappe.db.delete("WebAuthn Credential", filters)
+		make_credential("Administrator", rp_id="old.example.com")
+		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+		flush_settings_cache()
+		self._guest_context()
+		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Administrator")))
+		self._assert_oauth_token_insert("Administrator", "password", refused=False)
+		frappe.set_user("Administrator")
+		make_credential("Administrator")
+		self._guest_context()
+		with self.assertRaises(frappe.AuthenticationError):
+			auth_hooks.on_login_veto(login_manager=_LM("Administrator"))
+		self._assert_oauth_token_insert("Administrator", "password", refused=True)

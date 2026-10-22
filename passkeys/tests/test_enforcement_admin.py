@@ -11,7 +11,7 @@ from passkeys import boot, enforcement_admin, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
@@ -30,7 +30,7 @@ _FIELDS = (
 )
 
 
-class EnforcementAdminTest(IntegrationTestCase):
+class EnforcementAdminTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		# The admin endpoints are rate-limited per user and these tests call them often.

@@ -15,11 +15,11 @@ from passkeys import session, state
 from passkeys.api import credentials
 from passkeys.errors import ImpersonatedSessionRefused, PasskeyConfirmationRequired
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, arrange_mode_floor
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
-class CredentialManagementTest(IntegrationTestCase):
+class CredentialManagementTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		arrange_mode_floor(self)  # floor for flagged handles + set_passkey_only_login enables
@@ -431,3 +431,69 @@ class CredentialManagementTest(IntegrationTestCase):
 		self.addCleanup(frappe.session.data.pop, "impersonated_by", None)
 		names = [row["name"] for row in credentials.list_credentials()["credentials"]]
 		self.assertEqual(names, [cred.name])
+
+	def test_stale_delete_and_disable_do_not_protect_unusable_rows(self):
+		from passkeys.tests.compat import bust_system_settings_cache
+
+		for site_disabled in (False, True):
+			for action in ("delete", "disable"):
+				with self.subTest(site_disabled=site_disabled, action=action):
+					user = self._user()
+					cred = make_credential(user)
+					make_handle(user, passkey_only_login=int(not site_disabled))
+					frappe.db.set_value(cred.doctype, cred.name, "rp_id", "old.example.com")
+					original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+					try:
+						frappe.db.set_single_value(
+							"System Settings", "disable_user_pass_login", int(site_disabled)
+						)
+						bust_system_settings_cache()
+						sign_in(user)
+						self._seed_sudo(user)
+						if action == "delete":
+							credentials.delete_credential(cred.name)
+							self.assertFalse(frappe.db.exists(cred.doctype, cred.name))
+						else:
+							cred.reload()
+							cred.enabled = 0
+							cred.save(ignore_permissions=True)
+							self.assertEqual(frappe.db.get_value(cred.doctype, cred.name, "enabled"), 0)
+					finally:
+						frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
+						bust_system_settings_cache()
+						frappe.set_user("Administrator")
+
+	def test_stale_rows_do_not_satisfy_two_passkey_enable_floor(self):
+		user = self._user()
+		make_credential(user)
+		make_credential(user, rp_id="old.example.com")
+		sign_in(user)
+		self._seed_grant(user, session.SET_PASSKEY_ONLY_ACTION, {"enabled": True})
+		with self.assertRaises(frappe.ValidationError):
+			credentials.set_passkey_only_login(True)
+
+	def test_last_usable_credential_stays_protected_with_stale_survivor(self):
+		from passkeys.tests.compat import bust_system_settings_cache
+
+		for site_disabled in (False, True):
+			user = self._user()
+			current = make_credential(user)
+			make_credential(user, rp_id="old.example.com")
+			make_handle(user, passkey_only_login=int(not site_disabled))
+			original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+			try:
+				frappe.db.set_single_value("System Settings", "disable_user_pass_login", int(site_disabled))
+				bust_system_settings_cache()
+				sign_in(user)
+				self._seed_sudo(user)
+				with self.assertRaises(frappe.ValidationError):
+					credentials.delete_credential(current.name)
+				current.reload()
+				current.enabled = 0
+				with self.assertRaises(frappe.ValidationError):
+					current.save(ignore_permissions=True)
+				self.assertEqual(frappe.db.get_value(current.doctype, current.name, "enabled"), 1)
+			finally:
+				frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
+				bust_system_settings_cache()
+				frappe.set_user("Administrator")

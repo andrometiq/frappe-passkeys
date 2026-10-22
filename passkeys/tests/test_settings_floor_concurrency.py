@@ -13,6 +13,7 @@ from frappe.utils import cint
 
 from passkeys.tests.compat import (
 	IntegrationTestCase,
+	PinnedSiteRp,
 	arrange_saveable_system_settings,
 	bust_system_settings_cache,
 	flush_settings_cache,
@@ -43,7 +44,7 @@ def disable_two_factor(docs):
 	docs["System Settings"].save(ignore_permissions=True)
 
 
-class SettingsFloorConcurrencyTest(IntegrationTestCase):
+class SettingsFloorConcurrencyTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self.site = frappe.local.site

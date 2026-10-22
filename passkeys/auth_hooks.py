@@ -9,7 +9,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import install, policy, state
+from passkeys import ceremony, install, policy, state
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_passkey_modes
 
 
@@ -104,14 +104,16 @@ def guard_oauth_password_grant(doc, method=None):
 
 def _is_passkey_only(user: str) -> bool:
 	"""The per-user flag on the ``WebAuthn User Handle`` row."""
-	return bool(frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login"))
+	return bool(
+		frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login")
+	) and ceremony.has_usable_credential(user)
 
 
 def _must_use_passkey_second_factor(user: str) -> bool:
 	"""Whether a stock password login must be vetoed for this enrolled user."""
 	if not cint(frappe.db.get_single_value("Passkey Settings", "passkey_as_second_factor")):
 		return False
-	return bool(frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1}))
+	return bool(ceremony.has_usable_credential(user))
 
 
 def _consume_allowed_otp_fallback(user: str) -> bool:

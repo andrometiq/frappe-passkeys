@@ -200,7 +200,7 @@ def set_passkey_only_login(enabled: object):
 	if enabled_int and len(enabled_credentials) < 2:
 		frappe.throw(
 			_(
-				"Enabling passkey-only login needs at least two enabled passkeys, so a lost device never locks you out."
+				"Enabling passkey-only login needs at least two passkeys that work on this site, so a lost device never locks you out."
 			),
 			frappe.ValidationError,
 		)

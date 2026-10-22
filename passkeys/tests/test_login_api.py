@@ -1131,3 +1131,73 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with patch("passkeys.state._put_json", side_effect=redis.exceptions.ConnectionError("store down")):
 			with self.assertRaises(redis.exceptions.ConnectionError):
 				passkey.begin_login()
+
+	def test_rp_change_before_login_mint_refuses_session(self):
+		user = self._user()
+		auth, _ = self._enroll(user)
+		begun, binder = self._begin()
+		credential = self._assert(auth, begun["options"], sign_count=3)
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "changed.example.com")
+		with patch.object(passkey, "_mint_session") as mint, self.assertRaises(CeremonyExpired):
+			self._verify(begun["state_id"], credential, binder)
+		mint.assert_not_called()
+
+	def test_stale_existing_login_credential_has_non_signal_error(self):
+		from passkeys.errors import CredentialNotForThisSite
+
+		user = self._user()
+		auth, _ = self._enroll(user)
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")
+		begun, binder = self._begin()
+		with (
+			patch.object(passkey, "_track_verify_failure") as failed,
+			self.assertRaises(CredentialNotForThisSite),
+		):
+			self._verify(begun["state_id"], self._assert(auth, begun["options"]), binder)
+		failed.assert_called_once_with(user)
+
+	def test_uv_setup_rp_binding_and_legacy_refusal(self):
+		for change in ("unchanged", "changed", "legacy"):
+			with self.subTest(change=change):
+				frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", RP_ID)
+				flush_settings_cache()
+				user = self._user()
+				auth, _ = self._enroll(user, seed=change, uv=False)
+				begun, binder = self._begin()
+				with self.assertRaises(UVSetupRequired):
+					self._verify(begun["state_id"], self._assert(auth, begun["options"], uv=True), binder)
+				setup_id = frappe.local.response["setup_id"]
+				record = state.get_uv_setup(setup_id)
+				self.assertEqual(record["rp_id"], RP_ID)
+				if change == "legacy":
+					state.consume_uv_setup(setup_id)
+					record.pop("rp_id")
+					setup_id = state.store_uv_setup(record)
+				elif change == "changed":
+					frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "changed.example.com")
+				self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+				with patch.object(passkey, "_mint_session") as mint:
+					if change == "unchanged":
+						passkey.complete_uv_setup(setup_id, PWD)
+						mint.assert_called_once_with(user)
+					else:
+						with self.assertRaises(CeremonyExpired):
+							passkey.complete_uv_setup(setup_id, PWD)
+						mint.assert_not_called()
+
+	def test_native_assertion_completes_with_only_app_origin(self):
+		user = self._user()
+		auth, _ = self._enroll(user)
+		origin = "android:apk-key-hash:" + "a" * 43
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		frappe.db.set_single_value("Passkey Settings", {"passkey_origins": "", "passkey_app_origins": origin})
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://outside.test"}):
+			begun, binder = self._begin()
+			assertion = auth.assertion(
+				challenge_b64=begun["options"]["challenge"], rp_id=RP_ID, origin=origin, uv=True
+			)
+			with patch.object(passkey, "_mint_session") as mint:
+				self._verify(begun["state_id"], assertion, binder)
+			mint.assert_called_once_with(user)

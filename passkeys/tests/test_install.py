@@ -17,6 +17,7 @@ from passkeys import install
 from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
+	PinnedSiteRp,
 	arrange_mode_floor,
 	bust_system_settings_cache,
 	flush_settings_cache,
@@ -39,7 +40,7 @@ class TestFrappeVersionFloor(unittest.TestCase):
 		install.check_frappe_version()
 
 
-class TestInstallGuards(IntegrationTestCase):
+class TestInstallGuards(PinnedSiteRp, IntegrationTestCase):
 	def test_fresh_install_onto_native_core_is_refused(self):
 		with patch("passkeys.install.is_core_native", return_value=True):
 			self.assertRaises(frappe.ValidationError, install.before_install)
@@ -55,7 +56,7 @@ class TestInstallGuards(IntegrationTestCase):
 		install.before_install()  # must not raise
 
 
-class TestAfterInstall(IntegrationTestCase):
+class TestAfterInstall(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._stored_settings = frappe.db.sql(
@@ -114,7 +115,7 @@ class TestCoreHandoverCapability(unittest.TestCase):
 			self.assertTrue(install.is_core_native())
 
 
-class TestUninstallGuards(IntegrationTestCase):
+class TestUninstallGuards(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._disable_user_pass_login = cint(
@@ -181,7 +182,7 @@ class TestUninstallGuards(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("DefaultValue", {"parent": install.DEFAULTS_PARENT}))
 
 
-class TestCredentialExportImport(IntegrationTestCase):
+class TestCredentialExportImport(PinnedSiteRp, IntegrationTestCase):
 	"""L1: an uninstall exports the credential tables (which it is about to drop) so
 	removal is non-destructive, and a documented console helper restores them
 	idempotently on reinstall while refusing identifier-matched data conflicts."""
@@ -483,7 +484,7 @@ class TestCredentialExportImport(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": ghost}))
 
 
-class TestUserFormSection(IntegrationTestCase):
+class TestUserFormSection(PinnedSiteRp, IntegrationTestCase):
 	"""The User-form "Passkeys" section is placed DETERMINISTICALLY via programmatic
 	Custom Fields (Section Break + HTML wrapper) right after the password / security
 	area — not a dashboard section appended at the end. Install adds, after_migrate

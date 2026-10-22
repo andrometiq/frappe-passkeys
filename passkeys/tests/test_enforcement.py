@@ -16,7 +16,7 @@ from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.passkeys.doctype.passkey_settings import passkey_settings
 from passkeys.tests.committed_state import delete_fixture, restore_rows
-from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
@@ -37,7 +37,7 @@ _FIELDS = (
 )
 
 
-class EnforcementVerdictTest(IntegrationTestCase):
+class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._roles = frappe.db.get_values(
@@ -912,3 +912,38 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertTrue(payload["enforcement"]["degrade_nudge_eligible"])
 		self.assertFalse(payload["nudge_state"]["eligible"])
 		self.assertFalse(payload["upsell_eligible"])
+
+	def test_stale_only_enforcement_and_admin_counts_require_enrollment(self):
+		user = self._user()
+		make_credential(user, rp_id="old.example.com")
+		sign_in("Administrator")
+		status = enforcement_admin.get_user_enforcement_admin(user)
+		self.assertEqual(status["credential_count"], 0)
+		self.assertEqual(boot.build_passkeys_boot(user)["credential_count"], 0)
+		make_credential(user)
+		self.assertEqual(enforcement_admin.get_user_enforcement_admin(user)["credential_count"], 1)
+
+	def test_preview_off_is_zero_and_rp_changes_signature(self):
+		self._clear_preview_cache()
+		self._user()
+		before = boot.enforcement_preview_signature(self._settings())
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		frappe.db.set_single_value("Passkey Settings", "passkey_app_origins", "")
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "outside.test")
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
+			self.assertEqual(boot.effective_rung("Administrator", self._settings()), "off")
+			self.assertNotEqual(boot.enforcement_preview_signature(self._settings()), before)
+			boot.refresh_enforcement_preview()
+			self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
+
+	def test_preview_counts_stale_only_users_as_unenrolled(self):
+		self._clear_preview_cache()
+		user = self._user()
+		cred = make_credential(user)
+		boot.refresh_enforcement_preview()
+		before = boot.settings_banner_context()["enforcement_preview"]["count"]
+		frappe.db.set_value(cred.doctype, cred.name, "rp_id", "old.example.com")
+		boot.refresh_enforcement_preview()
+		self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], before + 1)

@@ -16,7 +16,7 @@ import json
 import frappe
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
-from passkeys import notifications, policy, session
+from passkeys import ceremony, notifications, policy, session
 from passkeys.install import DEFAULTS_PARENT, dormant
 
 ENFORCEMENT_PREVIEW_KEY = "passkeys:enforcement-preview"
@@ -132,6 +132,8 @@ def effective_rung(user: str, settings) -> str:
 	Everyone else. In-scope users are ``enforce`` once Starting on has been reached
 	(blank counts as reached) and ``nudge`` before that date."""
 	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
+		return "off"
+	if policy.get_site_rp_id(settings) is None:
 		return "off"
 	if _user_in_enforce_scope(user, settings):
 		return "enforce" if _date_reached(settings) else "nudge"
@@ -332,7 +334,7 @@ def build_passkeys_boot(user: str) -> dict:
 	settings = frappe.get_cached_doc("Passkey Settings")
 	first = bool(cint(settings.login_with_passkey))
 	second = bool(cint(settings.passkey_as_second_factor))
-	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
+	credential_count = ceremony.count_usable_credentials(user)
 	state = get_nudge_state(user)
 	return {
 		"enabled": first or second,
@@ -356,6 +358,7 @@ def build_passkeys_boot(user: str) -> dict:
 
 def enforcement_preview_signature(settings) -> str:
 	inputs = (
+		policy.get_site_rp_id(settings),
 		cint(settings.login_with_passkey),
 		cint(settings.passkey_as_second_factor),
 		settings.passkey_enforce_scope or "No one",
@@ -412,10 +415,15 @@ def refresh_enforcement_preview() -> None:
 	computed_at = frappe.utils.now()
 	settings = frappe.get_doc("Passkey Settings")
 	count = 0
-	if (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)) and is_enforcing(
-		settings
+	site_rp_id = policy.get_site_rp_id(settings)
+	if (
+		site_rp_id
+		and (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
+		and is_enforcing(settings)
 	):
-		enrolled = set(frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, pluck="user"))
+		enrolled = set(
+			frappe.get_all("WebAuthn Credential", filters={"enabled": 1, "rp_id": site_rp_id}, pluck="user")
+		)
 		users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
 		count = sum(
 			1

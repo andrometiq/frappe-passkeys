@@ -14,7 +14,7 @@ from passkeys import boot, notifications, passkey, state
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_handle, make_user, sign_in
 
 _NUDGE_KNOBS = (
@@ -27,7 +27,7 @@ _NUDGE_KNOBS = (
 )
 
 
-class NudgeCadenceTest(IntegrationTestCase):
+class NudgeCadenceTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
@@ -290,3 +290,19 @@ class NudgeCadenceTest(IntegrationTestCase):
 			passkey.rename_user_artifacts(frappe.get_doc("User", new), "after_rename", old, new)
 		self.assertEqual(boot.get_nudge_state(old)["opt_out"], 1)
 		self.assertEqual(boot.get_nudge_state(new)["opt_out"], 0)
+
+	def test_stale_only_user_is_nudged_but_off_site_is_not(self):
+		from unittest.mock import patch
+
+		from passkeys.tests.factories import make_credential
+
+		user = self._user()
+		make_credential(user, rp_id="old.example.com")
+		self.assertTrue(boot.build_passkeys_boot(user)["nudge_state"]["eligible"])
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		frappe.db.set_single_value("Passkey Settings", "passkey_app_origins", "")
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "outside.test")
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
+			self.assertFalse(boot.build_passkeys_boot(user)["nudge_state"]["eligible"])

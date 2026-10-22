@@ -37,7 +37,7 @@ def begin_registration(flow: str = "explicit"):
 	_require_any_login_mode(settings)
 	authorization = _require_sudo_for_registration(settings, user, flow)
 
-	rp_id = policy.resolve_rp_id(settings)
+	rp_id = policy.get_site_rp_id(settings)
 	if not rp_id:
 		frappe.throw(_("Passkeys are not configured for this site."), frappe.ValidationError)
 	origins = policy.resolve_expected_origins(settings, rp_id)
@@ -129,7 +129,7 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 			"uv_initialized": int(result.user_verified),
 			"discoverable": discoverable,
 			"authenticator_attachment": result.authenticator_attachment or "",
-			"rp_id": record["rp_id"],  # descriptive only — verification never reads it
+			"rp_id": record["rp_id"],
 		}
 	)
 	handle = _insert_verified_credential(doc, settings, record.get("authorization"))
@@ -140,10 +140,11 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 		"label": doc.label,
 		# signalAllAcceptedCredentials + signalCurrentUserDetails for the new passkey
 		"signal": {
+			"rp_id": doc.rp_id,
 			"user_handle": handle.handle,
 			"credential_ids": frappe.get_all(
 				"WebAuthn Credential",
-				filters={"user": user, "enabled": 1},
+				filters={"user": user, "enabled": 1, "rp_id": doc.rp_id},
 				pluck="credential_id",
 				order_by="creation asc",
 			),
@@ -166,7 +167,7 @@ def _require_sudo_for_registration(settings, user: str, flow: str) -> str:
 	if flow == "conditional_create":
 		is_allowed = seeded_by == "password"
 	elif seeded_by == "external":
-		has_enabled_credential = frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1})
+		has_enabled_credential = ceremony.has_usable_credential(user)
 		is_allowed = _is_external_bootstrap_allowed(settings, has_enabled_credential)
 	else:
 		is_allowed = seeded_by in session.FULL_SUDO_METHODS
@@ -209,7 +210,7 @@ def _user_credentials(user: str, *, for_update: bool = False) -> list:
 	return frappe.db.get_values(
 		"WebAuthn Credential",
 		{"user": user},
-		["name", "credential_id", "transports", "enabled"],
+		["name", "credential_id", "transports", "enabled", "rp_id"],
 		as_dict=True,
 		order_by="creation asc",
 		for_update=for_update,
@@ -236,10 +237,11 @@ def _insert_verified_credential(doc, settings, authorization: str | None = None)
 	persist."""
 	handle = _get_or_create_handle(doc.user)
 	credentials = _user_credentials(doc.user, for_update=True)
+	ceremony.require_current_rp({"rp_id": doc.rp_id}, error=CeremonyExpired)
 	# Several external-login ceremonies can begin while the census is zero; only one may
 	# create the first enabled credential.
 	if authorization == "external" and not _is_external_bootstrap_allowed(
-		settings, any(cint(row.enabled) for row in credentials)
+		settings, any(cint(row.enabled) and not policy.is_stale(row.rp_id, doc.rp_id) for row in credentials)
 	):
 		raise CeremonyFailed(
 			_("Passkey registration could not be completed. Re-authenticate and begin again.")

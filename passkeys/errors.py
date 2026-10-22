@@ -17,6 +17,10 @@ class CeremonyExpired(frappe.AuthenticationError):
 	"""Single-use state consumed, expired, evicted, or never existed."""
 
 
+class CredentialNotForThisSite(frappe.AuthenticationError):
+	"""An existing credential belongs to another RP; never prune it with Signals."""
+
+
 class UnknownCredential(frappe.AuthenticationError):
 	"""Assertion references no known credential; feeds the Signal API."""
 

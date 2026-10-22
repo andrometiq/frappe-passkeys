@@ -12,6 +12,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from passkeys import ceremony, policy
+
 # The client renderer (``posturePanel``) mirrors this order.
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
@@ -396,9 +398,7 @@ def build_posture() -> dict:
 			"enforcement_effective": boot.is_enforcing(settings),
 			"sign_count_hard_fail": bool(cint(settings.passkey_sign_count_hard_fail)),
 			"reauth_window": cint(settings.passkey_reauth_window),
-			"administrator_has_enabled_passkey": bool(
-				frappe.db.exists("WebAuthn Credential", {"user": "Administrator", "enabled": 1})
-			),
+			"administrator_has_enabled_passkey": bool(ceremony.has_usable_credential("Administrator")),
 		}
 	)
 
@@ -413,12 +413,22 @@ def _adoption_counts() -> tuple[int, int]:
 	eligible = (User.enabled == 1) & (User.name.notin(["Administrator", "Guest"]))
 
 	login_user_count = frappe.qb.from_(User).select(Count("*")).where(eligible).run()[0][0]
+	site_rp_id = policy.get_site_rp_id()
+	if site_rp_id is None:
+		return 0, cint(login_user_count)
+	Credential = frappe.qb.DocType("WebAuthn Credential")
+	usable_users = (
+		frappe.qb.from_(Credential)
+		.select(Credential.user)
+		.where((Credential.enabled == 1) & (Credential.rp_id == site_rp_id))
+	)
 	passkey_only_count = (
 		frappe.qb.from_(Handle)
 		.inner_join(User)
 		.on(Handle.user == User.name)
 		.select(Count("*"))
 		.where(Handle.passkey_only_login == 1)
+		.where(Handle.user.isin(usable_users))
 		.where(eligible)
 		.run()[0][0]
 	)

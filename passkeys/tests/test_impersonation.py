@@ -20,6 +20,7 @@ from passkeys import session
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.tests.compat import (
 	IntegrationTestCase,
+	PinnedSiteRp,
 	arrange_clean_login_policy,
 	arrange_mode_floor,
 	flush_settings_cache,
@@ -44,7 +45,7 @@ def core_honours_client_validate_rename() -> bool:
 	return "validate_rename=validate_rename" in inspect.getsource(Document.rename)
 
 
-class ImpersonationTestCase(IntegrationTestCase):
+class ImpersonationTestCase(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		for attribute in ("request", "form_dict", "response"):

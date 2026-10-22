@@ -11,7 +11,7 @@ import frappe
 
 from passkeys import posture
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp
 
 # A fully-locked-down baseline: passwordless first factor on, no other stock login
 # method, hardening on. Tests override just the fields they exercise.
@@ -218,7 +218,7 @@ class ClassifyPostureTest(IntegrationTestCase):
 			self.assertTrue(row["what"] and row["recommendation"])
 
 
-class BuildPostureSmokeTest(IntegrationTestCase):
+class BuildPostureSmokeTest(PinnedSiteRp, IntegrationTestCase):
 	"""Exercises the real reads + the whitelisted endpoint shape against the current
 	site — asserts structure, not a specific verdict (site config varies)."""
 
@@ -259,7 +259,7 @@ class BuildPostureSmokeTest(IntegrationTestCase):
 			frappe.set_user("Administrator")
 
 
-class AdoptionCountsTest(IntegrationTestCase):
+class AdoptionCountsTest(PinnedSiteRp, IntegrationTestCase):
 	"""The adoption numerator (passkey_only handles) is counted over the SAME enabled,
 	non-Administrator/Guest population as the denominator, so it can never exceed it
 	(n <= m). It used to count handles over ALL users, so an Administrator or disabled
@@ -283,6 +283,9 @@ class AdoptionCountsTest(IntegrationTestCase):
 		return user.name
 
 	def _passkey_only_handle(self, user: str) -> None:
+		from passkeys.tests.factories import make_credential
+
+		credential = make_credential(user)
 		handle = frappe.get_doc(
 			{"doctype": "WebAuthn User Handle", "user": user, "handle": frappe.generate_hash(length=64)}
 		).insert(ignore_permissions=True)
@@ -296,6 +299,8 @@ class AdoptionCountsTest(IntegrationTestCase):
 			ignore_permissions=True,
 			delete_permanently=True,
 		)
+
+		self.addCleanup(frappe.db.delete, "WebAuthn Credential", {"name": credential.name})
 
 	def test_numerator_never_exceeds_the_denominator(self):
 		n0, m0 = posture._adoption_counts()
@@ -319,3 +324,23 @@ class AdoptionCountsTest(IntegrationTestCase):
 		self._passkey_only_handle("Administrator")
 		# Administrator is out of both populations, so neither count moves
 		self.assertEqual(posture._adoption_counts(), (n0, m0))
+
+	def test_adoption_counts_require_a_current_enabled_credential(self):
+		baseline = posture._adoption_counts()[0]
+		user = self._make_user()
+		self._passkey_only_handle(user)
+		self.assertEqual(posture._adoption_counts()[0], baseline + 1)
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")
+		self.assertEqual(posture._adoption_counts()[0], baseline)
+
+	def test_administrator_stale_passkey_does_not_hide_password_warning(self):
+		from passkeys.tests.committed_state import restore_rows
+		from passkeys.tests.factories import make_credential
+
+		filters = {"user": "Administrator"}
+		rows = frappe.db.get_values("WebAuthn Credential", filters, "*", as_dict=True)
+		self.addCleanup(restore_rows, "WebAuthn Credential", filters, rows)
+		frappe.db.delete("WebAuthn Credential", filters)
+		make_credential("Administrator", rp_id="old.example.com")
+		with patch.object(posture, "classify_posture", side_effect=lambda ctx: ctx):
+			self.assertFalse(posture.build_posture()["administrator_has_enabled_passkey"])

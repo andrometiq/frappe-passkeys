@@ -23,6 +23,7 @@ from passkeys import policy
 
 LOCKED_CREDENTIAL_FIELDS = (
 	"name",
+	"rp_id",
 	"user",
 	"enabled",
 	"public_key",
@@ -82,13 +83,28 @@ def require_credential_dict(value, message, *, error=frappe.AuthenticationError)
 	return parsed
 
 
-def enabled_credentials(user: str) -> list:
-	"""The user's enabled credentials (id + sha + transports); empty ⇒ no passkey."""
+def usable_credentials(
+	user: str, fields=("credential_id", "credential_id_sha256", "transports"), *, site_rp_id=None
+) -> list:
+	site = policy.get_site_rp_id() if site_rp_id is None else site_rp_id
+	if not site:
+		return []
 	return frappe.get_all(
-		"WebAuthn Credential",
-		filters={"user": user, "enabled": 1},
-		fields=["credential_id", "credential_id_sha256", "transports"],
+		"WebAuthn Credential", filters={"user": user, "enabled": 1, "rp_id": site}, fields=fields
 	)
+
+
+def has_usable_credential(user: str, *, site_rp_id=None) -> bool:
+	return bool(usable_credentials(user, fields=("name",), site_rp_id=site_rp_id))
+
+
+def count_usable_credentials(user: str, *, site_rp_id=None) -> int:
+	return len(usable_credentials(user, fields=("name",), site_rp_id=site_rp_id))
+
+
+def require_current_rp(record, *, error) -> None:
+	if not record.get("rp_id") or record["rp_id"] != policy.get_site_rp_id(policy.read_rp_settings()):
+		raise error(_("That took too long — please try again."))
 
 
 def credential_descriptors(rows: list) -> list:
@@ -132,6 +148,12 @@ def lock_allowed_credential(record: dict, credential: dict, user: str, *, error=
 	row = lock_credential(credential_sha256)
 	if not row or row.user != user or not cint(row.enabled) or not has_matching_user_handle(credential, user):
 		raise error(_("Passkey could not be verified."))
+	if policy.is_stale(row.rp_id, record.get("rp_id")):
+		from passkeys.errors import CredentialNotForThisSite
+
+		raise CredentialNotForThisSite(
+			_("This passkey was made for another address and doesn't work on this site.")
+		)
 	return row
 
 

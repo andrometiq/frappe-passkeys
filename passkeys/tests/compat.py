@@ -14,11 +14,13 @@ except ImportError:  # v15
 
 __all__ = [
 	"IntegrationTestCase",
+	"PinnedSiteRp",
 	"WebAuthnAssertMixin",
 	"activity_log_count",
 	"arrange_clean_login_policy",
 	"arrange_mode_floor",
 	"arrange_saveable_system_settings",
+	"arrange_site_rp",
 	"bust_system_settings_cache",
 	"flush_settings_cache",
 	"is_signed_out_by_frappe",
@@ -166,3 +168,29 @@ def activity_log_count(filters: dict) -> int:
 	Activity Log is a virtual DocType backed by a separate log store, so there is no
 	``tabActivity Log`` for ``frappe.db`` to count."""
 	return len(frappe.get_all("Activity Log", filters=filters, pluck="name"))
+
+
+def arrange_site_rp(testcase):
+	"""Pin an operational RP without committing the test transaction."""
+	fields = ("passkey_rp_id", "passkey_origins")
+	original = {field: frappe.db.get_single_value("Passkey Settings", field) for field in fields}
+
+	def restore():
+		frappe.db.set_single_value("Passkey Settings", original)
+		flush_settings_cache()
+
+	testcase.addCleanup(restore)
+	frappe.db.set_single_value(
+		"Passkey Settings",
+		{
+			"passkey_rp_id": "example.com",
+			"passkey_origins": "https://example.com",
+		},
+	)
+	flush_settings_cache()
+
+
+class PinnedSiteRp:
+	def setUp(self):
+		super().setUp()
+		arrange_site_rp(self)

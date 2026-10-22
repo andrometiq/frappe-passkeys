@@ -17,6 +17,7 @@ from frappe import _
 from frappe.utils import cint
 
 LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
+RP_SETTINGS_FIELDS = ("passkey_rp_id", "passkey_origins", "passkey_app_origins")
 WEBAUTHN_IMPORT_TIMEOUT = 30
 WEBAUTHN_IMPORT_STDERR_LIMIT = 4096
 
@@ -69,7 +70,7 @@ def _stderr_tail(stderr: bytes | None) -> str:
 def resolve_rp_id(settings) -> str | None:
 	"""Explicit ``passkey_rp_id``, else the exact host of the site's ``host_name`` —
 	never a derived parent domain; widening is an explicit admin setting."""
-	explicit = (settings.get("passkey_rp_id") or "").strip().lower()
+	explicit = normalize_rp_id(settings.get("passkey_rp_id"))
 	if explicit:
 		validate_rp_id_shape(explicit)
 		return explicit
@@ -114,7 +115,10 @@ def canonical_web_origin(raw: str) -> str | None:
 	raw = (raw or "").strip()
 	if not raw:
 		return None
-	parts = urlsplit(raw)
+	try:
+		parts = urlsplit(raw)
+	except ValueError:
+		return None
 	if (
 		parts.scheme.lower() not in ("http", "https")
 		or not parts.hostname
@@ -166,26 +170,26 @@ def validate_origins(settings, rp_id: str | None) -> None:
 			)
 		)
 	for origin in origins:
-		canonical = canonical_web_origin(origin)
-		if not canonical:
-			frappe.throw(
-				_("Invalid passkey origin {0}: expected scheme://host[:port], one per line").format(origin)
-			)
-		parts = urlsplit(canonical)
-		host = (parts.hostname or "").lower()
-		if parts.scheme != "https":
-			if not (parts.scheme == "http" and _is_dev_localhost(host)):
-				frappe.throw(
-					_(
-						"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
-					).format(origin)
-				)
-		if rp_id and not is_in_rp_scope(host, rp_id):
-			frappe.throw(
-				_(
-					"Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
-				).format(origin, rp_id)
-			)
+		if error := origin_error(origin, rp_id):
+			frappe.throw(error)
+
+
+def origin_error(origin: str, rp_id: str | None) -> str | None:
+	canonical = canonical_web_origin(origin)
+	if not canonical:
+		return _("Invalid passkey origin {0}: expected scheme://host[:port], one per line").format(origin)
+	parts = urlsplit(canonical)
+	host = (parts.hostname or "").lower()
+	if parts.scheme != "https":
+		if not (parts.scheme == "http" and _is_dev_localhost(host)):
+			return _(
+				"Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
+			).format(origin)
+	if rp_id and not is_in_rp_scope(host, rp_id):
+		return _(
+			"Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
+		).format(origin, rp_id)
+	return None
 
 
 def _is_dev_localhost(host: str) -> bool:
@@ -240,19 +244,21 @@ def validate_app_origins(settings) -> None:
 		origin = line.strip()
 		if not origin:
 			continue
-		if not origin.startswith(_APK_KEY_HASH_PREFIX):
-			frappe.throw(
-				_(
-					"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure its https://<RP ID> value under Passkey Origins."
-				).format(origin)
-			)
-		digest = origin[len(_APK_KEY_HASH_PREFIX) :]
-		if not _APK_KEY_HASH_RE.match(digest):
-			frappe.throw(
-				_(
-					"Invalid Trusted App Origin {0}: the hash must be an unpadded base64url SHA-256 of the app-signing certificate (43 characters from A-Z a-z 0-9 - _). Use Google's Play app-signing certificate, not the upload key."
-				).format(origin)
-			)
+		if error := app_origin_error(origin):
+			frappe.throw(error)
+
+
+def app_origin_error(origin: str) -> str | None:
+	if not origin.startswith(_APK_KEY_HASH_PREFIX):
+		return _(
+			"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure its https://<RP ID> value under Passkey Origins."
+		).format(origin)
+	digest = origin[len(_APK_KEY_HASH_PREFIX) :]
+	if not _APK_KEY_HASH_RE.match(digest):
+		return _(
+			"Invalid Trusted App Origin {0}: the hash must be an unpadded base64url SHA-256 of the app-signing certificate (43 characters from A-Z a-z 0-9 - _). Use Google's Play app-signing certificate, not the upload key."
+		).format(origin)
+	return None
 
 
 # Wire ``userVerification`` per assertion ceremony. Advisory only: each ceremony enforces
@@ -312,3 +318,60 @@ def backup_eligibility_mutated(stored_be: bool, asserted_be: bool) -> bool:
 	"""BE is write-once at registration; a changed BE is a clone/forgery signal
 	(stricter than spec; the library checks only BS-without-BE)."""
 	return bool(stored_be) != bool(asserted_be)
+
+
+def normalize_rp_id(value) -> str:
+	return (value or "").strip().lower()
+
+
+def valid_web_origins(settings, rp_id: str) -> list[str]:
+	return [
+		canonical
+		for origin in resolve_origins(settings, rp_id)
+		if (canonical := canonical_web_origin(origin)) and is_in_rp_scope(urlsplit(canonical).hostname, rp_id)
+	]
+
+
+def valid_app_origins(settings) -> list[str]:
+	return [origin for origin in app_origins(settings) if app_origin_error(origin) is None]
+
+
+def get_site_rp_id(settings=None) -> str | None:
+	if settings is None:
+		settings = frappe.get_cached_doc("Passkey Settings")
+	rp_id = resolve_rp_id(settings)
+	return rp_id if rp_id and (valid_web_origins(settings, rp_id) or valid_app_origins(settings)) else None
+
+
+def read_rp_settings() -> dict:
+	settings = frappe.db.get_singles_dict("Passkey Settings")
+	return {field: settings.get(field) for field in RP_SETTINGS_FIELDS}
+
+
+def is_stale(credential_rp_id, site_rp_id) -> bool:
+	return not site_rp_id or normalize_rp_id(credential_rp_id) != site_rp_id
+
+
+def get_rp_scope_problem(settings) -> dict | None:
+	if not (cint(settings.get("login_with_passkey")) or cint(settings.get("passkey_as_second_factor"))):
+		return None
+	rp_id = resolve_rp_id(settings)
+	web = valid_web_origins(settings, rp_id) if rp_id else []
+	apps = valid_app_origins(settings) if rp_id else []
+	site_host = resolve_rp_id({})
+	status = "web_works" if web else "app_only" if apps else "off"
+	reason = None
+	if not rp_id:
+		reason = "no_rp_id"
+	elif site_host and not is_in_rp_scope(site_host, rp_id):
+		reason = "host_outside_rp"
+	elif not web and not apps:
+		reason = "no_valid_origins"
+	return {
+		"reason": reason,
+		"status": status,
+		"rp_id": rp_id,
+		"site_host": site_host,
+		"suggested_rp_id": site_host,
+		"working_origins": web + apps,
+	}

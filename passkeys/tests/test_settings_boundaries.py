@@ -33,7 +33,7 @@ from passkeys import boot, session, state
 from passkeys.api import registration
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import get_resolved_rp_id
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 RP_ID = "example.com"
@@ -45,7 +45,7 @@ ORIGIN = "https://example.com"
 # ===========================================================================
 
 
-class MaxPerUserCapUnitTest(IntegrationTestCase):
+class MaxPerUserCapUnitTest(PinnedSiteRp, IntegrationTestCase):
 	"""Direct boundary sweep of ``registration._enforce_max_per_user`` — the pure
 	cap predicate (``len(credentials) >= int(settings.passkey_max_per_user or 10)``).
 	No ceremony setup needed: it takes a settings-like object + a credential list."""
@@ -93,7 +93,7 @@ class MaxPerUserCapUnitTest(IntegrationTestCase):
 		self.assertIn("maximum of 2", str(ctx.exception))
 
 
-class MaxPerUserCapIntegrationTest(IntegrationTestCase):
+class MaxPerUserCapIntegrationTest(PinnedSiteRp, IntegrationTestCase):
 	"""End-to-end proof the cap fires at the real call site — ``begin_registration``
 	counts the user's stored ``WebAuthn Credential`` rows and throws at the cap."""
 
@@ -153,7 +153,7 @@ class MaxPerUserCapIntegrationTest(IntegrationTestCase):
 # ===========================================================================
 
 
-class ReauthWindowTtlTest(IntegrationTestCase):
+class ReauthWindowTtlTest(PinnedSiteRp, IntegrationTestCase):
 	"""``session.seed_sudo_window`` reads ``cint(settings.passkey_reauth_window) or
 	600`` and hands it to Redis ``ex`` as the sole expiry authority. The prior
 	battery only ever proved the default 600; here the custom value is the actual
@@ -232,7 +232,7 @@ class ReauthWindowTtlTest(IntegrationTestCase):
 # ===========================================================================
 
 
-class NudgeBoundaryTest(IntegrationTestCase):
+class NudgeBoundaryTest(PinnedSiteRp, IntegrationTestCase):
 	"""The nudge cadence's exact edges at CUSTOM knob values (the existing battery
 	only walks representative values at the defaults): the cooldown ``<`` compare
 	and the ``declines >= cap`` compare."""
@@ -331,7 +331,7 @@ class NudgeBoundaryTest(IntegrationTestCase):
 # ===========================================================================
 
 
-class EnforcementBoundaryTest(IntegrationTestCase):
+class EnforcementBoundaryTest(PinnedSiteRp, IntegrationTestCase):
 	"""The enforcement verdict's exact edges the representative-value battery skips:
 	a ``grace=1`` budget, the ``max(0, …)`` remaining clamp when over-spent, and
 	a start date that IS today (the ``<=`` server-clock compare)."""
@@ -436,7 +436,7 @@ class EnforcementBoundaryTest(IntegrationTestCase):
 		self.assertTrue(v["in_scope"])
 
 
-class ResolvedRpIdEndpointTest(IntegrationTestCase):
+class ResolvedRpIdEndpointTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
@@ -483,7 +483,7 @@ class ResolvedRpIdEndpointTest(IntegrationTestCase):
 		self.assertIsNone(out["configured_site_origin"])
 
 
-class EnrollmentPolicyValidatorTest(IntegrationTestCase):
+class EnrollmentPolicyValidatorTest(PinnedSiteRp, IntegrationTestCase):
 	"""The adoption-ladder validator guards on the Passkey Settings Single. Modes stay
 	OFF throughout so ``_validate_enablement`` (RP-ID resolution) never interferes —
 	the enforcement guards are orthogonal to enablement."""
@@ -563,7 +563,7 @@ class EnrollmentPolicyValidatorTest(IntegrationTestCase):
 		)
 
 
-class EnrollmentFieldVisibilityTest(IntegrationTestCase):
+class EnrollmentFieldVisibilityTest(PinnedSiteRp, IntegrationTestCase):
 	"""depends_on of the Enrollment tab. Prompt cadence is always on the form; the
 	requirement section shows when someone can be in scope. ``depends_on`` is a static
 	declaration evaluated client-side, so this asserts the meta the form drives off of."""

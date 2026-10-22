@@ -36,11 +36,11 @@ from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import 
 	lock_passkey_mode_floor,
 )
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, arrange_saveable_system_settings
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, arrange_saveable_system_settings
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
-class _SweptBase(IntegrationTestCase):
+class _SweptBase(PinnedSiteRp, IntegrationTestCase):
 	"""Base with a force-sweep tearDown: this module both commits mid-test (the
 	foreign connection must see the rows) and turns ``passkey_only_login`` on,
 	and the framework's per-class rollback only covers UNCOMMITTED rows — a
@@ -72,7 +72,7 @@ class _SweptBase(IntegrationTestCase):
 		frappe.db.commit()
 
 
-class CoreTwoFactorFloorRaceTest(IntegrationTestCase):
+class CoreTwoFactorFloorRaceTest(PinnedSiteRp, IntegrationTestCase):
 	"""Concurrent settings saves cannot commit core-2FA-off/passkey-2FA-on."""
 
 	def setUp(self):

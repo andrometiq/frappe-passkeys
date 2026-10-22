@@ -18,14 +18,14 @@ from passkeys.api import credentials, registration
 from passkeys.errors import BrowserSessionRequired
 from passkeys.tests import fake_webauthn
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 PWD = "Secret_passw0rd_9x!"
 REFUND_ACTION = "tests.token_auth.refund"
 
 
-class TokenAuthTest(IntegrationTestCase):
+class TokenAuthTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self.addCleanup(frappe.set_user, "Administrator")

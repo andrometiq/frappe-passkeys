@@ -10,7 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from passkeys import boot, session, state
+from passkeys import boot, ceremony, session, state
 from passkeys.errors import refuse_if_core_native
 
 
@@ -39,7 +39,7 @@ def _require_user(user: str) -> str:
 def admin_enforcement_view(user: str) -> dict:
 	"""The user's exemption, grace usage and enforcement scope, as the section paints it."""
 	settings = frappe.get_cached_doc("Passkey Settings")
-	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
+	credential_count = ceremony.count_usable_credentials(user)
 	verdict = boot.build_enforcement(user, settings, credential_count)
 	return {
 		"user": user,

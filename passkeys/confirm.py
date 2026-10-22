@@ -273,7 +273,7 @@ def _raise_confirmation_required(policy_: ActionPolicy, params: dict) -> None:
 def _confirm_methods(user: str, policy_: ActionPolicy) -> list:
 	"""The per-user subset of ``passkey`` / ``password`` / ``sudo`` the dialog may offer."""
 	methods = []
-	if ceremony.enabled_credentials(user):
+	if ceremony.usable_credentials(user):
 		methods.append("passkey")
 	if policy_.allow_password_fallback and _password_reauth_allowed(user):
 		methods.append("password")
@@ -317,13 +317,13 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 	from passkeys import engine
 
 	settings = frappe.get_cached_doc("Passkey Settings")
-	rp_id = policy.resolve_rp_id(settings)
+	rp_id = policy.get_site_rp_id(settings)
 	if not rp_id:
 		raise CeremonyFailed(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
 	ceremony.enforce_request_host(origins, error=CeremonyFailed)
 
-	creds = ceremony.enabled_credentials(user)
+	creds = ceremony.usable_credentials(user)
 	options, challenge_b64 = engine.build_authentication_options(
 		rp_id=rp_id,
 		allow_credentials=ceremony.credential_descriptors(creds),
@@ -407,6 +407,7 @@ def verify_confirmation(state_id: str, credential: object):
 		error=CeremonyFailed,
 	)
 
+	ceremony.require_current_rp(record, error=CeremonyExpired)
 	token = session.mint_action_grant(user, record["action"], record["payload_hash"], method="passkey")
 	# The sudo-gated management endpoints check the window, not the grant. Only the
 	# built-in action seeds it: a third-party confirmation never grants management sudo.
@@ -464,8 +465,7 @@ def reauth_password(pwd: str, action: str | None = None, payload_fingerprint: st
 def _password_reauth_allowed(user: str) -> bool:
 	"""Under ``disable_user_pass_login`` a passkey holder can only confirm with a passkey."""
 	return not (
-		cint(frappe.get_system_settings("disable_user_pass_login"))
-		and frappe.db.exists("WebAuthn Credential", {"user": user, "enabled": 1})
+		cint(frappe.get_system_settings("disable_user_pass_login")) and ceremony.has_usable_credential(user)
 	)
 
 

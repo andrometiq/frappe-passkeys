@@ -456,3 +456,38 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertEqual(credential["clientExtensionResults"], {})  # sanity: Safari case
 		result = registration.verify_registration(begun["state_id"], credential)
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", result["name"], "discoverable"), "Yes")
+
+	def test_rp_change_between_verification_and_insert_creates_no_row(self):
+		from unittest.mock import patch
+
+		from passkeys import engine
+		from passkeys.errors import CeremonyExpired
+
+		user = self._user()
+		begun, credential, _ = self._register(user, seed=frappe.generate_hash())
+		verify = engine.verify_registration
+
+		def change_after_verify(**kwargs):
+			result = verify(**kwargs)
+			frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "changed.example.com")
+			return result
+
+		with (
+			patch.object(engine, "verify_registration", side_effect=change_after_verify),
+			self.assertRaises(CeremonyExpired),
+		):
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertEqual(frappe.db.count("WebAuthn Credential", {"user": user}), 0)
+
+	def test_external_bootstrap_accepts_stale_only_and_signal_uses_current_rp(self):
+		from passkeys.tests.factories import make_credential
+
+		user = self._user()
+		stale = make_credential(user, rp_id="old.example.com")
+		frappe.db.set_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_external_login", 1)
+		flush_settings_cache()
+		begun, credential, _ = self._register(user, seed=frappe.generate_hash(), seeded_by="external")
+		result = registration.verify_registration(begun["state_id"], credential)
+		self.assertEqual(result["signal"]["rp_id"], RP_ID)
+		self.assertNotIn(stale.credential_id, result["signal"]["credential_ids"])
+		self.assertEqual(len(result["signal"]["credential_ids"]), 1)

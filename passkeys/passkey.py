@@ -17,7 +17,13 @@ from frappe.utils import cint, now_datetime
 from frappe.utils.password import get_encryption_key
 
 from passkeys import boot, ceremony, install, policy, request_security, session, state
-from passkeys.errors import CeremonyExpired, UnknownCredential, UVSetupRequired, refuse_if_core_native
+from passkeys.errors import (
+	CeremonyExpired,
+	CredentialNotForThisSite,
+	UnknownCredential,
+	UVSetupRequired,
+	refuse_if_core_native,
+)
 from passkeys.request_security import rate_limit
 
 
@@ -66,6 +72,8 @@ def begin_login():
 	``state_id`` + ``options`` + the cookie only when ``login_with_passkey`` is on."""
 	refuse_if_core_native()
 	settings = frappe.get_cached_doc("Passkey Settings")
+	if policy.get_site_rp_id(settings) is None:
+		return {"enabled": False, "modes": {"first_factor": False, "second_factor": False}}
 	first_factor = bool(cint(settings.login_with_passkey))
 	second_factor = bool(cint(settings.passkey_as_second_factor))
 	response = {
@@ -129,6 +137,10 @@ def verify_login(state_id: str, credential: object):
 	# UV_SETUP is a legitimate step-up, not a failure.
 	hard_fail = bool(cint(settings.passkey_sign_count_hard_fail))
 	try:
+		if policy.is_stale(cred.rp_id, record.get("rp_id")):
+			raise CredentialNotForThisSite(
+				_("This passkey was made for another address and doesn't work on this site.")
+			)
 		result = engine.verify_stored_assertion(credential, record, cred, sign_count_hard_fail=hard_fail)
 		# passwordless ONLY on UV=1 ∧ uv_initialized=1
 		outcome = policy.passwordless_uv_outcome(result.user_verified, bool(cint(cred.uv_initialized)))
@@ -138,6 +150,8 @@ def verify_login(state_id: str, credential: object):
 			)
 	except frappe.AuthenticationError as exc:
 		_track_verify_failure(cred.user)
+		if isinstance(exc, CredentialNotForThisSite):
+			raise
 		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
 	_track_verify_success(cred.user)
 
@@ -149,6 +163,7 @@ def verify_login(state_id: str, credential: object):
 				"v": 1,
 				"user": cred.user,
 				"credential": cred.name,
+				"rp_id": record["rp_id"],
 				"binder_sha256": record.get("binder_sha256"),
 				"new_sign_count": result.new_sign_count,
 				"backup_state": int(result.backup_state),
@@ -160,6 +175,7 @@ def verify_login(state_id: str, credential: object):
 	frappe.local.response["authenticator_attachment"] = credential.get("authenticatorAttachment")
 	# before login_as: the passkey_only veto exemption and the "passkey" sudo-window class
 	frappe.local.flags.passkey_login = True
+	ceremony.require_current_rp(record, error=CeremonyExpired)
 	_mint_session(cred.user)
 	return None
 
@@ -243,10 +259,19 @@ def complete_uv_setup(setup_id: str, pwd: str):
 	if not ceremony.lock_enabled_user(user):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
 	cred = frappe.db.get_value(
-		"WebAuthn Credential", record["credential"], ["user", "enabled"], as_dict=True, for_update=True
+		"WebAuthn Credential",
+		record["credential"],
+		["user", "enabled", "rp_id"],
+		as_dict=True,
+		for_update=True,
 	)
 	if not cred or cred.user != user or not cint(cred.enabled):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+	ceremony.require_current_rp(record, error=CeremonyExpired)
+	if policy.is_stale(cred.rp_id, record.get("rp_id")):
+		raise CredentialNotForThisSite(
+			_("This passkey was made for another address and doesn't work on this site.")
+		)
 	# A concurrent completion of the same assertion reclassifies as an equal-nonzero replay.
 	ceremony.advance_credential(
 		record["credential"],
@@ -257,6 +282,7 @@ def complete_uv_setup(setup_id: str, pwd: str):
 
 	# a passkey_only_login user repairing a credential must not trip their own veto
 	frappe.local.flags.passkey_login = True
+	ceremony.require_current_rp(record, error=CeremonyExpired)
 	_mint_session(user)
 	return None
 
@@ -301,7 +327,7 @@ def login_with_password(usr: str, pwd: str):
 		frappe.local.response["message"] = "Password Reset"
 		return None
 
-	credentials = ceremony.enabled_credentials(user)
+	credentials = ceremony.usable_credentials(user)
 	if credentials:
 		_dispatch_passkey_second_factor(user, pwd, credentials, settings, should_run_2fa(user))
 		return None
@@ -383,6 +409,7 @@ def verify_second_factor(state_id: str, credential: object):
 	settings = frappe.get_cached_doc("Passkey Settings")
 	if not cint(settings.passkey_as_second_factor):
 		raise frappe.AuthenticationError(_("Passkey could not be verified."))
+	ceremony.require_current_rp(record, error=CeremonyExpired)
 	ceremony.enforce_request_host(record.get("origins") or [])
 	user = record["user"]
 	_require_login_attempt_allowed(user)
@@ -406,6 +433,7 @@ def verify_second_factor(state_id: str, credential: object):
 		values={"uv_initialized": 1} if result.user_verified else None,
 	)
 	frappe.local.flags.passkey_login = True
+	ceremony.require_current_rp(record, error=CeremonyExpired)
 	_mint_session(user)
 	return None
 
@@ -531,7 +559,7 @@ def _request_login_manager():
 def _require_rp(settings) -> tuple[str, list]:
 	"""The RP ID and expected origins for a guest ceremony; fail closed when unconfigured
 	or when the request host is not a configured origin."""
-	rp_id = policy.resolve_rp_id(settings)
+	rp_id = policy.get_site_rp_id(settings)
 	if not rp_id:
 		raise frappe.AuthenticationError(_("Passkeys aren't set up for this site."))
 	origins = policy.resolve_expected_origins(settings, rp_id)
@@ -575,11 +603,16 @@ def get_signal_data():
 	refuse_if_core_native()
 	user = session.require_authed_user()
 	state.rate_limit_user("get_signal_data", 60, 60)
+	site_rp_id = policy.get_site_rp_id()
+	if site_rp_id is None:
+		return None
 	return {
-		"rp_id": policy.resolve_rp_id(frappe.get_cached_doc("Passkey Settings")),
+		"rp_id": site_rp_id,
 		"user_handle": frappe.db.get_value("WebAuthn User Handle", {"user": user}, "handle"),
 		"credential_ids": frappe.get_all(
-			"WebAuthn Credential", filters={"user": user, "enabled": 1}, pluck="credential_id"
+			"WebAuthn Credential",
+			filters={"user": user, "enabled": 1, "rp_id": site_rp_id},
+			pluck="credential_id",
 		),
 		"name": user,
 		"display_name": frappe.db.get_value("User", user, "full_name") or user,
@@ -611,7 +644,7 @@ def record_enforcement(event: str):
 	if event not in boot.ENFORCE_EVENTS:
 		frappe.throw(_("Unknown enforcement event."), frappe.ValidationError)
 	settings = frappe.get_cached_doc("Passkey Settings")
-	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
+	credential_count = ceremony.count_usable_credentials(user)
 	verdict = boot.build_enforcement(user, settings, credential_count)
 	if (
 		event == "defer"

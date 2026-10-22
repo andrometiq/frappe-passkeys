@@ -9,10 +9,10 @@ from io import StringIO
 import frappe
 
 from passkeys import recovery
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 
 
-class DisableEnforcementRecoveryTest(IntegrationTestCase):
+class DisableEnforcementRecoveryTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._scope = frappe.db.get_single_value("Passkey Settings", "passkey_enforce_scope")

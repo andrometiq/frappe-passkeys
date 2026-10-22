@@ -16,6 +16,7 @@ from passkeys.api import credentials
 from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
+	PinnedSiteRp,
 	activity_log_count,
 	arrange_mode_floor,
 	bust_system_settings_cache,
@@ -26,7 +27,7 @@ from passkeys.tests.factories import make_credential, make_handle, make_user, si
 PWD = "Secret_passw0rd_9x!"
 
 
-class _Base(IntegrationTestCase):
+class _Base(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self.addCleanup(frappe.set_user, "Administrator")

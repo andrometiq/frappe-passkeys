@@ -11,6 +11,7 @@ public ``@passkey_protected`` decorator + 401 retry contract, and the
 
 import hashlib
 import json
+from unittest.mock import patch
 
 import frappe
 from frappe.auth import CookieManager
@@ -1075,3 +1076,32 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 
 		with self.assertRaisesRegex(frappe.AuthenticationError, "Too many attempts"):
 			self._reauth(PWD)
+
+	def test_rp_change_refuses_grant_after_assertion(self):
+		user = self._user()
+		auth = self._enroll(user)
+		sign_in(user)
+		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
+		credential = self._assert(auth, begun["options"], uv=True)
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "changed.example.com")
+		with patch.object(session, "mint_action_grant") as mint, self.assertRaises(CeremonyExpired):
+			self._verify(begun["state_id"], credential)
+		mint.assert_not_called()
+
+	def test_stale_only_methods_allow_password_reauth(self):
+		from passkeys.tests.compat import bust_system_settings_cache
+
+		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
+		self.addCleanup(bust_system_settings_cache)
+		self.addCleanup(frappe.db.set_single_value, "System Settings", "disable_user_pass_login", original)
+		frappe.db.set_single_value("System Settings", "disable_user_pass_login", 1)
+		bust_system_settings_cache()
+		user = self._user(with_password=True)
+		self._enroll(user)
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "rp_id", "old.example.com")
+		sign_in(user)
+		begun = self._begin(session.MANAGE_ACTION)
+		self.assertNotIn("passkey", begun["methods"])
+		self.assertIn("password", begun["methods"])
+		self._reauth(PWD)
+		self.assertEqual(session.get_window(user)["seeded_by"], "reauth")

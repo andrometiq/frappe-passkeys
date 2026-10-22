@@ -15,11 +15,11 @@ from frappe.utils import set_request
 from passkeys import session, state
 from passkeys.errors import PasskeyConfirmationRequired
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, activity_log_count, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, activity_log_count, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user, sign_in
 
 
-class SudoWindowTest(IntegrationTestCase):
+class SudoWindowTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self.addCleanup(frappe.set_user, "Administrator")

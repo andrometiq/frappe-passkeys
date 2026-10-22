@@ -17,7 +17,7 @@ from passkeys import boot
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.www import passkeys as passkeys_page
 from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
@@ -37,7 +37,7 @@ _SETTINGS_FIELDS = (
 )
 
 
-class PortalNudgeContextTest(IntegrationTestCase):
+class PortalNudgeContextTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")

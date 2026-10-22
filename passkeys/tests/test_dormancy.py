@@ -22,7 +22,7 @@ from passkeys.api import credentials, registration
 from passkeys.errors import PasskeyServedByCore
 from passkeys.shims import login_page, portal_nudge
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, arrange_mode_floor, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, arrange_mode_floor, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 
@@ -136,7 +136,7 @@ class DormantEndpointsTest(IntegrationTestCase):
 # ===========================================================================
 
 
-class DormantHooksTest(IntegrationTestCase):
+class DormantHooksTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		_seed_advisory_flag()

@@ -41,6 +41,7 @@ def make_credential(user: str, **overrides):
 			"doctype": "WebAuthn Credential",
 			"user": user,
 			"label": "Test Passkey",
+			"rp_id": "example.com",
 			"credential_id": base64.urlsafe_b64encode(raw_id).rstrip(b"=").decode(),
 			"credential_id_sha256": hashlib.sha256(raw_id).hexdigest(),
 			"public_key": base64.urlsafe_b64encode(secrets.token_bytes(77)).rstrip(b"=").decode(),

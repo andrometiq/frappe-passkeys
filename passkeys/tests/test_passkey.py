@@ -12,11 +12,11 @@ from passkeys import boot
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, arrange_clean_login_policy
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, arrange_clean_login_policy
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
-class PasskeyTestCase(IntegrationTestCase):
+class PasskeyTestCase(PinnedSiteRp, IntegrationTestCase):
 	def make_user(self) -> str:
 		user = make_user()
 		self.addCleanup(

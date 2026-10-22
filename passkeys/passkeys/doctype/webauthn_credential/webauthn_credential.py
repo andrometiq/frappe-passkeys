@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, strip_html
 
+from passkeys import policy
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
 from passkeys.session import ReadOnlyWhileImpersonated
 
@@ -15,6 +16,8 @@ LABEL_MAX_LENGTH = 140
 class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 	def validate(self):
 		super().validate()
+		if self.is_new():
+			self.rp_id = policy.normalize_rp_id(self.rp_id)
 		self._sanitize_label()
 		self._enforce_write_once_invariants()
 		if self._is_disabling():
@@ -67,6 +70,7 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 				self.doctype,
 				self.name,
 				[
+					"rp_id",
 					"user",
 					"credential_id",
 					"credential_id_sha256",
@@ -76,6 +80,8 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 				],
 				as_dict=True,
 			)
+		if self.rp_id != before.rp_id:
+			frappe.throw(_("The RP ID of a WebAuthn Credential can never change."))
 		if self.user != before.user:
 			frappe.throw(_("The user of a WebAuthn Credential can never change."))
 		if self.credential_id != before.credential_id:
@@ -97,10 +103,10 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		reads — a plain count re-reads the REPEATABLE READ snapshot even after the
 		lock, which is what let two overlapping removals each see a survivor and
 		drop every credential of a passkey-only user."""
-		passkey_only, enabled_names = lock_login_floor(self.user)
-		if any(name != self.name for name in enabled_names):
+		passkey_only, usable_names = lock_login_floor(self.user)
+		if any(name != self.name for name in usable_names):
 			return  # another enabled credential survives
-		if action == "delete" and self.name not in enabled_names:
+		if self.name not in usable_names:
 			return  # not an enabled credential (fresh, under lock) — dropping it removes no login method
 		if passkey_only or frappe.get_system_settings("disable_user_pass_login"):
 			frappe.throw(

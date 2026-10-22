@@ -15,13 +15,13 @@ import frappe
 from passkeys import boot, passkey, state
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
 
 RP_ID = "example.com"
 
 
-class BootInfoTest(IntegrationTestCase):
+class BootInfoTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self._snapshot = frappe.db.get_singles_dict("Passkey Settings")
@@ -203,6 +203,28 @@ class BootInfoTest(IntegrationTestCase):
 				payload = boot.build_passkeys_boot(user)
 				self.assertEqual(payload["nudge_state"]["eligible"], bool(first or second))
 				self.assertEqual(payload["upsell_eligible"], bool(first or second))
+
+	def test_boot_and_signals_count_only_current_enabled_rows(self):
+		from passkeys import policy
+
+		user = self._user()
+		current = make_credential(user)
+		make_credential(user, rp_id="old.example.com")
+		make_credential(user, enabled=0)
+		sign_in(user)
+		self.assertEqual(boot.build_passkeys_boot(user)["credential_count"], 1)
+		with patch.object(policy, "get_site_rp_id", wraps=policy.get_site_rp_id) as resolve:
+			data = passkey.get_signal_data()
+		self.assertEqual(resolve.call_count, 1)
+		self.assertEqual(data["credential_ids"], [current.credential_id])
+		self.assertEqual(data["rp_id"], RP_ID)
+		original = frappe.db.get_single_value("Passkey Settings", "passkey_app_origins")
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_app_origins", original)
+		frappe.db.set_single_value("Passkey Settings", "passkey_app_origins", "")
+		frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", "outside.test")
+		flush_settings_cache()
+		with patch.dict(frappe.conf, {"host_name": "https://example.com"}):
+			self.assertIsNone(passkey.get_signal_data())
 
 
 class AppsScreenEntryTest(IntegrationTestCase):

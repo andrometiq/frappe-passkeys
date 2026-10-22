@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from passkeys import policy
 from passkeys.session import ReadOnlyWhileImpersonated
 
 
@@ -53,9 +54,12 @@ def lock_login_floor(user: str) -> tuple[int, list[str]]:
 	credential-vs-credential writers.
 	"""
 	flag = frappe.db.get_value("WebAuthn User Handle", {"user": user}, "passkey_only_login", for_update=True)
+	site = policy.get_site_rp_id(policy.read_rp_settings())
+	if not site:
+		return cint(flag), []
 	names = frappe.db.get_values(
 		"WebAuthn Credential",
-		{"user": user, "enabled": 1},
+		{"user": user, "enabled": 1, "rp_id": site},
 		"name",
 		order_by=None,
 		for_update=True,

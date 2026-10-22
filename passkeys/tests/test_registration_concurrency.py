@@ -13,7 +13,7 @@ import frappe
 
 from passkeys.api import registration
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp
 from passkeys.tests.factories import make_user
 
 
@@ -24,6 +24,7 @@ def _credential_doc(user: str, seed: str):
 			"doctype": "WebAuthn Credential",
 			"user": user,
 			"label": "Concurrent registration",
+			"rp_id": "example.com",
 			"credential_id": base64.urlsafe_b64encode(raw_id).rstrip(b"=").decode(),
 			"credential_id_sha256": hashlib.sha256(raw_id).hexdigest(),
 			"public_key": base64.urlsafe_b64encode(hashlib.sha512(raw_id).digest()).rstrip(b"=").decode(),
@@ -31,7 +32,7 @@ def _credential_doc(user: str, seed: str):
 	)
 
 
-class RegistrationLockingReadTest(IntegrationTestCase):
+class RegistrationLockingReadTest(PinnedSiteRp, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
 		self.addCleanup(frappe.set_user, "Administrator")
@@ -89,7 +90,7 @@ class RegistrationLockingReadTest(IntegrationTestCase):
 		self.assertLess(user_lock, handle_lock)
 
 
-class RegistrationCapRaceTest(IntegrationTestCase):
+class RegistrationCapRaceTest(PinnedSiteRp, IntegrationTestCase):
 	"""Two independent connections race registrations through the User lock."""
 
 	def setUp(self):
