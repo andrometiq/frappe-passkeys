@@ -77,6 +77,26 @@ class PortalNudgeContextTest(PinnedSiteRp, IntegrationTestCase):
 		``context.boot`` (the base template renders it into ``frappe.boot``)."""
 		return frappe._dict(path=path, boot=frappe._dict(), **kw)
 
+	def test_bundles_are_added_to_copies_of_core_hook_lists(self):
+		"""Core seeds every render with the cached ``web_include_*`` hook lists. An
+		in-place append leaked the login bundle onto every later page of that worker,
+		where its background ``begin_login`` signed users out after an RP change."""
+		from passkeys.shims import login_page
+
+		user = self._user()
+		for render, path, as_user, bundle in (
+			(login_page.website_context, "login", "Guest", "passkey_login.bundle.js"),
+			(portal_nudge.website_context, "app/dashboard", user, "passkey_portal.bundle.js"),
+		):
+			with self.subTest(path=path):
+				frappe.set_user(as_user)
+				hook_js, hook_css = ["website_script.js"], []
+				ctx = self._ctx(path=path, web_include_js=hook_js, web_include_css=hook_css)
+				render(ctx)
+				self.assertIn(bundle, ctx.web_include_js)
+				self.assertEqual(ctx.web_include_js[0], "website_script.js")
+				self.assertEqual((hook_js, hook_css), (["website_script.js"], []))
+
 	# (a) authed portal render on a NON-/passkeys route, a mode on ⇒ the full portal
 	#     bundle set (one self-gating bundle) + the server cadence verdict.
 	def test_authed_portal_render_carries_nudge_bundle(self):

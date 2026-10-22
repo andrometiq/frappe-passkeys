@@ -67,12 +67,14 @@ def get_context(context):
 		context.boot["csrf_token"] = context.csrf_token
 		context.boot["passkeys"] = context.passkeys
 
-	js = context.setdefault("web_include_js", [])
-	for asset in PORTAL_JS:
-		if asset not in js:
-			js.append(asset)
-	css = context.setdefault("web_include_css", [])
-	for asset in PORTAL_CSS:
-		if asset not in css:
-			css.append(asset)
+	add_page_assets(context, PORTAL_JS, PORTAL_CSS)
 	return context
+
+
+def add_page_assets(context, js, css) -> None:
+	"""Append bundles to this render's include lists, on copies: core hands each page
+	the cached ``web_include_*`` hook lists themselves, so an in-place append would
+	ship these bundles on every later page this worker renders."""
+	for key, assets in (("web_include_js", js), ("web_include_css", css)):
+		current = list(context.get(key) or [])
+		context[key] = current + [asset for asset in assets if asset not in current]

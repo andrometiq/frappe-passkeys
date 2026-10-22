@@ -17,6 +17,7 @@ import frappe
 from frappe.utils import cint
 
 from passkeys import install
+from passkeys.www.passkeys import add_page_assets
 
 # Referenced by BARE bundle name (no /assets prefix) so core's bundled_asset()
 # resolves each to its content-hashed filename from assets.json — the browser then
@@ -42,14 +43,7 @@ def website_context(context) -> None:
 			return
 		if not _any_login_mode_enabled():
 			return
-		context.setdefault("web_include_js", [])
-		for asset in LOGIN_JS:
-			if asset not in context["web_include_js"]:
-				context["web_include_js"].append(asset)
-		context.setdefault("web_include_css", [])
-		for asset in LOGIN_CSS:
-			if asset not in context["web_include_css"]:
-				context["web_include_css"].append(asset)
+		add_page_assets(context, LOGIN_JS, LOGIN_CSS)
 	except Exception:
 		frappe.log_error(title="passkeys: login-page website_context failed")
 

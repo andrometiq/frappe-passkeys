@@ -15,7 +15,7 @@ import frappe
 
 from passkeys import boot, install
 from passkeys.shims.login_page import _any_login_mode_enabled
-from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS
+from passkeys.www.passkeys import PORTAL_CSS, PORTAL_JS, add_page_assets
 
 
 def website_context(context) -> None:
@@ -29,8 +29,7 @@ def website_context(context) -> None:
 		if user in ("Guest", None, ""):
 			return  # nudges are authenticated-only; the session-user check is free
 
-		js = context.setdefault("web_include_js", [])
-		if any("passkey_portal.bundle" in asset for asset in js):
+		if any("passkey_portal.bundle" in asset for asset in context.get("web_include_js") or []):
 			return  # The /passkeys controller already delivered the bundle AND
 			# its own frappe.boot.passkeys bridge (template) — never double-inject
 
@@ -55,12 +54,6 @@ def website_context(context) -> None:
 
 		# Same bundle set as /passkeys — idempotent append; the bundle self-gates
 		# on the #passkey-portal-root mount (cards only there) and the nudge verdict.
-		for asset in PORTAL_JS:
-			if asset not in js:
-				js.append(asset)
-		css = context.setdefault("web_include_css", [])
-		for asset in PORTAL_CSS:
-			if asset not in css:
-				css.append(asset)
+		add_page_assets(context, PORTAL_JS, PORTAL_CSS)
 	except Exception:
 		frappe.log_error(title="passkeys: portal-nudge website_context failed")
