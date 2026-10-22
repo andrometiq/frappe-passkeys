@@ -44,6 +44,8 @@ PWD = "Secret_passw0rd_9x!"
 class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def setUp(self):
 		super().setUp()
+		# The translation tests set the request language; keep it from leaking into later tests.
+		self.addCleanup(setattr, frappe.local, "lang", getattr(frappe.local, "lang", None))
 		# A leaked global disable_user_pass_login=1 would trip the last-credential guard
 		# on the arrangement deletes/disables below (test order varies by Frappe branch).
 		arrange_clean_login_policy(self)
@@ -1159,6 +1161,10 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 	def test_uv_setup_rp_binding_and_legacy_refusal(self):
 		for change in ("unchanged", "changed", "legacy"):
 			with self.subTest(change=change):
+				# v15's core limiter keys by "rl:<cmd>:<ip>" with no window suffix and cmd is
+				# empty here, so begin/verify/complete_uv_setup share one 5-per-300s counter;
+				# each leg is three calls, so clear it per leg (as test_second_factor does).
+				frappe.cache.delete_keys("rl:")
 				frappe.set_user("Administrator")
 				frappe.db.set_single_value("Passkey Settings", "passkey_rp_id", RP_ID)
 				flush_settings_cache()

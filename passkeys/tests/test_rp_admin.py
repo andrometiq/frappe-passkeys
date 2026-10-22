@@ -93,7 +93,24 @@ class RpAdminTest(PinnedSiteRp, IntegrationTestCase):
 		out = get_rp_id_change_impact("other.example", "", "")
 		self.assertTrue(out["new_off"])
 		self.assertIsNone(out["new_rp_id"])
-		self.assertEqual(out["stop"]["passkeys"], 1)
+		self.assertEqual(out["stop"], {"passkeys": 1, "users": 1})
+		self.assertEqual(out["start"], {"passkeys": 0, "users": 0})
+
+	def test_impact_from_an_off_site_counts_only_starts(self):
+		make_credential(self.user)
+		make_credential(self.user, enabled=0)
+		make_credential(self.user_fixture())
+		make_credential(self.user, rp_id="other.example")
+		make_credential(self.user, rp_id="")
+		frappe.db.set_single_value(
+			"Passkey Settings", {"passkey_rp_id": "outside.example", "passkey_origins": ""}
+		)
+		flush_settings_cache()
+		out = get_rp_id_change_impact("example.com", "https://example.com")
+		self.assertIsNone(out["current_rp_id"])
+		self.assertEqual(out["new_rp_id"], "example.com")
+		self.assertEqual(out["stop"], {"passkeys": 0, "users": 0})
+		self.assertEqual(out["start"], {"passkeys": 2, "users": 2})
 
 	def test_invalid_candidate_is_distinct_from_valid_off(self):
 		for candidate, origins, apps in (

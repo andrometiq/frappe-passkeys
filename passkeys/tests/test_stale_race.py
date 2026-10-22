@@ -12,7 +12,6 @@ import frappe
 from passkeys import policy, rp_admin, state
 from passkeys.api.credentials import delete_credential
 from passkeys.passkeys.doctype.passkey_settings.passkey_settings import remove_stale_passkeys
-from passkeys.passkeys.doctype.webauthn_user_handle import webauthn_user_handle
 from passkeys.tests import committed_state
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_handle, make_user, sign_in
@@ -133,19 +132,30 @@ class StaleRemovalRaceTest(IntegrationTestCase):
 			self.wait_for(release)
 			return settings
 
-		def observe_save_lock():
-			save_started.set()
-			return lock()
+		def save_observing_singles_lock():
+			# Core's save locks the Single first (load_doc_before_save → get_doc(for_update=True)),
+			# before Passkey Settings.validate reaches lock_passkey_modes; signal on whichever
+			# locking read of tabSingles the save issues first.
+			db = frappe.local.db
+			sql = db.sql
+
+			def observe(query, *args, **kwargs):
+				text = str(query).lower()
+				if "tabsingles" in text and "for update" in text:
+					save_started.set()
+				return sql(query, *args, **kwargs)
+
+			with patch.object(db, "sql", side_effect=observe):
+				return self.save_other_rp()
 
 		with (
 			patch.object(rp_admin, "lock_passkey_modes", side_effect=hold_bulk_lock),
-			patch.object(webauthn_user_handle, "lock_passkey_modes", side_effect=observe_save_lock),
 			patch.object(frappe, "enqueue"),
 		):
 			self.start_worker("bulk", lambda: remove_stale_passkeys("example.com"))
 			try:
 				self.wait_for(locked)
-				saved = self.start_worker("save", self.save_other_rp)
+				saved = self.start_worker("save", save_observing_singles_lock)
 				self.wait_for(save_started)
 				self.assertFalse(saved.wait(timeout=0.2), "Settings save passed the held Singles lock")
 			finally:

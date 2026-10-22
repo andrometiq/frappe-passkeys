@@ -5,15 +5,13 @@
 
 import frappe
 from frappe import _
+from frappe.query_builder import Case
+from frappe.query_builder.functions import Coalesce, Count, Sum
 from frappe.utils import cint
 
 from passkeys import policy
 from passkeys.passkeys.doctype.webauthn_credential.webauthn_credential import FlaggedPasskeyKept
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_passkey_modes
-
-
-def credential_counts(rows) -> dict:
-	return {"passkeys": len(rows), "users": len({row.user for row in rows})}
 
 
 def stale_credentials(site_rp_id) -> list:
@@ -27,14 +25,28 @@ def stale_credentials(site_rp_id) -> list:
 
 
 def stale_passkey_summary(settings=None) -> dict | None:
+	"""Counts for the settings page: one aggregate query, never the rows (hot path).
+
+	Stale matches ``policy.is_stale``; ``rp_id`` is stored normalized at insert."""
 	site_rp_id = policy.get_site_rp_id(settings)
 	if site_rp_id is None:
 		return None
-	rows = stale_credentials(site_rp_id)
+	cred = frappe.qb.DocType("WebAuthn Credential")
+	passkeys, users, removable = (
+		frappe.qb.from_(cred)
+		.select(
+			Count("*"),
+			Count(cred.user).distinct(),
+			Sum(Case().when(Coalesce(cred.flagged, 0) == 0, 1).else_(0)),
+		)
+		.where(cred.rp_id.isnull() | (cred.rp_id == "") | (cred.rp_id != site_rp_id))
+		.run()[0]
+	)
 	return {
 		"site_rp_id": site_rp_id,
-		**credential_counts(rows),
-		"removable": sum(not cint(row.flagged) for row in rows),
+		"passkeys": cint(passkeys),
+		"users": cint(users),
+		"removable": cint(removable),
 	}
 
 
@@ -51,26 +63,28 @@ def rp_id_change_impact(rp_id, passkey_origins=None, passkey_app_origins=None) -
 	policy.validate_app_origins(candidate)
 	current = policy.get_site_rp_id(settings)
 	new = policy.get_site_rp_id(candidate)
-	rows = frappe.get_all("WebAuthn Credential", filters={"enabled": 1}, fields=["user", "rp_id"])
 	return {
 		"current_rp_id": current,
 		"new_rp_id": new,
 		"new_off": new is None,
-		"stop": credential_counts(
-			[
-				row
-				for row in rows
-				if not policy.is_stale(row.rp_id, current) and policy.is_stale(row.rp_id, new)
-			]
-		),
-		"start": credential_counts(
-			[
-				row
-				for row in rows
-				if policy.is_stale(row.rp_id, current) and not policy.is_stale(row.rp_id, new)
-			]
-		),
+		"stop": _working_transition_counts(current, new),
+		"start": _working_transition_counts(new, current),
 	}
+
+
+def _working_transition_counts(working, other) -> dict:
+	"""Enabled passkeys that work under ``working`` and are stale under ``other`` (one
+	aggregate query; ``policy.is_stale`` is equality with the site RP, None = off)."""
+	if working is None:
+		return {"passkeys": 0, "users": 0}
+	cred = frappe.qb.DocType("WebAuthn Credential")
+	condition = (cred.enabled == 1) & (cred.rp_id == working)
+	if other is not None:
+		condition &= cred.rp_id != other
+	passkeys, users = (
+		frappe.qb.from_(cred).select(Count("*"), Count(cred.user).distinct()).where(condition).run()[0]
+	)
+	return {"passkeys": cint(passkeys), "users": cint(users)}
 
 
 def remove_stale_passkeys(site_rp_id) -> dict:
