@@ -211,7 +211,9 @@
 			}));
 			var addRow = M.enrollmentPrompt(payload, addPasskey);
 			// For changes made on another device while the page is open.
-			addRow.appendChild(M.button("default", t("Reload"), function () { render(); }));
+			var reload = M.button("default", t("Reload"), function () { render(); });
+			if (addRow.classList.contains("alert")) reload.classList.add("ml-2");
+			addRow.appendChild(reload);
 			mountRoot.appendChild(addRow);
 			mountRoot.appendChild(M.passkeyOnlyRow(payload, confirmPasskeyOnly));
 		});

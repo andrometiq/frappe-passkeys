@@ -35,12 +35,22 @@
 	function render() {
 		var alert = frappe.boot && frappe.boot.passkeys && frappe.boot.passkeys.rp_alert;
 		var decision = rpAlertDecision(alert);
-		if (!decision || dismissed || document.querySelector(".passkey-site-alert")) return;
+		if (!decision || dismissed) return;
 		var key = "passkeys:rp_alert:" + (frappe.session && frappe.session.user || "") + ":" + JSON.stringify(alert);
 		try { if (root.sessionStorage.getItem(key)) return; } catch (_) { /* Storage may be unavailable. */ }
-		var mount = document.querySelector(".main-section") || document.querySelector("#body");
+		var mount = frappe.container && frappe.container.page;
+		if (!mount) mount = Array.from(document.querySelectorAll(".page-container")).find(function (page) {
+			return page.getClientRects().length;
+		});
+		if (!mount) mount = document.querySelector("#body");
 		if (!mount) return;
-		var bar = document.createElement("div");
+		var bar = document.querySelector(".passkey-site-alert");
+		if (bar) {
+			place(bar, mount);
+			watch(bar, mount);
+			return;
+		}
+		bar = document.createElement("div");
 		bar.className = "passkey-site-alert alert alert-warning";
 		bar.setAttribute("role", "status");
 		bar.setAttribute("data-indicator", "orange");
@@ -67,9 +77,34 @@
 			dismissed = true;
 			try { root.sessionStorage.setItem(key, "1"); } catch (_) { /* Keep the in-memory dismissal. */ }
 			bar.remove();
+			if (observer) observer.disconnect();
 		});
 		bar.appendChild(close);
-		mount.insertBefore(bar, mount.firstChild);
+		place(bar, mount);
+		watch(bar, mount);
+	}
+	// Some pages rebuild their content after page-change (v16's desk home), which can drop
+	// the bar or reveal a navbar later; keep it in place on the current page only.
+	var observer = null;
+	function watch(bar, mount) {
+		if (observer) observer.disconnect();
+		if (typeof root.MutationObserver !== "function") return;
+		observer = new root.MutationObserver(function () {
+			if (dismissed) return;
+			if (!bar.isConnected) render();
+			else place(bar, mount);
+		});
+		observer.observe(mount, { childList: true, subtree: true });
+	}
+	// Top of the current page, but below a navbar the page renders itself (v16's desk home);
+	// a list's column header is also a <header>, so match navbars only.
+	var NAVBAR = "header[class*='navbar']";
+	function place(bar, mount) {
+		var header = typeof mount.querySelectorAll === "function" && Array.from(mount.querySelectorAll(NAVBAR))
+			.find(function (node) { return node.getClientRects().length; });
+		if (header ? bar.previousSibling === header : mount.firstChild === bar) return;
+		if (header) header.parentNode.insertBefore(bar, header.nextSibling);
+		else mount.insertBefore(bar, mount.firstChild);
 	}
 	if (typeof frappe.after_ajax === "function") frappe.after_ajax(function () {
 		render();

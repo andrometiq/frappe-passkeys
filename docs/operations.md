@@ -90,10 +90,11 @@ origins makes retained, enabled passkeys work again. Disabled current-RP rows ar
 The System Manager's dismissible Desk banner distinguishes **off** (no operational RP/path,
 passkey requirements paused), **app only** (mobile path survives, requirements still apply), and
 **web works at other configured origins** (lists those origins). Missing RP or valid origins also
-shows an off warning. The fix link can suggest the configured site's host in settings; it never
-saves automatically. Users see stale notes, an enrollment prompt when only stale keys remain,
-or a site-off notice with Add hidden. Enforcement grace is not reset by a move; an administrator
-can reset it for a user who needs time to enroll.
+shows an off warning. The banner follows the current Desk page (home, list or form), below the
+navbar, until dismissed for that diagnostic in the browser session. The fix link can suggest the
+configured site's host in settings; it never saves automatically. Users see stale notes, an
+enrollment prompt when only stale keys remain, or a site-off notice with Add hidden. Enforcement
+grace is not reset by a move; an administrator can reset it for a user who needs time to enroll.
 
 For a planned family of subdomains, choose an apex RP such as `example.com` **before enrollment**,
 only if you control and trust its entire subdomain scope. Keep the exact origin allowlist narrow;

@@ -38,7 +38,7 @@ function fakeEl(tag) {
 		removeEventListener(type, fn) { const a = node._listeners[type]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
 		dispatch(type, ev) { (node._listeners[type] || []).slice().forEach((fn) => fn(ev || {})); },
 		click() { node.dispatch("click", {}); },
-		classList: { add(c) { node.className += " " + c; } },
+		classList: { contains(c) { return node.className.split(" ").includes(c); }, add(c) { node.className += " " + c; } },
 		focus() {},
 		querySelector() { return null; },
 		querySelectorAll() { return []; },
@@ -358,6 +358,9 @@ test("portal impersonation: the /passkeys cards are read-only", async () => {
 			const controls = [byClass(root, "passkey-card-actions"), byClass(root, "passkey-card-add-row"), byClass(root, "passkey-only-row")];
 			if (!impersonated) {
 				assert.ok(controls.every(Boolean), "control: the user can add, rename, remove and switch");
+				const reload = findButton(root, n => n.textContent === "Reload");
+				assert.strictEqual(reload.parentNode, controls[1]);
+				assert.strictEqual(reload.classList.contains("ml-2"), false, "the flex row already supplies the gap");
 				continue;
 			}
 			assert.deepStrictEqual(controls, [null, null, null]);
@@ -378,6 +381,8 @@ for (const site_rp_id of [null, "current.test"]) {
 			assert.ok(findNode(root, n => n.className.includes("passkey-card-stale")));
 			assert.ok(findNode(root, n => n.textContent === M.COPY[site_rp_id ? "staleNudgeBody" : "siteOffNotice"]));
 			assert.strictEqual(!!findButton(root, n => n.textContent === M.COPY.staleNudgeCta), !!site_rp_id);
+			const reload = findButton(root, n => n.textContent === "Reload");
+			assert.ok(reload.classList.contains("ml-2"), "Reload has the standard button margin inside the notice");
 		} finally { global.fetch = normalFetch; }
 	});
 }
