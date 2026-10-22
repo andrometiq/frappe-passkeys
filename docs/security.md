@@ -28,13 +28,36 @@ request carries the matching cookie. An attacker cannot set or read this HttpOnl
 cookie cross-site. Authenticated ceremonies bind to the session id instead.
 
 **Origin and RP-ID pinning, exact-match, fail-closed.** RP ID and origins are
-resolved once at enable time from pinned configuration — never from live `Host`
+resolved from administrator-controlled configuration — never from live `Host`
 or `X-Forwarded-*` headers. Origins are an exact-match allowlist including port;
 the library checks the assertion's origin against that list. A compatible `host_name` contributes
 its own exact origin and explicit Passkey Origins add to it; RP ID alone never authorizes
-`https://<rp_id>`, and an empty resolved web-origin set is invalid. iOS must therefore have its
+`https://<rp_id>`. Settings saves require a non-empty resolved web-origin set. iOS must therefore have its
 asserted `https://<rp_id>` origin explicitly present when the site's `host_name` does not contribute
 that exact value. The request host is re-checked at both begin and complete.
+
+**Usable means enabled and made for the operational RP.** A different or blank credential RP ID
+is stale; a disabled current-RP row is not stale. The operational RP is null when no RP resolves
+or no canonical in-scope web origin or valid Trusted App Origin remains. This decision uses only
+settings and `host_name`, never request headers or form parameters. Runtime web-origin checks
+accept canonical HTTP or HTTPS origins in RP scope; HTTPS remains the settings-save rule (with
+the developer localhost exception). An HTTP path counting as operational does not make it a
+browser secure context.
+
+When no operational path exists, passkey login discovery is disabled without an Error Log,
+registration and passkey confirmation refuse, enrollment enforcement/nudges pause, and no
+WebAuthn Signals are sent. Passkey-only and passkey-second-factor vetoes stop applying to users
+without usable keys, including the OAuth password-grant guard. Core `disable_user_pass_login`
+still applies. If a valid app path survives, the RP stays operational and the vetoes remain for
+users with usable keys, even when the configured website has no passkey path. These are
+administrator-controlled changes, exposed through the manager's banner and posture panel.
+
+Ceremonies re-check their recorded RP before credential insertion or session/grant minting;
+missing or changed RP returns `CeremonyExpired`. Second-factor verification checks before
+re-arming too, so an RP change yields no retry state. Discoverable login with an existing
+credential made for another RP returns `CredentialNotForThisSite`, never a browser signal to
+forget an unknown credential.
+See the concurrency limits below.
 
 **Cross-origin rejection is enforced by the app.** `py_webauthn` 2.8 accepts
 `crossOrigin: true` and never parses `topOrigin`, so the app parses the raw
@@ -73,7 +96,7 @@ session and CSRF token, and an Activity Log row. The app never spins up a fresh
 login manager mid-flow.
 
 **Second-factor enforcement covers alternate login paths.** When Passkey as Second Factor is on and
-a user has an enabled credential, the final `on_login` hook vetoes password, email-link,
+a user has a usable credential, the final `on_login` hook vetoes password, email-link,
 social/OAuth, LDAP, and other core login completions unless this app has completed the passkey step.
 The only downgrade is an enabled OTP fallback initiated by this app: `fallback_to_otp` issues a
 short-lived, one-time marker bound to core's `tmp_id`, and the hook consumes it only on core's login
@@ -82,7 +105,7 @@ does not consume or satisfy it. Calling core's OTP path directly creates no mark
 
 **Administrator exemption is narrow.** Administrator remains break-glass exempt from the per-user
 *Passkey Only Login* veto. Administrator is **not** exempt from the enrolled second-factor rule:
-once an enabled credential is explicitly enrolled while Passkey as Second Factor is active, the
+once a usable credential is explicitly enrolled while Passkey as Second Factor is active, the
 same alternate-path veto applies. Core's site-wide `disable_user_pass_login` also has no
 Administrator exemption. Passkey enrollment enforcement likewise keeps `System Manager` users in
 scope by default. A System Manager handles enrollment recovery on the affected
@@ -92,7 +115,7 @@ changes; see [recovery](recovery.md#no-system-manager-can-sign-in).
 
 ## Hardening Administrator
 
-Frappe core has no switch that disables Administrator's password. Administrator is break-glass: the per-user "Passkey Only Login" flag does not apply, and a password still works while site-wide password login is on and Administrator has no enabled passkey under Passkey as Second Factor.
+Frappe core has no switch that disables Administrator's password. Administrator is break-glass: the per-user "Passkey Only Login" flag does not apply, and a password still works while site-wide password login is on and Administrator has no usable passkey under Passkey as Second Factor.
 
 Use named System Manager accounts day to day. Enrol a passkey for Administrator with Passkey as Second Factor on. Restrict Administrator by IP (User → Restrict IP). Set `notify_admin_access_to_system_manager` in site config so System Managers are emailed when Administrator logs in. Keep a strong, vaulted password. Recovery is in [`recovery.md`](recovery.md#no-system-manager-can-sign-in).
 
@@ -159,7 +182,7 @@ against a determined administrator, who can do the same from their own session. 
 
 - **App endpoints.** Registering, renaming or removing a passkey, the passkey-only switch, a
   confirmation or password re-auth, a `@passkey_protected` action, the nudge and enforcement events,
-  and the per-user exemption and grace reset refuse with `ImpersonatedSessionRefused` (403), before
+  bulk stale removal, and the per-user exemption and grace reset refuse with `ImpersonatedSessionRefused` (403), before
   any rate limit, so the session never spends the user's budgets, prompts or grace logins.
 - **The passkey DocTypes.** WebAuthn Credential, WebAuthn User Handle, Passkey Settings and Passkey
   Enforcement Role refuse the session in their controllers, with the same error, on insert, save,
@@ -267,6 +290,10 @@ password attempt.
 | `reauth_password` | 5 / 5 min |
 | `get_resolved_rp_id` | 30 / min |
 | `get_security_posture` | 30 / min |
+| `get_settings_context` | 30 / min |
+| `recalculate_enforcement_preview` | 3 / min |
+| `get_rp_id_change_impact` | 30 / min |
+| `remove_stale_passkeys` | 3 / min |
 | `get_user_enforcement_admin` | 60 / min |
 | `set_user_exemption` | 30 / hour |
 | `reset_enforcement_grace` | 30 / hour |
@@ -276,23 +303,18 @@ The action-confirmation endpoints (`begin_confirmation` / `verify_confirmation` 
 class — the `reauth_password` 5 / 5 min ceiling is a second, coarse backstop on
 top of the per-user password-oracle lock above.
 
-The last five rows are the Passkey Settings / enforcement-admin endpoints. They
-carry the per-user counter **and** an additional `System Manager` role gate (the
-settings and enforcement-admin surfaces are admin-only). Three are read-only;
-`set_user_exemption` and `reset_enforcement_grace` are the exceptions — both
-*mutate authorization state* (the first grants or revokes a user's exemption from
-passkey-enrollment enforcement, stored as a per-user app flag; the second clears a
-user's enforcement grace-login state), which is why both carry the tighter
-30 / hour ceiling.
-
-All five use `POST /api/method/<path>` and return their payload under `message`.
-The settings reads live in `passkeys.passkeys.doctype.passkey_settings.passkey_settings`;
-append `.get_resolved_rp_id` or `.get_security_posture`. The enforcement endpoints live
-in `passkeys.enforcement_admin`.
+The Passkey Settings and enforcement-admin endpoints additionally require `System Manager`.
+All use POST and return their payload under `message`. Settings endpoints live in
+`passkeys.passkeys.doctype.passkey_settings.passkey_settings`; enforcement endpoints live in
+`passkeys.enforcement_admin`. The preview reads do not mutate credentials. Bulk stale removal
+refuses impersonation, serializes with settings saves, keeps flagged rows and uses normal delete
+hooks. See [the endpoint contract](rest-api.md#system-manager--rp-settings-and-stale-removal).
+Per-user exemption and grace reset mutate enrollment authorization state and are limited to
+30/hour.
 
 | Read | Payload |
 |---|---|
-| `get_resolved_rp_id()` | `{rp_id, configured_site_origin}` |
+| `get_resolved_rp_id()` | `{rp_id, site_rp_id, configured_site_origin}` |
 | `get_security_posture()` | `{verdict: {headline, tone, can_bypass, bypass_labels, degraded}, rows: [{code, severity, what, why, recommendation, detectable, bypass_label}]}` |
 | `get_user_enforcement_admin(user)` | `{user, effective, enforcing, in_scope, exempt, grace_used, grace_total, grace_remaining, credential_count}` |
 
@@ -309,8 +331,9 @@ so one user cannot probe another's credentials.
 
 OAuth password-grant token creation is guarded before insertion, including on older supported
 Frappe releases whose password-grant validator skips `post_login`. The guard shares the login
-veto's account policy: passkey-only users and enrolled passkey second-factor users cannot mint
-a token using only a password. Site-wide password-login disablement also refuses this grant.
+veto's account policy: users with a usable passkey and either passkey-only login or passkey
+second-factor requirements cannot mint a token using only a password. Site-wide password-login
+disablement also refuses this grant.
 The grant type comes from the request form consumed by core's OAuth token endpoint;
 authorization-code and refresh-token grants are unchanged.
 
@@ -325,7 +348,7 @@ A user's own passkey management and confirmation require a signed-in browser ses
 token-authenticated request gets a `BrowserSessionRequired` (403) refusal from those endpoints
 (registration, credential list, rename and delete, the passkey-only switch, password re-auth, and
 the confirmation ceremony) and from every `@passkey_protected` action. The System Manager
-administration endpoints (per-user exemption and grace reset, the RP ID and posture reads) accept a
+administration endpoints (per-user exemption and grace reset, settings reads and stale removal) accept a
 System Manager token like the rest of Frappe's administration API. A token caller can therefore
 never open a sudo window or obtain or spend a confirmation grant, even with the user's password.
 The server recognizes such a request by its session: core binds a token caller with
@@ -337,8 +360,9 @@ real sign-in gets a random session id.
 - **The deployment terminates HTTPS at the public host and forwards the real
   origin.** The app pins RP ID and origins to that host; if the proxy lies about
   the host, ceremonies fail closed rather than misbind, but correct operation
-  assumes the public host is the RP ID. HTTPS/HSTS at the edge is the operator's
-  responsibility (origins refuse plain `http` except localhost in developer mode).
+  assumes the public host is within RP scope and its exact origin is trusted. HTTPS/HSTS at the
+  edge is the operator's responsibility; settings saves refuse plain HTTP origins except
+  localhost in developer mode. Runtime operational status is not an HTTPS health check.
 - **No untrusted content is served within the RP ID's scope.** A passkey is
   scoped to the RP ID; hosting attacker-controlled content on a subdomain within
   that scope is a deployment concern the app cannot enforce.
@@ -350,8 +374,24 @@ real sign-in gets a random session id.
 
 ## Residual risks
 
-- **RP ID is a one-way door.** Changing it invalidates every enrolled passkey.
-  This is inherent to WebAuthn, not a bug; plan re-enrollment.
+- **An RP change can lower a user's sign-in requirements.** Stale-only users return to password
+  (plus core OTP where required), unless core disables password login. The passkey-only flag
+  persists and applies again with one usable credential. Retained keys work again if the original
+  RP and origins return; deletion is irreversible. Plan re-enrollment for an intentional move.
+- **RP checks have a request-length visibility window.** The lockout census and checks before
+  insertion/session/grant minting read settings uncached but without locking them. A transaction
+  may retain its earlier snapshot after an RP/origin change commits. A racing request can leave
+  one stale row or mint a session/grant under the just-replaced RP.
+- **A simultaneous RP change and delete/disable can require System Manager recovery.** A row
+  treated as stale under RP A can be removed just as RP B makes it current. With
+  `disable_user_pass_login` on and no other login method, the affected user is stranded; follow
+  [recovery](recovery.md#passkeys-fail-after-a-restore-or-host-change). Bulk removal alone locks
+  settings before handles and credentials and reads the RP from that locked result; it can
+  legitimately delete RP-B rows if it runs before the switch from A to B.
+- **File configuration overlaps across requests.** `host_name` reloads per request, not at a
+  restart boundary. In-flight requests can still see the old value, and a database lock cannot
+  serialize a file change. For a strict RP/host cutover, stop traffic, drain requests, change
+  configuration, then resume.
 - **Recovery is part of the boundary.** An account's assurance is only as strong
   as its weakest fallback. Keep recovery flows at parity-or-stronger friction than
   the passkey itself; the account-recovery story is admin-mediated
@@ -367,7 +407,7 @@ real sign-in gets a random session id.
   enroll the account's **first** passkey without a stronger re-auth. This solves the
   chicken-and-egg where a passwordless account has nothing stronger to authorize its
   first credential. The carve-out is deliberately narrow: it applies only while
-  first-factor "Login with Passkey" is on, only to a user with **zero** enabled
+  first-factor "Login with Passkey" is on, only to a user with **zero usable**
   credentials (every later add still needs a passkey- or password-seeded sudo
   window), and every use records a `passkeys:external_login_enrollment` risk event
   ([`operations.md`](operations.md)). Turn off

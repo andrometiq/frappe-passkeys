@@ -19,7 +19,7 @@ If no System Manager can sign in, go to
   email is unconfigured, Desk may show an email-setup message even though the disable
   succeeds; check the saved row. The email failure is recorded in Error Log as
   `passkeys: change-notification email failed`; the Activity Log is written independently. The
-  form refuses to disable the user's last enabled credential while their **Passkey
+  form refuses to disable the user's last usable credential while their **Passkey
   Only Login** is on, or while System Settings → **Disable Username/Password Login**
   is on. Clear the per-user flag first; the site-wide case is
   [its own scenario](#password-login-is-disabled-site-wide).
@@ -54,13 +54,13 @@ off. Do not turn it on to get one user in.
 
    | After step 3 | Their next sign-in |
    |---|---|
-   | No enabled passkey, **Passkey as Second Factor** on | Password, then core's one-time code if one of their roles requires Two Factor Authentication; otherwise the password alone. |
-   | No enabled passkey, **Login with Passkey** only | Their account's other method: password, email link, social login or LDAP. |
-   | Any enabled credential left, **Passkey as Second Factor** on | Still asked for a passkey after the password, even if that credential is physically lost. Disable it too. |
+   | No usable passkey, **Passkey as Second Factor** on | Password, then core's one-time code if one of their roles requires Two Factor Authentication; otherwise the password alone. |
+   | No usable passkey, **Login with Passkey** only | Their account's other method: password, email link, social login or LDAP. |
+   | Any usable credential left, **Passkey as Second Factor** on | Still asked for a passkey after the password, even if that credential is physically lost. Disable it too. |
 
 5. They enroll a replacement and test it.
 
-Resetting the user's core two-factor setup does not help while an enabled credential
+Resetting the user's core two-factor setup does not help while a usable credential
 remains: the passkey rule still applies.
 
 If the site's **Maximum Passkeys per User** blocks the replacement, delete obsolete
@@ -92,28 +92,42 @@ login or LDAP.
 2. A user who is still signed in somewhere enrolls a replacement first, then you
    disable the lost one.
 3. A user with no passkey and no other sign-in method cannot get in while the setting
-   is on, and the form refuses to disable their last credential. There is no per-user
+   is on, and the form refuses to disable their last usable credential. There is no per-user
    override. Reopening password sign-in is site-wide: see
    [Last resort](#last-resort--at-your-own-risk).
 
 ## Passkeys fail after a restore or host change
 
-Symptom: passkey sign-in fails and **Passkey Settings** shows that the resolved RP ID /
-origins do not match this site's host. The error log shows
-`passkeys: request host … not in configured origins`. The credentials are intact; the
-sign-in fails closed on purpose.
+Symptoms include grey cards saying “Made for …, doesn't work on this site”, a site-off notice,
+or a System Manager's RP-scope alert. Off-state login discovery returns disabled without writing
+an Error Log; requests to an untrusted host can still produce a host-mismatch error.
 
-1. A System Manager who can sign in with a password opens **Passkey Settings →
-   Relying Party**.
-2. Set **Passkey RP ID** and **Passkey Origins** so they match the host you serve.
-   Leave **Passkey RP ID** blank to use the site's `host_name`. Adding an origin under
-   the same RP ID keeps every passkey working. Changing the RP ID makes every existing
-   passkey unusable; see [Changing the RP ID](operations.md#changing-the-rp-id-or-moving-domains).
-3. Recover anyone still locked out through [A user lost their passkey](#a-user-lost-their-passkey).
+1. A System Manager opens **Passkey Settings → Relying Party** and checks `host_name`, RP ID and
+   exact origins. If the change was accidental, restore the original RP and origins: retained,
+   enabled passkeys work again. For an intentional move, follow the
+   [domain-change runbook](operations.md#changing-the-rp-id-or-moving-domains) and enroll new keys.
+2. Stale-only users can sign in with their password and core OTP where required; the passkey-only
+   flag stays stored but does not veto them. It applies again once a usable passkey exists.
+   Site-wide **Disable Username/Password Login** is never bypassed. An enforcement exemption or
+   grace reset only helps the enrollment prompt; it does not restore a disabled sign-in method.
+3. If stale rows fill the cap, the user removes them after management re-authentication. If they
+   cannot obtain that window (for example an SSO-only account), a System Manager filters
+   **WebAuthn Credential** by **User** and **RP ID** and removes stale rows for them. Alternatively,
+   **Passkey Settings → Remove stale passkeys** removes stale, unflagged rows site-wide, including
+   disabled ones; flagged rows remain for individual review. Usual owner notifications apply.
+   Bulk removal is refused while the site has no operational RP; fix that first.
+4. The user enrolls a new passkey and tests a fresh sign-in. If enforcement grace was already
+   spent, use **Reset grace logins** or a temporary per-user exemption. If no sign-in method
+   survives, use [site-wide password-disable recovery](#password-login-is-disabled-site-wide);
+   if no manager can get in, [recover one manager](#no-system-manager-can-sign-in) first.
 
-A restore can also bring back a credential that was revoked after the backup was
-taken. Review restored credentials. Do not switch the login modes off or clear every
-user's **Passkey Only Login** as a routine post-restore step.
+The same recovery is needed if a simultaneous RP change and credential delete/disable removes
+what would have been the user's last usable key while site-wide password login is disabled.
+A manager cannot enroll a private key on the user's behalf: restore access so the user can enroll.
+Do not rewrite a credential's stored RP ID or assign today's RP to a blank value.
+
+A restore can resurrect credentials revoked after the backup. Review restored credentials;
+do not routinely switch login modes off or clear all passkey-only flags.
 
 ## Two Factor Authentication will not turn off
 
@@ -140,7 +154,7 @@ with the procedures above.
 Its password works when both are true:
 
 - System Settings → **Disable Username/Password Login** is off;
-- Administrator has no enabled **WebAuthn Credential** while **Passkey as Second
+- Administrator has no usable **WebAuthn Credential** while **Passkey as Second
   Factor** is on. An enrolled Administrator completes the passkey step like anyone else.
 
 `bench --site <site> set-admin-password` replaces a forgotten Administrator password;
@@ -265,8 +279,8 @@ Uninstalling is not a recovery step. If passkeys should be gone for good, recove
 System Manager first, then follow [Uninstall](install.md#uninstall): it lists the
 lockout guards and the credential export it writes.
 
-When removal or disabling of the last enabled passkey is refused, follow the setting named in
+When removal or disabling of the last usable passkey is refused, follow the setting named in
 the error. A per-user **Passkey Only Login** refusal requires changing that user's flag or adding
-another enabled passkey. A site-wide **Disable Username/Password Login** refusal requires adding
-another enabled passkey or turning off **Disable Username/Password Login** in **System Settings**. Clearing the per-user
+another usable passkey. A site-wide **Disable Username/Password Login** refusal requires adding
+another usable passkey or turning off **Disable Username/Password Login** in **System Settings**. Clearing the per-user
 flag alone does not remove the site-wide restriction.

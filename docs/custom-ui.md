@@ -250,10 +250,11 @@ offered OTP flow; see [the REST contract](rest-api.md#guest--passkey-as-a-second
 `listCredentials()` returns all the caller's rows, including disabled ones; the raw fields
 are listed in [the REST reference](rest-api.md#passkeysapicredentialslist_credentials).
 `credentialViewModel(cred)` returns `name`, `label`, `providerName` (null if unknown),
-`hasProvider`, `unknownProviderKey`, `badge: {synced, key, hintKey}`, `enabled`, `flagged`,
+`hasProvider`, `unknownProviderKey`, `badge: {synced, key, hintKey}`, `enabled`, `rpId`, `stale`,
+`usable`, `flagged`,
 `flaggedReason`, `discoverable`, `created`, `lastUsed`, and `a11y: {rename, del}`.
 
-Enabling **Passwordless login only** needs at least two enabled passkeys and an active
+Enabling **Passwordless login only** needs at least two usable passkeys and an active
 passkey login mode. Use those checks to explain a disabled switch; the server enforces both.
 Removal is limited to 10 requests/hour/user. Its 429, like an action validation refusal,
 currently rejects with `confirmation_failed`; show the error message without retrying in a loop.
@@ -385,6 +386,7 @@ do not depend on the DOM *nesting* staying identical.
 | --- | --- |
 | `.passkey-cards-root`, `.passkey-card-list` | list container / `<ul role="list">` |
 | `.passkey-card`, `.passkey-card-disabled` | a credential row (disabled variant) |
+| `.passkey-card-stale`, `.passkey-stale-note` | stale row and its “Made for …” note; can coexist with Disabled or Flagged |
 | `.passkey-card-glyph` | leading icon slot |
 | `.passkey-card-label`, `.passkey-card-labelrow` | the credential name |
 | `.indicator-pill` (`green` / `blue` / `gray`) | Synced / Device-bound / Disabled pills; the label is the pill's text |
@@ -395,6 +397,21 @@ do not depend on the DOM *nesting* staying identical.
 | `.no-result` | the zero-passkeys empty state (centered muted text plus the add button) |
 | `.passkey-only-row`, `.passkey-only-label`, `.passkey-only-help`, `.passkey-only-toggle` | the passwordless switch |
 | `.passkey-impersonated`, `.passkey-impersonated-notice` | the read-only cards an impersonated session sees (no add, rename, remove or switch) |
+
+Use `list_credentials`' server `stale` and `usable` booleans and `site_rp_id`. A disabled
+current-RP credential is not stale; a blank stored RP is stale. Only usable keys count toward
+the passkey-only switch's two-key enable threshold. The management view model exposes `rpId`,
+`stale` and `usable`; admin inventory fallback needs `siteRpId` from boot.
+
+`staleNotice(payload)` returns `staleNudgeBody` when stale keys exist but none are usable, or
+`siteOffNotice` when `site_rp_id` is null. The shipped prompt uses `.alert.alert-info`; Add is
+hidden while the site is off. Stale removal still needs ownership and management sudo.
+
+For Signals use `frappe.boot.passkeys.site_rp_id`, never `location.hostname`. The response's
+`rp_id` wins over boot; null/missing signal data means no call, while a valid payload with an
+empty ID list still signals that list. Map `CredentialNotForThisSite` to
+`credential_not_for_site` (a failed confirmation in the confirmation UI), never
+`unknown_credential` or `signalUnknownCredential`.
 
 **Login button + status** (`passkey_login.bundle.js`): `.btn-passkey-login`,
 `.passkey-glyph`, `.passkey-label`, and the status line `.passkey-status`

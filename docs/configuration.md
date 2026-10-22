@@ -27,14 +27,16 @@ recovering existing encrypted data or a credential export.
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
-| **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". **This is a one-way door.** Changing it after any passkey is enrolled **invalidates every enrolled passkey** — all users must re-enroll. Widen to a parent domain only as a deliberate action; the Desk shows a Cancel / Yes confirmation dialog restating the consequence. |
+| **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". Changing it makes passkeys for the previous RP stale until it is changed back; retained enabled rows work again on revert. The confirmation previews enabled passkeys/users that stop or start working. Widening to a parent RP still requires new passkeys. See [domain moves](operations.md#changing-the-rp-id-or-moving-domains). |
 | **Passkey Origins** (`passkey_origins`) | *blank ⇒ no additional origins* | Exact web origins, one per line; explicit ports are allowed. The exact origin from `host_name` is included automatically only when its host equals the RP ID or is a subdomain of it. The RP ID never implies trust in `https://<rp_id>`. Enabling a login mode is refused when the resolved web-origin set is empty. Each origin must be HTTPS (`http://localhost` is allowed only under `developer_mode`) and within RP-ID scope. |
 
 For example, `host_name = https://login.example.com` and RP ID `example.com` trusts
 `https://login.example.com`; it does **not** also trust `https://example.com`. Add the apex origin
 explicitly only if the site or an iOS app genuinely uses it. The read-only **Resolved
-Configuration** panel shows the exact server-resolved set, plus the invalidation warning and a
-host-mismatch banner when the current request host is outside that set.
+Configuration** panel shows the exact server-resolved set, plus the RP-change warning and stale
+inventory. The System Manager Desk alert distinguishes
+no working path, an app-only path, and web access at other configured origins. It uses configured
+`host_name`, not the request Host header.
 
 ## Mobile Apps
 
@@ -130,7 +132,7 @@ API-key and OAuth-token requests are not subject to them (see
 | **Hard-fail on Sign Count Regression** (`passkey_sign_count_hard_fail`) | Off | Controls what happens when an authenticator presents a signature counter *lower* than the stored value (a possible clone signal). Off (default): the sign-in proceeds but the credential is flagged and its owner is emailed. On: such an assertion is rejected. A counter that is *equal and non-zero* (a replay) is always rejected regardless of this knob. |
 | **Maximum Passkeys per User** (`passkey_max_per_user`) | 10 | Per-user credential cap; registration is refused once a user reaches it. Lowering it does not delete existing rows. |
 | **Re-authentication Window (Seconds)** (`passkey_reauth_window`) | 600 | Lifetime of the "sudo" window — how long after a fresh password or passkey login (or a password / passkey re-auth) the management surface lets a user add or delete passkeys without confirming again. Longer is more convenient and less strict; shorter re-prompts sooner. Does not affect action-confirmation grants, which are always single-use and short-lived. |
-| **Allow First Passkey After Email-Link or Social Sign-in** (`passkey_allow_first_enrollment_on_external_login`) | On | When **Login with Passkey** is also on, lets a user with no enabled passkey who signed in by email link, social/OAuth, LDAP or any other login the app does not classify as a password or passkey login, enroll a **first** passkey within the Re-authentication Window. The app cannot re-verify those sign-ins itself, so they unlock only this one step, and each use records a risk event. It is refused on second-factor-only sites because the same external login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
+| **Allow First Passkey After Email-Link or Social Sign-in** (`passkey_allow_first_enrollment_on_external_login`) | On | When **Login with Passkey** is also on, lets a user with no usable passkey who signed in by email link, social/OAuth, LDAP or any other login the app does not classify as a password or passkey login, enroll a **first** passkey within the Re-authentication Window. The app cannot re-verify those sign-ins itself, so they unlock only this one step, and each use records a risk event. It is refused on second-factor-only sites because the same external login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
 
 ## Notifications
 
@@ -138,7 +140,7 @@ API-key and OAuth-token requests are not subject to them (see
 |---|---|---|
 | **Notify on Passkey Changes** (`passkey_notify_on_change`) | On | Sends the account owner an email (with label, time, and IP) whenever a passkey is added, removed, disabled, or flagged. This email is the **compensating control for registration hijack** — a user who did not initiate the change can react. Turning it off is warned against; only do so on mail-less development sites. Activity Log rows are written either way. |
 | **Notify on Password Fallback** (`passkey_notify_password_fallback`) | Off | When on, emails a passkey holder if a sign-in used a one-time code instead of their passkey. Opt-in telemetry; off by default. |
-| **Notify on Password Login by Passkey Holder** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one enabled passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
+| **Notify on Password Login by Passkey Holder** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one usable passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
 
 ## The two-factor floor (both directions)
 
@@ -164,12 +166,12 @@ two desynced (`passkey_as_second_factor=1` while core 2FA is off). The final log
 veto still blocks enrolled users, and the security posture panel on the Passkey
 Settings page flags the missing floor.
 
-For a user with an enabled passkey, the second-factor requirement is enforced at the final login
+For a user with a usable passkey, the second-factor requirement is enforced at the final login
 hook, not only by the app's login-page JavaScript. Password, email-link, social/OAuth, LDAP, and
 other core login paths are vetoed unless this app completed the passkey step or explicitly handed
 the user to core OTP via `fallback_to_otp`. That OTP handoff creates a short-lived, one-time marker
 bound to core's `tmp_id`; a direct call to core OTP without that marker remains blocked. The rule
-also applies to **Administrator after Administrator has explicitly enrolled an enabled passkey**.
+also applies to **Administrator after Administrator has explicitly enrolled a usable passkey**.
 
 Every password-to-passkey ceremony captures a keyed, non-reversible version of the current password
 hash at the password leg and compares it again immediately before session minting. A password
@@ -193,6 +195,9 @@ authentication account without a local hash marker, requires core to re-authenti
 | "Passkey as Second Factor" on together with "Disable Username/Password Login" (core) | A dead combination for enrolled users — the app's password leg has nothing to run against, and alternate login completions are final-vetoed. Refused at save, from either settings page, while "Passkey as Second Factor" is the only passkey mode. With "Login with Passkey" also on, the save proceeds with an orange warning. |
 | Change notifications off while a login mode is on | The save proceeds with an orange warning: this weakens the main defence against registration hijack. |
 
+Login-veto rows above apply to users with usable credentials. Stale-only users are not subject
+to those per-user vetoes; the stored flags and settings-save guards remain in place.
+
 ## Per-user "Passkey Only Login"
 
 On `/passkeys`, the switch is labelled **Passwordless login only**; it is the same
@@ -200,22 +205,23 @@ setting as **Passkey Only Login** on the WebAuthn User Handle.
 
 This is a **per-user** switch (on the user's WebAuthn User Handle row), not a
 site setting. It disables password / email-link / social first-factor login for
-that one user — they must sign in with a passkey. An existing password hash is kept, just
-unusable for sign-in while the switch is on. It is the released-branch lever
+that one user while a usable passkey exists. An existing password hash is kept. With only stale
+keys, the flag persists but its veto pauses; it applies again when a usable key exists. It is the
+released-branch lever
 for "no passwords for this account"; the site-wide equivalent needs the
 self-hoster override in [`operations.md`](operations.md).
 
 - The user's own switch needs a fresh **passkey** confirmation — never a password and
   never a sudo window. (A password must not be able to switch off the very flag that says
-  "a password is not enough".) Turning it on there requires **at least two enabled
+  "a password is not enough".) Turning it on there requires **at least two usable
   passkeys**, so a single lost device never locks the account out.
 - A **System Manager** can clear it on the user's **WebAuthn User Handle** form; that is
   how a user who lost every passkey is recovered
   ([A user lost their passkey](recovery.md#a-user-lost-their-passkey)). Turning it on from
-  that form requires at least one enabled credential and a passkey login mode.
+  that form requires at least one usable credential and a passkey login mode.
 - **Administrator is exempt only from this per-user passkey-only login veto.** That preserves the
   password break-glass path for an Administrator who has not opted into the passkey second factor.
-  Once Administrator explicitly enrolls an enabled credential while *Passkey as Second Factor* is
+  Once Administrator explicitly enrolls a usable credential while *Passkey as Second Factor* is
   active, alternate/core login paths are protected exactly like any other enrolled user's. The
   site-wide `disable_user_pass_login` flag also has no Administrator exemption. See
   [`security.md`](security.md) and [`recovery.md`](recovery.md).
@@ -227,9 +233,10 @@ assertion bookkeeping re-locks the credential before advancing counters; UV setu
 credential; registration locks the user, handle, and credential census before applying the per-user
 cap and insert; passkey-only credential deletion/toggling locks the shared login floor; Passkey
 Settings mode changes lock the Single rows before checking flagged users; and the Passkey Settings /
-System Settings floor checks read each other's values with locking reads. These locks make concurrent
-verification, registration, deletion, flag changes, and settings saves serialize instead of each
-committing from a stale snapshot.
+System Settings floor checks read each other's values with locking reads. These locks protect the credential and mode floors. RP reads in ordinary census and ceremony
+effect checks are uncached but non-locking; they can retain a request transaction snapshot. Only
+bulk stale removal serializes its RP read with settings saves. See the
+[RP-change residual risks](security.md#residual-risks), including per-request `host_name` overlap.
 
 ### Request hardening and numeric limits
 

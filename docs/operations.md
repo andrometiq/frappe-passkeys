@@ -62,30 +62,51 @@ unlock one user; lockouts go through [`recovery.md`](recovery.md).
 
 ## Changing the RP ID or moving domains
 
-**Changing the Relying Party ID invalidates every enrolled passkey.** It is a
-one-way door. Plan a fleet-wide re-enrollment before you do it. Administrator's password is a
-break-glass path only while site-wide password login remains enabled and Administrator is not an
-enrolled passkey-second-factor user; rehearse console recovery before the cutover.
+A passkey is **usable** only when enabled and its stored RP ID exactly matches the site's
+operational RP ID (case-normalized). A different or blank stored RP ID is **stale**. Changing
+from `login.example.com` to `example.com` also makes the old passkeys stale: widening the scope
+does not migrate keys. Rows and private keys are kept; reverting to the original RP and working
+origins makes retained, enabled passkeys work again. Disabled current-RP rows are not stale.
 
-- **Real domain migration** (the site's public host changes): update `host_name`
-  in site config (and Passkey RP ID / Passkey Origins if set explicitly) to the new host, and
-  check that the resolved origins are exactly the non-empty set you will serve.
-  If the RP ID changes, existing passkeys cannot authenticate under the new RP ID;
-  have users re-enroll. Moving to another trusted origin within the same RP ID does
-  not itself require new passkeys. The Passkey Settings change dialog warns about
-  changing the RP ID.
+1. Before a move, keep a tested recovery path for a System Manager. Review **Passkey Settings →
+   Relying Party**. The RP change confirmation previews enabled passkeys and distinct users that
+   will stop or start working; invalid origin entries must be fixed before proceeding.
+2. Set `host_name`, the RP ID and exact trusted origins for the destination. Blank RP uses the
+   exact `host_name` host, so changing that host can change the RP without a settings dialog.
+   Moving between trusted origins under an unchanged RP does not require re-enrollment.
+3. Check the resolved configuration, the stale count and users' cards. Stale-only users can use
+   their password (plus core OTP where required); their passkey-only flag persists and applies
+   again as soon as one usable passkey exists. The OAuth password grant follows the same rule.
+   Core **Disable Username/Password Login** remains enforced. Users without another method need
+   [admin-assisted recovery](recovery.md#passkeys-fail-after-a-restore-or-host-change).
+4. Have users enroll for the new RP. Stale rows still consume the per-user cap. Users can remove
+   their own with a management re-authentication; a System Manager can filter **WebAuthn
+   Credential → RP ID**, or use **Remove stale passkeys** in settings. The bulk action includes
+   disabled stale rows, keeps flagged rows for review, and uses the usual removal notifications
+   when enabled. Deletion cannot be undone. It refuses while no operational RP exists or when
+   the RP changed since the page loaded; fix the configuration or reload first.
 
-- **Staging clone / restore to a different host:** inspect **Passkey Settings →
-  Relying Party** as a System Manager. Repair the intended host, RP ID and exact
-  trusted origins; a mismatch fails closed. Follow
-  [Passkeys fail after a restore or host change](recovery.md#passkeys-fail-after-a-restore-or-host-change).
-  Recover one manager first if necessary, then affected users individually. Do not
-  routinely switch off both login modes or clear every user's passkey-only flag.
+The System Manager's dismissible Desk banner distinguishes **off** (no operational RP/path,
+passkey requirements paused), **app only** (mobile path survives, requirements still apply), and
+**web works at other configured origins** (lists those origins). Missing RP or valid origins also
+shows an off warning. The fix link can suggest the configured site's host in settings; it never
+saves automatically. Users see stale notes, an enrollment prompt when only stale keys remain,
+or a site-off notice with Add hidden. Enforcement grace is not reset by a move; an administrator
+can reset it for a user who needs time to enroll.
 
-- **Stale restore:** credentials that were deleted *after* the backup was taken
-  come back when you restore it — the row returns and the authenticator still
-  holds the key, so a credential a user had revoked silently works again. After
-  any restore, review each user's credential inventory.
+For a planned family of subdomains, choose an apex RP such as `example.com` **before enrollment**,
+only if you control and trust its entire subdomain scope. Keep the exact origin allowlist narrow;
+an apex RP does not automatically trust every origin. This lets a later move from
+`login.example.com` to `portal.example.com` retain the RP and keys.
+
+`host_name` is reloaded per request, not at a worker-restart boundary. In-flight requests can
+still use the old configuration; database changes also have a request-length visibility window.
+For a strict cutover, stop incoming traffic, drain requests, change configuration, then resume.
+See [residual risks](security.md#residual-risks).
+
+For a staging clone, repair the intended RP/origins and recover one manager first; do not
+routinely clear everyone's passkey-only flags. After any restore, review the inventory: a
+credential revoked after the backup was taken returns with the backup and may work again.
 
 ## Credential and counter incident response
 
@@ -109,7 +130,7 @@ enrolled passkey-second-factor user; rehearse console recovery before the cutove
   out. System Managers can revoke any user's credential from the WebAuthn
   Credential DocType — **prefer disabling (set `enabled=0`) over deleting** so the
   row survives for forensics. With **Notify on Passkey Changes** on, the owner is
-  emailed. The app refuses to remove or disable the last enabled credential while
+  emailed. The app refuses to remove or disable the last usable credential while
   **Passkey Only Login** or site-wide password disable is set. Follow
   [account recovery](recovery.md#a-user-lost-their-passkey) for the correct order; the
   site-wide case requires its own recovery path.
@@ -127,7 +148,7 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:passkey_flagged` | A sign-count regression / anomaly was recorded on a sign-in. |
 | `passkeys:fallback_used` | A passkey holder completed the second factor with a one-time code instead. |
 | `passkeys:external_login_enrollment` | The restricted first-enrollment-on-external-login path was used. |
-| `passkeys:password_login_by_passkey_holder` | A user who holds an enabled passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
+| `passkeys:password_login_by_passkey_holder` | A user who holds a usable passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
 | `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
 | `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |
 
@@ -212,7 +233,7 @@ Desk; see [console access](recovery.md#console-access). Site-wide protection cha
 are reserved for the guide's last resort.
 
 **Administrator break-glass boundary:** Administrator is exempt from the per-user passkey-only
-login veto only. If Administrator explicitly enrolls an enabled credential while Passkey as Second
+login veto only. If Administrator has a usable credential while Passkey as Second
 Factor is active, alternate/core login paths require the app's passkey or one-time OTP fallback like
 any other enrolled user. The site-wide `disable_user_pass_login` flag also has no Administrator
 exemption. Keep tested console access outside the login path; do not treat an Administrator password

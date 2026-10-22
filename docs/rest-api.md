@@ -26,7 +26,8 @@ before you build; a native app additionally needs [`mobile-apps.md`](mobile-apps
 - **Typed errors**: a refusal carries `exc_type` (the exception class name — match on
   **that**, never on message text) plus, for the 401 retry contracts, structured keys
   at the **top level** of the body. Codes: `CeremonyExpired` (401),
-  `UnknownCredential` (401), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
+  `UnknownCredential` (401), `CredentialNotForThisSite` (401 — an existing credential belongs
+  to another RP; never call `signalUnknownCredential` for it), `UVSetupRequired` (401), `PasskeyConfirmationRequired`
   (401), `CeremonyFailed` (401 — a signed-in user's registration, confirmation or password
   re-auth was refused; the session stays signed in, so the user can retry),
   `BrowserSessionRequired` (403 — the request was authenticated by an API key (`token` or `Basic`) or an OAuth bearer,
@@ -60,9 +61,8 @@ the client → `verify_login`.
 
 ### `passkeys.passkey.begin_login`
 
-Mint assertion options + a single-use ceremony and set the binder cookie. Always
-answers `200` (it is also the client's config channel). `state_id`/`options` are
-present **only** when `login_with_passkey` is on.
+Mint assertion options + a single-use ceremony and set the binder cookie. This is also the
+client's config channel. `state_id`/`options` require `login_with_passkey` and an operational RP.
 Source: `passkeys/passkey.py:begin_login`. Rate limit: **30 / 60 s / IP**. Guest.
 
 - **Args**: none.
@@ -78,10 +78,13 @@ Source: `passkeys/passkey.py:begin_login`. Rate limit: **30 / 60 s / IP**. Guest
     }
   }
   ```
-  Mode off ⇒ the same body without `state_id`/`options`. Sets `Set-Cookie:
-  passkey_binder=…; HttpOnly`.
-- **Errors**: `417` served-by-core; `AuthenticationError` if a mode is on but no RP ID
-  resolves (fail-closed).
+  With first-factor mode off, `state_id`/`options` and the binder cookie are absent.
+  With no operational RP (no RP or no valid web/app path), returns
+  `{"message":{"enabled":false,"modes":{"first_factor":false,"second_factor":false}}}`
+  without a binder cookie or Error Log. A valid app-only path remains operational.
+  The binder cookie is set only when assertion options are issued.
+- **Errors**: `417` served-by-core; `429` rate limit; `AuthenticationError` for a request
+  host outside the configured origins when starting a first-factor ceremony.
 
 ### `passkeys.passkey.verify_login`
 
@@ -95,9 +98,11 @@ Source: `passkeys/passkey.py:verify_login`. Rate limit: **10 / 60 s / IP**. Gues
   or `message: "No App"` for Website Users, plus `home_page` (navigate there or reload);
   the session cookie is set.
 - **Errors** (all `401`, match on `exc_type`):
-  - `CeremonyExpired` — the `state_id` was consumed/expired. Call `begin_login` again
-    and run a **fresh** `get()` (never re-POST the same assertion).
-  - `UnknownCredential` — the assertion references no live credential (removed/stale).
+  - `CeremonyExpired` — the `state_id` was consumed/expired or its RP is no longer current.
+    Call `begin_login` again and run a **fresh** `get()` (never re-POST the same assertion).
+  - `UnknownCredential` — the assertion references no live credential (for example, removed).
+  - `CredentialNotForThisSite` — the existing credential was made for another RP. Show the
+    refusal without calling `signalUnknownCredential`; it could work again after an RP revert.
   - `UVSetupRequired` — a UV=1 assertion against a credential that has not completed
     user-verification setup; the body carries a top-level `setup_id`. Continue with
     `complete_uv_setup`.
@@ -114,8 +119,8 @@ Rate limit: **5 / 300 s / IP**. Guest.
 
 - **Args**: `setup_id` (from the `UVSetupRequired` body), `pwd` (string).
 - **Success** `200`: the core login envelope (session minted).
-- **Errors**: `CeremonyExpired` (401); `AuthenticationError` (401, incl. wrong
-  password — throttled at 5 / 900 s / user).
+- **Errors**: `CeremonyExpired` (401, including a missing/changed RP in setup state);
+  `AuthenticationError` (401, incl. wrong password — throttled at 5 / 900 s / user).
 
 ---
 
@@ -132,7 +137,7 @@ controls OTP for passkey-less users and whether OTP fallback can be offered to e
 
 Leg 1: verify the password via core `authenticate`, then return a passkey assertion
 challenge inside core's `verification` / `tmp_id` envelope (or transparently fall back
-to core OTP / plain login for passkey-less users). Source:
+to core OTP / plain login for users without usable passkeys, including stale-only users). Source:
 `passkeys/passkey.py:login_with_password`. Rate limit: **10 / 60 s / IP**. Guest.
 
 - **Args**: `usr` (string), `pwd` (string).
@@ -158,7 +163,9 @@ Leg 2: verify the step-up assertion, re-authenticate, mint the session. Source:
   `fallback_to_otp` flow).
 
 The password leg records a keyed, non-reversible password-hash version and leg 2 compares it again
-before minting the session. Password rotation or user disable during the ceremony is terminal and
+before minting the session. An RP change returns `CeremonyExpired` without `state_id` or
+`verification` (no re-arm).
+Password rotation or user disable during the ceremony is terminal and
 fails closed. For enrolled users, the final login hook also vetoes alternate/core login paths unless
 this app completed the passkey leg or issued the one-time OTP fallback marker.
 
@@ -214,13 +221,14 @@ Rate limit: **20 / 3600 s / user**.
   ```json
   { "message": {
       "name": "<credential docname>",
-      "label": "Apple Passwords",
-      "signal": { "user_handle": "<b64url>", "credential_ids": ["<b64url>", "..."],
+      "label": "Laptop",
+      "signal": { "rp_id": "example.com", "user_handle": "<b64url>", "credential_ids": ["<b64url>", "..."],
                   "name": "user@example.com", "display_name": "User Name" }
   } }
   ```
   The `signal` block feeds the optional WebAuthn Signal API
-  (`signalAllAcceptedCredentials` / `signalCurrentUserDetails`).
+  (`signalAllAcceptedCredentials` / `signalCurrentUserDetails`); IDs include only usable keys
+  for that response RP. Use it rather than a cached boot RP.
 - **Errors**: `401 CeremonyExpired`; `CeremonyFailed` (401 — already registered /
   could-not-verify; the user stays signed in).
 
@@ -243,12 +251,18 @@ Rate limit: **60 / 60 s / user**.
   { "message": {
       "credentials": [
         { "name": "…", "label": "…", "enabled": 1, "flagged": 0, "flagged_reason": null,
+          "rp_id": "example.com", "stale": false, "usable": true,
           "backup_state": 1, "backup_eligible": 1, "discoverable": "Yes",
-          "aaguid": "…", "provider": "Apple Passwords", "last_used_at": "…", "creation": "…" }
+          "aaguid": "…", "provider": "Example provider", "last_used_at": "…", "creation": "…" }
       ],
-      "passkey_only_login": 0
+      "passkey_only_login": 0, "site_rp_id": "example.com"
   } }
   ```
+
+`site_rp_id` is a string or null (no operational path). `stale` means a different/blank stored
+RP or no operational site RP; `usable` means enabled and not stale. Disabled current-RP rows
+are not stale. All rows, including stale and disabled ones, remain in the inventory and cap.
+The stored `passkey_only_login` flag is not a statement that its login veto currently applies.
 
 ### `passkeys.api.credentials.rename_credential`
 
@@ -265,21 +279,24 @@ Display-only; no sudo. Rate limit: **20 / 3600 s / user**.
 - **Args**: `name`.
 - **Success** `200`: `{"message": {"deleted": "<name>"}}`.
 - **Errors**: `401 PasskeyConfirmationRequired` (run the confirmation, retry with the
-  grant header); `ValidationError` when it would remove the last passkey of a
-  passkey-only account (message surfaced verbatim in `_server_messages`).
+  grant header); `ValidationError` when it would remove the last usable passkey of a
+  passkey-only account or a site with password login disabled (message surfaced verbatim in
+  `_server_messages`).
+
+Stale removal is allowed by the last-passkey guard; ownership and sudo still apply.
 
 ### `passkeys.api.credentials.set_passkey_only_login`
 
 Turn password login off/on for the account. Gated on a **passkey grant only** — never
 a password/sudo window ("a password must never disable the password-is-not-sufficient
-flag"). Enabling additionally needs ≥2 enabled passkeys and at least one passkey login mode on.
+flag"). Enabling additionally needs ≥2 usable passkeys and at least one passkey login mode on.
 Rate limit: **20 / 3600 s / user**.
 
 - **Args**: `enabled` (boolean).
 - **Success** `200`: `{"message": {"passkey_only_login": 1}}`.
 - **Errors**: `401 PasskeyConfirmationRequired` with `methods: ["passkey"]` and a
   `payload_fingerprint` over `{"enabled": <bool>}` — echo it **verbatim** into
-  `begin_confirmation` (below); `ValidationError` (<2 enabled passkeys or both login modes off).
+  `begin_confirmation` (below); `ValidationError` (<2 usable passkeys or both login modes off).
 
 ---
 
@@ -316,6 +333,10 @@ Verify the UV assertion, mint the grant.
 - **Args**: `state_id`, `credential` (assertion JSON).
 - **Success** `200`: `{"message": {"grant": "<opaque token>"}}`. Attach it as
   `X-Passkey-Grant: <token>` on the retried protected call.
+- **Errors**: `CeremonyExpired` for consumed/expired state or an RP change before grant minting.
+  `CeremonyFailed` covers an assertion outside the ceremony allowlist. If
+  `CredentialNotForThisSite` is returned, the confirmation UI treats it as a failed
+  confirmation, with no unknown-credential Signal.
 
 ### `passkeys.confirm.reauth_password`
 
@@ -326,12 +347,21 @@ fallback). Rate limit: **5 / 300 s / user**.
 - **Args**: `pwd`, `action` (optional), `payload_fingerprint` (optional).
 - **Success** `200`: `{"message": {"grant": "…"}}` (with `action`) or a seeded window.
 
+Confirmation offers passkeys only when the user has usable credentials. Password re-auth is
+refused under site-wide password disable only while a usable credential exists; a signed-in
+stale-only user can re-authenticate with a password where the action permits it. This does not
+permit password sign-in or change a passkey-only switch without a passkey grant.
+
 ---
 
 ## Authenticated — supporting endpoints
 
 - **`passkeys.passkey.get_signal_data`** — returns `{rp_id, user_handle,
-  credential_ids}` for the caller so a client can drive the WebAuthn Signal API.
+  credential_ids, name, display_name}` for the caller, with IDs filtered to that one RP. Returns null when no
+  operational RP exists. A response with a null `user_handle` also cannot feed Signals.
+  Never substitute `location.hostname`;
+  the response RP takes precedence over boot. A valid payload with `credential_ids: []` is
+  different from null and may signal the empty list.
   Rate limit: 60 / 60 s / user. Source: `passkeys/passkey.py:get_signal_data`.
 - **`passkeys.passkey.record_nudge`** — folds an enrollment-nudge event
   (`"shown"` / `"declined"` / `"opt_out"`) into per-user cadence state. `shown` counts toward the
@@ -347,6 +377,63 @@ fallback). Rate limit: **5 / 300 s / user**.
   where Frappe exposes response headers; Frappe v15 does not, and the client fetches with
   `no-store`), because the request's language can
   change without changing the URL. Rate limit: 30 / 60 s / IP.
+
+---
+
+## System Manager — RP settings and stale removal
+
+All endpoints below use POST under
+`passkeys.passkeys.doctype.passkey_settings.passkey_settings` (append the method name).
+They require the **System Manager** role, accept normal administrator API authentication, and
+return data under `message`. Limits are per calling user; exhaustion returns `429`.
+
+### `get_rp_id_change_impact`
+
+Read-only preview. **30 / 60 s / user**; no sudo required.
+
+- **Args**: `rp_id` (string; blank derives from `host_name`), `passkey_origins` and
+  `passkey_app_origins` (optional newline-separated strings). Omitted/null origins keep saved
+  values; an empty string clears the corresponding explicit list for the preview.
+- **Success**: `{current_rp_id, new_rp_id, new_off, stop: {passkeys, users}, start: {passkeys, users}}`.
+  RP values may be null; `new_off` means no operational candidate RP. Counts include enabled
+  rows only, with distinct users in each group. Nothing is saved.
+- **Errors**: `ValidationError` for an invalid RP shape or explicit web/app origin line, including
+  out-of-scope web origins and HTTP outside the developer localhost exception. A valid candidate
+  with no operational path returns `new_off: true` instead. This is not a full settings-save
+  validation: a save also validates the derived `host_name` origin and requires a web origin.
+
+### `remove_stale_passkeys`
+
+Delete stale, unflagged rows site-wide, including disabled rows. **3 / 60 s / user**;
+no sudo required. Impersonated sessions receive `ImpersonatedSessionRefused` (403).
+
+- **Args**: `site_rp_id` (exact operational RP from the settings context you displayed).
+- **Success**: `{removed: <count>}`. Normal deletion hooks send owner notifications when enabled;
+  flagged rows are kept, including rows flagged while removal waits. Already-removed rows are
+  skipped. Deletion is irreversible.
+- **Errors**: `ValidationError` if the operational RP is null or differs from the argument.
+  Repair configuration or reload before retrying. The server locks settings, reads current RP
+  values from that lock, then deletes through the controllers (settings → handle → credential).
+  This serializes database RP saves, not `host_name` file changes.
+
+### Existing settings reads
+
+- `get_resolved_rp_id` (**30 / 60 s / user**) now returns
+  `{rp_id, site_rp_id, configured_site_origin}`. `rp_id` is the resolved configuration value;
+  `site_rp_id` additionally requires an operational web/app path.
+- `get_settings_context` (**30 / 60 s / user**) adds
+  `stale_passkeys: {site_rp_id, passkeys, users, removable}`, or null when no operational RP exists.
+  Counts include disabled stale rows; `removable` excludes flagged rows.
+
+### Boot contract
+
+Desk and portal boot add `site_rp_id`; `credential_count` now counts usable keys. Existing `rp_id`
+remains the resolved configuration value. Only System Managers receive `rp_alert`: null when
+both modes are off, otherwise `{reason, status, rp_id, site_host, suggested_rp_id, working_origins}`.
+`status` is `off`, `app_only` or `web_works`; `reason` is `no_rp_id`, `host_outside_rp`,
+`no_valid_origins` or null. A null reason needs no banner. Origins and the site host come from
+configuration, never a caller's headers. `site_rp_id` describes operational scope separately from
+the login mode switches.
 
 ---
 

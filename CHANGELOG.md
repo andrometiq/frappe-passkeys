@@ -7,14 +7,35 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Added
+
+- Stale-passkey cards and enrollment guidance, a visible/filterable credential RP ID, and a
+  System Manager Desk alert for RP/address mismatches and unavailable passkey paths.
+- RP-change impact counts and guarded bulk removal of stale, unflagged credentials in settings.
+  The APIs expose the operational site RP and each credential's stale/usable status.
+
+### Changed
+
+- Login, confirmation, enrollment counts and last-passkey guards use enabled credentials made for
+  the operational site RP. Stale-only users return to password/core OTP where allowed; the OAuth
+  password grant follows the same rule. Site-wide password disable remains enforced.
+- RP changes retain credential rows: reverting the RP and origins restores retained enabled
+  passkeys. A surviving mobile-app path keeps passkey requirements active even without web access.
+
 ### Security
 
-- Refuse OAuth password-grant bearer-token insertion for passkey-only users, enrolled passkey
-  second-factor users, and sites with password login disabled. This closes the bypass on older
-  supported Frappe versions whose OAuth password validator skips the final login veto.
+- Refuse OAuth password-grant bearer-token insertion for users with a usable passkey and
+  passkey-only or passkey-second-factor requirements, and sites with password login disabled. This
+  closes the bypass on older supported Frappe versions whose OAuth password validator skips the final login veto.
 
 ### Fixed
 
+- RP/address mismatches with no operational path no longer trap users behind unusable passkey
+  requirements or write an Error Log on each login-page view. Existing stale credentials are
+  refused distinctly from unknown credentials, so browsers are not told to forget them.
+- Ceremonies re-check the RP before creating a credential, session or confirmation grant;
+  second-factor RP changes do not re-arm. Signals use the response RP and only its usable keys,
+  and are suppressed when no operational RP exists.
 - Guest endpoints share an IPv6 /64 rate limit, preventing address rotation within that subnet
   from bypassing the app limit while retaining full IPs in audit records.
 - Email identifiers are trimmed and lowercased before password authentication; username aliases

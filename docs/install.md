@@ -214,7 +214,11 @@ bench --site <site> console
 
 The enable-a-mode step is only required when the export carries *Passkey Only Login* users; for a
 plain restore it is harmless (re-enabling the mode you were already running). The RP ID and origins
-are not optional: under a different RP ID every restored passkey fails to authenticate. By default,
+are not optional: rows restored under a different RP ID are stale and cannot authenticate there.
+A passkey-only handle cannot be restored unless it has a usable credential under the destination
+RP; the handle floor fails closed. Credential insertion precedes handle validation; if that
+validation raises, roll back the failed import transaction before repairing configuration and
+retrying. Restoring the original RP/origins makes retained enabled rows usable again. Blank stored RP IDs remain stale; there is no backfill or RP rewrite. By default,
 `import_credentials` requires **both passkey tables to be empty**. This makes an
 accidental import into a live credential set fail before merging anything. `allow_existing=True` is
 an explicit, operator-reviewed merge mode, not an idempotency convenience: inspect handle ownership
