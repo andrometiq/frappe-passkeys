@@ -74,8 +74,9 @@ Frappe v15, v16, and develop.
   password does not. A repeated non-zero signature counter is always rejected, and a counter
   regression flags the passkey and emails its owner (or is rejected, if you choose). Relying Party ID and origins come from pinned
   configuration, never from request headers. Guest endpoints are rate-limited per IP and signed-in
-  endpoints per user. Switching an account to passkey-only sign-in needs two enabled passkeys, and
-  the account's last passkey cannot then be removed.
+  endpoints per user. Switching an account to passkey-only sign-in needs two usable passkeys, and
+  the account's last usable passkey cannot then be removed. The passkey-only restriction is paused
+  for users with only stale passkeys.
 
 <details>
 <summary>Screenshots</summary>

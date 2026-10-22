@@ -130,14 +130,12 @@ class PasskeyOnlyVetoTest(PinnedSiteRp, IntegrationTestCase):
 		)
 
 	def _assert_oauth_token_insert(self, user, grant_type, *, refused, site_disabled=0, body_grant=None):
-		"""Insert the real bearer-token DocType through its registered before_insert hook.
-
-		Rows are found by ``user`` (a fresh fixture user per test): Frappe develop hashes
-		``access_token`` at rest in the controller's ``before_insert``, so the raw token
-		is not a lookup key on every line."""
+		"""Exercise the token hook without touching pre-existing bearer tokens."""
 		original = frappe.db.get_single_value("System Settings", "disable_user_pass_login")
 		request, form = getattr(frappe.local, "request", None), frappe.local.form_dict
 		token = frappe.generate_hash(length=32)
+		before = set(frappe.get_all("OAuth Bearer Token", filters={"user": user}, pluck="name"))
+		inserted = None
 		try:
 			frappe.db.set_single_value("System Settings", "disable_user_pass_login", site_disabled)
 			bust_system_settings_cache()
@@ -160,15 +158,24 @@ class PasskeyOnlyVetoTest(PinnedSiteRp, IntegrationTestCase):
 			if refused:
 				with self.assertRaises(frappe.AuthenticationError):
 					doc.insert(ignore_permissions=True)
-				self.assertFalse(frappe.db.exists("OAuth Bearer Token", {"user": user}))
+					inserted = doc.name
+				self.assertEqual(
+					set(frappe.get_all("OAuth Bearer Token", filters={"user": user}, pluck="name")),
+					before,
+				)
 			else:
 				doc.insert(ignore_permissions=True)
-				self.assertTrue(frappe.db.exists("OAuth Bearer Token", {"user": user}))
+				inserted = doc.name
+				self.assertTrue(frappe.db.exists("OAuth Bearer Token", inserted))
 		finally:
-			frappe.db.delete("OAuth Bearer Token", {"user": user})
+			if inserted is not None:
+				frappe.db.delete("OAuth Bearer Token", {"name": inserted})
 			frappe.db.set_single_value("System Settings", "disable_user_pass_login", original)
 			bust_system_settings_cache()
 			frappe.local.request, frappe.local.form_dict = request, form
+		self.assertEqual(
+			set(frappe.get_all("OAuth Bearer Token", filters={"user": user}, pluck="name")), before
+		)
 
 	# ---- exemptions -------------------------------------------------------
 
@@ -444,19 +451,31 @@ class PasskeyOnlyVetoTest(PinnedSiteRp, IntegrationTestCase):
 	def test_administrator_stale_only_lifts_second_factor_without_changing_exemption(self):
 		from passkeys.tests.committed_state import restore_rows
 
-		filters = {"user": "Administrator"}
-		rows = frappe.db.get_values("WebAuthn Credential", filters, "*", as_dict=True)
-		self.addCleanup(restore_rows, "WebAuthn Credential", filters, rows)
-		frappe.db.delete("WebAuthn Credential", filters)
-		make_credential("Administrator", rp_id="old.example.com")
-		frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
-		flush_settings_cache()
-		self._guest_context()
-		self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Administrator")))
-		self._assert_oauth_token_insert("Administrator", "password", refused=False)
-		frappe.set_user("Administrator")
-		make_credential("Administrator")
-		self._guest_context()
-		with self.assertRaises(frappe.AuthenticationError):
-			auth_hooks.on_login_veto(login_manager=_LM("Administrator"))
-		self._assert_oauth_token_insert("Administrator", "password", refused=True)
+		existing_token = frappe.get_doc(
+			{
+				"doctype": "OAuth Bearer Token",
+				"user": "Administrator",
+				"access_token": frappe.generate_hash(length=32),
+				"expires_in": 3600,
+				"expiration_time": add_to_date(now_datetime(), seconds=3600),
+			}
+		).insert(ignore_permissions=True)
+		try:
+			filters = {"user": "Administrator"}
+			rows = frappe.db.get_values("WebAuthn Credential", filters, "*", as_dict=True)
+			self.addCleanup(restore_rows, "WebAuthn Credential", filters, rows)
+			frappe.db.delete("WebAuthn Credential", filters)
+			make_credential("Administrator", rp_id="old.example.com")
+			frappe.db.set_single_value("Passkey Settings", "passkey_as_second_factor", 1)
+			flush_settings_cache()
+			self._guest_context()
+			self.assertIsNone(auth_hooks.on_login_veto(login_manager=_LM("Administrator")))
+			self._assert_oauth_token_insert("Administrator", "password", refused=False)
+			frappe.set_user("Administrator")
+			make_credential("Administrator")
+			self._guest_context()
+			with self.assertRaises(frappe.AuthenticationError):
+				auth_hooks.on_login_veto(login_manager=_LM("Administrator"))
+			self._assert_oauth_token_insert("Administrator", "password", refused=True)
+		finally:
+			frappe.db.delete("OAuth Bearer Token", {"name": existing_token.name})

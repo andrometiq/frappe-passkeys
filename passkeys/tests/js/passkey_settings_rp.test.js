@@ -20,6 +20,7 @@ function harness() {
 	context.paintBanners = () => {};
 	const frm = { doc: { passkey_rp_id: "new.example", passkey_origins: "https://new.example" }, _passkey_rpid_saved: "old.example",
 		set_value: (field, value) => { frm.doc[field] = value; }, scroll_to_field: value => { frm.scrolled = value; } };
+	frm._passkey_rp_saved = context.rpCandidate(frm);
 	return { context, frm, calls, warns, notices, handlers, get dialog() { return dialog; } };
 }
 test("RP confirmation waits for server counts, escapes values, and acknowledges only the previewed inputs", () => {
@@ -79,6 +80,7 @@ test("bulk action confirms removable count and sends saved site RP, then refresh
 	const h = harness();
 	h.context.removeStalePasskeys(h.frm, { site_rp_id: "saved.example", passkeys: 8, removable: 6 });
 	assert.match(h.dialog.options.fields[0].options, /Remove 6 passkey/);
+	assert.match(h.dialog.options.fields[0].options, /saved.example/);
 	assert.match(h.dialog.options.fields[0].options, /Flagged passkeys are kept for review/);
 	assert.equal(h.calls.length, 0);
 	h.dialog.options.primary_action();
@@ -123,3 +125,28 @@ test("resolved field shows stale counts and removable action only when eligible,
 	h.context.paintResolvedConfig(h.frm, { resolvedRpId: "edited.example", resolvedOrigins: [] });
 	assert.doesNotMatch(html, /were made for another RP ID/);
 });
+
+for (const field of ["passkey_rp_id", "passkey_origins", "passkey_app_origins"]) {
+	test(`bulk removal is disabled for unsaved ${field} and rechecked on confirmation`, () => {
+		const h = harness();
+		const nodes = [];
+		h.context.document = { createElement: tag => { const node = element(tag); nodes.push(node); return node; },
+			createTextNode: text => ({ textContent: text }) };
+		h.frm.fields_dict = {};
+		let html, clicked;
+		h.frm.get_field = () => ({ html: value => { html = value; },
+			$wrapper: { find: () => ({ on: (_, callback) => { clicked = callback; } }) } });
+		const stale = { site_rp_id: "new.example", passkeys: 3, users: 2, removable: 1 };
+		h.frm._passkey_settings_context = { stale_passkeys: stale };
+		h.context.removeStalePasskeys(h.frm, stale);
+		const confirmation = h.dialog;
+		h.frm.doc[field] = "unsaved.example";
+		h.context.paintResolvedConfig(h.frm, { resolvedRpId: "unsaved.example", resolvedOrigins: [] });
+		assert.equal(nodes.find(node => node.tag === "button").disabled, true);
+		assert.match(html, /Save the RP ID change first\./);
+		clicked();
+		assert.equal(h.dialog, confirmation);
+		confirmation.options.primary_action();
+		assert.equal(h.calls.length, 0);
+	});
+}

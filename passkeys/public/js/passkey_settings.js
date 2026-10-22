@@ -5,6 +5,7 @@ frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
 		// The last-saved RP ID, for reverting a backed-out change (refresh re-fires on save).
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
+		if (!(frm.is_dirty && frm.is_dirty())) frm._passkey_rp_saved = rpCandidate(frm);
 		frm.set_df_property("passkey_app_origins", "description", __(
 			"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
 		));
@@ -31,6 +32,7 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_as_second_factor: paintBanners,
 	passkey_notify_on_change: paintBanners,
 	passkey_origins: paintBanners,
+	passkey_app_origins: paintBanners,
 	passkey_everyone_else: paintBanners,
 	passkey_enforce_after: paintBanners,
 	passkey_enforce_scope: paintBanners,
@@ -64,6 +66,10 @@ function rpIdChangeUnconfirmed(frm) {
 
 function rpCandidate(frm) {
 	return JSON.stringify([frm.doc.passkey_rp_id || "", frm.doc.passkey_origins || "", frm.doc.passkey_app_origins || ""]);
+}
+
+function hasUnsavedRpConfig(frm) {
+	return rpCandidate(frm) !== frm._passkey_rp_saved;
 }
 
 function confirmRpIdChange(frm) {
@@ -397,7 +403,10 @@ function paintResolvedConfig(frm, ctx) {
 		if (canRemove) {
 			var button = settingsElement("button", "btn btn-xs btn-default ml-2 passkey-remove-stale", __("Remove stale passkeys"));
 			button.type = "button";
+			button.disabled = hasUnsavedRpConfig(frm);
 			staleLine.appendChild(button);
+			if (button.disabled) staleLine.appendChild(settingsElement("span", "text-muted small ml-2",
+				__("Save the RP ID change first.")));
 		}
 		box.appendChild(staleLine);
 	}
@@ -451,11 +460,13 @@ function settingsElement(tag, className, text) {
 }
 
 function removeStalePasskeys(frm, stale) {
+	if (hasUnsavedRpConfig(frm)) return;
 	var dialog = new frappe.ui.Dialog({
 		title: __("Remove stale passkeys?"),
-		fields: [{ fieldtype: "HTML", options: frappe.passkeys_common.escapeHtml(__("Remove {0} passkey(s) that don't work on this site? Their owners get the usual email that a passkey was removed. Flagged passkeys are kept for review. This can't be undone.", [stale.removable])) }],
+		fields: [{ fieldtype: "HTML", options: frappe.passkeys_common.escapeHtml(__("Remove {0} passkey(s) that don't work with the saved RP ID {1}? Their owners get the usual email that a passkey was removed. Flagged passkeys are kept for review. This can't be undone.", [stale.removable, stale.site_rp_id])) }],
 		primary_action_label: __("Remove passkeys"),
 		primary_action: function () {
+			if (hasUnsavedRpConfig(frm)) return;
 			frappe.call({
 				method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.remove_stale_passkeys",
 				args: { site_rp_id: stale.site_rp_id },

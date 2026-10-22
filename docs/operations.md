@@ -83,7 +83,8 @@ origins makes retained, enabled passkeys work again. Disabled current-RP rows ar
    their own with a management re-authentication; a System Manager can filter **WebAuthn
    Credential → RP ID**, or use **Remove stale passkeys** in settings. The bulk action includes
    disabled stale rows, keeps flagged rows for review, and uses the usual removal notifications
-   when enabled. Deletion cannot be undone. It refuses while no operational RP exists or when
+   when enabled. Save RP ID or origin edits before using the action; its confirmation names the
+   saved RP ID. Deletion cannot be undone. It refuses while no operational RP exists or when
    the RP changed since the page loaded; fix the configuration or reload first.
 
 The System Manager's dismissible Desk banner distinguishes **off** (no operational RP/path,
