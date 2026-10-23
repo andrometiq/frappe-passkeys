@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.7] / [16.0.7] — 2026-10-23
+
 ### Added
 
 - Stale-passkey cards and enrollment guidance, a visible/filterable credential RP ID, and a
@@ -36,6 +38,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Ceremonies re-check the RP before creating a credential, session or confirmation grant;
   second-factor RP changes do not re-arm. Signals use the response RP and only its usable keys,
   and are suppressed when no operational RP exists.
+- The login and portal page scripts no longer leak onto other pages served by the same worker.
+  They were appended to Frappe's cached page-asset lists in place; on a signed-in page the leaked
+  login script could clear the session cookie.
 - Guest endpoints share an IPv6 /64 rate limit, preventing address rotation within that subnet
   from bypassing the app limit while retaining full IPs in audit records.
 - Email identifiers are trimmed and lowercased before password authentication; username aliases
@@ -227,7 +232,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.6...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.7...develop
+[15.0.7]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.7
+[16.0.7]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.7
 [15.0.6]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.6
 [16.0.6]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.6
 [15.0.5]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.5
