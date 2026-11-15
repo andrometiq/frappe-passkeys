@@ -203,12 +203,19 @@ class DormantHooksTest(PinnedSiteRp, IntegrationTestCase):
 	def test_clear_sudo_window_is_a_noop(self):
 		user = self._user()
 		sign_in(user)
-		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
-		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
-		# dormant: the window is left intact (core owns logout teardown)
+		sid = frappe.session.sid
+		self.addCleanup(state.clear_sudo_window, sid)
+		self.addCleanup(frappe.local.flags.pop, "passkeys_logout_sid", None)
+		state.set_sudo_window(sid, {"v": 1, "user": user, "seeded_by": "password"}, 600)
+		# control: a live app notes the sid for the after-request clear
+		session.clear_sudo_window(login_manager=_LM(user))
+		self.assertEqual(frappe.local.flags.pop("passkeys_logout_sid", None), sid)
+		# dormant: nothing is noted, so the window outlives even an ended session
 		with _core_native():
 			session.clear_sudo_window(login_manager=_LM(user))
-		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
+		frappe.set_user("Guest")
+		session.clear_logged_out_sudo_window()
+		self.assertIsNotNone(state.get_sudo_window(sid))
 
 	def test_extend_bootinfo_publishes_nothing(self):
 		user = self._user()

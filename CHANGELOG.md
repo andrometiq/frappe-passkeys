@@ -14,6 +14,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   The URLs come from pinned configuration. It needs a one-time reverse-proxy rule on the RP ID host
   (`docs/install.md`).
 
+### Fixed
+
+- On Frappe v15 and v16, disabling or deleting another user no longer ends the acting
+  administrator's own re-authentication (sudo) window, so their next passkey change does not ask
+  them to confirm again. Signing out still ends it.
+
 ### Documentation
 
 - Revoking, disabling or deleting a passkey does not end the user's existing sessions; operations

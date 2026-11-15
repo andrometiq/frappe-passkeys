@@ -84,13 +84,18 @@ persistent_cache_keys = ["passkeys:otp-fallback:"]
 on_login = ["passkeys.auth_hooks.on_login_veto"]
 
 # Sudo-window seed: after make_session, where the sid already exists (the on_login veto
-# runs before it and cannot seed a sid-keyed window). Dropped on logout.
+# runs before it and cannot seed a sid-keyed window). Dropped after a logout that ended
+# this session: on_logout notes the sid, after_request clears it once the outcome is known.
 on_session_creation = ["passkeys.session.seed_sudo_window"]
 on_logout = ["passkeys.session.clear_sudo_window"]
 
-# UI-test sites only (passkeys_deterministic_test_cookies): drop stale sid cookie
-# re-seeds. A dict lookup elsewhere. See cookie_determinism.py.
-after_request = ["passkeys.cookie_determinism.strip_stale_sid_reseed"]
+# The sudo-window clear above (a flag lookup unless this request logged out). UI-test sites
+# only (passkeys_deterministic_test_cookies): drop stale sid cookie re-seeds, a dict lookup
+# elsewhere; see cookie_determinism.py.
+after_request = [
+	"passkeys.session.clear_logged_out_sudo_window",
+	"passkeys.cookie_determinism.strip_stale_sid_reseed",
+]
 
 # Document Events
 # ---------------

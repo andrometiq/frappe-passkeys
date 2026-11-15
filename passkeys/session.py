@@ -4,8 +4,8 @@
 """Sudo-window semantics, the impersonation guard and the action-grant consumer. Folds
 into ``frappe/passkey.py`` on the core merge.
 
-On the ``on_session_creation`` / ``on_logout`` hook chains (every login and logout),
-so it must not import ``webauthn``, directly or transitively."""
+On the ``on_session_creation`` / ``on_logout`` / ``after_request`` hook chains (every login,
+logout and request), so it must not import ``webauthn``, directly or transitively."""
 
 import hashlib
 import json
@@ -68,12 +68,24 @@ def _maybe_record_password_login_risk(user: str, method: str, settings) -> None:
 
 
 def clear_sudo_window(login_manager=None, **kwargs) -> None:
-	"""on_logout: drop this session's sudo window. Never raises."""
+	"""on_logout: note this session's sid for ``clear_logged_out_sudo_window``. v15/v16 fire
+	the hook before choosing between ending this session and another user's, and do not say
+	which, so the window is dropped only once the request is done. Never raises."""
 	try:
 		if install.dormant():
 			return
-		sid = frappe.session.sid
-		if sid:
+		if frappe.session.sid:
+			frappe.local.flags.passkeys_logout_sid = frappe.session.sid
+	except Exception:
+		frappe.log_error(title="passkeys: sudo-window clear failed")
+
+
+def clear_logged_out_sudo_window(response=None, request=None) -> None:
+	"""after_request: drop the noted session's sudo window only if this request ended that
+	session (core swapped in the Guest session), not when it ended another user's. Never raises."""
+	try:
+		sid = frappe.local.flags.pop("passkeys_logout_sid", None)
+		if sid and frappe.session.sid != sid:
 			state.clear_sudo_window(sid)
 	except Exception:
 		frappe.log_error(title="passkeys: sudo-window clear failed")

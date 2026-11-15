@@ -181,6 +181,39 @@ class SudoWindowTest(PinnedSiteRp, IntegrationTestCase):
 		time.sleep(1.2)
 		self.assertIsNone(session.get_window(user, self.sid))
 
+	# ---- logout ------------------------------------------------------
+
+	def test_only_a_logout_that_ends_this_session_drops_its_window(self):
+		"""v15/v16 fire on_logout in the actor's request before choosing between ending this
+		session and another user's (``User`` disable / delete): the actor's window survives the
+		latter and goes with the former."""
+		from frappe.app import run_after_request_hooks
+		from frappe.auth import CookieManager, LoginManager
+		from frappe.handler import logout
+
+		actor, target = self._user(), self._user()
+		set_request(method="POST", path="/api/method/frappe.client.save")
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.form_dict = frappe._dict()
+		login_manager = LoginManager()
+		login_manager.login_as(actor)  # a real session row and sid
+		frappe.local.login_manager = login_manager
+		self.addCleanup(setattr, frappe.local, "login_manager", None)
+		sid = self.sid
+		self.addCleanup(self._clear, sid)
+		session.set_window(actor, "password")
+
+		target_doc = frappe.get_doc("User", target)
+		target_doc.enabled = 0
+		target_doc.save(ignore_permissions=True)  # core: login_manager.logout(user=target)
+		run_after_request_hooks(frappe.local.request, None)
+		self.assertTrue(session.has_management_sudo(actor, sid))
+
+		logout()  # the actor's own sign-out ends this session
+		self.assertEqual(frappe.session.sid, "Guest")
+		run_after_request_hooks(frappe.local.request, None)
+		self.assertIsNone(state.get_sudo_window(sid))
+
 	# ---- check helper ----------------------------------------------
 
 	def test_management_sudo_accepts_full_refuses_external_and_foreign(self):
