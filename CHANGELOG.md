@@ -20,6 +20,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   device only" for one that cannot be backed up; a passkey that could sync but has not yet shows
   neither, instead of the old "Device-bound".
 
+### Security
+
+- Passwordless passkey sign-in is limited per IP address and no longer follows core's
+  wrong-password lockout: wrong passwords can't lock a user out of passkey sign-in, and a passkey
+  sign-in no longer resets the count a password guesser is held to.
+
 ### Fixed
 
 - On Frappe v15 and v16, disabling or deleting another user no longer ends the acting

@@ -142,9 +142,13 @@ transaction finish but downgrades that automatic login to Guest; the user must t
 new password and passkey (or an explicitly enabled OTP fallback). Passkey-only accounts keep their
 stricter veto.
 
-**Passkey failures share core's consecutive-login tracker.** Once a credential resolves an account,
-invalid assertions feed Frappe's tracker. A locked account cannot bypass that lock with a valid
-passkey, and a successful verified passkey resets the same consecutive-failure state.
+**Passwordless passkey sign-in is limited per address, not by core's wrong-password lockout.**
+`begin_login` and `verify_login` keep their per-IP rate limits (below) and never check, feed or
+reset Frappe's consecutive-login tracker: a passkey signature can't be guessed, so that lockout
+would protect nothing there, while letting anyone who types wrong passwords against a username lock
+that user's passkey sign-in. The password-backed legs keep core's lock: the uv-setup password step
+checks and feeds it, and a passkey second factor (the second leg of a password sign-in) checks,
+feeds and resets it.
 
 **Action-confirmation grants are tightly bound.** A grant from the
 `@passkey_protected` primitive is single-use, ~180 s, and bound to

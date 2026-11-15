@@ -130,17 +130,14 @@ def verify_login(state_id: str, credential: object):
 	ceremony.enforce_request_host(record.get("origins") or [])
 
 	cred = _lock_discoverable_credential(credential)
-	_require_login_attempt_allowed(cred.user)
+	# Core's wrong-password lockout is neither checked nor fed: a passkey can't be guessed.
+	if policy.is_stale(cred.rp_id, record.get("rp_id")):
+		raise CredentialNotForThisSite(
+			_("This passkey was made for another address and doesn't work on this site.")
+		)
 
-	# A verification failure past credential resolution feeds core's LoginAttemptTracker,
-	# so a passkey brute-force shares the password lockout; the wire stays a uniform 401.
-	# UV_SETUP is a legitimate step-up, not a failure.
 	hard_fail = bool(cint(settings.passkey_sign_count_hard_fail))
 	try:
-		if policy.is_stale(cred.rp_id, record.get("rp_id")):
-			raise CredentialNotForThisSite(
-				_("This passkey was made for another address and doesn't work on this site.")
-			)
 		result = engine.verify_stored_assertion(credential, record, cred, sign_count_hard_fail=hard_fail)
 		# passwordless ONLY on UV=1 ∧ uv_initialized=1
 		outcome = policy.passwordless_uv_outcome(result.user_verified, bool(cint(cred.uv_initialized)))
@@ -149,11 +146,7 @@ def verify_login(state_id: str, credential: object):
 				_("This passkey can't complete a passwordless sign-in. Please verify another way.")
 			)
 	except frappe.AuthenticationError as exc:
-		_track_verify_failure(cred.user)
-		if isinstance(exc, CredentialNotForThisSite):
-			raise
 		raise frappe.AuthenticationError(_("Passkey could not be verified.")) from exc
-	_track_verify_success(cred.user)
 
 	if outcome == policy.UV_SETUP:
 		# This leg does not advance the credential; complete_uv_setup reclassifies the

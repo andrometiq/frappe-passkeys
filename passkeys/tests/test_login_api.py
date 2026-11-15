@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import frappe
 import redis
-from frappe.auth import CookieManager
+from frappe.auth import CookieManager, get_login_attempt_tracker
 from frappe.utils import set_request
 from frappe.utils.password import update_password
 from werkzeug.wrappers import Response
@@ -620,7 +620,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 					self.assertIs(type(rejected.exception), frappe.AuthenticationError)
 					self.assertEqual(str(rejected.exception), "Passkey could not be verified.")
 					self.assertIsInstance(rejected.exception.__cause__, failure_class)
-		self.assertEqual(track_verify_failure.call_count, len(failure_classes))
+		track_verify_failure.assert_not_called()
 
 	def test_begin_login_refuses_a_foreign_request_origin(self):
 		"""Cross-site origin: a request whose Origin is not in the configured
@@ -897,16 +897,17 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value("WebAuthn Credential", name, "uv_initialized"), 0)
 		self.assertIsNotNone(state.get_uv_setup(setup_id))
 
-	def test_failed_verify_login_feeds_login_attempt_tracker(self):
-		"""N failed passkey verifies feed core's LoginAttemptTracker for the
-		resolved user, exactly as a bad password would — without leaking
-		user existence (the wire is still a uniform 401, no lock raised here)."""
-		from frappe.auth import get_login_attempt_tracker
+	def _password_failures(self, user) -> int:
+		return int(get_login_attempt_tracker(user, raise_locked_exception=False).login_failed_count or 0)
 
-		user = self._user()
-		auth, _ = self._enroll(user)
+	def _reset_password_failures(self, user):
 		# core's public reset (a property deleter before Frappe develop, a cache delete after)
 		get_login_attempt_tracker(user, raise_locked_exception=False).add_success_attempt()
+
+	def test_failed_passwordless_verifies_leave_core_password_failures_unchanged(self):
+		user = self._user()
+		auth, _ = self._enroll(user)
+		self._reset_password_failures(user)
 
 		for _n in range(3):
 			begun, binder = self._begin()
@@ -916,40 +917,43 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			with self.assertRaises(frappe.AuthenticationError):
 				self._verify(begun["state_id"], bad, binder)
 
-		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
-		self.assertEqual(int(fresh.login_failed_count or 0), 3)
+		self.assertEqual(self._password_failures(user), 0)
 		self.assertEqual(frappe.session.user, "Guest")  # no session leaked
 
-	def test_core_login_lock_blocks_an_otherwise_valid_passkey(self):
+	def test_core_password_lock_does_not_block_a_valid_passkey(self):
 		user = self._user()
 		auth, _ = self._enroll(user)
+		self.addCleanup(self._reset_password_failures, user)
+		# Engage core's real lock the way wrong passwords do: one failure past the limit.
+		limit = frappe.get_doc("System Settings").allow_consecutive_login_attempts
+		tracker = get_login_attempt_tracker(user, raise_locked_exception=False)
+		for _n in range(limit + 1):
+			tracker.add_failure_attempt()
+		with self.assertRaises(frappe.SecurityException):
+			get_login_attempt_tracker(user)
+
 		begun, binder = self._begin()
 		credential = self._assert(auth, begun["options"], sign_count=5)
+		self._verify(begun["state_id"], credential, binder)
+		self.assertEqual(frappe.session.user, user)
+		with self.assertRaises(frappe.SecurityException):  # passwords stay locked
+			get_login_attempt_tracker(user)
 
-		with patch(
-			"frappe.auth.get_login_attempt_tracker",
-			side_effect=frappe.SecurityException("locked"),
-		):
-			with self.assertRaisesRegex(frappe.AuthenticationError, "could not be verified"):
-				self._verify(begun["state_id"], credential, binder)
-		self.assertEqual(frappe.session.user, "Guest")
-
-	def test_verified_passkey_clears_consecutive_failure_count(self):
-		from frappe.auth import get_login_attempt_tracker
-
+	def test_verified_passkey_leaves_core_password_failures_unchanged(self):
 		user = self._user()
 		auth, _ = self._enroll(user)
+		self.addCleanup(self._reset_password_failures, user)
 		tracker = get_login_attempt_tracker(user, raise_locked_exception=False)
 		tracker.add_failure_attempt()
 		tracker.add_failure_attempt()
-		self.assertEqual(int(tracker.login_failed_count or 0), 2)
+		self.assertEqual(self._password_failures(user), 2)
 
 		begun, binder = self._begin()
 		credential = self._assert(auth, begun["options"], sign_count=5)
 		self._verify(begun["state_id"], credential, binder)
 
-		fresh = get_login_attempt_tracker(user, raise_locked_exception=False)
-		self.assertEqual(int(fresh.login_failed_count or 0), 0)
+		self.assertEqual(frappe.session.user, user)
+		self.assertEqual(self._password_failures(user), 2)
 
 	# ======================================================================
 	# passkey_only user x uv-setup repair, no self-veto
@@ -1200,7 +1204,7 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 			self.assertRaises(CredentialNotForThisSite),
 		):
 			self._verify(begun["state_id"], self._assert(auth, begun["options"]), binder)
-		failed.assert_called_once_with(user)
+		failed.assert_not_called()
 
 	def test_uv_setup_rp_binding_and_legacy_refusal(self):
 		for change in ("unchanged", "changed", "legacy"):
