@@ -37,8 +37,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   Mobile Apps fields as a folded section on the Relying Party tab that opens once one is set.
   "Notify on Password Login by Passkey Holder" is now "Log password sign-ins by passkey holders"
   (it records a risk event and emails no one), and warnings name each setting as the form labels it.
-- Passkey cards name 37 more providers and security keys: the provider list is refreshed to
-  upstream's 2026-11-01 version, and release builds now fail when it falls more than 30 days behind.
+- Passkey cards name 46 more providers and security keys: the provider list is refreshed to
+  upstream's 2026-11-15 version, and release builds now fail when it falls more than 30 days behind.
 
 ### Security
 

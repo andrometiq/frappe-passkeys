@@ -25,8 +25,8 @@ merged with the FIDO Alliance Metadata Service (MDS) entries for security
 keys. Attribution and upstream provenance also ride in the file's own `_meta`
 key (the server loader skips underscore-prefixed keys; the client only reads string or `name` values, so `_meta` never resolves either).
 
-Current snapshot: upstream commit `eb87f8f5e9a69ad36f2c5bd73e5883e68cb71bd2`
-(2026-11-01, "from MDS file version 294"), 408 entries.
+Current snapshot: upstream commit `cd4f847a6144acb2281e6b7bd98326e3bac3fdc7`
+(2026-11-15, "from MDS file version 301"), 417 entries.
 
 ## The strip transform
 
