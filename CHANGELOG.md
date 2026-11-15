@@ -7,6 +7,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Optional: add the one-time reverse-proxy rule for `/.well-known/passkey-endpoints` if you want
+  password managers to find the passkey page (`docs/install.md`).
+- Custom UIs that read `credentialViewModel(cred).badge` must handle `null` (see Changed).
+
 ### Added
 
 - `/.well-known/passkey-endpoints` (W3C Passkey Endpoints, a Working Draft): while a passkey login

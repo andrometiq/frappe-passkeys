@@ -148,6 +148,9 @@ all password managers share one per-address limit (120 requests a minute).
 
 ## Upgrade
 
+Read the release's **Upgrade notes** in [`CHANGELOG.md`](../CHANGELOG.md) first; they list any step
+beyond the commands below.
+
 ```bash
 bench --site <site> backup --with-files
 cd apps/passkeys && git pull --ff-only && cd ../..
