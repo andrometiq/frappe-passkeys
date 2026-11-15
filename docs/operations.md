@@ -143,7 +143,7 @@ credential revoked after the backup was taken returns with the backup and may wo
   **User** record, untick **Enabled** and save: Frappe ends the sessions of a user who is disabled.
   Tick **Enabled** again and save when they may sign back in. On version-16 and later, disabling
   also unticks the user's **Send Notifications For Email Threads**, **Send Me A Copy of Outgoing
-  Emails** and **Allowed In Mentions**; set them again afterwards. Administrator cannot be
+  Emails** and **Allowed In Mentions**; restore them to what they were. Administrator cannot be
   disabled; for it, or to keep the account enabled, run this in the
   [console](recovery.md#console-access) (it commits on its own):
 

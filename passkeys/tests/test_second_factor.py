@@ -451,6 +451,39 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 				self.assertNotIn("tmp_id", frappe.local.response)
 				self.assertEqual(frappe.session.user, "Guest")
 
+	def test_one_assertion_cannot_serve_as_both_factors_of_a_sign_in(self):
+		"""Leg two takes only the leg-one state of this flow's own password check: an assertion
+		over a passwordless challenge, or another flow's leg-one state, mints nothing. The same
+		assertion then signs in passwordless, for a core-2FA user with both modes on, with no
+		second-factor step."""
+		self._set_passkey_setting("login_with_passkey", 1)
+		user = self._user(otp_capable=True)
+		auth = self._enroll(user)
+
+		self._request("/api/method/passkeys.passkey.begin_login")
+		begun = passkey.begin_login()
+		binder = frappe.local.cookie_manager.cookies[state.BINDER_COOKIE]["value"]
+		passwordless = self._assert(auth, begun["options"], sign_count=5)
+
+		resp, _binder = self._leg1(user, PWD, binder=binder)
+		with self.assertRaises(CeremonyExpired):
+			self._leg2(resp["tmp_id"], passwordless, binder)
+		self.assertIn("state_id", frappe.local.response)  # refused by verification, so re-armed
+		self.assertEqual(frappe.session.user, "Guest")
+
+		other_flow, _other_binder = self._leg1(user, PWD)
+		credential = self._assert(auth, other_flow["verification"]["options"], sign_count=4)
+		with self.assertRaises(frappe.AuthenticationError) as refused:
+			self._leg2(other_flow["tmp_id"], credential, binder)
+		self.assertNotIsInstance(refused.exception, CeremonyExpired)  # the binder, not a retry
+		self.assertEqual(frappe.session.user, "Guest")
+
+		self._request("/api/method/passkeys.passkey.verify_login", binder=binder)
+		passkey.verify_login(begun["state_id"], passwordless)
+		self.assertEqual(frappe.session.user, user)
+		self.assertNotIn("verification", frappe.local.response)
+		self.assertNotIn("tmp_id", frappe.local.response)
+
 	def test_user_disabled_between_legs_blocks_session(self):
 		user = self._user()
 		auth = self._enroll(user)

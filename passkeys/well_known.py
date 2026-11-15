@@ -20,10 +20,11 @@ see ``frappe/handler.py`` / ``frappe/api/__init__.py``). Unconfigured ⇒ 404, w
 client reads as "nothing here". ``refuse_if_core_native`` is the canonical first guard,
 per the app endpoint contract.
 
-**Serving them at the real ``/.well-known/`` path.** Frappe reserves ``/.well-known/*``:
-``frappe/app.py`` routes those GETs to ``handle_wellknown`` (OAuth/OpenID metadata
-only, else 404) *before* the website router runs — so an app cannot claim those paths
-via ``www/`` pages, ``website_route_rules`` or a ``page_renderer``. Map them at the
+**Serving them at the real ``/.well-known/`` path.** Frappe does not serve these paths. On
+version-16 and later it reserves ``/.well-known/*``: ``frappe/app.py`` routes those GETs to
+``handle_wellknown`` (OAuth/OpenID metadata only, else 404) *before* the website router
+runs, so an app cannot claim them via ``www/`` pages, ``website_route_rules`` or a
+``page_renderer``; version-15 routes none of them either. Map them at the
 reverse proxy onto these endpoints with a one-time rule (see ``docs/mobile-apps.md`` and
 ``docs/install.md``); the served content then stays in lockstep with Passkey Settings
 instead of a hand-maintained static file. ``webauthn`` is never imported here."""

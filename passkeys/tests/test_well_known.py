@@ -212,6 +212,16 @@ class TestEndpoints(IntegrationTestCase):
 		with self.assertRaises(frappe.DoesNotExistError):
 			well_known.passkey_endpoints()
 
+	def test_well_known_documents_are_guest_get_endpoints(self):
+		for endpoint in (
+			well_known.assetlinks,
+			well_known.apple_app_site_association,
+			well_known.passkey_endpoints,
+		):
+			with self.subTest(endpoint=endpoint.__name__):
+				self.assertIn(endpoint, frappe.guest_methods)
+				self.assertEqual(tuple(frappe.allowed_http_methods_for_whitelisted_func[endpoint]), ("GET",))
+
 	def test_passkey_endpoints_never_read_request_host_headers(self):
 		self._set(login_with_passkey=1)
 		self._guest_get(
@@ -221,10 +231,12 @@ class TestEndpoints(IntegrationTestCase):
 				("X-Forwarded-Proto", "http"),
 			]
 		)
-		with patch.dict(frappe.conf, {"host_name": "https://outside.test"}):
-			body = json.loads(well_known.passkey_endpoints().get_data(as_text=True))
-		self.assertEqual(body["enroll"], "https://example.com/passkeys")
-		self.assertEqual(body["manage"], "https://example.com/passkeys")
+		# An out-of-scope host_name, then none: get_url() falls back to the request host only when unset.
+		for host_name in ("https://outside.test", ""):
+			with self.subTest(host_name=host_name), patch.dict(frappe.conf, {"host_name": host_name}):
+				body = json.loads(well_known.passkey_endpoints().get_data(as_text=True))
+				self.assertEqual(body["enroll"], "https://example.com/passkeys")
+				self.assertEqual(body["manage"], "https://example.com/passkeys")
 
 	def test_passkey_endpoints_endpoint_is_rate_limited_per_ip(self):
 		self._set(login_with_passkey=1)

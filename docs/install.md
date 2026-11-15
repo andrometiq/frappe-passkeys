@@ -117,8 +117,9 @@ otherwise on the first listed https Passkey Origin. They come from that pinned c
 the request's `Host` or `X-Forwarded-*` headers. While both passkey login modes are off, or no https
 origin resolves, the endpoint returns 404.
 
-Frappe reserves `/.well-known/*`, so map the path once at the reverse proxy, the same way as the
-mobile association files ([`mobile-apps.md`](mobile-apps.md), section 2.1):
+Frappe does not serve this path (version-16 and later reserve `/.well-known/*` outright), so map it
+once at the reverse proxy, the same way as the mobile association files
+([`mobile-apps.md`](mobile-apps.md), section 2.1):
 
 ```nginx
 location = /.well-known/passkey-endpoints {
@@ -136,9 +137,10 @@ handle /.well-known/passkey-endpoints {
 The file must answer on the **RP ID host** itself, over HTTPS on the default port, with `200`,
 `Content-Type: application/json` and **no redirect**. If the RP ID is a parent domain (RP ID
 `example.com` for a site on `erp.example.com`), serve the path on `example.com`: proxy it to this
-site, or publish a copy of the generated document there (a copy goes stale if the site address
-changes). Check with `curl -s -D - https://<RP ID>/.well-known/passkey-endpoints`. Responses may be
-cached for one hour.
+site with `X-Frappe-Site-Name: erp.example.com` (nginx `proxy_set_header`), since Frappe picks the
+site from that header or the `Host`; or publish a copy of the generated document there (a copy goes
+stale if the site address changes). Check with
+`curl -s -D - https://<RP ID>/.well-known/passkey-endpoints`. Responses may be cached for one hour.
 
 ## Upgrade
 

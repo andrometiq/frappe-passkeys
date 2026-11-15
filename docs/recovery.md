@@ -29,7 +29,7 @@ If no System Manager can sign in, go to
   record, untick **Enabled** and save; Frappe ends that user's sessions. Tick **Enabled**
   again and save when they may sign back in. On version-16 and later, disabling also unticks
   **Send Notifications For Email Threads**, **Send Me A Copy of Outgoing Emails** and
-  **Allowed In Mentions**; set them again afterwards. Administrator cannot be disabled; for
+  **Allowed In Mentions**; restore them to what they were. Administrator cannot be disabled; for
   it, or to keep an account enabled, run
   `frappe.sessions.clear_sessions(user="user@example.com", force=True)` in the
   [console](#console-access) instead (it commits on its own); a User disabled from the

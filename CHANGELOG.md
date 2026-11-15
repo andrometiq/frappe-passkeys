@@ -38,7 +38,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 - Regressions for bug classes other passkey implementations hit: a disabled credential cannot sign
   in, finish a second factor or confirm an action; each ceremony state is consumed only by its own
-  ceremony type; a completed second-factor state or uv-setup record cannot be replayed.
+  ceremony type; a completed second-factor state or uv-setup record cannot be replayed; and each
+  guest ceremony endpoint is limited per IP address.
+- One passkey assertion cannot serve as both factors of a sign-in: the second factor takes only
+  the state of its own flow's password check, and a passwordless sign-in never takes a second-factor
+  step. The well-known documents are pinned as guest `GET` endpoints.
 
 ## [15.0.7] / [16.0.7] — 2026-10-23
 

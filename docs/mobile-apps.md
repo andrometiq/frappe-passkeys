@@ -109,9 +109,10 @@ inputs are unconfigured.
 
 ### 2.1 Map the well-known paths (reverse proxy)
 
-Frappe **reserves** `/.well-known/*` for its own OAuth / OpenID metadata and returns
-404 for anything else — before any app routing runs. So the well-known paths must be
-mapped to the endpoints above at the reverse proxy. This is a one-time rule and keeps
+Frappe does not serve these paths: version-16 and later **reserve** `/.well-known/*` for
+their own OAuth / OpenID metadata and return 404 for anything else before any app routing
+runs, and version-15 routes none of them. So the well-known paths must be mapped to the
+endpoints above at the reverse proxy. This is a one-time rule and keeps
 the served content in lockstep with your settings.
 
 **nginx** (an internal rewrite — same origin, no external redirect):
