@@ -69,6 +69,14 @@ jobs:
       - name: Server-test process gate self-tests
         run: python .github/helper/test_server_test_gate.py
 
+      # Release lines only: a release must not ship provider names that miss an upstream change
+      # older than 30 days (docs/aaguid-map.md). No schedule; it runs when a release is cut.
+      - name: Provider names are fresh (release branches)
+        if: startsWith(github.ref, 'refs/heads/version-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/helper/aaguid_freshness.sh
+
       # Frappe's semgrep rules, pinned so a new upstream rule cannot turn CI red
       # unannounced. A `# nosemgrep: <rule>` marker must say why the finding is by design.
       - name: Semgrep (Frappe rules)

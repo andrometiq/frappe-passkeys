@@ -38,7 +38,9 @@ stable diffs; entries without a name are dropped.
 
 ## Refreshing the snapshot (each app release)
 
-From the repo root:
+CI on the release branches (`version-15`, `version-16`) fails while upstream has a change that
+this snapshot has lacked for more than 30 days (`.github/helper/aaguid_freshness.sh`), so a
+release cannot ship stale names. Nothing checks between releases. From the repo root:
 
 ```bash
 curl -sL -o /tmp/combined_aaguid.json \

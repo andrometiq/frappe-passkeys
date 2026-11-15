@@ -153,7 +153,9 @@ that's asked.
 
 Only maintainers publish releases. A green test run is necessary but not sufficient: release a
 clean, reviewed commit whose pinned CI (server, JavaScript, Cypress, lifecycle, secret scan) is
-green on each release branch, after a changelog review and a private-data scan.
+green on each release branch, after a changelog review and a private-data scan. Refresh the
+provider-name snapshot first ([`docs/aaguid-map.md`](docs/aaguid-map.md)); release-branch CI fails
+when it misses an upstream change older than 30 days.
 
 Do not describe `develop`, an untagged commit, or an upstream-tip compatibility run as production-ready.
 Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid
