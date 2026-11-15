@@ -19,6 +19,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   mode is on, password managers can send users straight to `/passkeys` to add or manage a passkey.
   The URLs come from pinned configuration. It needs a one-time reverse-proxy rule on the RP ID host
   (`docs/install.md`).
+- Passkey Settings keeps a history: each change shows in the form's timeline with who made it,
+  when, and the old and new value.
 
 ### Changed
 
@@ -28,6 +30,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - For custom UIs: `credentialViewModel(cred).badge` is now `null` when neither label applies, so
   check it before reading `badge.key` or `badge.synced`. If you list credentials yourself, also
   select `backup_eligible` (`docs/custom-ui.md`).
+- Passkey Settings shows a setting only when it can apply: OTP fallback with Passkey as Second
+  Factor, the first passkey after an email-link or social sign-in with Login with Passkey, and the
+  Mobile Apps fields as a folded section on the Relying Party tab that opens once one is set.
+  "Notify on Password Login by Passkey Holder" is now "Log password sign-ins by passkey holders"
+  (it records a risk event and emails no one), and warnings name each setting as the form labels it.
+- Passkey cards name 37 more providers and security keys: the provider list is refreshed to
+  upstream's 2026-11-01 version, and release builds now fail when it falls more than 30 days behind.
 
 ### Security
 

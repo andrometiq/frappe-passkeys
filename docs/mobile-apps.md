@@ -28,7 +28,8 @@ merely to make mobile association easier.
 ## 1. Server setup (Passkey Settings)
 
 Open **Passkey Settings** in Desk. RP ID and origins are on the Relying Party tab and login
-modes on Login Modes. The Mobile Apps tab holds §1.2–1.3.
+modes on Login Modes. The Mobile Apps section at the bottom of the Relying Party tab holds
+§1.2–1.3; it stays folded until one of its fields is set.
 
 ### 1.1 RP ID and login mode
 

@@ -12,7 +12,7 @@
   "passkey_rp_id",
   "passkey_origins",
   "resolved_rp_html",
-  "mobile_apps_tab",
+  "mobile_apps_section",
   "passkey_app_origins",
   "passkey_android_package_name",
   "passkey_android_cert_fingerprints",
@@ -65,6 +65,7 @@
   },
   {
    "default": "1",
+   "depends_on": "eval:doc.passkey_as_second_factor",
    "description": "Allow a mid-flow fallback to the configured OTP method when the passkey second factor fails",
    "fieldname": "passkey_2fa_allow_otp_fallback",
    "fieldtype": "Check",
@@ -94,8 +95,10 @@
    "options": "<p class=\"text-muted small\">The resolved RP ID and origins are validated when a login mode is enabled.</p>"
   },
   {
-   "fieldname": "mobile_apps_tab",
-   "fieldtype": "Tab Break",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.passkey_app_origins || doc.passkey_android_package_name || doc.passkey_android_cert_fingerprints || doc.passkey_ios_team_id || doc.passkey_ios_bundle_id",
+   "fieldname": "mobile_apps_section",
+   "fieldtype": "Section Break",
    "label": "Mobile Apps"
   },
   {
@@ -255,6 +258,7 @@
   },
   {
    "default": "1",
+   "depends_on": "eval:doc.login_with_passkey",
    "description": "Lets a user with no enabled passkey, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on",
    "fieldname": "passkey_allow_first_enrollment_on_external_login",
    "fieldtype": "Check",
@@ -284,12 +288,12 @@
    "description": "Record a risk event when a user who has a passkey signs in with their password instead (Activity Log telemetry; off by default)",
    "fieldname": "passkey_notify_password_login",
    "fieldtype": "Check",
-   "label": "Notify on Password Login by Passkey Holder"
+   "label": "Log password sign-ins by passkey holders"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-22 22:30:00.000000",
+ "modified": "2026-11-15 23:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",
@@ -307,5 +311,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }

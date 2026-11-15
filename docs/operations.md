@@ -172,6 +172,10 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
 | `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |
 
+Changes to **Passkey Settings** (who, when, old and new value) are in the form's timeline and the
+**Version** log (`ref_doctype` = Passkey Settings). A raw write from `bench console`
+(`frappe.db.set_single_value`, `db_set`), as in the recovery one-liners, leaves no Version row.
+
 Structured errors are in **Error Log**; filter its `method` (title) field for `passkeys:`.
 Grant audit lines are also written at INFO to the `passkeys` logger, outside the Activity Log
 transaction. Frappe's default log level drops INFO, so treat the Activity Log as the record

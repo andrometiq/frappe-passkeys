@@ -3,16 +3,25 @@
 
 """P1 battery: DocType schemas, validator guards, Passkey Settings policy."""
 
+import json
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 import frappe
+from frappe.model import display_fieldtypes
 from frappe.utils import cint
 
 from passkeys import boot
 from passkeys.errors import ImpersonatedSessionRefused
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.committed_state import delete_fixture
-from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, arrange_clean_login_policy
+from passkeys.tests.compat import (
+	IntegrationTestCase,
+	PinnedSiteRp,
+	arrange_clean_login_policy,
+	flush_settings_cache,
+)
 from passkeys.tests.factories import make_credential, make_handle, make_user
 
 
@@ -106,7 +115,7 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			"passkey_rp_id",
 			"passkey_origins",
 			"resolved_rp_html",
-			"mobile_apps_tab",
+			"mobile_apps_section",
 			"passkey_app_origins",
 			"passkey_android_package_name",
 			"passkey_android_cert_fingerprints",
@@ -147,14 +156,39 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			[
 				("Tab Break", "Login Modes"),
 				("Tab Break", "Relying Party"),
-				("Tab Break", "Mobile Apps"),
 				("Tab Break", "Enrollment"),
 				("Tab Break", "Security"),
 				("Tab Break", "Notifications"),
 			],
 		)
+		self.assertEqual(meta.get_field("mobile_apps_section").label, "Mobile Apps")
 		self.assertEqual(meta.get_field("enforcement_section").label, "When a passkey is required")
 		self.assertEqual(meta.get_field("prompts_section").label, "Prompts")
+		self.assertEqual(
+			meta.get_field("passkey_notify_password_login").label, "Log password sign-ins by passkey holders"
+		)
+
+	def test_messages_quote_only_labels_the_forms_show(self):
+		"""A setting named in quotes in a message is one the admin can find: a field label on
+		these forms, or a Passkey Settings option."""
+		names = {"All", "Passwordless login only"}  # the role; the switch on /passkeys
+		for doctype in ("Passkey Settings", "System Settings", "WebAuthn User Handle"):
+			fields = frappe.get_meta(doctype).fields
+			names.update(field.label for field in fields if field.fieldtype not in display_fieldtypes)
+		for field in frappe.get_meta("Passkey Settings").fields:
+			if field.fieldtype == "Select":
+				names.update(field.options.split("\n"))
+		app = Path(frappe.get_app_path("passkeys"))
+		sources = [path for path in app.rglob("*.py") if "tests" not in path.relative_to(app).parts]
+		sources += (app / "public" / "js").glob("*.js")
+		quoted = re.compile(r"(?<![\w'])'([A-Z][^'\n]*?)'(?!\w)")
+		unknown = [
+			f"{path.relative_to(app)}: '{name}'"
+			for path in sources
+			for name in quoted.findall(path.read_text(encoding="utf-8"))
+			if name not in names
+		]
+		self.assertEqual(unknown, [])
 
 
 class TestWebAuthnCredential(PasskeyTestCase):
@@ -628,3 +662,27 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		frappe.db.set_value("WebAuthn User Handle", {"user": user}, "passkey_only_login", 0)
 		doc = self._settings(login_with_passkey=0, passkey_as_second_factor=0)
 		doc.save()
+
+
+class TestPasskeySettingsVersionLog(PasskeyTestCase):
+	def test_settings_save_records_who_changed_which_value(self):
+		fieldname = "passkey_2fa_allow_otp_fallback"
+		old = cint(frappe.db.get_single_value("Passkey Settings", fieldname))
+		self.addCleanup(flush_settings_cache)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", fieldname, old)
+		versions = {"ref_doctype": "Passkey Settings", "docname": "Passkey Settings"}
+		before = set(frappe.get_all("Version", filters=versions, pluck="name"))
+
+		doc = frappe.get_doc("Passkey Settings")
+		doc.set(fieldname, 1 - old)
+		doc.save(ignore_version=False)  # under tests Frappe skips Version rows unless told not to
+
+		added = [
+			version
+			for version in frappe.get_all("Version", filters=versions, fields=["name", "owner", "data"])
+			if version.name not in before
+		]
+		self.assertEqual(len(added), 1)
+		self.assertEqual(added[0].owner, frappe.session.user)
+		changed = {row[0]: row[1:] for row in json.loads(added[0].data)["changed"]}
+		self.assertEqual([cint(value) for value in changed[fieldname]], [old, 1 - old])

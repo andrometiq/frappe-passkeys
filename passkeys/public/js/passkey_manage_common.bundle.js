@@ -156,10 +156,10 @@
 			"Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
 			"the accounts attackers target first — industry practice enforces them first.",
 		enforceEmptyRoles:
-			"Require a passkey from is 'Selected roles' but no roles are listed, so it applies " +
+			"'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies " +
 			"to nobody. Add the roles to require, or switch to 'All users'.",
 		enforceBlockIncapable:
-			"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create " +
+			"'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create " +
 			"a passkey (and cannot use a phone) will be blocked rather than nudged.",
 		enforcePreview:
 			"The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}.",

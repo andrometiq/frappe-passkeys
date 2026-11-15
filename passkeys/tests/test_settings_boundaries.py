@@ -563,10 +563,11 @@ class EnrollmentPolicyValidatorTest(PinnedSiteRp, IntegrationTestCase):
 		)
 
 
-class EnrollmentFieldVisibilityTest(PinnedSiteRp, IntegrationTestCase):
-	"""depends_on of the Enrollment tab. Prompt cadence is always on the form; the
-	requirement section shows when someone can be in scope. ``depends_on`` is a static
-	declaration evaluated client-side, so this asserts the meta the form drives off of."""
+class SettingsFieldVisibilityTest(PinnedSiteRp, IntegrationTestCase):
+	"""depends_on of the settings form. Prompt cadence is always on the form; the
+	requirement section shows when someone can be in scope; a knob that only one mode reads
+	shows with that mode. ``depends_on`` is a static declaration evaluated client-side, so
+	this asserts the meta the form drives off of."""
 
 	def _field(self, fieldname):
 		return frappe.get_meta("Passkey Settings").get_field(fieldname)
@@ -592,3 +593,21 @@ class EnrollmentFieldVisibilityTest(PinnedSiteRp, IntegrationTestCase):
 			self._field("passkey_enforce_privileged_always").depends_on,
 			'eval:doc.passkey_enforce_scope!="All users"',
 		)
+
+	def test_mode_specific_knobs_follow_their_mode(self):
+		self.assertEqual(
+			self._field("passkey_2fa_allow_otp_fallback").depends_on, "eval:doc.passkey_as_second_factor"
+		)
+		self.assertEqual(
+			self._field("passkey_allow_first_enrollment_on_external_login").depends_on,
+			"eval:doc.login_with_passkey",
+		)
+
+	def test_mobile_apps_section_opens_when_any_of_its_fields_is_set(self):
+		fields = frappe.get_meta("Passkey Settings").fields
+		order = [field.fieldname for field in fields]
+		in_section = fields[order.index("mobile_apps_section") + 1 : order.index("enrollment_tab")]
+		settings = [f"doc.{field.fieldname}" for field in in_section if field.fieldtype != "Column Break"]
+		section = self._field("mobile_apps_section")
+		self.assertEqual((section.fieldtype, section.collapsible), ("Section Break", 1))
+		self.assertEqual(section.collapsible_depends_on, "eval:" + " || ".join(settings))

@@ -193,7 +193,7 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		if self.passkey_enforce_scope == "Selected roles" and not (self.passkey_enforce_roles or []):
 			frappe.msgprint(
 				_(
-					"Require a passkey from is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles you want to require, or switch to 'All users'."
+					"'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles you want to require, or switch to 'All users'."
 				),
 				indicator="orange",
 			)
@@ -201,7 +201,7 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		if self.passkey_enforce_incapable == "Block + Notify Admin":
 			frappe.msgprint(
 				_(
-					"Incapable Device Policy is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged. Prefer 'Degrade to Nudge' if any users may be on older devices."
+					"'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged. Prefer 'Degrade to Nudge' if any users may be on older devices."
 				),
 				indicator="orange",
 			)

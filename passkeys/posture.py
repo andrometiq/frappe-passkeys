@@ -119,7 +119,10 @@ def classify_posture(ctx: dict) -> dict:
 				_(
 					"An enrolled user can finish password sign-in with a verification code instead of a passkey."
 				),
-				_("Turn off 'Allow OTP Fallback' to require the passkey leg for enrolled users."),
+				_(
+					"Turn off 'Allow OTP Fallback for Passkey Second Factor' to require the passkey leg "
+					"for enrolled users."
+				),
 				bypass_label=_("OTP fallback"),
 			)
 		)
@@ -187,7 +190,7 @@ def classify_posture(ctx: dict) -> dict:
 						"defence-in-depth floor. The final login veto still blocks enrolled users, "
 						"but this configuration is unsupported."
 					),
-					_("Enable 'Two Factor Authentication' in System Settings."),
+					_("Turn on 'Enable Two Factor Auth' in System Settings."),
 				)
 			)
 		else:
@@ -209,7 +212,7 @@ def classify_posture(ctx: dict) -> dict:
 				"medium",
 				_("Login with email link is enabled."),
 				_("A user can sign in through an emailed link without a passkey."),
-				_("Turn off 'Login with Email Link' in System Settings."),
+				_("Turn off 'Login with email link' in System Settings."),
 				bypass_label=_("email-link sign-in"),
 			)
 		)
@@ -267,7 +270,7 @@ def classify_posture(ctx: dict) -> dict:
 					"notified, but the sign-in still succeeds."
 				),
 				_(
-					"Turn on 'Reject on sign-count regression' to hard-fail a suspected clone "
+					"Turn on 'Hard-fail on Sign Count Regression' to reject a suspected clone "
 					"(may lock out authenticators with buggy counters)."
 				),
 			)
@@ -300,7 +303,7 @@ def classify_posture(ctx: dict) -> dict:
 				"low",
 				_("Re-auth window is {0} seconds.").format(reauth_window),
 				_("Passkey management stays authorized for this long after a sign-in or re-auth."),
-				_("Lower 'Re-auth Window (seconds)' if management should re-verify sooner."),
+				_("Lower 'Re-authentication Window (Seconds)' if management should re-verify sooner."),
 			)
 		)
 

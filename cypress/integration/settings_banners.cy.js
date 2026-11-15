@@ -59,6 +59,28 @@ chromium_only("passkey settings — banners + one-way-door dialog", () => {
 		cy.contains("Both passkey login modes are off").should("exist");
 	});
 
+	it("shows a mode's own settings only while that mode is on, and folds Mobile Apps until used", () => {
+		const control = fieldname => cy.get(`.frappe-control[data-fieldname='${fieldname}']`);
+		const set = values => cy.window().then(win => Object.entries(values).forEach(([k, v]) => win.cur_frm.set_value(k, v)));
+		cy.visit("/app/passkey-settings");
+		cy.get(".form-dashboard", { timeout: 20000 }).should("exist");
+		set({ passkey_as_second_factor: 0, login_with_passkey: 0 });
+		control("passkey_2fa_allow_otp_fallback").should("have.class", "hide-control");
+		control("passkey_allow_first_enrollment_on_external_login").should("have.class", "hide-control");
+		set({ passkey_as_second_factor: 1, login_with_passkey: 1 });
+		control("passkey_2fa_allow_otp_fallback").should("not.have.class", "hide-control");
+		control("passkey_allow_first_enrollment_on_external_login").should("not.have.class", "hide-control");
+
+		const mobileBody = () => cy.get(".form-section[data-fieldname='mobile_apps_section'] > .section-body");
+		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id']");
+		mobileBody().should("have.class", "hide");
+		cy.window().then(win => {
+			win.cur_frm.doc.passkey_ios_team_id = "ABCDE12345";
+			win.cur_frm.refresh();
+		});
+		mobileBody().should("not.have.class", "hide");
+	});
+
 	it("raises a loud confirm when the RP ID is changed", () => {
 		cy.visit("/app/passkey-settings");
 		activate_settings_tab("relying_party_tab", "[data-fieldname='passkey_rp_id'] input");

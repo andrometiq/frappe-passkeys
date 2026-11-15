@@ -86,8 +86,8 @@ can switch their account to passwordless-only.
 
 <img src=".github/screenshots/portal.png" alt="The My Passkeys page listing two passkeys, MacBook Pro and Pixel 9" width="728" />
 
-**Administrator settings.** Login modes, Relying Party, mobile apps, enrollment, security, and
-notifications each have their own tab. Every mode stays off until an administrator turns it on.
+**Administrator settings.** Login modes, Relying Party (with mobile apps), enrollment, security,
+and notifications each have their own tab. Every mode stays off until an administrator turns it on.
 
 <img src=".github/screenshots/settings.png" alt="Passkey Settings, Login Modes tab, with the security posture summary" width="1266" />
 

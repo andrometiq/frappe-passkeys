@@ -13,8 +13,8 @@ reusing them in System Settings, but no current-core compatibility or merge is a
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
 | **Login with Passkey** (`login_with_passkey`) | Off | Master switch for passwordless first-factor login and all of its login-page UI. Turning it **on** puts the passkey button and conditional-UI autofill on the login page and activates `begin_login` / `verify_login`. Turning it **off** removes the UI and refuses those ceremonies (existing credential rows are kept). It cannot be turned off if that would leave no passkey-capable mode enabled while any user is *Passkey Only Login* (see the matrix below). |
-| **Passkey as Second Factor** (`passkey_as_second_factor`) | Off | Adds a passkey step-up after a correct password. **Requires core Two Factor Authentication to stay on** — enabling this is refused if System Settings → *Enable Two Factor Authentication* is off (see "Two-factor floor" below). Off by default. |
-| **Allow OTP Fallback for Passkey Second Factor** (`passkey_2fa_allow_otp_fallback`) | On | When on, a user doing the passkey second factor can choose "use a one-time code instead" and complete with core's OTP. Turning it **off** removes the downgrade path for passkey holders — a lost authenticator then needs admin recovery. This is enforced server-side, not just in the UI: `fallback_to_otp` re-checks the live setting, and final session minting re-checks that core 2FA still covers the user before consuming the one-time marker. |
+| **Passkey as Second Factor** (`passkey_as_second_factor`) | Off | Adds a passkey step-up after a correct password. **Requires core Two Factor Authentication to stay on** — enabling this is refused if System Settings → *Enable Two Factor Auth* is off (see "Two-factor floor" below). Off by default. |
+| **Allow OTP Fallback for Passkey Second Factor** (`passkey_2fa_allow_otp_fallback`) | On | When on, a user doing the passkey second factor can choose "use a one-time code instead" and complete with core's OTP. Turning it **off** removes the downgrade path for passkey holders — a lost authenticator then needs admin recovery. This is enforced server-side, not just in the UI: `fallback_to_otp` re-checks the live setting, and final session minting re-checks that core 2FA still covers the user before consuming the one-time marker. Shown only while **Passkey as Second Factor** is on. |
 
 A passkey sign-in proves which user is signing in and nothing more: roles, permissions and user
 type still come from that user's **User** record, as after any other sign-in. This holds on LDAP and
@@ -47,12 +47,13 @@ no working path, an app-only path, and web access at other configured origins. I
 ## Mobile Apps
 
 If a native iOS / Android app should share the site's passkeys, the **Mobile
-Apps** fields configure the trusted native origins and the two well-known
-association files: `passkey_app_origins`, `passkey_android_package_name`,
-`passkey_android_cert_fingerprints`, `passkey_ios_team_id`, and
-`passkey_ios_bundle_id`. They are documented in full — including how to obtain the
-Android signing-certificate fingerprint and how the association files are served —
-in [`mobile-apps.md`](mobile-apps.md). Leave them blank for a web-only site.
+Apps** section at the bottom of the Relying Party tab configures the trusted native
+origins and the two well-known association files: `passkey_app_origins`,
+`passkey_android_package_name`, `passkey_android_cert_fingerprints`,
+`passkey_ios_team_id`, and `passkey_ios_bundle_id`. They are documented in full —
+including how to obtain the Android signing-certificate fingerprint and how the
+association files are served — in [`mobile-apps.md`](mobile-apps.md). Leave them blank
+for a web-only site; the section stays folded until one of them is set.
 
 ## Enrollment
 
@@ -138,7 +139,7 @@ API-key and OAuth-token requests are not subject to them (see
 | **Hard-fail on Sign Count Regression** (`passkey_sign_count_hard_fail`) | Off | Controls what happens when an authenticator presents a signature counter *lower* than the stored value (a possible clone signal). Off (default): the sign-in proceeds but the credential is flagged and its owner is emailed. On: such an assertion is rejected. A counter that is *equal and non-zero* (a replay) is always rejected regardless of this knob. |
 | **Maximum Passkeys per User** (`passkey_max_per_user`) | 10 | Per-user credential cap; registration is refused once a user reaches it. Lowering it does not delete existing rows. |
 | **Re-authentication Window (Seconds)** (`passkey_reauth_window`) | 600 | Lifetime of the "sudo" window — how long after a fresh password or passkey login (or a password / passkey re-auth) the management surface lets a user add or delete passkeys without confirming again. Longer is more convenient and less strict; shorter re-prompts sooner. Does not affect action-confirmation grants, which are always single-use and short-lived. |
-| **Allow First Passkey After Email-Link or Social Sign-in** (`passkey_allow_first_enrollment_on_external_login`) | On | When **Login with Passkey** is also on, lets a user with no usable passkey who signed in by email link, social/OAuth, LDAP or any other login the app does not classify as a password or passkey login, enroll a **first** passkey within the Re-authentication Window. The app cannot re-verify those sign-ins itself, so they unlock only this one step, and each use records a risk event. It is refused on second-factor-only sites because the same external login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. |
+| **Allow First Passkey After Email-Link or Social Sign-in** (`passkey_allow_first_enrollment_on_external_login`) | On | When **Login with Passkey** is also on, lets a user with no usable passkey who signed in by email link, social/OAuth, LDAP or any other login the app does not classify as a password or passkey login, enroll a **first** passkey within the Re-authentication Window. The app cannot re-verify those sign-ins itself, so they unlock only this one step, and each use records a risk event. It is refused on second-factor-only sites because the same external login would be vetoed after enrollment while no passkey first-factor route exists. Off: social-only accounts with no password cannot bootstrap a passkey. Subsequent adds always need a full sudo window. Shown only while **Login with Passkey** is on. |
 
 ## Notifications
 
@@ -146,7 +147,7 @@ API-key and OAuth-token requests are not subject to them (see
 |---|---|---|
 | **Notify on Passkey Changes** (`passkey_notify_on_change`) | On | Sends the account owner an email (with label, time, and IP) whenever a passkey is added, removed, disabled, or flagged. This email is the **compensating control for registration hijack** — a user who did not initiate the change can react. Turning it off is warned against; only do so on mail-less development sites. Activity Log rows are written either way. |
 | **Notify on Password Fallback** (`passkey_notify_password_fallback`) | Off | When on, emails a passkey holder if a sign-in used a one-time code instead of their passkey. Opt-in telemetry; off by default. |
-| **Notify on Password Login by Passkey Holder** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one usable passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
+| **Log password sign-ins by passkey holders** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one usable passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
 
 ## The two-factor floor (both directions)
 
