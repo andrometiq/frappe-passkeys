@@ -115,7 +115,9 @@ straight to the site's passkey page. The app generates that document, following 
 Both URLs are the `/passkeys` page on the `host_name` origin when that is https and inside the RP ID,
 otherwise on the first listed https Passkey Origin. They come from that pinned configuration, never from
 the request's `Host` or `X-Forwarded-*` headers. While both passkey login modes are off, or no https
-origin resolves, the endpoint returns 404.
+origin resolves, the endpoint returns 404. Set `host_name` to the site's https address; without it, the
+first listed https origin must be the Frappe site itself, not a separate front end that serves no
+`/passkeys` page.
 
 Frappe does not serve this path (version-16 and later reserve `/.well-known/*` outright), so map it
 once at the reverse proxy, the same way as the mobile association files
@@ -141,6 +143,8 @@ site with `X-Frappe-Site-Name: erp.example.com` (nginx `proxy_set_header`), sinc
 site from that header or the `Host`; or publish a copy of the generated document there (a copy goes
 stale if the site address changes). Check with
 `curl -s -D - https://<RP ID>/.well-known/passkey-endpoints`. Responses may be cached for one hour.
+Let the parent-domain proxy cache them: behind it every request arrives from the proxy's address, so
+all password managers share one per-address limit (120 requests a minute).
 
 ## Upgrade
 

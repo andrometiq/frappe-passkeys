@@ -522,6 +522,24 @@ test("desk impersonation: another user's inventory and enforcement recovery offe
 	} finally { global.fetch = normalFetch; delete frappeObj.db; delete frappeObj.boot; }
 });
 
+test("desk inventory of another user asks for the backup flags its card labels need", async () => {
+	const calls = [];
+	frappeObj.db = { get_list: (doctype, args) => {
+		calls.push({ doctype, fields: args.fields });
+		return Promise.resolve([{ name: "WC-1", label: "Key", enabled: 1, backup_eligible: 0, backup_state: 0 }]);
+	} };
+	frappeObj.boot = { passkeys: { enabled: true } };
+	try {
+		const inventory = fakeEl("div");
+		await frappeObj.passkeys.manage.renderReadOnlyInventory(inventory, "user@example.com");
+		const credentialCall = calls.find(c => c.doctype === "WebAuthn Credential");
+		for (const field of ["backup_eligible", "backup_state"]) {
+			assert.ok(credentialCall.fields.includes(field), `the inventory requests ${field}`);
+		}
+		assert.strictEqual(byClassName(inventory, "indicator-pill").textContent, M.COPY.deviceBoundBadge);
+	} finally { delete frappeObj.db; delete frappeObj.boot; }
+});
+
 test("desk Signals use operational boot RP, never the page hostname or legacy RP", async () => {
 	const calls = [];
 	window.PublicKeyCredential = { signalAllAcceptedCredentials: p => calls.push(p) };

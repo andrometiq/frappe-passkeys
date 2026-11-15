@@ -19,12 +19,17 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Passkey cards (the `/passkeys` page and Desk) say "Synced" for a backed-up passkey and "This
   device only" for one that cannot be backed up; a passkey that could sync but has not yet shows
   neither, instead of the old "Device-bound".
+- For custom UIs: `credentialViewModel(cred).badge` is now `null` when neither label applies, so
+  check it before reading `badge.key` or `badge.synced`. If you list credentials yourself, also
+  select `backup_eligible` (`docs/custom-ui.md`).
 
 ### Security
 
 - Passwordless passkey sign-in is limited per IP address and no longer follows core's
-  wrong-password lockout: wrong passwords can't lock a user out of passkey sign-in, and a passkey
-  sign-in no longer resets the count a password guesser is held to.
+  wrong-password lockout: wrong passwords can't lock a user out of passwordless passkey sign-in,
+  and a passkey sign-in no longer resets the count a password guesser is held to. The password
+  steps keep core's lock: the second factor, and the one-time password check that sets up a
+  passkey enrolled without user verification for passwordless use.
 
 ### Fixed
 

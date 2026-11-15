@@ -251,7 +251,8 @@ offered OTP flow; see [the REST contract](rest-api.md#guest--passkey-as-a-second
 are listed in [the REST reference](rest-api.md#passkeysapicredentialslist_credentials).
 `credentialViewModel(cred)` returns `name`, `label`, `providerName` (null if unknown),
 `hasProvider`, `unknownProviderKey`, `badge` (`{synced, key, hintKey}`: "Synced" when the passkey is
-backed up, "This device only" when it is not backup-eligible, `null` otherwise), `enabled`, `rpId`, `stale`,
+backed up, "This device only" when it is not backup-eligible, `null` otherwise; rows you fetch yourself
+need `backup_state` and `backup_eligible` for it), `enabled`, `rpId`, `stale`,
 `usable`, `flagged`,
 `flaggedReason`, `discoverable`, `created`, `lastUsed`, and `a11y: {rename, del}`.
 
