@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.8] / [16.0.8] — 2026-11-16
+
 ### Upgrade notes
 
 - Optional: add the one-time reverse-proxy rule for `/.well-known/passkey-endpoints` if you want
@@ -297,7 +299,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.7...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.8...develop
+[15.0.8]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.8
+[16.0.8]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.8
 [15.0.7]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.7
 [16.0.7]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.7
 [15.0.6]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.6
