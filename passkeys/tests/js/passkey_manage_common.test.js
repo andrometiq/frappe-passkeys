@@ -4,7 +4,7 @@
 //   node --test passkeys/tests/js
 //
 // Covers: provider resolution (server-supplied / injected map / zero-AAGUID /
-// unknown), Synced-vs-Device-bound badge, the card view-model + accessible names,
+// unknown), Synced / This device only badge, the card view-model + accessible names,
 // the nudge cadence decision (every branch + knob-referenced caps), the
 // conditional-create gate (password-seeded window only), the post-hybrid upsell
 // gate, the last-method delete guard, the settings-banner matrix, origin/host
@@ -36,12 +36,20 @@ test("providerFor: zero / empty / unmapped AAGUID is Unknown (null), never an er
 	assert.strictEqual(M.providerFor({}, null), null);
 });
 
-test("backupBadge: backup_state truthy => Synced, else Device-bound", () => {
-	assert.deepStrictEqual(M.backupBadge({ backup_state: 1 }).synced, true);
-	assert.strictEqual(M.backupBadge({ backup_state: 1 }).key, M.COPY.syncedBadge);
-	assert.strictEqual(M.backupBadge({ backup_state: 0 }).synced, false);
-	assert.strictEqual(M.backupBadge({ backup_state: 0 }).key, M.COPY.deviceBoundBadge);
-	assert.strictEqual(M.backupBadge({}).synced, false);
+test("backupBadge: Synced when backed up, This device only when never backup-eligible, else none", () => {
+	assert.strictEqual(M.COPY.syncedBadge, "Synced");
+	assert.strictEqual(M.COPY.deviceBoundBadge, "This device only");
+	for (const cred of [{ backup_state: 1, backup_eligible: 1 }, { backup_state: true }]) {
+		assert.deepStrictEqual(M.backupBadge(cred), { synced: true, key: M.COPY.syncedBadge, hintKey: M.COPY.syncedHint });
+	}
+	for (const be of [0, false, "0"]) {
+		assert.deepStrictEqual(M.backupBadge({ backup_state: 0, backup_eligible: be }), {
+			synced: false, key: M.COPY.deviceBoundBadge, hintKey: M.COPY.deviceBoundHint,
+		});
+	}
+	assert.strictEqual(M.backupBadge({ backup_state: 0, backup_eligible: 1 }), null, "eligible, not backed up yet: no claim");
+	assert.strictEqual(M.backupBadge({ backup_state: 0 }), null, "eligibility unknown: no claim");
+	assert.strictEqual(M.backupBadge(null), null);
 });
 
 // ------------------------------------------- vendored AAGUID snapshot

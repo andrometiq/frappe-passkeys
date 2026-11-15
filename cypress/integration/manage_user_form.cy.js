@@ -4,7 +4,7 @@
 // Credential-management on the Desk User form: the "Passkeys" section (a Custom
 // Field Section Break + HTML wrapper in the Settings tab, installed by
 // install.sync_user_form_section) renders one card per credential (label +
-// Synced/Device-bound badge + rename/delete) plus add + empty state. Rename is
+// Synced / This device only badge + rename/delete) plus add + empty state. Rename is
 // display-only; delete is confirm + sudo-gated (a cold sudo window triggers a
 // passkeys.manage confirmation before the delete retries).
 
@@ -78,7 +78,7 @@ chromium_only("passkey management — User form", () => {
 			});
 		});
 
-		it("renders a card per credential with an accessible label + Synced/Device-bound badge", () => {
+		it("renders a card per credential with an accessible label + backup badge", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.purge_server_passkeys(USER);
@@ -88,9 +88,8 @@ chromium_only("passkey management — User form", () => {
 			visit_user_passkeys();
 			own_passkey_root().within(() => {
 				cy.get(".passkey-card", { timeout: 20000 }).should("have.length", 1);
-				cy.get(".passkey-card .indicator-pill").first().should(($b) => {
-					expect($b.text().trim()).to.be.oneOf(["Synced", "Device-bound"]);
-				});
+				// the virtual authenticator is not backup-eligible (support/commands.js)
+				cy.get(".passkey-card .indicator-pill").first().should("have.text", "This device only");
 				cy.get(".passkey-card .passkey-rename")
 					.should("have.attr", "aria-label")
 					.and("match", /^Rename passkey /);

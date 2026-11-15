@@ -176,7 +176,7 @@ Also planned:
 - Passkey-only by role: a role list in Passkey Settings whose users sign in with a passkey only, once they have a working one.
 - Disable and sign out: when an administrator revokes a passkey, end that user's sessions in the same step.
 - Immediate sign-in in Chrome: the passkey button shows the passkeys on this device at once, and falls back to the current flow when there are none.
-- Synced and device-bound passkeys: label which is which, and prompt a user whose only passkey lives on one device to add another.
+- Prompt a user whose only passkey lives on one device (its card says "This device only") to add another.
 - Offer passkey setup right after an account recovery or a password confirmation.
 - Record how each session signed in (method, user verification, time), so audits and `@passkey_protected` actions can check it.
 

@@ -214,9 +214,9 @@ offered OTP flow; see [the REST contract](rest-api.md#guest--passkey-as-a-second
     document.getElementById("passwordless").checked = !!passkey_only_login;
     cards.innerHTML = "";
     for (const cred of credentials) {
-      const vm = M.credentialViewModel(cred);          // label, provider, Synced/Device-bound, dates
+      const vm = M.credentialViewModel(cred);          // label, provider, backup badge, dates
       const li = document.createElement("li");
-      li.textContent = vm.label + (vm.badge.synced ? " · Synced" : " · Device-bound");
+      li.textContent = vm.label + (vm.badge ? " · " + vm.badge.key : "");
       // …your own Rename / Remove buttons, wired to the calls below…
       cards.appendChild(li);
     }
@@ -250,7 +250,8 @@ offered OTP flow; see [the REST contract](rest-api.md#guest--passkey-as-a-second
 `listCredentials()` returns all the caller's rows, including disabled ones; the raw fields
 are listed in [the REST reference](rest-api.md#passkeysapicredentialslist_credentials).
 `credentialViewModel(cred)` returns `name`, `label`, `providerName` (null if unknown),
-`hasProvider`, `unknownProviderKey`, `badge: {synced, key, hintKey}`, `enabled`, `rpId`, `stale`,
+`hasProvider`, `unknownProviderKey`, `badge` (`{synced, key, hintKey}`: "Synced" when the passkey is
+backed up, "This device only" when it is not backup-eligible, `null` otherwise), `enabled`, `rpId`, `stale`,
 `usable`, `flagged`,
 `flaggedReason`, `discoverable`, `created`, `lastUsed`, and `a11y: {rename, del}`.
 
@@ -389,7 +390,7 @@ do not depend on the DOM *nesting* staying identical.
 | `.passkey-card-stale`, `.passkey-stale-note` | stale row and its “Made for …” note; can coexist with Disabled or Flagged |
 | `.passkey-card-glyph` | leading icon slot |
 | `.passkey-card-label`, `.passkey-card-labelrow` | the credential name |
-| `.indicator-pill` (`green` / `blue` / `gray`) | Synced / Device-bound / Disabled pills; the label is the pill's text |
+| `.indicator-pill` (`green` / `blue` / `gray`) | Synced / This device only / Disabled pills; the label is the pill's text |
 | `.passkey-card-meta`, `.passkey-card-provider`, `.passkey-card-created`, `.passkey-card-lastused` | provider + dates |
 | `.alert.alert-danger` | the security-flagged notice (`role="alert"`) |
 | `.passkey-card-actions`, `.passkey-icon-btn` | the Rename / Remove buttons |

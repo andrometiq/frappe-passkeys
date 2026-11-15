@@ -189,7 +189,7 @@
 		return Promise.all([
 			frappe.db.get_list("WebAuthn Credential", {
 				filters: { user: user },
-				fields: ["name", "label", "rp_id", "enabled", "flagged", "flagged_reason", "backup_state", "aaguid", "last_used_at", "creation"],
+				fields: ["name", "label", "rp_id", "enabled", "flagged", "flagged_reason", "backup_state", "backup_eligible", "aaguid", "last_used_at", "creation"],
 				order_by: "creation asc",
 				limit: 200,
 			}),

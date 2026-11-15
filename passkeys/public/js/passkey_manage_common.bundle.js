@@ -47,9 +47,9 @@
 		// cards / empty state
 		unknownProvider: "Unknown provider",
 		syncedBadge: "Synced",
-		deviceBoundBadge: "Device-bound",
+		deviceBoundBadge: "This device only",
 		syncedHint: "Available on your other devices",
-		deviceBoundHint: "Stays on this device only",
+		deviceBoundHint: "Can't sync to your other devices",
 		emptyTitle: "Create a passkey",
 		emptyBody:
 			"A passkey lets you sign in with your fingerprint, face, screen lock, or a " +
@@ -190,14 +190,16 @@
 		return null;
 	}
 
-	// Synced (multi-device / backup_state) vs Device-bound badge.
+	// Synced when backed up (BS); This device only when it can never be (BE off). An eligible
+	// passkey not backed up yet, or unknown flags, gets no badge rather than a wrong claim.
 	function backupBadge(cred) {
-		var synced = !!(cred && (cred.backup_state === 1 || cred.backup_state === true));
-		return {
-			synced: synced,
-			key: synced ? COPY.syncedBadge : COPY.deviceBoundBadge,
-			hintKey: synced ? COPY.syncedHint : COPY.deviceBoundHint,
-		};
+		cred = cred || {};
+		if (isTruthy(cred.backup_state)) return { synced: true, key: COPY.syncedBadge, hintKey: COPY.syncedHint };
+		var be = cred.backup_eligible;
+		if (be === 0 || be === false || be === "0") {
+			return { synced: false, key: COPY.deviceBoundBadge, hintKey: COPY.deviceBoundHint };
+		}
+		return null;
 	}
 
 	function isTruthy(v) {
@@ -755,9 +757,11 @@
 		var label = el("span", "passkey-card-label", vm.label);
 		label.setAttribute("title", vm.label);
 		labelRow.appendChild(label);
-		var badge = el("span", "indicator-pill " + (vm.badge.synced ? "green" : "blue"), t(vm.badge.key));
-		badge.setAttribute("title", t(vm.badge.hintKey));
-		labelRow.appendChild(badge);
+		if (vm.badge) {
+			var badge = el("span", "indicator-pill " + (vm.badge.synced ? "green" : "blue"), t(vm.badge.key));
+			badge.setAttribute("title", t(vm.badge.hintKey));
+			labelRow.appendChild(badge);
+		}
 		if (!vm.enabled) labelRow.appendChild(el("span", "indicator-pill gray", t(COPY.disabledBadge)));
 		main.appendChild(labelRow);
 

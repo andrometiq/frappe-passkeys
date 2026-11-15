@@ -84,7 +84,8 @@ mismatch fails the ceremony.
 Authentication Keys", allows syncable authenticators at AAL2 but not at AAL3, because syncing makes
 the private key exportable. The app does not restrict credential type: synced and device-bound
 passkeys are accepted alike (backup flags are recorded but never refuse a credential type,
-attestation is `none`, and no AAGUID allow-list applies).
+attestation is `none`, and no AAGUID allow-list applies). Passkey cards show "Synced" for a
+backed-up passkey and "This device only" for one that cannot be backed up.
 
 **Global credential uniqueness.** `credential_id_sha256` is a unique index;
 duplicate registration and cross-account credential hijack both fail closed at
@@ -179,7 +180,10 @@ method's consumer remains the final method and payload authority.
 surface (add/delete passkeys). It is seeded by a fresh interactive login or a
 password / passkey re-auth. An "external" login (email link, social) seeds only the
 restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
-management power.
+management power. Signing out drops the session's window. Disabling or deleting another user does
+not drop the acting administrator's window: on version-15 and version-16 core runs the logout hook
+in the administrator's request first, so the app clears a window only once the request has ended
+that session.
 
 **An impersonated session is read-only for passkeys.** Core's "Impersonate" is open to the
 Administrator and, on Frappe v16, to any role granted the User `impersonate` permission. The lock

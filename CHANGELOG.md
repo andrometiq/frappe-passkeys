@@ -14,6 +14,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   The URLs come from pinned configuration. It needs a one-time reverse-proxy rule on the RP ID host
   (`docs/install.md`).
 
+### Changed
+
+- Passkey cards (the `/passkeys` page and Desk) say "Synced" for a backed-up passkey and "This
+  device only" for one that cannot be backed up; a passkey that could sync but has not yet shows
+  neither, instead of the old "Device-bound".
+
 ### Fixed
 
 - On Frappe v15 and v16, disabling or deleting another user no longer ends the acting

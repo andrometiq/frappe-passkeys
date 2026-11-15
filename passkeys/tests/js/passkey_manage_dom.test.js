@@ -57,6 +57,29 @@ test("cardList: one labelled list item per credential; actions only when asked f
 	assert.strictEqual(byClass(readOnly, "passkey-card-actions"), null, "a read-only list has no actions");
 });
 
+test("cardList: backup pills are calm and translated; no pill without a true claim", () => {
+	const creds = [
+		{ name: "WC-1", label: "Phone", backup_state: 1, backup_eligible: 1, enabled: 1 },
+		{ name: "WC-2", label: "Key", backup_state: 0, backup_eligible: 0, enabled: 1 },
+		{ name: "WC-3", label: "Laptop", backup_state: 0, backup_eligible: 1, enabled: 1 },
+	];
+	global.window.__ = (s) => "~" + s;
+	try {
+		const list = M.cardList(creds, {}, () => null);
+		const pills = list.children.map((li) => byClass(li, "indicator-pill"));
+		assert.strictEqual(pills[0].textContent, "~" + M.COPY.syncedBadge);
+		assert.strictEqual(pills[0].getAttribute("title"), "~" + M.COPY.syncedHint);
+		assert.strictEqual(pills[1].textContent, "~" + M.COPY.deviceBoundBadge);
+		assert.strictEqual(pills[1].getAttribute("title"), "~" + M.COPY.deviceBoundHint);
+		assert.strictEqual(pills[2], null, "backup-eligible but not backed up: neither label is true");
+		for (const pill of pills.slice(0, 2)) {
+			assert.ok(!/\b(red|orange|yellow)\b/.test(pill.className), "no warning colour: " + pill.className);
+		}
+	} finally {
+		delete global.window.__;
+	}
+});
+
 test("emptyState: the add call to action", () => {
 	let added = 0;
 	const empty = M.emptyState(() => { added += 1; });
