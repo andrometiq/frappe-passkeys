@@ -6,12 +6,18 @@ MAX_DAYS=${MAX_DAYS:-30}
 SNAPSHOT=${SNAPSHOT:-passkeys/public/aaguid-map.json}
 UPSTREAM=passkeydeveloper/passkey-authenticator-aaguids
 
-snapshot_date=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["_meta"]["upstream_date"])' "$SNAPSHOT")
-oldest_missing=$(gh api "repos/$UPSTREAM/commits?path=combined_aaguid.json&since=${snapshot_date}T23:59:59Z&per_page=100" \
-	--jq '[.[].commit.committer.date] | min // empty')
+read -r snapshot_ref snapshot_date < <(python3 -c '
+import json, sys
+meta = json.load(open(sys.argv[1]))["_meta"]
+print(meta["upstream_ref"], meta["upstream_date"])' "$SNAPSHOT")
+# Newest first, from the snapshot's day on; everything listed before the snapshot's own commit is
+# missing from it. If that commit is not listed, every listed change counts as missing.
+commits=$(gh api "repos/$UPSTREAM/commits?path=combined_aaguid.json&since=${snapshot_date}T00:00:00Z&per_page=100" \
+	--jq '.[] | "\(.sha) \(.commit.committer.date)"')
+oldest_missing=$(printf '%s\n' "$commits" | awk -v ref="$snapshot_ref" 'NF == 0 { next } $1 == ref { exit } { oldest = $2 } END { print oldest }')
 
 if [ -z "$oldest_missing" ]; then
-	echo "Provider names are current (upstream $snapshot_date)."
+	echo "Provider names are current (upstream ${snapshot_ref:0:7}, $snapshot_date)."
 	exit 0
 fi
 waiting_days=$(( ( $(date -u +%s) - $(date -u -d "$oldest_missing" +%s) ) / 86400 ))

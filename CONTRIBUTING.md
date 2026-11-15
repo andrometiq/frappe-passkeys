@@ -103,6 +103,7 @@ it never needs a force-push):
 git merge -s ours version-15 version-16 -m "chore: join release lines"   # on develop, keeps develop's tree
 git checkout -B version-15 develop   # then set __version__ = "15.x.y" and frappe = ">=15.108.0,<16.0.0"; commit "chore(release): 15.x.y"
 git checkout -B version-16 develop   # then set __version__ = "16.x.y" and frappe = ">=16.18.3,<17.0.0"; commit "chore(release): 16.x.y"
+bash .github/helper/aaguid_freshness.sh   # provider names fresh enough to ship (docs/aaguid-map.md)
 git push origin develop version-15 version-16
 ```
 
@@ -154,8 +155,9 @@ that's asked.
 Only maintainers publish releases. A green test run is necessary but not sufficient: release a
 clean, reviewed commit whose pinned CI (server, JavaScript, Cypress, lifecycle, secret scan) is
 green on each release branch, after a changelog review and a private-data scan. Refresh the
-provider-name snapshot first ([`docs/aaguid-map.md`](docs/aaguid-map.md)); release-branch CI fails
-when it misses an upstream change older than 30 days.
+provider-name snapshot first ([`docs/aaguid-map.md`](docs/aaguid-map.md)) and run
+`.github/helper/aaguid_freshness.sh` before pushing the release branches; their CI runs it again
+and fails when the snapshot misses an upstream change older than 30 days.
 
 Do not describe `develop`, an untagged commit, or an upstream-tip compatibility run as production-ready.
 Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid

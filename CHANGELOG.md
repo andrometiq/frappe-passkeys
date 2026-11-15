@@ -12,6 +12,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Optional: add the one-time reverse-proxy rule for `/.well-known/passkey-endpoints` if you want
   password managers to find the passkey page (`docs/install.md`).
 - Custom UIs that read `credentialViewModel(cred).badge` must handle `null` (see Changed).
+- Nothing to do for the settings form: the Mobile Apps fields moved into a folded section on the
+  Relying Party tab, and one notification setting was renamed by what it does (see Changed).
 
 ### Added
 
