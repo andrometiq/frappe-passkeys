@@ -437,6 +437,36 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		# core's delete_session removes (the v15 resurrect gate).
 		self.assertTrue(frappe.cache.hget("last_db_session_update", sid))
 
+	def test_clear_all_test_sessions_sees_a_login_committed_after_the_request_began(self):
+		# A login on another connection commits after this request's first read. Under
+		# REPEATABLE READ the wipe must still find and delete it, not leave it for the count.
+		frappe.db.sql("select count(*) from tabSessions")
+		sid = frappe.generate_hash()
+		conf = frappe.conf
+		other = frappe.database.get_db(
+			host=conf.db_host,
+			port=conf.db_port,
+			user=conf.db_user or conf.db_name,
+			password=conf.db_password,
+			cur_db_name=conf.db_name,
+		)
+		try:
+			other.sql(
+				"insert into tabSessions (sid, user, sessiondata, lastupdate, status) values (%s, %s, %s, %s, %s)",
+				(sid, "Administrator", "{}", frappe.utils.now(), "Active"),
+			)
+			other.commit()
+		finally:
+			other.close()
+		self.addCleanup(frappe.set_user, "Administrator")
+		self.addCleanup(frappe.db.commit)
+		self.addCleanup(frappe.db.sql, "delete from tabSessions where sid=%s", sid)
+		with patch.dict(frappe.conf, {"developer_mode": 1, "allow_tests": 1}):
+			out = ui_test_helpers.clear_all_test_sessions()
+		self.assertEqual(out["remaining"], 0, out)
+		frappe.db.commit()  # read the table as it is now, not through this test's old snapshot
+		self.assertFalse(frappe.db.sql("select sid from tabSessions where sid=%s", sid))
+
 	def test_confirmation_probes_run_test_guard_before_confirmation(self):
 		probes = (
 			ui_test_helpers.confirm_probe,

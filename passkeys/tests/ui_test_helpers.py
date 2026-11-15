@@ -530,6 +530,11 @@ def clear_all_test_sessions() -> dict:
 	cache_purged = len(frappe.cache.hkeys("session") or [])
 
 	started = frappe.utils.now()
+	# End this request's transaction first. Under MariaDB's REPEATABLE READ the snapshot below
+	# would otherwise be as old as the request's first read, missing a login committed since;
+	# that row then survived the sweep and showed up in the post-commit count (CI signature:
+	# in_snapshot false, lastupdate before started).
+	frappe.db.commit()
 	sids = frappe.qb.from_("Sessions").select("sid").run(pluck=True)
 	# develop stores a hash of the sid and takes it as ``sid_hash``; older cores store the raw sid.
 	stored = "sid_hash" in inspect.signature(delete_session).parameters
