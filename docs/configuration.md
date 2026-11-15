@@ -16,6 +16,12 @@ reusing them in System Settings, but no current-core compatibility or merge is a
 | **Passkey as Second Factor** (`passkey_as_second_factor`) | Off | Adds a passkey step-up after a correct password. **Requires core Two Factor Authentication to stay on** — enabling this is refused if System Settings → *Enable Two Factor Authentication* is off (see "Two-factor floor" below). Off by default. |
 | **Allow OTP Fallback for Passkey Second Factor** (`passkey_2fa_allow_otp_fallback`) | On | When on, a user doing the passkey second factor can choose "use a one-time code instead" and complete with core's OTP. Turning it **off** removes the downgrade path for passkey holders — a lost authenticator then needs admin recovery. This is enforced server-side, not just in the UI: `fallback_to_otp` re-checks the live setting, and final session minting re-checks that core 2FA still covers the user before consuming the one-time marker. |
 
+A passkey sign-in proves which user is signing in and nothing more: roles, permissions and user
+type still come from that user's **User** record, as after any other sign-in. This holds on LDAP and
+social-login sites too. The passkey signs in the Frappe user it was enrolled for without contacting
+the directory or the provider, so it does not sync roles from them, and an account disabled only
+there can still sign in with a passkey until its Frappe **User** is disabled.
+
 ## Relying Party
 
 Enabling either authentication mode also uses the site's `encryption_key`: second-factor ceremonies

@@ -80,6 +80,12 @@ first flag) or hard-rejected under the *Hard-fail* knob; the counter is never
 written downward. Backup-eligibility is write-once at registration — a later
 mismatch fails the ceremony.
 
+**Synced passkeys are AAL2-class.** NIST SP 800-63B-4 (July 2025), Appendix B.2 "Cloning
+Authentication Keys", allows syncable authenticators at AAL2 but not at AAL3, because syncing makes
+the private key exportable. The app does not restrict credential type: synced and device-bound
+passkeys are accepted alike (backup flags are recorded but never refuse a credential type,
+attestation is `none`, and no AAGUID allow-list applies).
+
 **Global credential uniqueness.** `credential_id_sha256` is a unique index;
 duplicate registration and cross-account credential hijack both fail closed at
 insert.
@@ -270,7 +276,7 @@ password attempt.
 | `verify_second_factor` | 10 / 60 s |
 | `fallback_to_otp` | 5 / 300 s |
 | `get_app_translations` | 30 / 60 s |
-| `assetlinks` / `apple_app_site_association` | 120 / 60 s |
+| `assetlinks` / `apple_app_site_association` / `passkey_endpoints` | 120 / 60 s |
 
 *Authenticated endpoints — per-user app counter, keyed on the session user:*
 

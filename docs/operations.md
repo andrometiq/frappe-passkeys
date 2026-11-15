@@ -137,6 +137,24 @@ credential revoked after the backup was taken returns with the backup and may wo
   [account recovery](recovery.md#a-user-lost-their-passkey) for the correct order; the
   site-wide case requires its own recovery path.
 
+  **Revoking, disabling or deleting a passkey does not end the user's existing sessions.** A
+  browser that is already signed in, including one on a stolen device, stays signed in until its
+  session expires. The app never ends sessions. To sign the user out of every session, open their
+  **User** record, untick **Enabled** and save: Frappe ends the sessions of a user who is disabled.
+  Tick **Enabled** again and save when they may sign back in. On version-16 and later, disabling
+  also unticks the user's **Send Notifications For Email Threads**, **Send Me A Copy of Outgoing
+  Emails** and **Allowed In Mentions**; set them again afterwards. Administrator cannot be
+  disabled; for it, or to keep the account enabled, run this in the
+  [console](recovery.md#console-access) (it commits on its own):
+
+  ```python
+  frappe.sessions.clear_sessions(user="user@example.com", force=True)
+  ```
+
+  Each of these ends the 100 most recently active sessions; run the console line again for an
+  account that might have more. Ending sessions does not revoke the user's API keys or OAuth
+  tokens; see [API keys and OAuth tokens](security.md#api-keys-and-oauth-tokens).
+
 ## Monitoring the risk events
 
 Security-relevant events are recorded as **Activity Log** rows and structured log

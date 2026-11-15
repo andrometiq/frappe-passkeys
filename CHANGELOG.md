@@ -7,6 +7,27 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Added
+
+- `/.well-known/passkey-endpoints` (W3C Passkey Endpoints, a Working Draft): while a passkey login
+  mode is on, password managers can send users straight to `/passkeys` to add or manage a passkey.
+  The URLs come from pinned configuration. It needs a one-time reverse-proxy rule on the RP ID host
+  (`docs/install.md`).
+
+### Documentation
+
+- Revoking, disabling or deleting a passkey does not end the user's existing sessions; operations
+  and recovery docs give the Desk step (and the console line) that signs the user out everywhere.
+- Synced passkeys are AAL2-class under NIST SP 800-63B-4 and the app does not restrict credential
+  type; a passkey sign-in proves identity only, and roles still come from the User record, also on
+  LDAP and social-login sites.
+
+### Tests
+
+- Regressions for bug classes other passkey implementations hit: a disabled credential cannot sign
+  in, finish a second factor or confirm an action; each ceremony state is consumed only by its own
+  ceremony type; a completed second-factor state or uv-setup record cannot be replayed.
+
 ## [15.0.7] / [16.0.7] — 2026-10-23
 
 ### Added

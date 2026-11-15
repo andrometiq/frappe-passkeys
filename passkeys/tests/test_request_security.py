@@ -20,6 +20,36 @@ class RequestSecurityTest(IntegrationTestCase):
 		):
 			self.assertEqual(request_security.normalize_login_identifier(raw), expected)
 
+	def test_guest_ceremony_endpoints_are_limited_per_ip(self):
+		"""Each guest ceremony leg refuses the call past its limit, and only for that IP: an
+		attacker exhausting their own bucket does not spend a victim's on another address."""
+		from passkeys import passkey
+
+		for attribute in ("request", "request_ip", "form_dict"):
+			self.addCleanup(setattr, frappe.local, attribute, getattr(frappe.local, attribute, None))
+		endpoints = (
+			(passkey.verify_login, ("state", {}), 10),
+			(passkey.complete_uv_setup, ("setup", "password"), 5),
+			(passkey.login_with_password, ("someone@example.com", "password"), 10),
+			(passkey.verify_second_factor, ("state", {}), 10),
+			(passkey.fallback_to_otp, ("state",), 5),
+		)
+		modes_off = frappe._dict(login_with_passkey=0, passkey_as_second_factor=0)
+		with patch("frappe.get_cached_doc", return_value=modes_off):
+			for endpoint, arguments, limit in endpoints:
+				with self.subTest(endpoint=endpoint.__name__):
+					set_request(method="POST", path=f"/api/method/passkeys.passkey.{endpoint.__name__}")
+					frappe.local.form_dict = frappe._dict(cmd=f"passkeys.passkey.{endpoint.__name__}")
+					frappe.local.request_ip = frappe.generate_hash(length=12)
+					for _ in range(limit):
+						with self.assertRaises(frappe.AuthenticationError):
+							endpoint(*arguments)
+					with self.assertRaises(frappe.RateLimitExceededError):
+						endpoint(*arguments)
+					frappe.local.request_ip = frappe.generate_hash(length=12)
+					with self.assertRaises(frappe.AuthenticationError):
+						endpoint(*arguments)
+
 	def test_ipv6_rotation_hits_shared_limit_without_changing_audit_ip(self):
 		self.addCleanup(setattr, frappe.local, "request_ip", getattr(frappe.local, "request_ip", None))
 		self.addCleanup(setattr, frappe.local, "form_dict", frappe.local.form_dict)

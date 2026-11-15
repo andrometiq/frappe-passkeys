@@ -401,6 +401,34 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(CeremonyExpired):
 			self._verify(begun["state_id"], credential)
 
+	def test_credential_disabled_after_begin_mints_no_grant(self):
+		user = self._user()
+		auth = self._enroll(user)
+		sign_in(user)
+		begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
+		credential = self._assert(auth, begun["options"], uv=True)
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "enabled", 0, update_modified=False)
+		with patch.object(session, "mint_action_grant") as mint, self.assertRaises(CeremonyFailed):
+			self._verify(begun["state_id"], credential)
+		mint.assert_not_called()
+
+	def test_state_minted_for_another_ceremony_mints_no_grant(self):
+		"""A complete confirm record retyped to another ceremony is refused before the
+		assertion is looked at; only ``confirm`` ceremonies mint grants. Counter 0 keeps each
+		case clear of the replay check."""
+		user = self._user()
+		auth = self._enroll(user)
+		sign_in(user)
+		for ceremony_type in ("login", "second_factor", "register"):
+			with self.subTest(ceremony_type=ceremony_type):
+				begun = self._begin("myapp.release_payment", params={"payment_id": "PAY-1"})
+				record = state.consume_ceremony(begun["state_id"])
+				state_id = state.store_ceremony({**record, "type": ceremony_type})
+				credential = self._assert(auth, begun["options"], uv=True, sign_count=0)
+				with patch.object(session, "mint_action_grant") as mint, self.assertRaises(CeremonyExpired):
+					self._verify(state_id, credential)
+				mint.assert_not_called()
+
 	def test_verify_bound_to_originating_session(self):
 		user_a = self._user()
 		auth = self._enroll(user_a)

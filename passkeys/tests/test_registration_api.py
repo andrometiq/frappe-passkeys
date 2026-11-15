@@ -104,6 +104,17 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		# ...while the reusable sudo window still holds (store invariants)
 		self.assertIsNotNone(state.get_sudo_window(frappe.session.sid))
 
+	def test_state_minted_for_another_ceremony_registers_nothing(self):
+		user = self._user()
+		for ceremony_type in ("login", "second_factor", "confirm"):
+			with self.subTest(ceremony_type=ceremony_type):
+				begun, credential, _auth = self._register(user, seed=f"retyped-{ceremony_type}")
+				record = state.consume_ceremony(begun["state_id"])
+				state_id = state.store_ceremony({**record, "type": ceremony_type})
+				with self.assertRaises(CeremonyExpired):
+					registration.verify_registration(state_id, credential)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
+
 	def test_guest_verify_does_not_burn_authenticated_users_ceremony(self):
 		user = self._user()
 		begun, credential, _auth = self._register(user, seed="guest-does-not-burn")

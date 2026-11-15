@@ -1,39 +1,42 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Mobile-app association files, generated from Passkey Settings so a native
-iOS/Android app can share the site's passkeys (same RP ID):
+"""Well-known documents generated from Passkey Settings:
 
 * Android — Digital Asset Links (``assetlinks.json``): the app package name plus its
   SHA-256 signing-certificate fingerprints, with the ``get_login_creds`` relation
   that enables credential sharing between the site and the app.
 * iOS — App Site Association (``apple-app-site-association``): the ``webcredentials``
   service listing ``<Team ID>.<Bundle ID>``.
+* W3C passkey endpoints (``passkey-endpoints``, a Working Draft): the ``enroll`` and
+  ``manage`` URLs a password manager sends a user to.
 
-Both are exposed as guest-readable whitelisted endpoints that return a **bare** JSON
+Each is exposed as a guest-readable whitelisted endpoint that returns a **bare** JSON
 document with an explicit ``application/json`` content type, a 200 and no redirect —
-what the mobile OS and the association checkers require (they reject a redirect, a
-wrong content type, or an envelope). A whitelisted method that returns a ``werkzeug``
-``Response`` is emitted verbatim (no ``{"message": …}`` wrapper — see
-``frappe/handler.py`` / ``frappe/api/__init__.py``). Unconfigured ⇒ 404, which the OS
-reads as "no association". ``refuse_if_core_native`` is the canonical first guard, per
-the app endpoint contract.
+what the mobile OS, password managers and the association checkers require (they
+reject a redirect, a wrong content type, or an envelope). A whitelisted method that
+returns a ``werkzeug`` ``Response`` is emitted verbatim (no ``{"message": …}`` wrapper —
+see ``frappe/handler.py`` / ``frappe/api/__init__.py``). Unconfigured ⇒ 404, which the
+client reads as "nothing here". ``refuse_if_core_native`` is the canonical first guard,
+per the app endpoint contract.
 
 **Serving them at the real ``/.well-known/`` path.** Frappe reserves ``/.well-known/*``:
 ``frappe/app.py`` routes those GETs to ``handle_wellknown`` (OAuth/OpenID metadata
 only, else 404) *before* the website router runs — so an app cannot claim those paths
 via ``www/`` pages, ``website_route_rules`` or a ``page_renderer``. Map them at the
-reverse proxy onto these endpoints with a one-time rule (see ``docs/mobile-apps.md``);
-the served content then stays in lockstep with the Trusted App Origins setting instead
-of a hand-maintained static file. ``webauthn`` is never imported here."""
+reverse proxy onto these endpoints with a one-time rule (see ``docs/mobile-apps.md`` and
+``docs/install.md``); the served content then stays in lockstep with Passkey Settings
+instead of a hand-maintained static file. ``webauthn`` is never imported here."""
 
 import json
 import re
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from werkzeug.wrappers import Response
 
+from passkeys import policy
 from passkeys.errors import refuse_if_core_native
 from passkeys.request_security import rate_limit
 
@@ -73,6 +76,18 @@ def apple_app_site_association():
 	return _json_response(payload)
 
 
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: guest-whitelisted-method
+@rate_limit(limit=120, seconds=60)
+def passkey_endpoints():
+	"""W3C passkey endpoints (``/.well-known/passkey-endpoints``, Working Draft of
+	2026-01-14). 404 unless a passkey login mode is on and the site has an https origin."""
+	refuse_if_core_native()
+	payload = build_passkey_endpoints(frappe.get_cached_doc("Passkey Settings"))
+	if payload is None:
+		raise frappe.DoesNotExistError(_("passkey-endpoints is not configured."))
+	return _json_response(payload)
+
+
 def build_assetlinks(settings) -> list | None:
 	"""The ``assetlinks.json`` document (a list of statements) from settings, or
 	``None`` when the Android package name and fingerprints are not both configured."""
@@ -100,6 +115,18 @@ def build_apple_app_site_association(settings) -> dict | None:
 	if not team or not bundle:
 		return None
 	return {"webcredentials": {"apps": [f"{team}.{bundle}"]}}
+
+
+def build_passkey_endpoints(settings) -> dict | None:
+	"""``enroll`` and ``manage`` both name the ``/passkeys`` management page on the site's
+	pinned https origin, or ``None`` when no passkey login mode is on or none resolves."""
+	if not (cint(settings.get("login_with_passkey")) or cint(settings.get("passkey_as_second_factor"))):
+		return None
+	origin = policy.get_site_https_origin(settings)
+	if not origin:
+		return None
+	url = f"{origin}/passkeys"
+	return {"enroll": url, "manage": url}
 
 
 def validate_association_settings(settings) -> None:

@@ -5,8 +5,8 @@ New here? Start with [Install](install.md), then [Configuration](configuration.m
 
 ## Set up and run
 
-- [**Install**](install.md): install, upgrade, uninstall, the version matrix, and reverse-proxy
-  / RP ID / origin requirements.
+- [**Install**](install.md): install, upgrade, uninstall, the version matrix, reverse-proxy
+  / RP ID / origin requirements, and the password-manager discovery file.
 - [**Configuration**](configuration.md): every Passkey Settings field, its default, and the
   security consequence of changing it.
 - [**Operations**](operations.md): pre-production checks, RP ID and domain changes, backup and

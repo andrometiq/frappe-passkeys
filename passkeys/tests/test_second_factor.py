@@ -402,6 +402,55 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(record.get("pwd"), PWD)
 		self.assertIsNone(record.get("password_version"))
 
+	def test_credential_disabled_between_legs_blocks_session(self):
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+		credential = self._assert(auth, resp["verification"]["options"], sign_count=6)
+
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "enabled", 0, update_modified=False)
+
+		with self.assertRaises(frappe.AuthenticationError):
+			self._leg2(resp["tmp_id"], credential, binder)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_completed_second_factor_state_cannot_be_replayed(self):
+		user = self._user()
+		auth = self._enroll(user)
+		resp, binder = self._leg1(user, PWD)
+		# counter 0 → 0 passes the replay check, so only the single-use state refuses
+		credential = self._assert(auth, resp["verification"]["options"], sign_count=0)
+		self._leg2(resp["tmp_id"], credential, binder)
+		self.assertEqual(frappe.session.user, user)
+
+		frappe.set_user("Guest")
+		with self.assertRaises(CeremonyExpired):
+			self._leg2(resp["tmp_id"], credential, binder)
+		self.assertNotIn("state_id", frappe.local.response)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_state_minted_for_another_ceremony_cannot_finish_second_factor(self):
+		"""A complete leg-one record retyped to another ceremony is refused by both leg-two
+		consumers before any assertion or OTP hand-off. Counter 0 keeps each case clear of
+		the replay check."""
+		self._set_passkey_setting("passkey_2fa_allow_otp_fallback", 1)
+		user = self._user(otp_capable=True)
+		auth = self._enroll(user)
+		for ceremony_type in ("login", "confirm", "register"):
+			with self.subTest(ceremony_type=ceremony_type):
+				# v15 keys every @rate_limit on this harness to one counter; keep each leg clear
+				frappe.cache.delete_keys("rl:")
+				resp, binder = self._leg1(user, PWD)
+				record = {**state.consume_ceremony(resp["tmp_id"]), "type": ceremony_type}
+				credential = self._assert(auth, resp["verification"]["options"], sign_count=0)
+				with self.assertRaises(CeremonyExpired):
+					self._leg2(state.store_ceremony(record), credential, binder)
+				self._request("/api/method/passkeys.passkey.fallback_to_otp", binder=binder)
+				with self.assertRaises(CeremonyExpired):
+					passkey.fallback_to_otp(state.store_ceremony(record))
+				self.assertNotIn("tmp_id", frappe.local.response)
+				self.assertEqual(frappe.session.user, "Guest")
+
 	def test_user_disabled_between_legs_blocks_session(self):
 		user = self._user()
 		auth = self._enroll(user)

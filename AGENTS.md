@@ -66,8 +66,8 @@ commit style, the exact test commands, releases). This guide owns the code map a
 - `passkeys/posture.py`, `passkeys/enforcement_admin.py`: the admin security-posture verdict (pure
   `classify_posture` + config-reading builder) and the System-Manager-only stuck-user recovery
   endpoints (per-user exemption, grace reset).
-- `passkeys/well_known.py`: guest-readable mobile-association files (Android `assetlinks.json`, iOS
-  `apple-app-site-association`).
+- `passkeys/well_known.py`: guest-readable well-known documents (Android `assetlinks.json`, iOS
+  `apple-app-site-association`, W3C `passkey-endpoints`).
 - `passkeys/passkeys/doctype/`: persisted domain objects — `passkey_settings` (the single config
   doctype; its controller also exposes two whitelisted reads, `get_resolved_rp_id` /
   `get_security_posture`), `webauthn_credential`, `webauthn_user_handle`, `passkey_enforcement_role`.
@@ -84,8 +84,8 @@ commit style, the exact test commands, releases). This guide owns the code map a
 The app is layered, not an object graph. Respect the layers:
 
 1. **Wire** — `passkey.py`, `api/*`, `confirm.py`, `well_known.py`, `enforcement_admin.py`.
-   Whitelisted, method-scoped (`POST` for actions; `GET` only for the guest-readable association
-   files and the translations catalog; `allow_guest` only where a guest ceremony needs it), typed
+   Whitelisted, method-scoped (`POST` for actions; `GET` only for the guest-readable well-known
+   documents and the translations catalog; `allow_guest` only where a guest ceremony needs it), typed
    errors out. Parse, authorize,
    rate-limit, delegate — no crypto orchestration inline.
 2. **Domain** — `engine` (verify), `ceremony` (shared ceremony steps), `errors` (typed errors),

@@ -332,6 +332,18 @@ def valid_web_origins(settings, rp_id: str) -> list[str]:
 	]
 
 
+def get_site_https_origin(settings) -> str | None:
+	"""The https origin that serves this site's pages, from pinned configuration only:
+	``host_name``'s origin when it is https and inside the RP scope, else the first listed
+	https passkey origin."""
+	rp_id = resolve_rp_id(settings)
+	if not rp_id:
+		return None
+	return next(
+		(origin for origin in valid_web_origins(settings, rp_id) if origin.startswith("https://")), None
+	)
+
+
 def valid_app_origins(settings) -> list[str]:
 	return [origin for origin in app_origins(settings) if app_origin_error(origin) is None]
 

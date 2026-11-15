@@ -122,12 +122,15 @@ class DormantEndpointsTest(IntegrationTestCase):
 	def test_confirm_reauth_password_refused(self):
 		self._assert_417(confirm.reauth_password, "pw")
 
-	# well_known.py — the mobile-app association files
+	# well_known.py — the well-known documents
 	def test_assetlinks_refused(self):
 		self._assert_417(well_known.assetlinks)
 
 	def test_apple_app_site_association_refused(self):
 		self._assert_417(well_known.apple_app_site_association)
+
+	def test_passkey_endpoints_refused(self):
+		self._assert_417(well_known.passkey_endpoints)
 
 
 # ===========================================================================

@@ -441,5 +441,7 @@ the login mode switches.
 
 - [`custom-ui.md`](custom-ui.md) — the headless JS API (does the encoding/CSRF/retries).
 - [`mobile-apps.md`](mobile-apps.md) — native iOS/Android association (well-known files).
+- [`install.md`](install.md) — the guest `GET /.well-known/passkey-endpoints` document for password
+  managers ("Password-manager discovery").
 - [`configuration.md`](configuration.md) — RP ID / origins the ceremony must run on.
 - [`security.md`](security.md) — the enforced model, what is trusted, disclosure.

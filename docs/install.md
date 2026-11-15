@@ -101,6 +101,45 @@ begin ceremony fails closed, writes a structured log line
 page shows a red mismatch banner — fail-closed is always diagnosable. See
 [`operations.md`](operations.md) for the host-change playbook.
 
+### Password-manager discovery (`/.well-known/passkey-endpoints`)
+
+Password managers read `https://<RP ID>/.well-known/passkey-endpoints` to send a user
+straight to the site's passkey page. The app generates that document, following the W3C
+[Passkey Endpoints](https://www.w3.org/TR/passkey-endpoints/) Working Draft of 14 January 2026
+(a draft, so the format can still change):
+
+```json
+{ "enroll": "https://erp.example.com/passkeys", "manage": "https://erp.example.com/passkeys" }
+```
+
+Both URLs are the `/passkeys` page on the `host_name` origin when that is https and inside the RP ID,
+otherwise on the first listed https Passkey Origin. They come from that pinned configuration, never from
+the request's `Host` or `X-Forwarded-*` headers. While both passkey login modes are off, or no https
+origin resolves, the endpoint returns 404.
+
+Frappe reserves `/.well-known/*`, so map the path once at the reverse proxy, the same way as the
+mobile association files ([`mobile-apps.md`](mobile-apps.md), section 2.1):
+
+```nginx
+location = /.well-known/passkey-endpoints {
+    rewrite ^ /api/method/passkeys.well_known.passkey_endpoints last;
+}
+```
+
+```caddy
+handle /.well-known/passkey-endpoints {
+    rewrite * /api/method/passkeys.well_known.passkey_endpoints
+    reverse_proxy <frappe-upstream>
+}
+```
+
+The file must answer on the **RP ID host** itself, over HTTPS on the default port, with `200`,
+`Content-Type: application/json` and **no redirect**. If the RP ID is a parent domain (RP ID
+`example.com` for a site on `erp.example.com`), serve the path on `example.com`: proxy it to this
+site, or publish a copy of the generated document there (a copy goes stale if the site address
+changes). Check with `curl -s -D - https://<RP ID>/.well-known/passkey-endpoints`. Responses may be
+cached for one hour.
+
 ## Upgrade
 
 ```bash

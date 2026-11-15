@@ -386,6 +386,50 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(CeremonyExpired):
 			self._verify(begun["state_id"], credential, binder)
 
+	def test_completed_uv_setup_cannot_be_replayed(self):
+		user = self._user()
+		auth, _ = self._enroll(user, uv=False)
+		begun, binder = self._begin()
+		# counter 0 → 0 passes the replay check, so only the single-use setup record refuses
+		credential = self._assert(auth, begun["options"], uv=True, sign_count=0)
+		with self.assertRaises(UVSetupRequired):
+			self._verify(begun["state_id"], credential, binder)
+		setup_id = frappe.local.response.get("setup_id")
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, user)
+
+		frappe.set_user("Guest")
+		self._request("/api/method/passkeys.passkey.complete_uv_setup", binder=binder)
+		with self.assertRaises(CeremonyExpired):
+			passkey.complete_uv_setup(setup_id, PWD)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_disabled_credential_cannot_sign_in(self):
+		user = self._user()
+		auth, _ = self._enroll(user)
+		frappe.db.set_value("WebAuthn Credential", {"user": user}, "enabled", 0, update_modified=False)
+		begun, binder = self._begin()
+		with self.assertRaisesRegex(frappe.AuthenticationError, "could not be verified"):
+			self._verify(begun["state_id"], self._assert(auth, begun["options"]), binder)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	def test_state_minted_for_another_ceremony_cannot_sign_in(self):
+		"""A complete, correctly bound record of another type, signed over its own challenge,
+		is still refused: verify_login consumes only ``login`` ceremonies. Counter 0 keeps
+		each case clear of the replay check."""
+		user = self._user()
+		auth, _ = self._enroll(user)
+		for ceremony_type in ("second_factor", "confirm", "register"):
+			with self.subTest(ceremony_type=ceremony_type):
+				begun, binder = self._begin()
+				record = state.consume_ceremony(begun["state_id"])
+				state_id = state.store_ceremony({**record, "type": ceremony_type, "user": user})
+				credential = self._assert(auth, begun["options"], sign_count=0)
+				with self.assertRaises(CeremonyExpired):
+					self._verify(state_id, credential, binder)
+				self.assertEqual(frappe.session.user, "Guest")
+
 	def test_begin_login_rate_limited(self):
 		# begin_login is 30/min/IP; the 31st on one IP is refused
 		with self.assertRaises(frappe.RateLimitExceededError):

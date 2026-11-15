@@ -127,7 +127,8 @@ location = /.well-known/apple-app-site-association {
 
 Add these inside the site's `server { … }` block (via your `bench`-managed nginx
 template or a custom include so a regenerated config keeps them), above the generic
-`location /`.
+`location /`. Add the password-manager rule for `/.well-known/passkey-endpoints` in the same
+place; it is in [`install.md`](install.md), under "Password-manager discovery".
 
 **Caddy:**
 

@@ -1,14 +1,17 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Mobile-app association files (``passkeys.well_known``): the settings-driven
-``assetlinks.json`` (Android) and ``apple-app-site-association`` (iOS) generators and
-their guest endpoints. The endpoints must emit a BARE JSON document with an explicit
-``application/json`` content type and 404 when unconfigured."""
+"""Well-known documents (``passkeys.well_known``): the settings-driven
+``assetlinks.json`` (Android), ``apple-app-site-association`` (iOS) and
+``passkey-endpoints`` (W3C) generators and their guest endpoints. The endpoints must
+emit a BARE JSON document with an explicit ``application/json`` content type and 404
+when unconfigured."""
 
 import json
+from unittest.mock import patch
 
 import frappe
+from frappe.utils import cint, set_request
 
 from passkeys import well_known
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
@@ -89,6 +92,39 @@ class TestBuilders(IntegrationTestCase):
 		)
 		self.assertIsNone(well_known.build_apple_app_site_association(frappe._dict({})))
 
+	def test_passkey_endpoints_need_a_login_mode(self):
+		settings = frappe._dict(passkey_rp_id="example.com", passkey_origins="https://example.com")
+		with patch.dict(frappe.conf, {"host_name": ""}):
+			self.assertIsNone(well_known.build_passkey_endpoints(settings))
+			for mode in ("login_with_passkey", "passkey_as_second_factor"):
+				with self.subTest(mode=mode):
+					self.assertEqual(
+						well_known.build_passkey_endpoints(frappe._dict(settings, **{mode: 1})),
+						{"enroll": "https://example.com/passkeys", "manage": "https://example.com/passkeys"},
+					)
+
+	def test_passkey_endpoints_prefer_host_name_then_the_first_https_origin(self):
+		settings = frappe._dict(
+			login_with_passkey=1,
+			passkey_rp_id="example.com",
+			passkey_origins="https://login.example.com\nhttps://example.com",
+		)
+		for host_name, expected in (
+			("https://erp.example.com", "https://erp.example.com/passkeys"),
+			("https://outside.test", "https://login.example.com/passkeys"),
+			("http://erp.example.com", "https://login.example.com/passkeys"),
+			("", "https://login.example.com/passkeys"),
+		):
+			with self.subTest(host_name=host_name), patch.dict(frappe.conf, {"host_name": host_name}):
+				self.assertEqual(well_known.build_passkey_endpoints(settings)["manage"], expected)
+
+	def test_passkey_endpoints_need_an_https_origin(self):
+		settings = frappe._dict(
+			login_with_passkey=1, passkey_rp_id="localhost", passkey_origins="http://localhost:8000"
+		)
+		with patch.dict(frappe.conf, {"host_name": "", "developer_mode": 1}):
+			self.assertIsNone(well_known.build_passkey_endpoints(settings))
+
 
 class TestEndpoints(IntegrationTestCase):
 	def setUp(self):
@@ -109,6 +145,8 @@ class TestEndpoints(IntegrationTestCase):
 			"passkey_ios_bundle_id",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or "")
+		for field in ("login_with_passkey", "passkey_as_second_factor"):
+			frappe.db.set_single_value("Passkey Settings", field, cint(self._snapshot.get(field)))
 		flush_settings_cache()
 
 	def _set(self, **values):
@@ -149,6 +187,54 @@ class TestEndpoints(IntegrationTestCase):
 		self._set(passkey_ios_team_id="", passkey_ios_bundle_id="")
 		with self.assertRaises(frappe.DoesNotExistError):
 			well_known.apple_app_site_association()
+
+	def _guest_get(self, path="/api/method/passkeys.well_known.passkey_endpoints", headers=None):
+		for attribute in ("request", "request_ip", "form_dict"):
+			self.addCleanup(setattr, frappe.local, attribute, getattr(frappe.local, attribute, None))
+		set_request(method="GET", path=path, headers=headers)
+		frappe.local.request_ip = frappe.generate_hash(length=12)
+		frappe.local.form_dict = frappe._dict(cmd="passkeys.well_known.passkey_endpoints")
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+
+	def test_passkey_endpoints_endpoint_serves_bare_json(self):
+		self._set(login_with_passkey=1, passkey_as_second_factor=0)
+		self._guest_get()
+		with patch.dict(frappe.conf, {"host_name": "https://outside.test"}):
+			response = well_known.passkey_endpoints()
+		self._assert_json_response(
+			response, {"enroll": "https://example.com/passkeys", "manage": "https://example.com/passkeys"}
+		)
+
+	def test_passkey_endpoints_endpoint_404_with_both_login_modes_off(self):
+		self._set(login_with_passkey=0, passkey_as_second_factor=0)
+		self._guest_get()
+		with self.assertRaises(frappe.DoesNotExistError):
+			well_known.passkey_endpoints()
+
+	def test_passkey_endpoints_never_read_request_host_headers(self):
+		self._set(login_with_passkey=1)
+		self._guest_get(
+			headers=[
+				("Host", "evil.example.net"),
+				("X-Forwarded-Host", "evil.example.net"),
+				("X-Forwarded-Proto", "http"),
+			]
+		)
+		with patch.dict(frappe.conf, {"host_name": "https://outside.test"}):
+			body = json.loads(well_known.passkey_endpoints().get_data(as_text=True))
+		self.assertEqual(body["enroll"], "https://example.com/passkeys")
+		self.assertEqual(body["manage"], "https://example.com/passkeys")
+
+	def test_passkey_endpoints_endpoint_is_rate_limited_per_ip(self):
+		self._set(login_with_passkey=1)
+		self._guest_get()
+		for _ in range(120):
+			well_known.passkey_endpoints()
+		with self.assertRaises(frappe.RateLimitExceededError):
+			well_known.passkey_endpoints()
+		frappe.local.request_ip = frappe.generate_hash(length=12)
+		self.assertEqual(well_known.passkey_endpoints().status_code, 200)
 
 	def _save(self, **values):
 		settings = frappe.get_doc("Passkey Settings")
