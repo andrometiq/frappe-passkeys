@@ -24,8 +24,14 @@ and include:
 - impact, required attacker access, and any known mitigations; and
 - whether the issue is already public or under active exploitation.
 
-Maintainers will acknowledge receipt, reproduce and classify the report, coordinate a fix and
-release plan, and credit the reporter when requested.
+## What Happens Next
+
+- We confirm we got your report within 3 working days.
+- Within 10 working days we tell you whether it is a vulnerability and how severe we think it is.
+- High and critical issues are fixed on both release lines within 30 days of that answer; others ship
+  in the next release.
+- Each fix gets a GitHub security advisory naming the affected and fixed versions of each line, and
+  credits you if you want.
 
 ## Scope
 
@@ -35,3 +41,18 @@ facilities are in scope. Findings that require a site to deliberately enable bot
 and `allow_tests` are still useful, but should state that prerequisite clearly.
 
 General hardening suggestions without a concrete security impact may be filed as normal issues.
+
+## Not A Vulnerability
+
+These are by design; see [docs/security.md](docs/security.md).
+
+- Requests made with an API key or an OAuth token skip passkey sign-in checks, as they skip
+  Frappe's own two-factor authentication.
+- A required passkey is a prompt after sign-in, not a server-side block: a client that never runs
+  the app's JavaScript is not stopped by it.
+- An administrator can change a user's passkeys from their own session. The impersonation lock
+  only stops accidental or hidden changes.
+- Anything that needs `bench console`, direct database access or the server's shell.
+- Attacks that need control of a subdomain inside the site's RP ID, or of the user's device or
+  passkey provider.
+- Bugs in Frappe itself: report those to [Frappe](https://frappe.io/security).

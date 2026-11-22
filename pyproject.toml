@@ -17,6 +17,12 @@ dependencies = [
 	"cbor2>=5.9.0",
 ]
 
+[project.urls]
+Homepage = "https://andrometiq.com/software/passkey/"
+Documentation = "https://andrometiq.github.io/frappe-passkeys/"
+# Frappe's daily update check reads Repository to find this app's GitHub releases.
+Repository = "https://github.com/Andrometiq/frappe-passkeys"
+
 [build-system]
 # PEP 517 runs outside the project environment, so pin the build backend too.
 requires = ["flit_core==3.12.0"]
