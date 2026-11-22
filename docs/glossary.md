@@ -24,7 +24,7 @@ sign-ins (**Grace sign-ins**). The docs call this *enforcement*.
 ### Nudge
 The **Sign in faster next time** reminder for users who aren't required to add a passkey. They
 can dismiss it or switch it off for themselves. By default it appears at most 3 times, 30 days
-apart. Set **Everyone else** to **Off** to stop it.
+apart. Set **Everyone else** to **Off** to stop it for them.
 
 ### Re-authentication window
 For 10 minutes (by default) after signing in with a password or passkey, or confirming it's them,

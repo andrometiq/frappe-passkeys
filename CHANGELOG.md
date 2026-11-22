@@ -37,7 +37,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   Save twice.
 - Links in Passkey Settings ("Learn more", links in notices) are underlined so they read as links.
 - Change emails: a passkey name containing `<` or `&` shows as typed, a passkey with no name is
-  named by its ID, and the added email's IP address sits inside its sentence.
+  named by its ID, and the added email's IP address sits inside its sentence and is escaped.
 - Docs: the login lock is per user and per IP address (not "IP-based"), and passkey sign-in doesn't
   count toward it; the security guide names the real System Settings option to turn off.
 

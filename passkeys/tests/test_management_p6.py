@@ -82,6 +82,11 @@ class NotificationTest(_Base):
 			" If this wasn't you, remove it and change your password immediately.",
 		)
 
+	def test_added_email_escapes_the_ip(self):
+		notifications.notify_credential_added(self._user(), "Phone", ip='<div style="display:none">')
+		self.assertIn("(from IP &lt;div style=&quot;display:none&quot;&gt;)", self.sent[0]["message"])
+		self.assertNotIn("<div", self.sent[0]["message"])
+
 	def test_no_email_when_notify_knob_off_but_activity_still_logged(self):
 		user = self._user()
 		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 0)

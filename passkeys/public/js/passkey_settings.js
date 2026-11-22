@@ -69,8 +69,12 @@ function hasUnsavedRpConfig(frm) {
 	return rpCandidate(frm) !== frm._passkey_rp_saved;
 }
 
+// saveAfter: Save raised it, so "Yes" finishes that save. Clicking Save blurs the field first,
+// so the blur's dialog may already be open; the flag rides on whichever dialog is showing.
 function confirmRpIdChange(frm, saveAfter) {
-	if (!rpIdChangeUnconfirmed(frm) || frm._passkey_rpid_dialog_open) return;
+	if (!rpIdChangeUnconfirmed(frm)) return;
+	if (saveAfter) frm._passkey_rpid_save_after = true;
+	if (frm._passkey_rpid_dialog_open) return;
 	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
 	var value = frm.doc.passkey_rp_id || "";
 	var candidate = rpCandidate(frm);
@@ -81,23 +85,25 @@ function confirmRpIdChange(frm, saveAfter) {
 		args: { rp_id: value, passkey_origins: frm.doc.passkey_origins || "", passkey_app_origins: frm.doc.passkey_app_origins || "" },
 		callback: function (r) {
 			if (candidate !== rpCandidate(frm) || !r || !r.message) {
-				frm._passkey_rpid_dialog_open = false;
+				frm._passkey_rpid_dialog_open = frm._passkey_rpid_save_after = false;
 				return;
 			}
 			var proceeded = false;
 			var d = frappe.warn(__("Change the RP ID?"), rpImpactMessage(r.message), function () {
 				proceeded = true;
+				var saveNow = frm._passkey_rpid_save_after;
+				frm._passkey_rpid_save_after = false;
 				if (candidate !== rpCandidate(frm)) return;
 				frm._passkey_rpid_ack = candidate;
-				if (saveAfter) frm.save();
+				if (saveNow) frm.save();
 			}, __("Yes, change it"), true);
 			d.$wrapper.on("hide.bs.modal", function () {
-				frm._passkey_rpid_dialog_open = false;
+				frm._passkey_rpid_dialog_open = frm._passkey_rpid_save_after = false;
 				if (!proceeded && candidate === rpCandidate(frm)) frm.set_value("passkey_rp_id", saved);
 			});
 		},
 		error: function (r) {
-			frm._passkey_rpid_dialog_open = false;
+			frm._passkey_rpid_dialog_open = frm._passkey_rpid_save_after = false;
 			if (candidate !== rpCandidate(frm)) return;
 			var body = r.responseJSON || r;
 			if (body.exc_type !== "ValidationError") return;
@@ -215,11 +221,11 @@ function fetchSecurityPosture(frm) {
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_security_posture",
 		callback: function (r) {
-			if (!r || !r.message) return renderPostureFailure(frm);
+			if (!r || !r.message) return anyMode ? renderPostureFailure(frm) : renderPosture(frm, []);
 			var report = frappe.passkeys_manage_common.postureReport(r.message);
 			renderPosture(frm, isPostureOff(report) ? [] : postureNodes(report));
 		},
-		error: function () { renderPostureFailure(frm); },
+		error: function () { if (anyMode) renderPostureFailure(frm); },
 	});
 }
 

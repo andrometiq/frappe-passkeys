@@ -1020,7 +1020,6 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 	handlers.validate(frm);
 	assert.strictEqual(context.frappe.validated, false, "an unconfirmed change cannot be saved");
 	assert.strictEqual(warns.length, 2);
-	assert.strictEqual(saves, 0, "leaving the field never saves");
 	warns[1].args[2]();
 	warns[1].dialog.hide();
 	assert.strictEqual(saves, 1, "confirming the change Save raised finishes the save");

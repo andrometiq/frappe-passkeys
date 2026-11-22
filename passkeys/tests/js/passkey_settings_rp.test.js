@@ -53,6 +53,23 @@ test("confirming a change raised by Save finishes the save; one raised by leavin
 	assert.equal(saves, 1);
 	assert.equal(h.context.rpIdChangeUnconfirmed(h.frm), false);
 });
+test("typing an RP ID and clicking Save: the blur's dialog finishes the save; Cancel does not", async () => {
+	for (const confirm of [true, false]) {
+		const h = harness();
+		let saves = 0;
+		h.frm.save = () => { saves += 1; };
+		h.context.confirmRpIdChange(h.frm); // Save's mousedown blurs the field first
+		h.context.frappe.validated = true;
+		h.handlers.validate(h.frm); // then the click's save, while the blur's impact call is in flight
+		assert.equal(h.context.frappe.validated, false);
+		assert.equal(h.calls.length, 1, "one dialog, not two");
+		h.calls[0].callback({ message: impact });
+		if (confirm) h.warns[0].args[2]();
+		h.warns[0].d.hide();
+		assert.equal(saves, confirm ? 1 : 0);
+		assert.equal(h.frm._passkey_rpid_save_after, false, "the save request ends with the dialog");
+	}
+});
 test("late impact responses cannot confirm a newer candidate; cancellation restores the saved RP", () => {
 	const h = harness();
 	h.context.confirmRpIdChange(h.frm);
@@ -190,4 +207,13 @@ test("the posture card stays hidden while no mode is on, and shows once one is",
 	h.context.fetchSecurityPosture(h.frm);
 	h.calls[2].callback({ message: on });
 	assert.deepEqual(rendered, ["notice: Checking your security posture…", "card: Passkeys protect sign-in."]);
+	// A failed load says so only when a mode is on; with none on, still no card.
+	rendered.length = 0;
+	h.context.renderPostureFailure = () => rendered.push("failure");
+	h.context.fetchSecurityPosture(h.frm);
+	h.calls[3].error({});
+	h.frm.doc.login_with_passkey = 0;
+	h.context.fetchSecurityPosture(h.frm);
+	h.calls[4].error({});
+	assert.equal(JSON.stringify(rendered), JSON.stringify(["notice: Checking your security posture…", "failure", []]));
 });
