@@ -89,6 +89,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A server test keeps the reference docs in step with the code: every Passkey Settings field needs a
   row in the configuration guide (the five mobile-app fields now have one), and every error type a
   client can receive needs an entry in the REST API reference.
+- A translation template (`passkeys/locale/main.pot`) so translators can start.
 
 ## [15.0.8] / [16.0.8] — 2026-11-16
 

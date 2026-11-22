@@ -127,6 +127,11 @@ that range in its release commit.
 If a line ever needs code that a feature check in `develop` cannot express, it stops following
 `develop` and takes its own fix commits instead.
 
+## Translations
+
+`passkeys/locale/main.pot` lists every translatable string. Regenerate it when you add or change
+one: `bench generate-pot-file --app passkeys`. Translators add `passkeys/locale/<language>.po`.
+
 ## Commit messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/), matching `frappe/frappe`:

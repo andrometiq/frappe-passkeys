@@ -1,0 +1,1822 @@
+# Translations template for Passkeys.
+# Copyright (C) 2026 Frappe Passkeys Contributors
+# This file is distributed under the same license as the Passkeys project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Passkeys VERSION\n"
+"Report-Msgid-Bugs-To: hello@andrometiq.com\n"
+"POT-Creation-Date: 2026-11-23 04:11+0553\n"
+"PO-Revision-Date: 2026-11-23 04:11+0553\n"
+"Last-Translator: hello@andrometiq.com\n"
+"Language-Team: hello@andrometiq.com\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:197
+msgid "'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged. Prefer 'Degrade to Nudge' if any users may be on older devices."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:189
+msgid "'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles you want to require, or switch to 'All users'."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:97
+#, python-brace-format
+msgid "'{0}' must be between 0 and {1}."
+msgstr ""
+
+#: passkeys/enforcement_admin.py:35
+msgid "(empty)"
+msgstr ""
+
+#: passkeys/notifications.py:230
+#, python-brace-format
+msgid "(from IP {0})"
+msgstr ""
+
+#. Description of the 'enrollment_section' (Section Break) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:159
+msgid "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#enrollment\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>"
+msgstr ""
+
+#. Description of the 'login_modes_section' (Section Break) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:58
+msgid "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#login-modes\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>"
+msgstr ""
+
+#. Description of the 'notifications_section' (Section Break) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:298
+msgid "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#notifications\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>"
+msgstr ""
+
+#. Description of the 'relying_party_section' (Section Break) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:90
+msgid "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#relying-party\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>"
+msgstr ""
+
+#. Description of the 'security_section' (Section Break) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:256
+msgid "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#security\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>"
+msgstr ""
+
+#. Content of the 'Resolved Configuration' (HTML) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:110
+msgid "<p class=\"text-muted small\">The resolved RP ID and origins are validated when a login mode is enabled.</p>"
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:101
+msgid "A WebAuthn credential ID digest is immutable."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:99
+msgid "A WebAuthn credential ID is immutable."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:103
+msgid "A WebAuthn credential public key is immutable."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:91
+msgid "A WebAuthn user handle is immutable."
+msgstr ""
+
+#: passkeys/confirm.py:475
+msgid "A confirmation action is required."
+msgstr ""
+
+#: passkeys/posture.py:361
+msgid "A custom app can register its own auth hooks or login endpoints, which cannot be detected deterministically."
+msgstr ""
+
+#: passkeys/notifications.py:46
+#, python-brace-format
+msgid "A new passkey “{0}” was just added to your account on {1}{2}. If this wasn't you, remove it on your My Passkeys page{3} and change your password immediately."
+msgstr ""
+
+#: passkeys/api/credentials.py:94 passkeys/api/credentials.py:98
+msgid "A passkey name cannot be empty."
+msgstr ""
+
+#: passkeys/notifications.py:86
+msgid "A passkey on your account was disabled"
+msgstr ""
+
+#: passkeys/notifications.py:99
+msgid "A passkey on your account was flagged"
+msgstr ""
+
+#: passkeys/notifications.py:53
+msgid "A passkey was added to your account"
+msgstr ""
+
+#: passkeys/notifications.py:76
+msgid "A passkey was removed from your account"
+msgstr ""
+
+#: passkeys/posture.py:269
+msgid "A sign-count regression (a possible cloned passkey) is flagged and the owner notified, but the sign-in still succeeds."
+msgstr ""
+
+#: passkeys/posture.py:214
+msgid "A user can sign in through an emailed link without a passkey."
+msgstr ""
+
+#: passkeys/posture.py:136
+msgid "A user can sign in through these identity providers without a passkey."
+msgstr ""
+
+#: passkeys/posture.py:161
+msgid "A user can sign in with their LDAP / Active Directory password instead of a passkey."
+msgstr ""
+
+#: passkeys/notifications.py:148
+msgid "A user cannot satisfy passkey enrollment enforcement"
+msgstr ""
+
+#. Description of the 'Roles' (Table MultiSelect) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:173
+msgid "A user is in scope if they hold any of these roles."
+msgstr ""
+
+#: passkeys/passkey.py:513
+msgid "A verification code could not be started for this sign-in."
+msgstr ""
+
+#: passkeys/passkey.py:501
+msgid "A verification code is not available for this sign-in."
+msgstr ""
+
+#. Label of the aaguid (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:104
+msgid "AAGUID"
+msgstr ""
+
+#: passkeys/api/credentials.py:238
+msgid "Add a passkey before turning on passkey-only login."
+msgstr ""
+
+#. Description of the 'Passkey Origins' (Small Text) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:101
+msgid "Additional allowed origins, one per line (explicit ports allowed). Each must be HTTPS and within the RP ID's scope."
+msgstr ""
+
+#. Description of the 'Always require a passkey from System Managers' (Check)
+#. field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:182
+msgid "Adds System Managers and Administrator to the scope above, whatever it is."
+msgstr ""
+
+#: passkeys/posture.py:284
+msgid "Administrator can still sign in with only a password."
+msgstr ""
+
+#. Option for the 'Require a passkey from' (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:169
+msgid "All users"
+msgstr ""
+
+#. Label of the passkey_allow_first_enrollment_on_external_login (Check) field
+#. in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:290
+msgid "Allow First Passkey After Email-Link or Social Sign-in"
+msgstr ""
+
+#. Label of the passkey_2fa_allow_otp_fallback (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:82
+msgid "Allow OTP Fallback for Passkey Second Factor"
+msgstr ""
+
+#. Description of the 'Allow OTP Fallback for Passkey Second Factor' (Check)
+#. field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:79
+msgid "Allow a mid-flow fallback to the configured OTP method when the passkey second factor fails"
+msgstr ""
+
+#. Label of the passkey_enforce_privileged_always (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:185
+msgid "Always require a passkey from System Managers"
+msgstr ""
+
+#: passkeys/notifications.py:69
+#, python-brace-format
+msgid "An administrator removed the passkey “{0}” from your account on {1}. It no longer works there.{2} If your phone, computer or password manager still lists it, delete it there too. If you didn't expect this, contact your administrator."
+msgstr ""
+
+#: passkeys/posture.py:120
+msgid "An enrolled user can finish password sign-in with a verification code instead of a passkey."
+msgstr ""
+
+#. Label of the passkey_android_package_name (Data) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:129
+msgid "Android Package Name"
+msgstr ""
+
+#. Label of the passkey_android_cert_fingerprints (Small Text) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:135
+msgid "Android Signing Certificate SHA-256 Fingerprints"
+msgstr ""
+
+#. Description of the 'Android Package Name' (Data) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:126
+msgid "Android application id for the served /.well-known/assetlinks.json, e.g. com.example.app. Leave blank to omit assetlinks.json."
+msgstr ""
+
+#: passkeys/well_known.py:140
+#, python-brace-format
+msgid "Android fingerprint on line {0} is not a SHA-256 certificate fingerprint (64 hex characters, colons optional)."
+msgstr ""
+
+#: passkeys/posture.py:103
+msgid "Any user can sign in with a username and password instead of a passkey."
+msgstr ""
+
+#: passkeys/posture.py:241
+msgid "Anyone who controls a user's email can reset the password and then sign in without a passkey."
+msgstr ""
+
+#. Description of the 'iOS Team ID' (Data) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:142
+msgid "Apple Team ID (App ID Prefix) for the served /.well-known/apple-app-site-association, e.g. ABCDE12345."
+msgstr ""
+
+#. Label of the attestation_format (Data) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:112
+msgid "Attestation Format"
+msgstr ""
+
+#. Label of the attestation_object (Long Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:119
+msgid "Attestation Object"
+msgstr ""
+
+#. Label of the authenticator_attachment (Select) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:168
+msgid "Authenticator Attachment"
+msgstr ""
+
+#. Description of the 'Backup Eligible' (Check) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:135
+msgid "BE flag; write-once at registration, never updated"
+msgstr ""
+
+#. Description of the 'Backup State' (Check) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:143
+msgid "BS flag; refreshed on every successful assertion"
+msgstr ""
+
+#. Label of the backup_eligible (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:138
+msgid "Backup Eligible"
+msgstr ""
+
+#. Label of the backup_state (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:146
+msgid "Backup State"
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:105
+msgid "Backup eligibility is set at registration and can never change."
+msgstr ""
+
+#. Description of the 'Starting on' (Date) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:189
+msgid "Blank = immediately. Until this date in-scope users are nudged instead of required."
+msgstr ""
+
+#. Option for the 'Device cannot create a passkey' (Select) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:222
+msgid "Block + Notify Admin"
+msgstr ""
+
+#: passkeys/auth_hooks.py:218
+msgid "Cannot disable Two Factor Authentication: it is the structural backstop for Passkey as Second Factor. The final login veto remains fail-closed, but the required defence-in-depth floor would be lost. Disable 'Passkey as Second Factor' in Passkey Settings first."
+msgstr ""
+
+#: passkeys/auth_hooks.py:203
+msgid "Cannot disable username/password login while Passkey as Second Factor is the only passkey mode: enrolled users would have no way to sign in. Enable Login with Passkey or turn off Passkey as Second Factor in Passkey Settings first."
+msgstr ""
+
+#: passkeys/policy.py:59
+#, python-brace-format
+msgid "Cannot enable passkeys because the WebAuthn dependencies could not be imported: {0}."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:61
+msgid "Cannot enable passkeys: no Relying Party ID resolves. Fix it one of two ways: set host_name in the site config (site_config.json) to this site's domain, or enter an explicit Passkey RP ID (a bare host name) in Passkey RP ID on the Relying Party tab. If you just set host_name, wait a minute and save again."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:52
+msgid "Cannot enable passkeys: the 'webauthn' python package is not installed in this bench. Run bench setup requirements for the passkeys app first."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:70
+msgid "Cannot enable passkeys: the encryption_key in this site's site_config.json is empty. Remove the empty entry so Frappe can create a new key, or restore the original key."
+msgstr ""
+
+#: passkeys/passkey.py:48
+#, python-brace-format
+msgid "Cannot merge {0} into {1}: both users have passkeys. Delete the passkeys and the WebAuthn User Handle of {0} first."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:147
+#, python-brace-format
+msgid "Cannot save: this would leave no passkey-capable login mode enabled while these users allow passkey login only: {0}. Keep a passkey login mode enabled, or clear 'Passkey Only Login' on their WebAuthn User Handle records first."
+msgstr ""
+
+#: passkeys/install.py:165
+#, python-brace-format
+msgid "Cannot uninstall passkeys: these users allow passkey login only and would be locked out: {0}. Clear 'Passkey Only Login' on their WebAuthn User Handle records first (WebAuthn User Handle list in Desk, or bench console)."
+msgstr ""
+
+#: passkeys/install.py:156
+msgid "Cannot uninstall passkeys: username/password login is disabled and no other login method (Social Login, LDAP, Login with Email Link) is enabled. Enable one in System Settings first."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:131
+#, python-brace-format
+msgid "Cannot {0} the only enabled passkey of {1}: Disable Username/Password Login is on in System Settings. Add another enabled passkey or turn off Disable Username/Password Login in System Settings, then retry."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:125
+#, python-brace-format
+msgid "Cannot {0} the only enabled passkey of {1}: passwordless login is on for that account, so this would lock them out. Clear 'Passkey Only Login' on their WebAuthn User Handle first (or ensure another login method), then retry."
+msgstr ""
+
+#: passkeys/api/credentials.py:184
+msgid "Change passkey-only login"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:117
+msgid "Change the RP ID?"
+msgstr ""
+
+#. Description of the 'Passkey RP ID' (Data) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:95
+msgid "Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:136
+msgid "Check the RP ID and origins."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:349
+msgid "Checking your security posture…"
+msgstr ""
+
+#. Label of the client_data_json (Long Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:126
+msgid "Client Data JSON"
+msgstr ""
+
+#: passkeys/posture.py:267
+msgid "Cloned-authenticator hard-fail is off."
+msgstr ""
+
+#. Label of the passkey_conditional_create (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:248
+msgid "Conditional Create"
+msgstr ""
+
+#: passkeys/api/registration.py:174
+msgid "Conditional Create is off on this site."
+msgstr ""
+
+#: passkeys/policy.py:172
+msgid "Configure at least one exact passkey origin or set this site's host_name within the RP ID scope."
+msgstr ""
+
+#: passkeys/confirm.py:258 passkeys/confirm.py:269
+msgid "Confirm it's you to continue."
+msgstr ""
+
+#: passkeys/session.py:332
+msgid "Confirm it's you to manage passkeys."
+msgstr ""
+
+#: passkeys/confirm.py:485 passkeys/confirm.py:487
+msgid "Confirmation parameters must be an object."
+msgstr ""
+
+#. Label of the credential_id (Long Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:62
+msgid "Credential ID"
+msgstr ""
+
+#. Label of the credential_id_sha256 (Data) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:71
+msgid "Credential ID SHA-256"
+msgstr ""
+
+#: passkeys/engine.py:150 passkeys/engine.py:152
+msgid "Cross-origin passkey ceremonies are not allowed."
+msgstr ""
+
+#: passkeys/posture.py:359
+msgid "Custom apps may add their own login methods."
+msgstr ""
+
+#. Label of the passkey_nudge_cooldown_days (Int) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:241
+msgid "Days between prompts"
+msgstr ""
+
+#. Option for the 'Device cannot create a passkey' (Select) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:222
+msgid "Degrade to Nudge"
+msgstr ""
+
+#. Label of the passkey_enforce_incapable (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:221
+msgid "Device cannot create a passkey"
+msgstr ""
+
+#: passkeys/api/registration.py:284
+msgid "Device passkey"
+msgstr ""
+
+#: passkeys/posture.py:162
+msgid "Disable LDAP in LDAP Settings, or accept that LDAP logins can bypass passkeys."
+msgstr ""
+
+#. Description of the 'Passkey Only Login' (Check) field in DocType 'WebAuthn
+#. User Handle'
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:35
+msgid "Disable password login for this user; requires at least one enabled passkey"
+msgstr ""
+
+#: passkeys/posture.py:137
+msgid "Disable these Social Login Keys, or accept that these providers can bypass passkeys."
+msgstr ""
+
+#. Label of the discoverable (Select) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:160
+msgid "Discoverable"
+msgstr ""
+
+#: passkeys/public/js/passkey_site_alert.bundle.js:75
+msgid "Dismiss"
+msgstr ""
+
+#. Description of the 'AAGUID' (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:101
+msgid "Display and telemetry only, never policy; all-zeros tolerated"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:63
+#, python-brace-format
+msgid "Each Android signing-certificate fingerprint must contain exactly 64 hexadecimal characters; colons and a SHA-256 label are optional. Invalid line(s): {0}"
+msgstr ""
+
+#. Description of the 'Notify on Password Fallback' (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:311
+msgid "Email the user when a passkey holder signs in with a weaker method"
+msgstr ""
+
+#. Description of the 'Notify on Passkey Changes' (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json
+msgid "Email the user when a passkey is added, removed, disabled or flagged. This is the compensating control for registration hijack — leave it on outside mail-less development sites."
+msgstr ""
+
+#: passkeys/api/credentials.py:196
+msgid "Enable a passkey login mode before turning on passkey-only login."
+msgstr ""
+
+#. Label of the enabled (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:56
+msgid "Enabled"
+msgstr ""
+
+#: passkeys/api/credentials.py:208
+msgid "Enabling passkey-only login needs at least two passkeys that work on this site, so a lost device never locks you out."
+msgstr ""
+
+#: passkeys/posture.py:172
+msgid "Enrolled users cannot finish LDAP login without this app's passkey leg."
+msgstr ""
+
+#: passkeys/posture.py:225
+msgid "Enrolled users cannot finish email-link login without this app's passkey leg."
+msgstr ""
+
+#: passkeys/posture.py:147
+msgid "Enrolled users cannot finish these login paths without this app's passkey leg."
+msgstr ""
+
+#. Label of the enrollment_tab (Tab Break) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:156
+msgid "Enrollment"
+msgstr ""
+
+#: passkeys/posture.py:347
+msgid "Enrollment is enforcing — once users enroll, set 'Passwordless login only' for the users you want to fully cover."
+msgstr ""
+
+#: passkeys/policy.py:62
+#, python-brace-format
+msgid "Error output: {0}"
+msgstr ""
+
+#. Label of the passkey_everyone_else (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:200
+msgid "Everyone else"
+msgstr ""
+
+#: passkeys/posture.py:256
+msgid "Everyone else can still fall back to a password, so passkeys are optional for them."
+msgstr ""
+
+#: passkeys/enforcement_admin.py:29
+msgid "Exempt must be true or false."
+msgstr ""
+
+#. Label of the flagged (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:185
+msgid "Flagged"
+msgstr ""
+
+#. Label of the flagged_reason (Small Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:192
+msgid "Flagged Reason"
+msgstr ""
+
+#. Label of the passkey_enforce_grace_logins (Int) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:214
+msgid "Grace sign-ins"
+msgstr ""
+
+#. Label of the handle (Data) field in DocType 'WebAuthn User Handle'
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:27
+msgid "Handle"
+msgstr ""
+
+#. Label of the passkey_sign_count_hard_fail (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:265
+msgid "Hard-fail on Sign Count Regression"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:403
+msgid "Hide report"
+msgstr ""
+
+#. Description of the 'Re-authentication Window (Seconds)' (Int) field in
+#. DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:279
+msgid "How long after a password or passkey sign-in, or a fresh password or passkey confirmation, a user can add or remove passkeys without confirming again"
+msgstr ""
+
+#. Description of the 'Grace sign-ins' (Int) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:211
+msgid "How many more sign-ins an in-scope user may defer the enrollment prompt before it becomes blocking. Covers brand-new users' first session; 0 blocks immediately."
+msgstr ""
+
+#. Description of the 'Maximum prompts per user' (Int) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:231
+msgid "How many times the dismissible enrollment prompt may appear before it stops. Applies to Everyone else set to Nudge, to in-scope users before Starting on, and to devices that cannot create a passkey under Degrade to Nudge."
+msgstr ""
+
+#: passkeys/engine.py:187 passkeys/engine.py:256
+msgid "Impossible passkey backup state."
+msgstr ""
+
+#. Description of the 'Require a passkey from' (Select) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:165
+msgid "In-scope users must enroll after signing in. This is a post-login prompt with grace sign-ins, never a server-side login block."
+msgstr ""
+
+#: passkeys/policy.py:257
+#, python-brace-format
+msgid "Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins."
+msgstr ""
+
+#: passkeys/policy.py:262
+#, python-brace-format
+msgid "Invalid Trusted App Origin {0}: the hash must be an unpadded base64url SHA-256 of the app-signing certificate (43 characters from A-Z a-z 0-9 - _). Use Google's Play app-signing certificate, not the upload key."
+msgstr ""
+
+#: passkeys/policy.py:183
+#, python-brace-format
+msgid "Invalid passkey origin {0}: expected scheme://host[:port], one per line"
+msgstr ""
+
+#. Description of the 'Transports' (Small Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:94
+msgid "JSON list stored verbatim, unknown values kept"
+msgstr ""
+
+#: passkeys/posture.py:174
+msgid "Keep 'Login with Passkey' on for enrolled LDAP-only accounts, or ensure they can start the app's password-to-passkey flow."
+msgstr ""
+
+#: passkeys/posture.py:149
+msgid "Keep 'Login with Passkey' on for enrolled accounts that rely on social login, or ensure they can start the app's password-to-passkey flow."
+msgstr ""
+
+#: passkeys/posture.py:227
+msgid "Keep 'Login with Passkey' on for enrolled email-link-only accounts, or ensure they can start the app's password-to-passkey flow."
+msgstr ""
+
+#: passkeys/posture.py:163
+msgid "LDAP sign-in"
+msgstr ""
+
+#: passkeys/posture.py:160 passkeys/posture.py:171
+msgid "LDAP sign-in is enabled."
+msgstr ""
+
+#. Label of the label (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:48
+msgid "Label"
+msgstr ""
+
+#. Label of the last_used_at (Datetime) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:199
+msgid "Last Used At"
+msgstr ""
+
+#. Label of the last_used_ip (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:206
+msgid "Last Used IP"
+msgstr ""
+
+#. Description of the 'Allow First Passkey After Email-Link or Social Sign-in'
+#. (Check) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:287
+msgid "Lets a user with no enabled passkey, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on"
+msgstr ""
+
+#. Label of the passkey_notify_password_login (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:321
+msgid "Log password sign-ins by passkey holders"
+msgstr ""
+
+#. Label of the login_modes_tab (Tab Break) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:55
+msgid "Login Modes"
+msgstr ""
+
+#. Label of the login_with_passkey (Check) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:67
+msgid "Login with Passkey"
+msgstr ""
+
+#: passkeys/posture.py:213 passkeys/posture.py:224
+msgid "Login with email link is enabled."
+msgstr ""
+
+#: passkeys/posture.py:306
+msgid "Lower 'Re-authentication Window (Seconds)' if management should re-verify sooner."
+msgstr ""
+
+#: passkeys/engine.py:146 passkeys/engine.py:148
+msgid "Malformed client data."
+msgstr ""
+
+#: passkeys/www/passkeys.html:31
+msgid "Managing passkeys needs JavaScript. Please enable it and reload this page."
+msgstr ""
+
+#. Label of the passkey_max_per_user (Int) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:271
+msgid "Maximum Passkeys per User"
+msgstr ""
+
+#. Label of the passkey_nudge_max_prompts (Int) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:234
+msgid "Maximum prompts per user"
+msgstr ""
+
+#. Description of the 'Days between prompts' (Int) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:238
+msgid "Minimum days between those prompts. Applies wherever Maximum prompts per user applies."
+msgstr ""
+
+#: passkeys/confirm.py:455
+msgid "Missing confirmation payload."
+msgstr ""
+
+#. Label of the mobile_apps_section (Section Break) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:117
+msgid "Mobile Apps"
+msgstr ""
+
+#: passkeys/www/passkeys.html:14 passkeys/www/passkeys.html:19
+msgid "My Passkeys"
+msgstr ""
+
+#. Description of the 'Trusted App Origins' (Small Text) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:120
+msgid "Native Android app origins, one per line, as android:apk-key-hash:&lt;hash&gt;. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin. To let a native app share these passkeys, see the <a href=\"https://andrometiq.github.io/frappe-passkeys/mobile-apps.html\" target=\"_blank\" rel=\"noopener noreferrer\">mobile apps guide</a>."
+msgstr ""
+
+#. Option for the 'Discoverable' (Select) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:161
+msgid "No"
+msgstr ""
+
+#: passkeys/posture.py:204
+msgid "No change needed — this is the intended second-factor floor."
+msgstr ""
+
+#. Option for the 'Require a passkey from' (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:169
+msgid "No one"
+msgstr ""
+
+#: passkeys/posture.py:73
+msgid "No passkey login mode is on, so every sign-in uses another method."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:145
+msgid "No passkeys stop working."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:125
+msgid "No role has Two Factor Authentication enabled, so the two-factor backstop covers nobody. Consider enabling it for role 'All' in the Role list."
+msgstr ""
+
+#: passkeys/posture.py:325
+msgid "No stock bypass paths detected — passkeys are the only stock way to sign in."
+msgstr ""
+
+#: passkeys/enforcement_admin.py:35
+#, python-brace-format
+msgid "No such user: {0}"
+msgstr ""
+
+#: passkeys/posture.py:384
+#, python-brace-format
+msgid "None of this site's origins is inside the RP ID {0}, so passkey requirements are paused."
+msgstr ""
+
+#: passkeys/session.py:160
+msgid "Not permitted."
+msgstr ""
+
+#: passkeys/confirm.py:293
+msgid "Not set"
+msgstr ""
+
+#. Label of the notifications_tab (Tab Break) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:295
+msgid "Notifications"
+msgstr ""
+
+#. Label of the passkey_notify_on_change (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:307
+msgid "Notify on Passkey Changes"
+msgstr ""
+
+#. Label of the passkey_notify_password_fallback (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:314
+msgid "Notify on Password Fallback"
+msgstr ""
+
+#. Option for the 'Everyone else' (Select) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:201
+msgid "Nudge"
+msgstr ""
+
+#: passkeys/posture.py:126
+msgid "OTP fallback"
+msgstr ""
+
+#: passkeys/posture.py:118
+msgid "OTP fallback is enabled for passkey second factor."
+msgstr ""
+
+#. Option for the 'Everyone else' (Select) field in DocType 'Passkey Settings'
+#: passkeys/api/credentials.py:186 passkeys/confirm.py:291
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:201
+msgid "Off"
+msgstr ""
+
+#: passkeys/api/credentials.py:186 passkeys/confirm.py:291
+msgid "On"
+msgstr ""
+
+#: passkeys/passkey.py:165
+msgid "One more step to finish setting up this passkey."
+msgstr ""
+
+#: passkeys/posture.py:374
+msgid "One or more stock authentication settings could not be read."
+msgstr ""
+
+#: passkeys/policy.py:193
+#, python-brace-format
+msgid "Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:536
+#, python-brace-format
+msgid "Origins: {0}"
+msgstr ""
+
+#: passkeys/api/registration.py:285
+msgid "Passkey"
+msgstr ""
+
+#. Name of a DocType
+#: passkeys/passkeys/doctype/passkey_enforcement_role/passkey_enforcement_role.json:25
+msgid "Passkey Enforcement Role"
+msgstr ""
+
+#. Label of the passkey_only_login (Check) field in DocType 'WebAuthn User
+#. Handle'
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:39
+msgid "Passkey Only Login"
+msgstr ""
+
+#. Label of the passkey_origins (Small Text) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:104
+msgid "Passkey Origins"
+msgstr ""
+
+#. Label of the passkey_rp_id (Data) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:98
+msgid "Passkey RP ID"
+msgstr ""
+
+#: passkeys/policy.py:90
+#, python-brace-format
+msgid "Passkey RP ID must be a bare host name without scheme, port or path: {0}"
+msgstr ""
+
+#. Name of a DocType
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:329
+msgid "Passkey Settings"
+msgstr ""
+
+#: passkeys/notifications.py:52
+#, python-brace-format
+msgid "Passkey added: {0}"
+msgstr ""
+
+#. Label of the passkey_as_second_factor (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:74
+msgid "Passkey as Second Factor"
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:112
+msgid "Passkey as Second Factor cannot be the only passkey mode while username/password login is disabled. Enable Login with Passkey or re-enable username/password login."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:158
+msgid "Passkey as Second Factor is unusable for enrolled users while username/password login is disabled: the app's password leg cannot start, and alternate login completions are final-vetoed. Keep Login with Passkey enabled as their usable route."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:119
+msgid "Passkey as Second Factor requires Two Factor Authentication to be enabled in System Settings — it is the backstop for password logins that bypass the passkey UI."
+msgstr ""
+
+#: passkeys/posture.py:189
+msgid "Passkey as Second Factor requires core Two Factor Authentication as a defence-in-depth floor. The final login veto still blocks enrolled users, but this configuration is unsupported."
+msgstr ""
+
+#: passkeys/engine.py:265
+msgid "Passkey backup eligibility changed — the credential is refused."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:165
+msgid "Passkey change notifications are off. They are the compensating control for credential registration hijack — leave them on outside mail-less development sites."
+msgstr ""
+
+#: passkeys/confirm.py:399
+msgid "Passkey confirmation could not be completed. Re-authenticate and begin again."
+msgstr ""
+
+#: passkeys/ceremony.py:64 passkeys/ceremony.py:119 passkeys/ceremony.py:145
+#: passkeys/ceremony.py:147 passkeys/ceremony.py:150 passkeys/ceremony.py:193
+#: passkeys/ceremony.py:198 passkeys/confirm.py:374 passkeys/confirm.py:381
+#: passkeys/engine.py:258 passkeys/passkey.py:119 passkeys/passkey.py:126
+#: passkeys/passkey.py:129 passkeys/passkey.py:149 passkeys/passkey.py:183
+#: passkeys/passkey.py:191 passkeys/passkey.py:193 passkeys/passkey.py:197
+#: passkeys/passkey.py:204 passkeys/passkey.py:228 passkeys/passkey.py:231
+#: passkeys/passkey.py:253 passkeys/passkey.py:262 passkeys/passkey.py:395
+#: passkeys/passkey.py:401 passkeys/passkey.py:404 passkeys/passkey.py:440
+#: passkeys/passkey.py:442 passkeys/passkey.py:493 passkeys/passkey.py:498
+#: passkeys/passkey.py:675 passkeys/passkey.py:678
+msgid "Passkey could not be verified."
+msgstr ""
+
+#: passkeys/passkey.py:456
+msgid "Passkey could not be verified. Please sign in again."
+msgstr ""
+
+#: passkeys/engine.py:194
+msgid "Passkey credential id is too long."
+msgstr ""
+
+#: passkeys/notifications.py:85
+#, python-brace-format
+msgid "Passkey disabled: {0}"
+msgstr ""
+
+#: passkeys/notifications.py:98
+#, python-brace-format
+msgid "Passkey flagged: {0} ({1})"
+msgstr ""
+
+#: passkeys/session.py:132 passkeys/session.py:162
+msgid "Passkey management requires a signed-in browser session."
+msgstr ""
+
+#: passkeys/posture.py:305
+msgid "Passkey management stays authorized for this long after a sign-in or re-auth."
+msgstr ""
+
+#: passkeys/api/credentials.py:230
+msgid "Passkey not found."
+msgstr ""
+
+#: passkeys/policy.py:189
+#, python-brace-format
+msgid "Passkey origin {0} must use HTTPS (http is allowed only for localhost while developer mode is on)"
+msgstr ""
+
+#: passkeys/api/registration.py:261
+msgid "Passkey registration could not be completed. Re-authenticate and begin again."
+msgstr ""
+
+#: passkeys/api/registration.py:89 passkeys/api/registration.py:98
+#: passkeys/api/registration.py:237 passkeys/engine.py:189
+msgid "Passkey registration could not be verified."
+msgstr ""
+
+#: passkeys/notifications.py:75
+#, python-brace-format
+msgid "Passkey removed: {0}"
+msgstr ""
+
+#: passkeys/passkey.py:303
+msgid "Passkey second factor is not available."
+msgstr ""
+
+#: passkeys/engine.py:275
+msgid "Passkey signature counter regressed."
+msgstr ""
+
+#: passkeys/engine.py:271
+msgid "Passkey signature counter replay detected."
+msgstr ""
+
+#: passkeys/api/credentials.py:186
+msgid "Passkey-only login"
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:108
+#, python-brace-format
+msgid "Passkey-only login requires at least one enabled passkey for user {0}."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:105
+msgid "Passkey-only login requires at least one passkey login mode to be enabled."
+msgstr ""
+
+#: passkeys/posture.py:81
+msgid "Passkeys are not an active login factor on this site."
+msgstr ""
+
+#: passkeys/posture.py:72
+msgid "Passkeys are not an active login factor."
+msgstr ""
+
+#: passkeys/api/registration.py:43
+msgid "Passkeys are not configured for this site."
+msgstr ""
+
+#: passkeys/api/registration.py:167
+msgid "Passkeys are not enabled."
+msgstr ""
+
+#: passkeys/rp_admin.py:94
+msgid "Passkeys are off on this site, so every passkey would look stale. Fix the RP ID first."
+msgstr ""
+
+#: passkeys/posture.py:388
+msgid "Passkeys are off on this site."
+msgstr ""
+
+#: passkeys/posture.py:90
+msgid "Passkeys are off on this site: its address isn't covered by the RP ID."
+msgstr ""
+
+#: passkeys/www/passkeys.py:58
+msgid "Passkeys are served natively by this site."
+msgstr ""
+
+#: passkeys/ceremony.py:50 passkeys/confirm.py:322 passkeys/passkey.py:557
+msgid "Passkeys aren't set up for this site."
+msgstr ""
+
+#: passkeys/session.py:182
+msgid "Passkeys can't be changed or used while impersonating a user."
+msgstr ""
+
+#: passkeys/www/passkeys.html:21
+msgid "Passkeys let you sign in with your fingerprint, face, screen lock, or a security key — no password to type."
+msgstr ""
+
+#: passkeys/passkey.py:535
+msgid "Passkeys require this site's encryption key. Contact your administrator."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:148
+msgid "Passkeys would be off on this site with this RP ID."
+msgstr ""
+
+#: passkeys/posture.py:286
+msgid "Password login is allowed, Passkey as Second Factor is on, and Administrator has no enabled passkey. The per-user passwordless flag does not apply to Administrator."
+msgstr ""
+
+#: passkeys/posture.py:239
+msgid "Password reset by email is available."
+msgstr ""
+
+#: passkeys/posture.py:102
+msgid "Password sign-in is enabled."
+msgstr ""
+
+#: passkeys/auth_hooks.py:100
+msgid "Password sign-in is not allowed for this account. Sign in using the site's login page."
+msgstr ""
+
+#: passkeys/passkey.py:307
+msgid "Password sign-in is turned off for this site."
+msgstr ""
+
+#. Description of the 'Login with Passkey' (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:64
+msgid "Passwordless first-factor login with a passkey (and the login page UI)"
+msgstr ""
+
+#: passkeys/confirm.py:390
+msgid "Please verify it's you to confirm this action."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:181
+msgid "Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first."
+msgstr ""
+
+#. Label of the prompts_section (Section Break) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:227
+msgid "Prompts"
+msgstr ""
+
+#. Label of the public_key (Text) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:81
+msgid "Public Key"
+msgstr ""
+
+#. Label of the rp_id (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:178
+msgid "RP ID"
+msgstr ""
+
+#: passkeys/posture.py:304
+#, python-brace-format
+msgid "Re-auth window is {0} seconds."
+msgstr ""
+
+#. Label of the passkey_reauth_window (Int) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:282
+msgid "Re-authentication Window (Seconds)"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:502
+msgid "Recalculate"
+msgstr ""
+
+#. Description of the 'Log password sign-ins by passkey holders' (Check) field
+#. in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:318
+msgid "Record a risk event when a user who has a passkey signs in with their password instead (Activity Log telemetry; off by default)"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:203
+msgid "Recounting in the background…"
+msgstr ""
+
+#: passkeys/install.py:309
+msgid "Refusing to merge a credential export into live passkey data. Import into an empty installation, or pass allow_existing=True after reviewing conflicts."
+msgstr ""
+
+#. Description of the 'Hard-fail on Sign Count Regression' (Check) field in
+#. DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:262
+msgid "Reject logins on a signature-counter regression instead of logging and flagging the credential"
+msgstr ""
+
+#. Label of the relying_party_tab (Tab Break) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:87
+msgid "Relying Party"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:627
+msgid "Remove passkeys"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:552
+msgid "Remove stale passkeys"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:625
+msgid "Remove stale passkeys?"
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:77
+msgid "Remove this user's passkeys before deleting their WebAuthn User Handle."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:626
+#, python-brace-format
+msgid "Remove {0} passkey(s) that don't work with the saved RP ID {1}? Their owners get the usual email that a passkey was removed. Flagged passkeys are kept for review. This can't be undone."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:636
+#, python-brace-format
+msgid "Removed {0} passkey(s)."
+msgstr ""
+
+#. Label of the passkey_enforce_scope (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:168
+msgid "Require a passkey from"
+msgstr ""
+
+#: passkeys/posture.py:351
+msgid "Require a passkey from the users you want covered, then set 'Passwordless login only' for them."
+msgstr ""
+
+#. Label of the resolved_rp_html (HTML) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:109
+msgid "Resolved Configuration"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:532
+msgid "Resolves to"
+msgstr ""
+
+#: passkeys/posture.py:375
+msgid "Retry the check and inspect the failed System Settings, Social Login, or LDAP configuration."
+msgstr ""
+
+#: passkeys/posture.py:364
+msgid "Review any custom login code separately — this checklist covers stock Frappe only."
+msgstr ""
+
+#. Label of the role (Link) field in DocType 'Passkey Enforcement Role'
+#: passkeys/passkeys/doctype/passkey_enforcement_role/passkey_enforcement_role.json:15
+msgid "Role"
+msgstr ""
+
+#. Label of the passkey_enforce_roles (Table MultiSelect) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:176
+msgid "Roles"
+msgstr ""
+
+#. Description of the 'Credential ID SHA-256' (Data) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json
+msgid "SHA-256 hex of the raw credential id — the lookup and global-uniqueness key"
+msgstr ""
+
+#. Description of the 'Android Signing Certificate SHA-256 Fingerprints' (Small
+#. Text) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json
+msgid "SHA-256 signing-certificate fingerprint(s) for assetlinks.json, one per line (hex; colons optional). Use Google's Play app-signing certificate (Play Console → App integrity → App signing); include the upload key too during rollout. Required together with the package name to serve assetlinks.json."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:557
+msgid "Save the RP ID change first."
+msgstr ""
+
+#. Label of the security_tab (Tab Break) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:253
+msgid "Security"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:387
+#: passkeys/public/js/passkey_settings.js:416
+msgid "Security posture"
+msgstr ""
+
+#: passkeys/posture.py:341 passkeys/posture.py:373
+msgid "Security posture could not be fully determined."
+msgstr ""
+
+#. Option for the 'Require a passkey from' (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:169
+msgid "Selected roles"
+msgstr ""
+
+#: passkeys/confirm.py:312
+msgid "Send either params or a payload fingerprint, not both."
+msgstr ""
+
+#: passkeys/posture.py:391
+msgid "Set the Passkey RP ID to cover this site's address, or set host_name back. Passkeys made for another RP ID stay unusable."
+msgstr ""
+
+#. Label of the sign_count (Long Int) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:90
+msgid "Sign Count"
+msgstr ""
+
+#. Description of the 'Conditional Create' (Check) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:245
+msgid "Silently upgrade password users to a passkey where the browser supports conditional create"
+msgstr ""
+
+#: passkeys/posture.py:135 passkeys/posture.py:146
+#, python-brace-format
+msgid "Social login is enabled: {0}."
+msgstr ""
+
+#. Description of the 'Enabled' (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:53
+msgid "Soft-disable without delete (admin revocation keeps the row for forensics)"
+msgstr ""
+
+#. Label of the passkey_enforce_after (Date) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:192
+msgid "Starting on"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:541
+#, python-brace-format
+msgid "Suggested from this site's address ({0}). Review it, then save."
+msgstr ""
+
+#. Name of a role
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:337
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:225
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:56
+msgid "System Manager"
+msgstr ""
+
+#: passkeys/passkey.py:477
+msgid "That passkey didn't work — please try again."
+msgstr ""
+
+#: passkeys/confirm.py:446 passkeys/passkey.py:243
+msgid "That password didn't match — try again."
+msgstr ""
+
+#: passkeys/api/registration.py:93 passkeys/ceremony.py:107
+#: passkeys/confirm.py:379 passkeys/passkey.py:123 passkeys/passkey.py:226
+#: passkeys/passkey.py:249 passkeys/passkey.py:398 passkeys/passkey.py:496
+msgid "That took too long — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:80
+msgid "The Passkeys app's files didn't load in this browser, so passkeys can't be turned on here (you can still turn them off). Reload the page. If this stays, the server isn't serving the app's files: run bench build --app passkeys and bench restart, or on Frappe Cloud, deploy the bench again."
+msgstr ""
+
+#: passkeys/rp_admin.py:97
+msgid "The RP ID changed since this page loaded. Reload and try again."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:95
+msgid "The RP ID of a WebAuthn Credential can never change."
+msgstr ""
+
+#. Description of the 'RP ID' (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:173
+msgid "The RP ID this passkey was made for. It works only while the site's RP ID is exactly this value."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:264
+msgid "The count could not start because the job queue is full. Try again later."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:247
+msgid "The enforcement preview recount could not start because the job queue is full. Try again later."
+msgstr ""
+
+#: passkeys/notifications.py:88
+#, python-brace-format
+msgid "The passkey “{0}” on your account was disabled by an administrator on {1}. You can no longer sign in with it.{2} Contact your administrator if this was unexpected."
+msgstr ""
+
+#: passkeys/notifications.py:63
+#, python-brace-format
+msgid "The passkey “{0}” was removed from your account on {1} and no longer works there. If your phone, computer or password manager still lists it, delete it there too. If you didn't expect this, contact your administrator."
+msgstr ""
+
+#: passkeys/install.py:48
+#, python-brace-format
+msgid "The passkeys app needs Frappe {0} or later on this line; this site runs {1}."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:367
+msgid "The security report couldn’t be loaded right now."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:107
+msgid "The signature counter is never written downward."
+msgstr ""
+
+#: passkeys/boot.py:500
+msgid "The unsaved enforcement settings could not be read."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:97
+msgid "The user of a WebAuthn Credential can never change."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:89
+msgid "The user of a WebAuthn User Handle can never change."
+msgstr ""
+
+#: passkeys/install.py:61
+msgid "This Frappe installation serves passkeys natively (frappe.passkey). The passkeys app is an upgrade vehicle for sites that predate the native implementation — it cannot be freshly installed on top of it."
+msgstr ""
+
+#: passkeys/auth_hooks.py:59
+msgid "This account requires a passkey after the password. Please sign in from the passkey login form."
+msgstr ""
+
+#: passkeys/auth_hooks.py:71
+msgid "This account signs in with a passkey. Please use your passkey to continue."
+msgstr ""
+
+#: passkeys/confirm.py:453
+msgid "This action requires a passkey — a password can't confirm it."
+msgstr ""
+
+#: passkeys/confirm.py:204 passkeys/confirm.py:307 passkeys/confirm.py:367
+#: passkeys/confirm.py:429
+msgid "This action requires a signed-in browser session."
+msgstr ""
+
+#: passkeys/install.py:415
+#, python-brace-format
+msgid "This export restores passkey-only user(s) ({0}), but no passkey login mode is enabled on this site. Enable 'Login with Passkey' in Passkey Settings before importing, or those users would be locked out."
+msgstr ""
+
+#: passkeys/posture.py:244
+msgid "This is inherent to password sign-in — disable password sign-in to remove it."
+msgstr ""
+
+#: passkeys/posture.py:203
+msgid "This is the required core floor behind the app's final-login veto."
+msgstr ""
+
+#: passkeys/api/credentials.py:150
+msgid "This is your only passkey and Disable Username/Password Login is on in System Settings — add another enabled passkey or turn off Disable Username/Password Login in System Settings before removing it."
+msgstr ""
+
+#: passkeys/api/credentials.py:145
+msgid "This is your only passkey and passwordless login is on for your account — add another passkey (or turn off passkey-only login) before removing it."
+msgstr ""
+
+#: passkeys/passkey.py:146
+msgid "This passkey can't complete a passwordless sign-in. Please verify another way."
+msgstr ""
+
+#: passkeys/api/registration.py:273
+msgid "This passkey is already registered."
+msgstr ""
+
+#: passkeys/ceremony.py:155 passkeys/passkey.py:136 passkeys/passkey.py:266
+msgid "This passkey was made for another address and doesn't work on this site."
+msgstr ""
+
+#: passkeys/install.py:432
+msgid "This site has no encryption_key; a credential export cannot be authenticated."
+msgstr ""
+
+#: passkeys/errors.py:64
+msgid "This site serves passkeys natively."
+msgstr ""
+
+#: passkeys/posture.py:381
+#, python-brace-format
+msgid "This site's address isn't covered by the RP ID {0}, so no passkey can sign in here and passkey requirements are paused."
+msgstr ""
+
+#: passkeys/confirm.py:442 passkeys/passkey.py:238
+msgid "Too many attempts. Please try again later."
+msgstr ""
+
+#. Label of the transports (Small Text) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:97
+msgid "Transports"
+msgstr ""
+
+#. Label of the passkey_app_origins (Small Text) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:123
+msgid "Trusted App Origins"
+msgstr ""
+
+#: passkeys/posture.py:123
+msgid "Turn off 'Allow OTP Fallback for Passkey Second Factor' to require the passkey leg for enrolled users."
+msgstr ""
+
+#: passkeys/posture.py:215
+msgid "Turn off 'Login with email link' in System Settings."
+msgstr ""
+
+#: passkeys/posture.py:105
+msgid "Turn on 'Disable Username/Password Login' in System Settings to remove it site-wide, or set 'Passwordless login only' on a user who is not Administrator (needs 2+ passkeys). That per-user flag does not cover Administrator."
+msgstr ""
+
+#: passkeys/posture.py:193
+msgid "Turn on 'Enable Two Factor Auth' in System Settings."
+msgstr ""
+
+#: passkeys/posture.py:273
+msgid "Turn on 'Hard-fail on Sign Count Regression' to reject a suspected clone (may lock out authenticators with buggy counters)."
+msgstr ""
+
+#: passkeys/posture.py:74
+msgid "Turn on 'Login with Passkey' or 'Passkey as Second Factor' above to start."
+msgstr ""
+
+#: passkeys/posture.py:187
+msgid "Two Factor Authentication is off."
+msgstr ""
+
+#: passkeys/posture.py:202
+#, python-brace-format
+msgid "Two Factor Authentication is on ({0})."
+msgstr ""
+
+#. Label of the uv_initialized (Check) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:153
+msgid "UV Initialized"
+msgstr ""
+
+#. Option for the 'Discoverable' (Select) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:161
+msgid "Unknown"
+msgstr ""
+
+#: passkeys/passkey.py:638
+msgid "Unknown enforcement event."
+msgstr ""
+
+#: passkeys/boot.py:472
+msgid "Unknown enforcement preview."
+msgstr ""
+
+#: passkeys/boot.py:128
+msgid "Unknown nudge event."
+msgstr ""
+
+#: passkeys/api/registration.py:32
+msgid "Unknown registration flow."
+msgstr ""
+
+#: passkeys/engine.py:198
+msgid "Unsupported passkey algorithm."
+msgstr ""
+
+#. Description of the 'Passkey as Second Factor' (Check) field in DocType
+#. 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:71
+msgid "Use a passkey as the second factor after password login; requires Two Factor Authentication to be enabled in System Settings"
+msgstr ""
+
+#: passkeys/posture.py:290
+msgid "Use named System Manager accounts day to day. Enrol a passkey for Administrator with 'Passkey as Second Factor' on. Restrict Administrator by IP (User → Restrict IP). Set notify_admin_access_to_system_manager in site config to be emailed when Administrator logs in. Keep a strong, vaulted password."
+msgstr ""
+
+#: passkeys/confirm.py:436
+msgid "Use your passkey to confirm — password re-authentication is disabled for this account."
+msgstr ""
+
+#. Label of the user (Link) field in DocType 'WebAuthn Credential'
+#. Label of the user (Link) field in DocType 'WebAuthn User Handle'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:37
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:17
+msgid "User"
+msgstr ""
+
+#. Description of the 'Label' (Data) field in DocType 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:44
+msgid "User-renamable nickname; defaults to the authenticator provider name"
+msgstr ""
+
+#: passkeys/posture.py:316
+#, python-brace-format
+msgid "Users can still sign in without a passkey via: {0}."
+msgstr ""
+
+#. Description of the 'Everyone else' (Select) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:197
+msgid "Users outside the scope: a dismissible enrollment prompt (capped below), or nothing."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:392
+msgid "View recommendations"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:392
+msgid "View report"
+msgstr ""
+
+#. Name of a DocType
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:214
+msgid "WebAuthn Credential"
+msgstr ""
+
+#. Name of a DocType
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:46
+msgid "WebAuthn User Handle"
+msgstr ""
+
+#. Description of the 'Sign Count' (Long Int) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:87
+msgid "WebAuthn uint32 counter; updated upward only, never regressed"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:427
+msgid "What this checks"
+msgstr ""
+
+#. Description of the 'Device cannot create a passkey' (Select) field in
+#. DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:218
+msgid "What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). Degrade to Nudge never locks the device out; Block + Notify Admin keeps prompting and records a risk event instead."
+msgstr ""
+
+#. Label of the enforcement_section (Section Break) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:207
+msgid "When a passkey is required"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:430
+msgid "Why passkeys are safer — and when they aren’t →"
+msgstr ""
+
+#. Option for the 'Discoverable' (Select) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:161
+msgid "Yes"
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:124
+msgid "Yes, change it"
+msgstr ""
+
+#: passkeys/api/registration.py:216
+#, python-brace-format
+msgid "You have reached the maximum of {0} passkeys."
+msgstr ""
+
+#: passkeys/notifications.py:234
+msgid "You may need to sign in again."
+msgstr ""
+
+#: passkeys/notifications.py:121
+msgid "You signed in with a one-time code instead of your passkey"
+msgstr ""
+
+#: passkeys/request_security.py:31 passkeys/state.py:179
+msgid "You've hit the rate limit. Please try again shortly."
+msgstr ""
+
+#: passkeys/notifications.py:123
+#, python-brace-format
+msgid "Your account has a passkey, but a recent sign-in on {0} used a one-time code (OTP) instead. If this wasn't you, review your account security."
+msgstr ""
+
+#: passkeys/notifications.py:40
+#, python-brace-format
+msgid "Your browser saved a passkey “{0}” for your account on {1}{2} after you signed in with your password. Next time you can sign in with it. If you didn't just sign in, remove it on your My Passkeys page{3} and change your password."
+msgstr ""
+
+#: passkeys/notifications.py:101
+#, python-brace-format
+msgid "Your passkey “{0}” was flagged after a sign-in on {1}: it may have been copied. If you don't recognize a recent sign-in, remove this passkey on your My Passkeys page{2} and contact your administrator."
+msgstr ""
+
+#: passkeys/posture.py:197
+msgid "a verification code"
+msgstr ""
+
+#: passkeys/well_known.py:76
+msgid "apple-app-site-association is not configured."
+msgstr ""
+
+#: passkeys/well_known.py:63
+msgid "assetlinks.json is not configured."
+msgstr ""
+
+#. Description of the 'Public Key' (Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:78
+msgid "base64url COSE public key bytes, stored verbatim"
+msgstr ""
+
+#. Description of the 'Handle' (Data) field in DocType 'WebAuthn User Handle'
+#: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json
+msgid "base64url of 64 random bytes — the WebAuthn user.id; immutable forever"
+msgstr ""
+
+#. Description of the 'Credential ID' (Long Text) field in DocType 'WebAuthn
+#. Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:59
+msgid "base64url; the spec allows up to 1023 bytes"
+msgstr ""
+
+#. Option for the 'Authenticator Attachment' (Select) field in DocType
+#. 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:169
+msgid "cross-platform"
+msgstr ""
+
+#: passkeys/posture.py:216
+msgid "email-link sign-in"
+msgstr ""
+
+#. Label of the passkey_ios_bundle_id (Data) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:151
+msgid "iOS Bundle ID"
+msgstr ""
+
+#: passkeys/well_known.py:148
+msgid "iOS Bundle ID must be in reverse-DNS form, for example com.example.app."
+msgstr ""
+
+#. Label of the passkey_ios_team_id (Data) field in DocType 'Passkey Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:145
+msgid "iOS Team ID"
+msgstr ""
+
+#: passkeys/well_known.py:145
+msgid "iOS Team ID must be 10 uppercase letters or digits, for example ABCDE12345."
+msgstr ""
+
+#. Description of the 'iOS Bundle ID' (Data) field in DocType 'Passkey
+#. Settings'
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:148
+msgid "iOS bundle identifier for apple-app-site-association, e.g. com.example.app. Team ID and Bundle ID are both required to serve the file."
+msgstr ""
+
+#: passkeys/well_known.py:88
+msgid "passkey-endpoints is not configured."
+msgstr ""
+
+#: passkeys/posture.py:109
+msgid "password sign-in"
+msgstr ""
+
+#. Option for the 'Authenticator Attachment' (Select) field in DocType
+#. 'WebAuthn Credential'
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:169
+msgid "platform"
+msgstr ""
+
+#: passkeys/posture.py:138
+msgid "social login"
+msgstr ""
+
+#: passkeys/posture.py:295
+msgid "the Administrator password"
+msgstr ""
+
+#: passkeys/policy.py:49
+#, python-brace-format
+msgid "the Python child process could not start: {0}"
+msgstr ""
+
+#: passkeys/policy.py:52
+#, python-brace-format
+msgid "the dependency check exited with status {0}"
+msgstr ""
+
+#: passkeys/policy.py:45
+#, python-brace-format
+msgid "the dependency check timed out after {0} seconds"
+msgstr ""
+
+#: passkeys/install.py:442
+#, python-brace-format
+msgid "{0} belongs to a different site."
+msgstr ""
+
+#: passkeys/install.py:447
+#, python-brace-format
+msgid "{0} failed credential-export integrity verification."
+msgstr ""
+
+#: passkeys/install.py:452
+#, python-brace-format
+msgid "{0} has an invalid credential-export structure."
+msgstr ""
+
+#: passkeys/install.py:454
+#, python-brace-format
+msgid "{0} has inconsistent credential-export counts."
+msgstr ""
+
+#: passkeys/install.py:445
+#, python-brace-format
+msgid "{0} has no supported export signature."
+msgstr ""
+
+#: passkeys/install.py:438
+#, python-brace-format
+msgid "{0} is not a passkeys credential export."
+msgstr ""
+
+#: passkeys/notifications.py:150
+#, python-brace-format
+msgid "{0} is required to register a passkey to keep signing in, but reports that their device cannot create one. Consider granting this user an exemption from the Passkeys section of their User form, resetting their grace budget, or issuing a hardware security key."
+msgstr ""
+
+#: passkeys/posture.py:253
+#, python-brace-format
+msgid "{0} of {1} users use passwordless-only login."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:146
+#, python-brace-format
+msgid "{0} passkey(s) of {1} user(s) made for {2} will work again."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:550
+#, python-brace-format
+msgid "{0} passkey(s) of {1} user(s) were made for another RP ID and don't work on this site."
+msgstr ""
+
+#: passkeys/public/js/passkey_settings.js:144
+#, python-brace-format
+msgid "{0} passkey(s) of {1} user(s) will stop working on this site."
+msgstr ""
+
+#: passkeys/install.py:440
+#, python-brace-format
+msgid "{0} uses an unsupported passkeys export version."
+msgstr ""
+
