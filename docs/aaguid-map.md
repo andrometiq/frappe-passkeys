@@ -6,8 +6,8 @@ It powers two display surfaces and nothing else:
 
 - the provider name on management cards (served to the browser at
   `/assets/passkeys/aaguid-map.json`; the server also resolves it into the
-  `provider` field of `list_credentials`). Desk requests the file with the
-  app version as a query string (`?v=16.0.9`), so after an app update the
+  `provider` field of `list_credentials`). Desk and the `/passkeys` page request
+  the file with the app version as a query string (`?v=16.0.9`), so after an app update the
   browser fetches the new snapshot instead of an asset it cached, and
 - the default label a new credential gets when the user doesn't name it.
 

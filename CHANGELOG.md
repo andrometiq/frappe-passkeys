@@ -42,13 +42,19 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A flagged passkey's card no longer says it was disabled: flagging never disables a passkey.
 - An out-of-range number in Passkey Settings names the setting exactly as the form labels it.
 - Passkey cards show short provider names (one provider's name was a long description with a web
-  link), and Desk picks up new provider names right after an app update.
+  link), and Desk and the `/passkeys` page pick up new provider names right after an app update.
 - Trusted App Origins help links to the mobile apps guide and shows its whole text.
 - Saving an RP ID change now finishes after you confirm "Change the RP ID?"; you no longer click
   Save twice.
 - Links in Passkey Settings ("Learn more", links in notices) are underlined so they read as links.
 - Change emails: a passkey name containing `<` or `&` shows as typed, a passkey with no name is
   named by its ID, and the added email's IP address sits inside its sentence and is escaped.
+- "No Relying Party ID" (the Passkey Settings notice and the Save refusal) says where Passkey RP ID
+  is (the Relying Party tab) and, if you just set host_name, to wait a minute and save again.
+- A host_name ending in a slash (`https://erp.example.com/`) counts as the site's address:
+  passkeys turn on without listing it under Passkey Origins, and emails name it.
+- On a phone, a flagged passkey's warning uses the card's full width instead of a narrow column.
+- The Trusted App Origins error gives the same iOS advice as the field's help.
 - Docs: the login lock is per user and per IP address (not "IP-based"), and passkey sign-in doesn't
   count toward it; the security guide names the real System Settings option to turn off.
 
@@ -58,6 +64,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   days old.
 - Bug report and feature request forms; security reports go to the private form.
 - pre-commit now checks the YAML under `.github/`.
+- CodeQL code scanning for Python and JavaScript on every push and pull request.
 
 ## [15.0.8] / [16.0.8] — 2026-11-16
 

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import frappe
 
-from passkeys import boot
+from passkeys import __version__, boot
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.shims import portal_nudge
 from passkeys.tests.committed_state import delete_fixture
@@ -146,6 +146,13 @@ class PortalNudgeContextTest(PinnedSiteRp, IntegrationTestCase):
 		page = passkeys_page.get_context(frappe._dict(boot={}))
 		self.assertIs(ctx.boot["passkeys"]["impersonated"], True)
 		self.assertIs(page.boot["passkeys"]["impersonated"], True)
+
+	# (h) /passkeys carries the app version where Desk's boot does, so the provider map is
+	#     fetched fresh after an update.
+	def test_passkeys_page_boot_carries_the_app_version(self):
+		frappe.set_user(self._user())
+		page = passkeys_page.get_context(frappe._dict(boot={}))
+		self.assertEqual(page.boot["versions"], {"passkeys": __version__})
 
 	# (b) Guest render ⇒ zero passkey bytes (the nudge is authenticated-only).
 	def test_guest_render_ships_no_bundle(self):

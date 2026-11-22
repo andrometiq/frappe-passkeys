@@ -57,6 +57,30 @@ chromium_only("passkey management — portal /passkeys", () => {
 			.and("match", /^Delete passkey /);
 	});
 
+	it("gives a flagged card's note the card's full width on a phone", () => {
+		cy.login(USER, PW());
+		cy.purge_server_passkeys(USER);
+		const site = new URL(Cypress.config("baseUrl"));
+		cy.call("passkeys.tests.fake_webauthn.enroll", {
+			user: USER, seed: "portal-flagged-phone", rp_id: site.hostname, origin: site.origin, label: "Work laptop",
+		}).then((r) =>
+			cy.call("frappe.client.set_value", {
+				doctype: "WebAuthn Credential",
+				name: (r.message || r).name,
+				fieldname: JSON.stringify({ flagged: 1, flagged_reason: "sign_count_regression" }),
+			}));
+		cy.viewport(390, 844);
+		cy.visit("/passkeys");
+		cy.get("#passkey-portal-root .passkey-card .alert-danger", { timeout: 20000 }).should("be.visible").then(($note) => {
+			const card = $note.closest(".passkey-card")[0].getBoundingClientRect();
+			const note = $note[0].getBoundingClientRect();
+			// Only the card's padding on either side: not squeezed between the key icon and the buttons.
+			expect(note.left - card.left, "left inset").to.be.lessThan(24);
+			expect(card.right - note.right, "right inset").to.be.lessThan(24);
+		});
+		cy.purge_server_passkeys(USER);
+	});
+
 	it("redirects a guest to the login page", () => {
 		cy.clearCookies();
 		cy.visit("/passkeys");

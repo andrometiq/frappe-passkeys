@@ -58,7 +58,7 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		if not rp_id:
 			frappe.throw(
 				_(
-					"Cannot enable passkeys: no Relying Party ID resolves. Fix it one of two ways: set host_name in the site config (site_config.json) to this site's domain, or enter an explicit Passkey RP ID (a bare host name) in the Passkey RP ID field."
+					"Cannot enable passkeys: no Relying Party ID resolves. Fix it one of two ways: set host_name in the site config (site_config.json) to this site's domain, or enter an explicit Passkey RP ID (a bare host name) in Passkey RP ID on the Relying Party tab. If you just set host_name, wait a minute and save again."
 				)
 			)
 		policy.validate_origins(self, rp_id)

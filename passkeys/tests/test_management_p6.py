@@ -183,6 +183,17 @@ class NotificationTest(_Base):
 			notifications.notify_credential_disabled(user, "Phone")
 		self.assertIn(f" on {frappe.local.site}.", self.sent[-1]["message"])
 
+	def test_change_emails_read_a_host_name_with_a_trailing_slash(self):
+		self._open_at("https://erp.example.com/")
+		notifications.notify_credential_added(self._user(), "Phone")
+		self.assertEqual(
+			self.sent[0]["message"],
+			"A new passkey “Phone” was just added to your account on erp.example.com."
+			" If this wasn't you, remove it on your My Passkeys page"
+			' (<a href="https://erp.example.com/passkeys">https://erp.example.com/passkeys</a>)'
+			" and change your password immediately.",
+		)
+
 	def test_flagged_email_sent_once_on_sign_count_regression(self):
 		user = self._user()
 		self._open_at("https://erp.example.com")

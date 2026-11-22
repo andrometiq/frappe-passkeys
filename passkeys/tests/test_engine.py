@@ -280,11 +280,15 @@ class TestAppOrigins(IntegrationTestCase):
 			policy.validate_app_origins(frappe._dict({"passkey_app_origins": "https://example.com"}))
 
 	def test_validate_app_origins_rejects_ios_style_entry(self):
-		# iOS presents https://<rp_id> and must NOT be entered here.
-		with self.assertRaises(frappe.ValidationError):
+		# iOS presents a web origin: it belongs under Passkey Origins, not here.
+		with self.assertRaises(frappe.ValidationError) as refused:
 			policy.validate_app_origins(
 				frappe._dict({"passkey_app_origins": "ios:bundle-id:com.example.app"})
 			)
+		self.assertIn(
+			"configure the exact HTTPS origin asserted by the iOS app under Passkey Origins",
+			str(refused.exception),
+		)
 
 	def test_validate_app_origins_rejects_malformed_hash(self):
 		for bad in (

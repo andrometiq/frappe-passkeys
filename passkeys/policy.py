@@ -142,12 +142,15 @@ def canonical_web_origin(raw: str) -> str | None:
 
 
 def configured_site_origin() -> str | None:
-	"""The origin of the trusted ``host_name`` setting."""
+	"""The origin of the trusted ``host_name`` setting. One trailing slash
+	(``https://erp.example.com/``) is tolerated; any other path is refused."""
 	raw = (frappe.conf.get("host_name") or "").strip()
 	if not raw:
 		return None
 	if "//" not in raw:
 		raw = "https://" + raw
+	if raw.endswith("/") and "?" not in raw and "#" not in raw:  # the slash ends the path
+		raw = raw[:-1]
 	return canonical_web_origin(raw)
 
 
@@ -251,7 +254,7 @@ def validate_app_origins(settings) -> None:
 def app_origin_error(origin: str) -> str | None:
 	if not origin.startswith(_APK_KEY_HASH_PREFIX):
 		return _(
-			"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure its https://<RP ID> value under Passkey Origins."
+			"Invalid Trusted App Origin {0}: only android:apk-key-hash:<hash> entries are supported. iOS needs no entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins."
 		).format(origin)
 	digest = origin[len(_APK_KEY_HASH_PREFIX) :]
 	if not _APK_KEY_HASH_RE.match(digest):

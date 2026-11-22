@@ -18,7 +18,7 @@ moves to ``frappe/www/passkeys.py`` verbatim.
 import frappe
 from frappe.sessions import get_csrf_token
 
-from passkeys import boot, install
+from passkeys import __version__, boot, install
 
 no_cache = 1
 
@@ -66,6 +66,8 @@ def get_context(context):
 	if isinstance(context.get("boot"), dict):
 		context.boot["csrf_token"] = context.csrf_token
 		context.boot["passkeys"] = context.passkeys
+		# Desk's boot shape: the provider map is fetched per app version, not from a stale cache.
+		context.boot.setdefault("versions", {})["passkeys"] = __version__
 
 	add_page_assets(context, PORTAL_JS, PORTAL_CSS)
 	return context

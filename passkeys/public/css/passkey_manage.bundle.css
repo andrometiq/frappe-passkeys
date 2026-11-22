@@ -118,6 +118,28 @@
 	flex: 0 0 auto;
 }
 
+/* Phone width: the flagged note takes the card's full width, not the middle column. */
+@media (max-width: 575.98px) {
+	.passkey-card {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		row-gap: 0; /* the rows keep their own margins, as in the flex layout */
+	}
+	.passkey-card-main {
+		display: contents;
+	}
+	.passkey-card-main > * {
+		grid-column: 2;
+	}
+	.passkey-card-main > .alert {
+		grid-column: 1 / -1;
+	}
+	.passkey-card-actions {
+		grid-column: 3;
+		grid-row: 1;
+	}
+}
+
 .passkey-icon-btn {
 	line-height: 1;
 }

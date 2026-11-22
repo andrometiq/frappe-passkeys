@@ -133,8 +133,9 @@
 		rpIdUnresolved:
 			"No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in " +
 			"will fail. Fix it one of two ways: set host_name in the site config " +
-			"(site_config.json) to this site's domain, or enter an explicit Passkey RP ID " +
-			"(a bare host name like {0}) in the field below.",
+			"(site_config.json) to this site's domain, or enter a bare host name like {0} in " +
+			"Passkey RP ID on the Relying Party tab. If you just set host_name, wait a minute and " +
+			"save again.",
 		hostMismatch:
 			"The resolved RP ID / origins do not match this site's current host — passkey " +
 			"sign-in will fail here until this is corrected.",
@@ -855,8 +856,9 @@
 		return row;
 	}
 
-	// The optional provider-name snapshot; {} when absent. The Desk boot's app version in the
-	// URL makes a new release fetch its own snapshot, not one the browser cached as an asset.
+	// The optional provider-name snapshot; {} when absent. The boot's app version (Desk and
+	// /passkeys) in the URL makes a new release fetch its own snapshot, not one the browser cached
+	// as an asset.
 	var aaguidMapPromise = null;
 	function loadAaguidMap() {
 		if (!aaguidMapPromise) {

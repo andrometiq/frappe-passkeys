@@ -9,7 +9,7 @@ import frappe
 
 from passkeys import ceremony, policy
 from passkeys.errors import CeremonyExpired
-from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp
+from passkeys.tests.compat import IntegrationTestCase, PinnedSiteRp, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
 
 
@@ -37,6 +37,31 @@ class RpScopeTest(PinnedSiteRp, IntegrationTestCase):
 		with patch.dict(frappe.conf, {"host_name": "https://erp.example.com"}):
 			self.assertEqual(policy.get_site_rp_id({}), "erp.example.com")
 			self.assertTrue(policy.is_stale("example.com", policy.get_site_rp_id({})))
+
+	def test_host_name_with_one_trailing_slash_is_the_site_origin(self):
+		for host_name, expected in (
+			("https://erp.example.com/", "https://erp.example.com"),
+			("erp.example.com/", "https://erp.example.com"),
+			("https://erp.example.com:8443/", "https://erp.example.com:8443"),
+			("https://erp.example.com/x", None),
+			("https://erp.example.com/x/", None),
+			("https://erp.example.com//", None),
+			("https://erp.example.com/?next=/", None),
+			("https://erp.example.com#/", None),
+		):
+			with self.subTest(host_name=host_name), patch.dict(frappe.conf, {"host_name": host_name}):
+				self.assertEqual(policy.configured_site_origin(), expected)
+
+	def test_enabling_trusts_a_host_name_with_a_trailing_slash(self):
+		"""No Passkey Origins: the site's own origin comes from host_name alone."""
+		enabled = frappe.db.get_single_value("Passkey Settings", "login_with_passkey")
+		self.addCleanup(flush_settings_cache)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "login_with_passkey", enabled or 0)
+		with patch.dict(frappe.conf, {"host_name": "https://erp.example.com/"}):
+			settings = frappe.get_doc("Passkey Settings")
+			settings.update({"passkey_rp_id": "", "passkey_origins": "", "login_with_passkey": 1})
+			settings.save(ignore_permissions=True)
+			self.assertEqual(policy.resolve_origins(settings, "erp.example.com"), ["https://erp.example.com"])
 
 	def test_http_site_is_operational_without_developer_mode(self):
 		settings = {"login_with_passkey": 1}
