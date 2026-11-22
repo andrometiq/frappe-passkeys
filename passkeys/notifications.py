@@ -36,9 +36,9 @@ def notify_credential_added(user: str, label: str, ip: str | None = None) -> Non
 		activity=("passkey_added", _("Passkey added: {0}").format(label)),
 		subject=_("A passkey was added to your account"),
 		body=_(
-			"A new passkey ({0}) was just added to your account on {1}.{2}"
+			"A new passkey “{0}” was just added to your account on {1}{2}."
 			" If this wasn't you, remove it and change your password immediately."
-		).format(label, _site_label(), _ip_suffix(ip)),
+		).format(escape_html(label), _site_label(), _ip_suffix(ip)),
 	)
 
 
@@ -71,9 +71,9 @@ def notify_credential_disabled(user: str, label: str) -> None:
 		activity=("passkey_disabled", _("Passkey disabled: {0}").format(label)),
 		subject=_("A passkey on your account was disabled"),
 		body=_(
-			"A passkey ({0}) on your account was disabled by an administrator on {1}."
+			"The passkey “{0}” on your account was disabled by an administrator on {1}."
 			" You can no longer sign in with it. Contact your administrator if this was unexpected."
-		).format(label, _site_label()),
+		).format(escape_html(label), _site_label()),
 	)
 
 
@@ -84,10 +84,10 @@ def notify_credential_flagged(user: str, label: str, reason: str | None = None) 
 		activity=("passkey_flagged", _("Passkey flagged: {0} ({1})").format(label, reason or "anomaly")),
 		subject=_("A passkey on your account was flagged"),
 		body=_(
-			"A sign-in with your passkey ({0}) on {1} triggered a security check"
-			" ({2}). This can indicate a cloned authenticator. If you did not"
-			" recognize a recent sign-in, remove this passkey and review your account."
-		).format(label, _site_label(), reason or _("anomaly")),
+			"Your passkey “{0}” was flagged after a sign-in on {1}: it may have been copied."
+			" If you don't recognize a recent sign-in, remove this passkey and contact your"
+			" administrator."
+		).format(escape_html(label), _site_label()),
 	)
 
 

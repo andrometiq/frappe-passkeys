@@ -209,4 +209,4 @@ def advance_credential(
 	if regression and not cint(current.flagged):
 		from passkeys import notifications
 
-		notifications.notify_credential_flagged(current.user, current.label, "sign_count_regression")
+		notifications.notify_credential_flagged(current.user, current.label or name, "sign_count_regression")

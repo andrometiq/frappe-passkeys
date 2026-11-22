@@ -71,10 +71,16 @@ class NotificationTest(_Base):
 
 	def test_added_email_sent_when_knob_on(self):
 		user = self._user()
+		self._open_at("https://erp.example.com")
 		notifications.notify_credential_added(user, "Phone", ip="203.0.113.7")
 		self.assertEqual(len(self.sent), 1)
 		self.assertIn(user, self.sent[0]["recipients"])
 		self.assertIn("added", self.sent[0]["subject"].lower())
+		self.assertEqual(
+			self.sent[0]["message"],
+			"A new passkey “Phone” was just added to your account on erp.example.com (from IP 203.0.113.7)."
+			" If this wasn't you, remove it and change your password immediately.",
+		)
 
 	def test_no_email_when_notify_knob_off_but_activity_still_logged(self):
 		user = self._user()
@@ -103,9 +109,16 @@ class NotificationTest(_Base):
 			" too. If you didn't expect this, contact your administrator.",
 		)
 
-	def test_removed_email_escapes_the_label(self):
-		notifications.notify_credential_removed(self._user(), "Desk & <spare>", by_owner=True)
-		self.assertIn("“Desk &amp; &lt;spare&gt;”", self.sent[0]["message"])
+	def test_change_emails_escape_the_label(self):
+		user, label = self._user(), "Desk & <spare>"
+		notifications.notify_credential_added(user, label)
+		notifications.notify_credential_removed(user, label, by_owner=True)
+		notifications.notify_credential_disabled(user, label)
+		notifications.notify_credential_flagged(user, label, "sign_count_regression")
+		self.assertEqual(len(self.sent), 4)
+		for mail in self.sent:
+			self.assertIn("Desk &amp; &lt;spare&gt;", mail["message"])
+			self.assertNotIn("<spare>", mail["message"])
 
 	def test_change_emails_name_the_address_users_open(self):
 		user = self._user()
@@ -120,6 +133,7 @@ class NotificationTest(_Base):
 
 	def test_flagged_email_sent_once_on_sign_count_regression(self):
 		user = self._user()
+		self._open_at("https://erp.example.com")
 		cred = make_credential(user, sign_count=10, flagged=0)
 		result = types.SimpleNamespace(
 			new_sign_count=5,
@@ -130,9 +144,26 @@ class NotificationTest(_Base):
 		ceremony.advance_credential(cred.name, result)
 		flagged_mails = [m for m in self.sent if "flag" in m["subject"].lower()]
 		self.assertEqual(len(flagged_mails), 1)
+		self.assertEqual(
+			flagged_mails[0]["message"],
+			"Your passkey “Test Passkey” was flagged after a sign-in on erp.example.com: it may have"
+			" been copied. If you don't recognize a recent sign-in, remove this passkey and contact your"
+			" administrator.",
+		)
 		# a second regressed assertion must NOT re-spam (already flagged)
 		ceremony.advance_credential(cred.name, result)
 		self.assertEqual(len([m for m in self.sent if "flag" in m["subject"].lower()]), 1)
+
+	def test_flagged_email_names_an_unlabelled_passkey_by_its_id(self):
+		cred = make_credential(self._user(), sign_count=10, flagged=0)
+		frappe.db.set_value("WebAuthn Credential", cred.name, "label", None, update_modified=False)
+		result = types.SimpleNamespace(
+			new_sign_count=5, sign_count_to_store=10, backup_state=False, sign_count_regression=True
+		)
+		ceremony.advance_credential(cred.name, result)
+		message = next(m["message"] for m in self.sent if "flag" in m["subject"].lower())
+		self.assertIn(f"“{cred.name}”", message)
+		self.assertNotIn("None", message)
 
 	def test_fallback_risk_event_emails_under_its_own_knob(self):
 		user = self._user()
