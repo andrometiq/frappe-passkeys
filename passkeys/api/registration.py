@@ -134,7 +134,9 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 	)
 	handle = _insert_verified_credential(doc, settings, record.get("authorization"))
 	# out-of-band "passkey added" notice: the compensating control for registration hijack
-	notifications.notify_credential_added(user, doc.label, ip=ceremony.request_ip())
+	notifications.notify_credential_added(
+		user, doc.label, ip=ceremony.request_ip(), is_conditional_create=flow == "conditional_create"
+	)
 	return {
 		"name": doc.name,
 		"label": doc.label,

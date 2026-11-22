@@ -25,6 +25,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   computer or password manager too.
 - Passkey emails name the address users open, not the server's internal site name.
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
+- The "passkey added" email says when the browser saved the passkey on its own after a password
+  sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
 
 ### Fixed
 

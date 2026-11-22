@@ -29,16 +29,29 @@ RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
 INCAPABLE_NOTIFY_WINDOW_SEC = 24 * 60 * 60
 
 
-def notify_credential_added(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey added" email + Activity Log, after a registration is persisted."""
+def notify_credential_added(
+	user: str, label: str, ip: str | None = None, *, is_conditional_create: bool = False
+) -> None:
+	""" "Passkey added" email + Activity Log, after a registration is persisted. A Conditional
+	Create passkey (the browser saved it after a password sign-in) says so, so the user knows
+	why it came; it still goes out, as the alarm for a hijacked account."""
+	if is_conditional_create:
+		body = _(
+			"Your browser saved a passkey “{0}” for your account on {1}{2} after you signed in with"
+			" your password. Next time you can sign in with it. If you didn't just sign in,"
+			" remove it on your My Passkeys page{3} and change your password."
+		)
+	else:
+		body = _(
+			"A new passkey “{0}” was just added to your account on {1}{2}."
+			" If this wasn't you, remove it on your My Passkeys page{3} and change your password"
+			" immediately."
+		)
 	_safe(
 		user,
 		activity=("passkey_added", _("Passkey added: {0}").format(label)),
 		subject=_("A passkey was added to your account"),
-		body=_(
-			"A new passkey “{0}” was just added to your account on {1}{2}."
-			" If this wasn't you, remove it and change your password immediately."
-		).format(escape_html(label), _site_label(), _ip_suffix(ip)),
+		body=body.format(escape_html(label), _site_label(), _ip_suffix(ip), _passkeys_page_link_suffix()),
 	)
 
 
@@ -85,9 +98,9 @@ def notify_credential_flagged(user: str, label: str, reason: str | None = None) 
 		subject=_("A passkey on your account was flagged"),
 		body=_(
 			"Your passkey “{0}” was flagged after a sign-in on {1}: it may have been copied."
-			" If you don't recognize a recent sign-in, remove this passkey and contact your"
-			" administrator."
-		).format(escape_html(label), _site_label()),
+			" If you don't recognize a recent sign-in, remove this passkey on your My Passkeys"
+			" page{2} and contact your administrator."
+		).format(escape_html(label), _site_label(), _passkeys_page_link_suffix()),
 	)
 
 
@@ -214,3 +227,13 @@ def _site_label() -> str:
 
 def _ip_suffix(ip: str | None) -> str:
 	return " " + _("(from IP {0})").format(escape_html(ip)) if ip else ""
+
+
+def _passkeys_page_link_suffix() -> str:
+	"""A link to the My Passkeys page on ``host_name``, else nothing: a link built from the
+	request's Host header would point wherever the requester said."""
+	origin = policy.configured_site_origin()
+	if not origin:
+		return ""
+	url = escape_html(f"{origin}/passkeys")
+	return f' (<a href="{url}">{url}</a>)'

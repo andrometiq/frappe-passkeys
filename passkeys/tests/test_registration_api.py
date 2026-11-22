@@ -6,6 +6,8 @@ begin issues options + caches the challenge; complete verifies + persists a
 credential row; the challenge is single-use; duplicate / cross-account
 credential ids are refused; registration is sudo-gated."""
 
+from unittest.mock import patch
+
 import frappe
 
 from passkeys import state
@@ -50,6 +52,7 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			"passkey_rp_id",
 			"passkey_origins",
 			"passkey_allow_first_enrollment_on_external_login",
+			"passkey_notify_on_change",
 		):
 			frappe.db.set_single_value("Passkey Settings", field, self._snapshot.get(field) or 0)
 		flush_settings_cache()
@@ -323,6 +326,33 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		begun = registration.begin_registration(flow="conditional_create")
 		self.assertIn("state_id", begun)
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "preferred")
+
+	def test_added_email_says_when_the_browser_saved_the_passkey(self):
+		"""A Conditional Create passkey (the browser saved it after a password sign-in) gets its
+		own "added" wording; an explicit add keeps the plain one. Both say where to remove it."""
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 1)
+		flush_settings_cache()
+		page = '(<a href="https://erp.example.com/passkeys">https://erp.example.com/passkeys</a>)'
+		expected = {
+			"explicit": "A new passkey “Laptop” was just added to your account on erp.example.com"
+			" (from IP 203.0.113.7). If this wasn't you, remove it on your My Passkeys page"
+			f" {page} and change your password immediately.",
+			"conditional_create": "Your browser saved a passkey “Laptop” for your account on"
+			" erp.example.com (from IP 203.0.113.7) after you signed in with your password. Next time"
+			" you can sign in with it. If you didn't just sign in, remove it on your My"
+			f" Passkeys page {page} and change your password.",
+		}
+		for flow, body in expected.items():
+			with (
+				self.subTest(flow=flow),
+				patch.dict(frappe.conf, {"host_name": "https://erp.example.com"}),
+				patch.object(frappe.local, "request_ip", "203.0.113.7", create=True),
+				patch("frappe.sendmail") as sendmail,
+			):
+				begun, credential, _auth = self._register(self._user(), seed=f"added-email-{flow}", flow=flow)
+				registration.verify_registration(begun["state_id"], credential, label="Laptop")
+				self.assertEqual(sendmail.call_count, 1)
+				self.assertEqual(sendmail.call_args.kwargs["message"], body)
 
 	def test_external_login_bootstrap_allows_only_first_enrollment(self):
 		"""External-login bootstrap, BOTH directions: an external-seeded window

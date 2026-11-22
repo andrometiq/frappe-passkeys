@@ -79,13 +79,59 @@ class NotificationTest(_Base):
 		self.assertEqual(
 			self.sent[0]["message"],
 			"A new passkey “Phone” was just added to your account on erp.example.com (from IP 203.0.113.7)."
-			" If this wasn't you, remove it and change your password immediately.",
+			" If this wasn't you, remove it on your My Passkeys page"
+			' (<a href="https://erp.example.com/passkeys">https://erp.example.com/passkeys</a>)'
+			" and change your password immediately.",
+		)
+
+	def test_conditional_create_added_email_says_the_browser_saved_it(self):
+		user = self._user()
+		self._open_at("https://erp.example.com")
+		notifications.notify_credential_added(user, "Phone", ip="203.0.113.7", is_conditional_create=True)
+		self.assertIn("added", self.sent[0]["subject"].lower())
+		self.assertEqual(
+			self.sent[0]["message"],
+			"Your browser saved a passkey “Phone” for your account on erp.example.com (from IP 203.0.113.7)"
+			" after you signed in with your password. Next time you can sign in with it. If you"
+			" didn't just sign in, remove it on your My Passkeys page"
+			' (<a href="https://erp.example.com/passkeys">https://erp.example.com/passkeys</a>)'
+			" and change your password.",
+		)
+
+	def test_change_emails_name_the_passkeys_page_in_words_without_host_name(self):
+		user = self._user()
+		self._open_at(None)
+		site = frappe.local.site
+		# Never a link built from the request's Host header.
+		with patch("frappe.utils.data.get_host_name_from_request", return_value="attacker.example"):
+			notifications.notify_credential_added(user, "Phone", ip="203.0.113.7")
+			notifications.notify_credential_added(user, "Phone", is_conditional_create=True)
+			notifications.notify_credential_flagged(user, "Phone", "sign_count_regression")
+		self.assertEqual(
+			[mail["message"] for mail in self.sent],
+			[
+				f"A new passkey “Phone” was just added to your account on {site} (from IP 203.0.113.7)."
+				" If this wasn't you, remove it on your My Passkeys page and change your password"
+				" immediately.",
+				f"Your browser saved a passkey “Phone” for your account on {site} after you signed in"
+				" with your password. Next time you can sign in with it. If you didn't just sign"
+				" in, remove it on your My Passkeys page and change your password.",
+				f"Your passkey “Phone” was flagged after a sign-in on {site}: it may have been copied."
+				" If you don't recognize a recent sign-in, remove this passkey on your My Passkeys page"
+				" and contact your administrator.",
+			],
 		)
 
 	def test_added_email_escapes_the_ip(self):
-		notifications.notify_credential_added(self._user(), "Phone", ip='<div style="display:none">')
-		self.assertIn("(from IP &lt;div style=&quot;display:none&quot;&gt;)", self.sent[0]["message"])
-		self.assertNotIn("<div", self.sent[0]["message"])
+		for is_conditional_create in (False, True):
+			notifications.notify_credential_added(
+				self._user(),
+				"Phone",
+				ip='<div style="display:none">',
+				is_conditional_create=is_conditional_create,
+			)
+			self.assertIn("(from IP &lt;div style=&quot;display:none&quot;&gt;)", self.sent[-1]["message"])
+			self.assertNotIn("<div", self.sent[-1]["message"])
 
 	def test_no_email_when_notify_knob_off_but_activity_still_logged(self):
 		user = self._user()
@@ -117,10 +163,11 @@ class NotificationTest(_Base):
 	def test_change_emails_escape_the_label(self):
 		user, label = self._user(), "Desk & <spare>"
 		notifications.notify_credential_added(user, label)
+		notifications.notify_credential_added(user, label, is_conditional_create=True)
 		notifications.notify_credential_removed(user, label, by_owner=True)
 		notifications.notify_credential_disabled(user, label)
 		notifications.notify_credential_flagged(user, label, "sign_count_regression")
-		self.assertEqual(len(self.sent), 4)
+		self.assertEqual(len(self.sent), 5)
 		for mail in self.sent:
 			self.assertIn("Desk &amp; &lt;spare&gt;", mail["message"])
 			self.assertNotIn("<spare>", mail["message"])
@@ -152,8 +199,9 @@ class NotificationTest(_Base):
 		self.assertEqual(
 			flagged_mails[0]["message"],
 			"Your passkey “Test Passkey” was flagged after a sign-in on erp.example.com: it may have"
-			" been copied. If you don't recognize a recent sign-in, remove this passkey and contact your"
-			" administrator.",
+			" been copied. If you don't recognize a recent sign-in, remove this passkey on your My"
+			' Passkeys page (<a href="https://erp.example.com/passkeys">https://erp.example.com/passkeys</a>)'
+			" and contact your administrator.",
 		)
 		# a second regressed assertion must NOT re-spam (already flagged)
 		ceremony.advance_credential(cred.name, result)
