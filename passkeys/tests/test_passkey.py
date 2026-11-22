@@ -205,7 +205,8 @@ class TestDocTypeSchemas(PasskeyTestCase):
 
 	def test_messages_quote_only_labels_the_forms_show(self):
 		"""A setting named in quotes in a message is one the admin can find: a field label on
-		these forms, or a Passkey Settings option. A field is never named by a bare label."""
+		these forms, or a Passkey Settings option. And no ``_("…")`` or ``__("…")`` call in the
+		app's Python or public JS translates a field label alone, without quotes."""
 		labels = set()
 		for doctype in ("Passkey Settings", "System Settings", "WebAuthn User Handle"):
 			fields = frappe.get_meta(doctype).fields

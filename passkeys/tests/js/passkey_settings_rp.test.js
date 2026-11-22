@@ -37,6 +37,22 @@ test("RP confirmation waits for server counts, escapes values, and acknowledges 
 	h.frm.doc.passkey_origins = "https://other.new.example";
 	assert.equal(h.context.rpIdChangeUnconfirmed(h.frm), true);
 });
+test("confirming a change raised by Save finishes the save; one raised by leaving the field does not save", () => {
+	const h = harness();
+	let saves = 0;
+	h.frm.save = () => { saves += 1; };
+	h.context.confirmRpIdChange(h.frm);
+	h.calls[0].callback({ message: impact });
+	h.warns[0].args[2](); h.warns[0].d.hide();
+	assert.equal(saves, 0);
+	h.frm.doc.passkey_origins = "https://other.new.example";
+	h.handlers.validate(h.frm);
+	assert.equal(h.context.frappe.validated, false);
+	h.calls[1].callback({ message: impact });
+	h.warns[1].args[2](); h.warns[1].d.hide();
+	assert.equal(saves, 1);
+	assert.equal(h.context.rpIdChangeUnconfirmed(h.frm), false);
+});
 test("late impact responses cannot confirm a newer candidate; cancellation restores the saved RP", () => {
 	const h = harness();
 	h.context.confirmRpIdChange(h.frm);
@@ -150,3 +166,28 @@ for (const field of ["passkey_rp_id", "passkey_origins", "passkey_app_origins"])
 		assert.equal(h.calls.length, 0);
 	});
 }
+
+test("the posture card stays hidden while no mode is on, and shows once one is", () => {
+	const h = harness();
+	const rendered = [];
+	h.context.renderPosture = (_frm, nodes) => rendered.push(nodes);
+	h.context.postureNoticeCard = text => "notice: " + text;
+	h.context.postureNodes = report => "card: " + report.headline.text;
+	const off = { verdict: { headline: "Passkeys are not an active login factor on this site.", tone: "info" },
+		rows: [{ code: "no_mode", severity: "info" }] };
+	const degraded = { verdict: { headline: "Could not be fully determined.", tone: "high" }, rows: off.rows };
+	const on = { verdict: { headline: "Passkeys protect sign-in.", tone: "good" }, rows: [] };
+	h.frm.doc.login_with_passkey = 0;
+	h.frm.doc.passkey_as_second_factor = 0;
+	h.context.fetchSecurityPosture(h.frm);
+	h.calls[0].callback({ message: off });
+	h.context.fetchSecurityPosture(h.frm);
+	h.calls[1].callback({ message: degraded });
+	// The empty lists come from the script's own realm, so compare them as JSON.
+	assert.equal(JSON.stringify(rendered), JSON.stringify([[], [], [], "card: Could not be fully determined."]));
+	rendered.length = 0;
+	h.frm.doc.login_with_passkey = 1;
+	h.context.fetchSecurityPosture(h.frm);
+	h.calls[2].callback({ message: on });
+	assert.deepEqual(rendered, ["notice: Checking your security posture…", "card: Passkeys protect sign-in."]);
+});

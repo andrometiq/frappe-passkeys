@@ -998,7 +998,9 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 		fields_dict: { passkey_rp_id: { $input: input, get_input_value: () => typed } },
 		set_df_property: () => {},
 		set_value: (field, value) => { values.push(value); frm.doc[field] = value; },
+		save: () => { saves += 1; },
 	};
+	let saves = 0;
 	handlers.refresh(frm);
 	assert.strictEqual(handlers.passkey_rp_id.name, "paintBanners", "typing only repaints the banners");
 	// Typed but not yet debounced into the doc: blur commits the input's text first.
@@ -1018,8 +1020,10 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 	handlers.validate(frm);
 	assert.strictEqual(context.frappe.validated, false, "an unconfirmed change cannot be saved");
 	assert.strictEqual(warns.length, 2);
+	assert.strictEqual(saves, 0, "leaving the field never saves");
 	warns[1].args[2]();
 	warns[1].dialog.hide();
+	assert.strictEqual(saves, 1, "confirming the change Save raised finishes the save");
 	context.frappe.validated = true;
 	handlers.validate(frm);
 	assert.strictEqual(context.frappe.validated, true, "a confirmed change saves");

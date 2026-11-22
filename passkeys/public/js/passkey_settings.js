@@ -39,7 +39,7 @@ frappe.ui.form.on("Passkey Settings", {
 	validate: function (frm) {
 		if (rpIdChangeUnconfirmed(frm)) {
 			frappe.validated = false;
-			confirmRpIdChange(frm);
+			confirmRpIdChange(frm, true); // the save goes ahead once confirmed
 			return;
 		}
 		var result = frappe.passkeys_manage_common.validateAndroidFingerprints(frm.doc.passkey_android_cert_fingerprints);
@@ -69,7 +69,7 @@ function hasUnsavedRpConfig(frm) {
 	return rpCandidate(frm) !== frm._passkey_rp_saved;
 }
 
-function confirmRpIdChange(frm) {
+function confirmRpIdChange(frm, saveAfter) {
 	if (!rpIdChangeUnconfirmed(frm) || frm._passkey_rpid_dialog_open) return;
 	var saved = (frm.doc_before_save && frm.doc_before_save.passkey_rp_id) || frm._passkey_rpid_saved || "";
 	var value = frm.doc.passkey_rp_id || "";
@@ -87,7 +87,9 @@ function confirmRpIdChange(frm) {
 			var proceeded = false;
 			var d = frappe.warn(__("Change the RP ID?"), rpImpactMessage(r.message), function () {
 				proceeded = true;
-				if (candidate === rpCandidate(frm)) frm._passkey_rpid_ack = candidate;
+				if (candidate !== rpCandidate(frm)) return;
+				frm._passkey_rpid_ack = candidate;
+				if (saveAfter) frm.save();
 			}, __("Yes, change it"), true);
 			d.$wrapper.on("hide.bs.modal", function () {
 				frm._passkey_rpid_dialog_open = false;
@@ -206,16 +208,24 @@ function pollEnforcementPreview(frm, threshold) {
 // The hosted explainer the report footer links to (new tab, never iframed).
 var POSTURE_THEORY_URL = "https://andrometiq.com/software/passkey/why-passkeys-are-safer/";
 
+// While no mode is on, the "Passkeys are off" line already says so: no card to repeat it.
 function fetchSecurityPosture(frm) {
-	renderPosture(frm, postureNoticeCard(__("Checking your security posture…")));
+	var anyMode = Number(frm.doc.login_with_passkey) || Number(frm.doc.passkey_as_second_factor);
+	renderPosture(frm, anyMode ? postureNoticeCard(__("Checking your security posture…")) : []);
 	frappe.call({
 		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_security_posture",
 		callback: function (r) {
 			if (!r || !r.message) return renderPostureFailure(frm);
-			renderPosture(frm, postureNodes(frappe.passkeys_manage_common.postureReport(r.message)));
+			var report = frappe.passkeys_manage_common.postureReport(r.message);
+			renderPosture(frm, isPostureOff(report) ? [] : postureNodes(report));
 		},
 		error: function () { renderPostureFailure(frm); },
 	});
+}
+
+// The plain "no mode is on" verdict; a degraded one (tone "high") still shows its card.
+function isPostureOff(report) {
+	return report.headline.tone === "info" && report.rows.some(function (row) { return row.code === "no_mode"; });
 }
 
 function renderPostureFailure(frm) {

@@ -279,6 +279,9 @@
 .passkey-posture {
 	margin: 0 0 12px;
 }
+.passkey-posture:empty {
+	margin: 0;
+}
 
 /* ---- the compact verdict card ---- */
 .passkey-posture-card {
@@ -399,4 +402,12 @@
 	/* Pin a theme-adaptive link colour (Frappe's blue ramp) so the explainer link
 	 * stays legible in dark mode instead of falling back to the UA default. */
 	color: var(--blue-500, #2490ef);
+}
+
+/* Passkey Settings: links read as links. Frappe colours a link like body text, which leaves
+   a lone "Learn more" looking like a label and a banner link a different colour from its line. */
+.form-section-description a[href^="https://andrometiq.github.io/frappe-passkeys/"],
+.passkey-settings-banner a {
+	color: inherit;
+	text-decoration: underline;
 }
