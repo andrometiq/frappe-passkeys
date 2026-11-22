@@ -10,10 +10,13 @@ The add/remove/flag email is the compensating control for registration hijack
 sender is exception-hardened: a mail or log failure never breaks a ceremony, a delete
 or an admin save."""
 
+from urllib.parse import urlsplit
+
 import frappe
 from frappe import _
-from frappe.utils import cint, get_datetime, now_datetime
+from frappe.utils import cint, escape_html, get_datetime, now_datetime
 
+from passkeys import policy
 from passkeys.install import DEFAULTS_PARENT
 
 RISK_FALLBACK_USED = "fallback_used"
@@ -39,16 +42,25 @@ def notify_credential_added(user: str, label: str, ip: str | None = None) -> Non
 	)
 
 
-def notify_credential_removed(user: str, label: str, ip: str | None = None) -> None:
-	""" "Passkey removed" email + Activity Log, also when a System Manager removes it."""
+def notify_credential_removed(user: str, label: str, *, by_owner: bool) -> None:
+	""" "Passkey removed" email + Activity Log; the email says whether the owner removed it."""
+	if by_owner:
+		body = _(
+			"The passkey “{0}” was removed from your account on {1} and no longer works there."
+			" If your phone, computer or password manager still lists it, delete it there too."
+			" If you didn't expect this, contact your administrator."
+		)
+	else:
+		body = _(
+			"An administrator removed the passkey “{0}” from your account on {1}. It no longer works"
+			" there. If your phone, computer or password manager still lists it, delete it there too."
+			" If you didn't expect this, contact your administrator."
+		)
 	_safe(
 		user,
 		activity=("passkey_removed", _("Passkey removed: {0}").format(label)),
 		subject=_("A passkey was removed from your account"),
-		body=_(
-			"A passkey ({0}) was removed from your account on {1}.{2}"
-			" If this wasn't you, review your passkeys and sign-in methods."
-		).format(label, _site_label(), _ip_suffix(ip)),
+		body=body.format(escape_html(label), _site_label()),
 	)
 
 
@@ -195,7 +207,9 @@ def _activity_log(user: str, operation: str, subject: str) -> None:
 
 
 def _site_label() -> str:
-	return frappe.local.site or (frappe.db.get_single_value("Website Settings", "app_name") or "this site")
+	"""The address users open: ``host_name``'s host, else the site name (never a request header)."""
+	origin = policy.configured_site_origin()
+	return urlsplit(origin).netloc if origin else frappe.local.site
 
 
 def _ip_suffix(ip: str | None) -> str:

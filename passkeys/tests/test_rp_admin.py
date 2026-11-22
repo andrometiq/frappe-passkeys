@@ -145,6 +145,12 @@ class RpAdminTest(PinnedSiteRp, IntegrationTestCase):
 		for call in mail.call_args_list:
 			self.assertEqual(call.kwargs["recipients"], [self.user])
 			self.assertEqual(call.kwargs["subject"], "A passkey was removed from your account")
+			self.assertEqual(
+				call.kwargs["message"],
+				"An administrator removed the passkey “Test Passkey” from your account on example.com. It"
+				" no longer works there. If your phone, computer or password manager still lists it, delete"
+				" it there too. If you didn't expect this, contact your administrator.",
+			)
 		for row in (stale, disabled, blank):
 			self.assertFalse(frappe.db.exists("WebAuthn Credential", row.name))
 		for row in (current, flagged):

@@ -140,6 +140,8 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		from passkeys import notifications
 
 		if removed:
-			notifications.notify_credential_removed(self.user, self.label or self.name)
+			notifications.notify_credential_removed(
+				self.user, self.label or self.name, by_owner=frappe.session.user == self.user
+			)
 		else:
 			notifications.notify_credential_disabled(self.user, self.label or self.name)

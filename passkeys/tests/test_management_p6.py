@@ -65,6 +65,10 @@ class NotificationTest(_Base):
 	def _subjects(self):
 		return " ".join(m["subject"].lower() for m in self.sent)
 
+	def _open_at(self, host_name):
+		self.addCleanup(setattr, frappe.conf, "host_name", frappe.conf.get("host_name"))
+		frappe.conf.host_name = host_name
+
 	def test_added_email_sent_when_knob_on(self):
 		user = self._user()
 		notifications.notify_credential_added(user, "Phone", ip="203.0.113.7")
@@ -83,6 +87,7 @@ class NotificationTest(_Base):
 
 	def test_removed_email_on_endpoint_delete(self):
 		user = self._user()
+		self._open_at("https://erp.example.com")
 		make_credential(user)
 		drop = make_credential(user)
 		sign_in(user)
@@ -91,6 +96,27 @@ class NotificationTest(_Base):
 		self.sent.clear()
 		credentials.delete_credential(drop.name)
 		self.assertIn("removed", self._subjects())
+		self.assertEqual(
+			self.sent[0]["message"],
+			"The passkey “Test Passkey” was removed from your account on erp.example.com and no longer"
+			" works there. If your phone, computer or password manager still lists it, delete it there"
+			" too. If you didn't expect this, contact your administrator.",
+		)
+
+	def test_removed_email_escapes_the_label(self):
+		notifications.notify_credential_removed(self._user(), "Desk & <spare>", by_owner=True)
+		self.assertIn("“Desk &amp; &lt;spare&gt;”", self.sent[0]["message"])
+
+	def test_change_emails_name_the_address_users_open(self):
+		user = self._user()
+		self._open_at("https://erp.example.com")
+		notifications.notify_credential_disabled(user, "Phone")
+		self.assertIn(" on erp.example.com.", self.sent[-1]["message"])
+		# Without host_name, the site name; never the request's Host header.
+		frappe.conf.host_name = None
+		with patch("frappe.utils.data.get_host_name_from_request", return_value="attacker.example"):
+			notifications.notify_credential_disabled(user, "Phone")
+		self.assertIn(f" on {frappe.local.site}.", self.sent[-1]["message"])
 
 	def test_flagged_email_sent_once_on_sign_count_regression(self):
 		user = self._user()
