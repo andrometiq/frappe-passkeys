@@ -53,7 +53,8 @@ other devices; the one you're using stays signed in.
   password-manager account. If not, sign in with your password or your phone's QR code, then add a
   passkey on the new device.
 - **Lost device:** sign in with another passkey or your password, open **My Passkeys** and remove
-  the lost device's passkey. That also signs the lost device out.
+  the lost device's passkey. That also signs the lost device out. If someone may be using it right
+  now, tell your administrator too.
 - **Can't sign in at all:** ask your administrator to let you back in.
 
 Something went wrong? See [Troubleshooting](troubleshooting.md).

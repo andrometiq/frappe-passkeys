@@ -144,8 +144,9 @@ credential revoked after the backup was taken returns with the backup and may wo
   **Disabling or deleting a passkey signs its owner out.** When it is someone else's, the app
   ends every session of the owner with the call Frappe itself uses for a disabled user, and the
   change email tells them they may need to sign in again; your own session stays. When it is
-  your own, every other session of yours ends and the one you are using stays, so a lost device's
-  session ends too. **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on
+  your own, every other session of yours ends and the one you are using in the browser stays, so a
+  lost device's session ends too (a bulk action, an API token or the console has no such session,
+  so all of yours end). **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on
   this site.
 
   For an account you believe someone is using right now, follow

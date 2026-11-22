@@ -52,7 +52,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - With Conditional Create off, the server now refuses a browser-saved passkey too, so nobody can
   pick the calmer "your browser saved a passkey" email on a site that turned it off.
 - Signing a passkey's owner out also catches a sign-in that finished at that moment, and the
-  unsaved-settings count refuses oversized input and keeps its cached counts for a day at most.
+  unsaved-settings count refuses oversized input, and a daily job prunes its cached counts.
 
 ### Fixed
 
