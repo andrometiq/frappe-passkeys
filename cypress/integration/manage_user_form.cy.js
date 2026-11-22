@@ -78,6 +78,16 @@ chromium_only("passkey management — User form", () => {
 			});
 		});
 
+		it("fetches the provider-name map under the app version, so an update skips a cached copy", () => {
+			cy.login(USER, PW());
+			cy.visit_desk(USER, { onBeforeLoad: (win) => { cy.spy(win, "fetch").as("fetch"); } });
+			// The cards render only after the map request settles.
+			cy.get(".passkey-cards-root .no-result, .passkey-cards-root .passkey-card", { timeout: 20000 }).should("exist");
+			cy.window().its("frappe.boot.versions.passkeys").should("be.a", "string").and("not.be.empty").then((version) => {
+				cy.get("@fetch").should("have.been.calledWith", `/assets/passkeys/aaguid-map.json?v=${encodeURIComponent(version)}`);
+			});
+		});
+
 		it("renders a card per credential with an accessible label + backup badge", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);

@@ -72,6 +72,34 @@ test("vendored aaguid-map.json: lean shape — lowercase UUID keys, non-empty st
 	assert.ok(VENDORED_MAP._meta, "provenance _meta block present");
 });
 
+test("vendored aaguid-map.json: every name obeys the strip rule — no URL, at most 120 characters", () => {
+	for (const [key, name] of Object.entries(VENDORED_MAP)) {
+		if (key[0] === "_") continue;
+		assert.doesNotMatch(name, /https?:\/\//, "URL in name: " + key);
+		assert.ok(name.length <= 120, "name over 120 characters: " + key);
+	}
+});
+
+test("the map URL carries the app version from the Desk boot, so a release skips a browser-cached map", async () => {
+	const fs = require("node:fs");
+	const vm = require("node:vm");
+	const source = fs.readFileSync(require.resolve("../../public/js/passkey_manage_common.bundle.js"), "utf8");
+	for (const [boot, expected] of [
+		[{ versions: { passkeys: "16.0.9" } }, "/assets/passkeys/aaguid-map.json?v=16.0.9"],
+		[{ passkeys: {} }, "/assets/passkeys/aaguid-map.json"], // the portal boot carries no versions
+	]) {
+		const fetched = [];
+		const context = {
+			window: { frappe: { boot } },
+			fetch: (url) => { fetched.push(url); return Promise.resolve({ ok: true, json: () => ({ a: "b" }) }); },
+		};
+		vm.createContext(context);
+		vm.runInContext(source, context);
+		assert.deepStrictEqual({ ...(await context.window.frappe.passkeys_manage_common.loadAaguidMap()) }, { a: "b" });
+		assert.deepStrictEqual(fetched, [expected]);
+	}
+});
+
 test("viewmodel resolves a provider from the vendored map; label falls back to it", () => {
 	const vm = M.credentialViewModel({ name: "c1", aaguid: KNOWN_AAGUID }, { aaguidMap: VENDORED_MAP });
 	assert.strictEqual(vm.providerName, "Google Password Manager");

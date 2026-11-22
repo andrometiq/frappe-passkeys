@@ -6,7 +6,9 @@ It powers two display surfaces and nothing else:
 
 - the provider name on management cards (served to the browser at
   `/assets/passkeys/aaguid-map.json`; the server also resolves it into the
-  `provider` field of `list_credentials`), and
+  `provider` field of `list_credentials`). Desk requests the file with the
+  app version as a query string (`?v=16.0.9`), so after an app update the
+  browser fetches the new snapshot instead of an asset it cached, and
 - the default label a new credential gets when the user doesn't name it.
 
 **Display only, never policy.** An AAGUID is authenticator-asserted and — under
@@ -36,6 +38,11 @@ only the name per AAGUID — a flat `{ "<lowercase-aaguid>": "<name>" }` object
 (~28 KB) plus the `_meta` provenance block. Keys are lowercased and sorted for
 stable diffs; entries without a name are dropped.
 
+A name is display text, not a description. The transform cuts everything from the
+first `http://` or `https://` on, with the punctuation before it, and cuts a name
+still longer than 120 characters at the last whole word, ending it with "…". Some
+upstream entries are a sentence with a product link; they become the product name.
+
 ## Refreshing the snapshot (each app release)
 
 `.github/helper/aaguid_freshness.sh` fails while upstream has a change that this snapshot has
@@ -48,13 +55,26 @@ curl -sL -o /tmp/combined_aaguid.json \
   https://raw.githubusercontent.com/passkeydeveloper/passkey-authenticator-aaguids/main/combined_aaguid.json
 
 python3 - <<'EOF'
-import json, urllib.request
+import json, re, urllib.request
+
+MAX_NAME = 120
+
+
+def display_name(raw):
+	name = raw.strip()
+	url = re.search(r"https?://", name)
+	if url:
+		name = name[: url.start()].rstrip(" .,;:-")
+	if len(name) > MAX_NAME:
+		name = name[: MAX_NAME - 1].rsplit(" ", 1)[0].rstrip(" .,;:-") + "…"
+	return name
+
 
 with open("/tmp/combined_aaguid.json") as f:
 	src = json.load(f)
 lean = {}
 for key, value in src.items():
-	name = (value.get("name") or "").strip()
+	name = display_name(value.get("name") or "")
 	if name:
 		lean[key.lower()] = name
 
@@ -84,8 +104,8 @@ EOF
 Then update the "Current snapshot" line above with the new `upstream_ref` /
 date / entry count, eyeball the diff (names only — no icons, no URLs, nothing
 that isn't a product name), and run the test suites. The node test asserts the
-file's shape (lowercase-UUID keys, non-empty string names); the server tests
-assert known/unknown lookups still resolve correctly.
+file's shape (lowercase-UUID keys, non-empty string names, every name within the
+rule above); the server tests assert known/unknown lookups still resolve correctly.
 
 Upstream regenerates monthly from the MDS, so refreshing once per app release
 is the intended cadence — a stale snapshot only means a new authenticator shows

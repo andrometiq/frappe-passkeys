@@ -854,11 +854,14 @@
 		return row;
 	}
 
-	// The optional provider-name snapshot; {} when absent.
+	// The optional provider-name snapshot; {} when absent. The Desk boot's app version in the
+	// URL makes a new release fetch its own snapshot, not one the browser cached as an asset.
 	var aaguidMapPromise = null;
 	function loadAaguidMap() {
 		if (!aaguidMapPromise) {
-			aaguidMapPromise = fetch("/assets/passkeys/aaguid-map.json", { credentials: "same-origin" })
+			var version = ((window.frappe.boot || {}).versions || {}).passkeys;
+			var url = "/assets/passkeys/aaguid-map.json" + (version ? "?v=" + encodeURIComponent(version) : "");
+			aaguidMapPromise = fetch(url, { credentials: "same-origin" })
 				.then(function (r) { return r.ok ? r.json() : {}; })
 				.catch(function () { return {}; });
 		}
