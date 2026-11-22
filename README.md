@@ -89,7 +89,7 @@ can switch their account to passwordless-only.
 **Administrator settings.** Login modes, Relying Party (with mobile apps), enrollment, security,
 and notifications each have their own tab. Every mode stays off until an administrator turns it on.
 
-<img src=".github/screenshots/settings.png" alt="Passkey Settings, Login Modes tab, with the security posture summary" width="1266" />
+<img src=".github/screenshots/settings.png" alt="Passkey Settings, Login Modes tab, with the security posture summary" width="1280" />
 
 </details>
 
