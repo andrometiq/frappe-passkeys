@@ -9,7 +9,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Upgrade notes
 
-- Nothing to do.
+- A user signed in during the update may be asked to confirm it's them once more before managing
+  passkeys or confirming an action.
 
 ### Added
 
@@ -33,6 +34,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
+
+### Security
+
+- The app's Redis data no longer holds session ids, only their SHA-256, so anyone who can read it
+  (a backup, a monitoring tool) sees no live session id.
 
 ### Fixed
 

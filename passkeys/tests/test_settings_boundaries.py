@@ -192,7 +192,7 @@ class ReauthWindowTtlTest(PinnedSiteRp, IntegrationTestCase):
 		frappe.local.flags.pop("passkey_login", None)
 
 	def _pttl_ms(self):
-		return frappe.cache.pttl(state._make_key(state.SUDO_PREFIX + frappe.session.sid))
+		return frappe.cache.pttl(state._make_key(state.sudo_window_name(frappe.session.sid)))
 
 	def test_custom_small_window_is_the_seeded_ttl(self):
 		self._set_window(30)

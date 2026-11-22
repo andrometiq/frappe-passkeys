@@ -63,7 +63,7 @@ def begin_registration(flow: str = "explicit"):
 			"flow": flow,
 			"authorization": authorization,
 			"user": user,
-			"sid": frappe.session.sid,
+			"sid_hash": state.sid_hash(frappe.session.sid),
 			"challenge_b64": challenge_b64,
 			"rp_id": rp_id,
 			"origins": origins,
@@ -90,7 +90,10 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "register":
 		raise CeremonyExpired(_("That took too long — please try again."))
-	if record.get("sid") != frappe.session.sid or record.get("user") != frappe.session.user:
+	if (
+		record.get("sid_hash") != state.sid_hash(frappe.session.sid)
+		or record.get("user") != frappe.session.user
+	):
 		raise CeremonyFailed(_("Passkey registration could not be verified."))
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)  # a mid-ceremony disable fails closed

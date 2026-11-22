@@ -241,7 +241,7 @@ def mint_action_grant(user: str, action: str, payload_hash_hex: str, *, method: 
 		{
 			"v": 1,
 			"user": user,
-			"sid": frappe.session.sid,
+			"sid_hash": state.sid_hash(frappe.session.sid),
 			"action": action,
 			"payload_hash": payload_hash_hex,
 			"method": method,
@@ -270,7 +270,7 @@ def consume_action_grant(
 		record = state.consume_grant(hashlib.sha256(token.encode("utf-8")).hexdigest())
 		is_match = bool(record) and (
 			record.get("user") == user
-			and record.get("sid") == frappe.session.sid
+			and record.get("sid_hash") == state.sid_hash(frappe.session.sid)
 			and record.get("action") == action
 			and record.get("payload_hash") == payload_hash(params)
 		)

@@ -338,7 +338,7 @@ class LockingReadTest(_SweptBase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": self.sid,
+				"sid_hash": state.sid_hash(self.sid),
 				"action": session.SET_PASSKEY_ONLY_ACTION,
 				"method": "passkey",
 				"payload_hash": session.payload_hash({"enabled": enabled}),

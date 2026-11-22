@@ -170,7 +170,7 @@ class SudoWindowTest(PinnedSiteRp, IntegrationTestCase):
 		frappe.local.flags.passkey_login = 1
 		session.seed_sudo_window()
 		window_s = frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window") or 600
-		pttl_ms = frappe.cache.pttl(state._make_key(state.SUDO_PREFIX + self.sid))
+		pttl_ms = frappe.cache.pttl(state._make_key(state.sudo_window_name(self.sid)))
 		self.assertGreater(pttl_ms, 0)
 		self.assertLessEqual(pttl_ms, int(window_s) * 1000)
 
@@ -250,7 +250,7 @@ class SudoWindowTest(PinnedSiteRp, IntegrationTestCase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": frappe.session.sid,
+				"sid_hash": state.sid_hash(frappe.session.sid),
 				"action": action,
 				"method": method,
 				"payload_hash": session.payload_hash(params),

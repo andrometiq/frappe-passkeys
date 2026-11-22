@@ -180,7 +180,7 @@ class TestStateStore(IntegrationTestCase):
 		sid = frappe.generate_hash()
 		state.set_sudo_window(sid, {"v": 1, "user": "x", "seeded_by": "password"}, ttl=60)
 		self.assertIsNotNone(state.get_sudo_window(sid))
-		raw_connection().delete(frappe.cache.make_key(state.SUDO_PREFIX + sid))
+		raw_connection().delete(frappe.cache.make_key(state.sudo_window_name(sid)))
 		self.assertIsNone(state.get_sudo_window(sid))
 
 	def test_counter_idiom_ttl_at_creation(self):

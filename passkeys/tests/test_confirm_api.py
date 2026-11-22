@@ -14,6 +14,7 @@ import json
 from unittest.mock import patch
 
 import frappe
+import redis
 from frappe.auth import CookieManager
 from frappe.utils import set_request
 from frappe.utils.password import update_password
@@ -190,6 +191,42 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertIn("passkeys:grant_issued", contents)
 		self.assertIn("passkeys:grant_consumed", contents)
 
+	def test_the_store_holds_no_raw_session_id(self):
+		"""Reading the app's Redis keys (a SCAN, a backup, a monitoring tool) reveals no live
+		session id; the sudo window, both ceremonies and the grant still work end to end."""
+		user = self._user()
+		auth = self._enroll(user)  # signed in, with a password-seeded sudo window
+		sid = self.sid
+		begun = self._begin("myapp.act", params={"x": 1})
+		token = self._verify(begun["state_id"], self._assert(auth, begun["options"], sign_count=5))["grant"]
+		pending = self._begin("myapp.act", params={"x": 2})
+		self._request("/api/method/passkeys.api.registration.begin_registration")
+		adding = registration.begin_registration(flow="explicit")
+
+		stored = {
+			key: _raw_value(key) for key in frappe.cache.scan_iter(match=frappe.cache.make_key("passkeys:*"))
+		}
+		self.assertEqual([key for key, value in stored.items() if sid.encode() in key + value], [])
+		for name in (
+			state.sudo_window_name(sid),
+			state.GRANT_PREFIX + hashlib.sha256(token.encode()).hexdigest(),
+			state.CEREMONY_PREFIX + pending["state_id"],
+			state.CEREMONY_PREFIX + adding["state_id"],
+		):
+			self.assertIn(state._make_key(name), stored)
+
+		self.assertTrue(session.has_management_sudo(user))
+		self._attach_grant(token)
+		self.assertTrue(session.consume_action_grant(user, "myapp.act", {"x": 1}))
+		self.assertTrue(
+			self._verify(pending["state_id"], self._assert(auth, pending["options"], sign_count=6))["grant"]
+		)
+		second = SoftAuthenticator(seed=f"c2-{self._ip}").registration(
+			challenge_b64=adding["options"]["challenge"], rp_id=RP_ID, origin=ORIGIN, credprops_rk=True
+		)
+		self._request("/api/method/passkeys.api.registration.verify_registration")
+		self.assertTrue(registration.verify_registration(adding["state_id"], second)["name"])
+
 	# ======================================================================
 	# grant is single-use
 	# ======================================================================
@@ -254,7 +291,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": "some-other-sid",
+				"sid_hash": state.sid_hash("some-other-sid"),
 				"action": "myapp.act",
 				"method": "passkey",
 				"payload_hash": session.payload_hash({"x": 1}),
@@ -882,7 +919,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": self.sid,
+				"sid_hash": state.sid_hash(self.sid),
 				"action": session.SET_PASSKEY_ONLY_ACTION,
 				"method": "password",
 				"payload_hash": session.payload_hash({"enabled": True}),
@@ -1008,7 +1045,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 				{
 					"v": 1,
 					"user": owner,
-					"sid": sid,
+					"sid_hash": state.sid_hash(sid),
 					"action": "myapp.act",
 					"method": "passkey",
 					"payload_hash": session.payload_hash({"x": 1}),
@@ -1045,7 +1082,7 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": self.sid,
+				"sid_hash": state.sid_hash(self.sid),
 				"action": "myapp.refund",
 				"method": "password",
 				"payload_hash": session.payload_hash({"amount": 50}),
@@ -1133,3 +1170,14 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertIn("password", begun["methods"])
 		self._reauth(PWD)
 		self.assertEqual(session.get_window(user)["seeded_by"], "reauth")
+
+
+def _raw_value(key: bytes) -> bytes:
+	"""A ``passkeys:*`` key's stored bytes: strings (the state store) and hashes (the
+	enforcement preview), read past RedisWrapper's key-making and unpickling."""
+	kind = frappe.cache.type(key)
+	if kind == b"hash":
+		return b" ".join(
+			field + b"=" + value for field, value in redis.Redis.hgetall(frappe.cache, key).items()
+		)
+	return (frappe.cache.get(key) or b"") if kind == b"string" else b""

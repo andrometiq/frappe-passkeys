@@ -107,16 +107,26 @@ def consume_grant(token_hash: str) -> dict | None:
 	return _consume_json(GRANT_PREFIX + token_hash)
 
 
+def sid_hash(sid: str | None) -> str | None:
+	"""The only form a session id takes in this store, in keys and in records: anyone who
+	can read the app's Redis keys (a SCAN, a backup, a monitoring tool) sees no live sid."""
+	return hashlib.sha256(sid.encode("utf-8")).hexdigest() if sid else None
+
+
+def sudo_window_name(sid: str) -> str:
+	return SUDO_PREFIX + sid_hash(sid)
+
+
 def set_sudo_window(sid: str, record: dict, ttl: int) -> None:
-	_put_json(SUDO_PREFIX + sid, record, ttl)
+	_put_json(sudo_window_name(sid), record, ttl)
 
 
 def get_sudo_window(sid: str) -> dict | None:
-	return _get_json(SUDO_PREFIX + sid)
+	return _get_json(sudo_window_name(sid))
 
 
 def clear_sudo_window(sid: str) -> None:
-	frappe.cache.delete(_make_key(SUDO_PREFIX + sid))
+	frappe.cache.delete(_make_key(sudo_window_name(sid)))
 
 
 def bump_counter(name: str, ttl: int) -> int:

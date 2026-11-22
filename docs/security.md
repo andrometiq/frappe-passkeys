@@ -26,7 +26,9 @@ is the ceremony's own legitimate starter, a browser-bound token is the only
 defence. Guest ceremonies set an ephemeral `Secure; HttpOnly; SameSite=Lax`
 cookie and store only its SHA-256 in the record; verify fails closed unless the
 request carries the matching cookie. An attacker cannot set or read this HttpOnly
-cookie cross-site. Authenticated ceremonies bind to the session id instead.
+cookie cross-site. Authenticated ceremonies bind to the session id instead. Like the sudo window
+and confirmation grants, they store only the session id's SHA-256, so reading the app's Redis keys
+(a SCAN, a backup, a monitoring tool) shows no live session id.
 
 **Origin and RP-ID pinning, exact-match, fail-closed.** RP ID and origins are
 resolved from administrator-controlled configuration — never from live `Host`

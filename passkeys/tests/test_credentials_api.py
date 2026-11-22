@@ -47,7 +47,7 @@ class CredentialManagementTest(PinnedSiteRp, IntegrationTestCase):
 			{
 				"v": 1,
 				"user": user,
-				"sid": self.sid,
+				"sid_hash": state.sid_hash(self.sid),
 				"action": action,
 				"method": method,
 				"payload_hash": session.payload_hash(params),
@@ -383,7 +383,7 @@ class CredentialManagementTest(PinnedSiteRp, IntegrationTestCase):
 				{
 					"v": 1,
 					"user": user,
-					"sid": self.sid,
+					"sid_hash": state.sid_hash(self.sid),
 					"action": session.SET_PASSKEY_ONLY_ACTION,
 					"method": "passkey",
 					"payload_hash": fingerprint,

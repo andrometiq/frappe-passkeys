@@ -336,7 +336,7 @@ def begin_confirmation(action: str, params: object = None, payload_hash: str | N
 			"v": 1,
 			"type": "confirm",
 			"user": user,
-			"sid": frappe.session.sid,
+			"sid_hash": state.sid_hash(frappe.session.sid),
 			"action": action,
 			"payload_hash": fingerprint,
 			"challenge_b64": challenge_b64,
@@ -377,7 +377,7 @@ def verify_confirmation(state_id: str, credential: object):
 	record = state.consume_ceremony(state_id)
 	if not record or record.get("type") != "confirm":
 		raise CeremonyExpired(_("That took too long — please try again."))
-	if record.get("user") != user or record.get("sid") != frappe.session.sid:
+	if record.get("user") != user or record.get("sid_hash") != state.sid_hash(frappe.session.sid):
 		raise CeremonyFailed(_("Passkey could not be verified."))
 
 	settings = frappe.get_cached_doc("Passkey Settings")
