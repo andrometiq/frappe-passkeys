@@ -11,6 +11,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 - A user signed in during the update may be asked to confirm it's them once more before managing
   passkeys or confirming an action.
+- Disabling or deleting a user's passkey now signs that user out everywhere. Removing your own
+  passkey doesn't.
 
 ### Added
 
@@ -34,6 +36,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
+- When an administrator disables or deletes someone's passkey, that user is signed out everywhere
+  and the email they get says so. Removing your own passkey keeps you signed in, and removing stale
+  passkeys signs nobody out.
 
 ### Security
 

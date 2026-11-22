@@ -55,8 +55,9 @@ def notify_credential_added(
 	)
 
 
-def notify_credential_removed(user: str, label: str, *, by_owner: bool) -> None:
-	""" "Passkey removed" email + Activity Log; the email says whether the owner removed it."""
+def notify_credential_removed(user: str, label: str, *, by_owner: bool, is_signed_out: bool = False) -> None:
+	""" "Passkey removed" email + Activity Log; the email says whether the owner removed it, and
+	whether the owner was signed out everywhere."""
 	if by_owner:
 		body = _(
 			"The passkey “{0}” was removed from your account on {1} and no longer works there."
@@ -66,18 +67,18 @@ def notify_credential_removed(user: str, label: str, *, by_owner: bool) -> None:
 	else:
 		body = _(
 			"An administrator removed the passkey “{0}” from your account on {1}. It no longer works"
-			" there. If your phone, computer or password manager still lists it, delete it there too."
-			" If you didn't expect this, contact your administrator."
+			" there.{2} If your phone, computer or password manager still lists it, delete it there"
+			" too. If you didn't expect this, contact your administrator."
 		)
 	_safe(
 		user,
 		activity=("passkey_removed", _("Passkey removed: {0}").format(label)),
 		subject=_("A passkey was removed from your account"),
-		body=body.format(escape_html(label), _site_label()),
+		body=body.format(escape_html(label), _site_label(), _signed_out_sentence(is_signed_out)),
 	)
 
 
-def notify_credential_disabled(user: str, label: str) -> None:
+def notify_credential_disabled(user: str, label: str, *, is_signed_out: bool = False) -> None:
 	""" "Passkey disabled" notice: a System Manager soft-disabled the credential."""
 	_safe(
 		user,
@@ -85,8 +86,8 @@ def notify_credential_disabled(user: str, label: str) -> None:
 		subject=_("A passkey on your account was disabled"),
 		body=_(
 			"The passkey “{0}” on your account was disabled by an administrator on {1}."
-			" You can no longer sign in with it. Contact your administrator if this was unexpected."
-		).format(escape_html(label), _site_label()),
+			" You can no longer sign in with it.{2} Contact your administrator if this was unexpected."
+		).format(escape_html(label), _site_label(), _signed_out_sentence(is_signed_out)),
 	)
 
 
@@ -227,6 +228,10 @@ def _site_label() -> str:
 
 def _ip_suffix(ip: str | None) -> str:
 	return " " + _("(from IP {0})").format(escape_html(ip)) if ip else ""
+
+
+def _signed_out_sentence(is_signed_out: bool) -> str:
+	return " " + _("You were also signed out everywhere.") if is_signed_out else ""
 
 
 def _passkeys_page_link_suffix() -> str:

@@ -29,10 +29,10 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 			self._guard_last_login_method("disable")
 
 	def on_update(self):
-		# Owner notice when a System Manager soft-disables a credential
-		# (disable > delete for forensics). Fires after the write persisted.
+		# A disable (preferred to a delete, for forensics) signs the owner out when someone else
+		# did it, then tells the owner. Fires after the write persisted.
 		if self._is_disabling():
-			self._notify(removed=False)
+			self._notify(removed=False, is_signed_out=self._sign_out_owner())
 
 	def on_trash(self):
 		super().on_trash()
@@ -54,9 +54,8 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 			raise FlaggedPasskeyKept
 
 	def after_delete(self):
-		# Owner notification is sent even when a System Manager removes
-		# the row (single source for both the endpoint delete and a form delete).
-		self._notify(removed=True)
+		# Single source for the endpoint delete and a form delete.
+		self._notify(removed=True, is_signed_out=self._sign_out_owner())
 
 	def _is_disabling(self) -> bool:
 		"""True iff this save flips ``enabled`` 1→0 (disable direction)."""
@@ -136,12 +135,29 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 				frappe.ValidationError,
 			)
 
-	def _notify(self, *, removed: bool):
+	def _sign_out_owner(self) -> bool:
+		"""End every session of the owner when someone else revoked this passkey, with core's
+		call for a disabled User; the actor's sessions belong to another user and stay. The
+		stale-passkey bulk removal is left out: a stale passkey cannot sign in here, and the
+		commit inside core's call would release the RP lock that removal holds. Returns
+		whether the owner was signed out."""
+		if self._is_by_owner() or self.flags.passkeys_remove_stale:
+			return False
+		from frappe.sessions import clear_sessions
+
+		clear_sessions(user=self.user, force=True)
+		return True
+
+	def _is_by_owner(self) -> bool:
+		return frappe.session.user == self.user
+
+	def _notify(self, *, removed: bool, is_signed_out: bool):
 		from passkeys import notifications
 
+		label = self.label or self.name
 		if removed:
 			notifications.notify_credential_removed(
-				self.user, self.label or self.name, by_owner=frappe.session.user == self.user
+				self.user, label, by_owner=self._is_by_owner(), is_signed_out=is_signed_out
 			)
 		else:
-			notifications.notify_credential_disabled(self.user, self.label or self.name)
+			notifications.notify_credential_disabled(self.user, label, is_signed_out=is_signed_out)

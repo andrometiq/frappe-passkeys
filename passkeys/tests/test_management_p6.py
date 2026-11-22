@@ -10,6 +10,8 @@ import types
 from unittest.mock import patch
 
 import frappe
+from frappe.auth import CookieManager, LoginManager
+from frappe.utils import set_request
 
 from passkeys import ceremony, confirm, notifications, state
 from passkeys.api import credentials
@@ -327,6 +329,96 @@ class AdminInterlockTest(_Base):
 		frappe.delete_doc("User", user, force=1, ignore_permissions=True)
 		self.assertFalse(frappe.db.exists("User", user))
 		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
+
+
+class RevocationSignOutTest(_Base):
+	"""Someone else disabling or deleting a passkey ends every session of its owner; the
+	actor keeps theirs. The owner revoking their own passkey ends no session."""
+
+	def setUp(self):
+		super().setUp()
+		notify = frappe.db.get_single_value("Passkey Settings", "passkey_notify_on_change")
+		self.addCleanup(flush_settings_cache)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_notify_on_change", notify)
+		frappe.db.set_single_value("Passkey Settings", "passkey_notify_on_change", 1)
+		flush_settings_cache()
+		self.addCleanup(setattr, frappe.conf, "host_name", frappe.conf.get("host_name"))
+		frappe.conf.host_name = "https://erp.example.com"
+		self.sent = []
+		self.addCleanup(setattr, frappe, "sendmail", frappe.sendmail)
+		frappe.sendmail = lambda **kw: self.sent.append(kw)
+		# Cleanups run LIFO: back to Administrator, then each user delete ends that user's sessions
+		# through the login manager, then the login manager is restored.
+		self.addCleanup(setattr, frappe.local, "login_manager", getattr(frappe.local, "login_manager", None))
+		self.owner, self.actor = self._user(), self._user()
+		self.addCleanup(frappe.set_user, "Administrator")
+
+	def _sign_in_for_real(self, user: str) -> None:
+		"""A real session row, as a browser sign-in makes; the current session becomes it."""
+		set_request(method="POST", path="/api/method/frappe.client.save")  # not the login path
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.form_dict = frappe._dict()
+		frappe.local.login_manager = LoginManager()
+		frappe.local.login_manager.login_as(user)
+
+	def _sessions(self, user: str) -> int:
+		return frappe.db.count("Sessions", {"user": user})
+
+	def _two_owner_sessions_then_actor(self) -> None:
+		self._sign_in_for_real(self.owner)
+		self._sign_in_for_real(self.owner)
+		self._sign_in_for_real(self.actor)
+		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (2, 1))
+
+	def test_someone_elses_disable_signs_the_owner_out_everywhere(self):
+		cred = make_credential(self.owner)
+		self._two_owner_sessions_then_actor()
+		doc = frappe.get_doc("WebAuthn Credential", cred.name)
+		doc.enabled = 0
+		doc.save(ignore_permissions=True)
+		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (0, 1))
+		self.assertEqual(frappe.session.user, self.actor)
+		self.assertEqual(
+			self.sent[-1]["message"],
+			"The passkey “Test Passkey” on your account was disabled by an administrator on"
+			" erp.example.com. You can no longer sign in with it. You were also signed out everywhere."
+			" Contact your administrator if this was unexpected.",
+		)
+
+	def test_someone_elses_delete_signs_the_owner_out_everywhere(self):
+		cred = make_credential(self.owner)
+		self._two_owner_sessions_then_actor()
+		frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (0, 1))
+		self.assertEqual(frappe.session.user, self.actor)
+		self.assertEqual(
+			self.sent[-1]["message"],
+			"An administrator removed the passkey “Test Passkey” from your account on erp.example.com."
+			" It no longer works there. You were also signed out everywhere. If your phone, computer or"
+			" password manager still lists it, delete it there too. If you didn't expect this, contact"
+			" your administrator.",
+		)
+
+	def test_the_owner_revoking_their_own_passkey_keeps_their_sessions(self):
+		disabled, removed = make_credential(self.owner), make_credential(self.owner)
+		self._sign_in_for_real(self.owner)
+		self._sign_in_for_real(self.owner)
+		doc = frappe.get_doc("WebAuthn Credential", disabled.name)
+		doc.enabled = 0
+		doc.save(ignore_permissions=True)
+		frappe.delete_doc("WebAuthn Credential", removed.name, ignore_permissions=True)
+		self.assertEqual(self._sessions(self.owner), 2)
+		self.assertEqual(
+			[mail["message"] for mail in self.sent],
+			[
+				"The passkey “Test Passkey” on your account was disabled by an administrator on"
+				" erp.example.com. You can no longer sign in with it. Contact your administrator if this"
+				" was unexpected.",
+				"The passkey “Test Passkey” was removed from your account on erp.example.com and no longer"
+				" works there. If your phone, computer or password manager still lists it, delete it there"
+				" too. If you didn't expect this, contact your administrator.",
+			],
+		)
 
 
 class ReauthUnderDisableUserPassTest(_Base):

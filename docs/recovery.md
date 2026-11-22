@@ -14,18 +14,18 @@ If no System Manager can sign in, go to
 - **Disable a lost passkey.** Open **WebAuthn Credential**, filter **User** to the
   account, open the lost credential, untick **Enabled**, and save. A disabled
   credential can no longer sign in and no longer counts for the passkey second
-  factor or for enforcement. It does not sign out sessions that are already open: for a
-  stolen device, also sign the user out everywhere (below). Prefer disabling to deleting:
-  the row stays for investigation. The owner is emailed when **Notify on Passkey Changes**
-  is on. If outgoing email is unconfigured, Desk may show an email-setup message even though the disable
+  factor or for enforcement. Disabling another user's passkey also signs that user out
+  everywhere, so a stolen device that is still signed in loses its session too. Prefer
+  disabling to deleting: the row stays for investigation. The owner is emailed when
+  **Notify on Passkey Changes** is on. If outgoing email is unconfigured, Desk may show an email-setup message even though the disable
   succeeds; check the saved row. The email failure is recorded in Error Log as
   `passkeys: change-notification email failed`; the Activity Log is written independently. The
   form refuses to disable the user's last usable credential while their **Passkey
   Only Login** is on, or while System Settings → **Disable Username/Password Login**
   is on. Clear the per-user flag first; the site-wide case is
   [its own scenario](#password-login-is-disabled-site-wide).
-- **Sign a user out everywhere.** Disabling or deleting a passkey does **not** end sessions
-  the user already has: a device that is signed in stays signed in. Open the user's **User**
+- **Sign a user out everywhere.** Disabling or deleting another user's passkey already does
+  this. Without touching a passkey, open the user's **User**
   record, untick **Enabled** and save; Frappe ends that user's sessions. Tick **Enabled**
   again and save when they may sign back in. On version-16 and later, disabling also unticks
   **Send Notifications For Email Threads**, **Send Me A Copy of Outgoing Emails** and
@@ -33,8 +33,8 @@ If no System Manager can sign in, go to
   it, or to keep an account enabled, run
   `frappe.sessions.clear_sessions(user="user@example.com", force=True)` in the
   [console](#console-access) instead (it commits on its own); a User disabled from the
-  console keeps its sessions. Both end the 100 most recently active sessions; run the
-  console line again for an account that might have more.
+  console keeps its sessions. Each of these, the passkey sign-out included, ends the 100 most
+  recently active sessions; run the console line for an account that might have more.
 - **Clear Passkey Only Login.** Open **WebAuthn User Handle**, open the user's row,
   untick **Passkey Only Login**, and save. Clearing is always allowed. The user's own
   switch at `/passkeys` needs a fresh passkey confirmation, so a user who has lost
@@ -58,12 +58,12 @@ This covers passwordless sign-in, **Passkey Only Login**, and a lost passkey sec
 factor. It applies with **Allow OTP Fallback for Passkey Second Factor** off: leave it
 off. Do not turn it on to get one user in.
 
-If the device may be in someone else's hands (stolen, or lost while signed in), also
-[sign the user out everywhere](#the-desk-actions-used-below) right after disabling the lost
-passkey: disabling it does not end a session already open on that device.
+If the device may be in someone else's hands (stolen, or lost while signed in), disable the
+lost passkey yourself rather than leaving it to the user: when you disable it, the user is
+signed out everywhere, so a session already open on that device ends too.
 
 1. If the user still has another working passkey, they sign in with it. Then disable
-   the lost one. Done, unless the device was stolen or signed in (see above).
+   the lost one: that signs them out everywhere, and they sign in again with the working one.
 2. Otherwise, if **Passkey Only Login** is on for them, clear it.
 3. Disable each lost passkey.
 4. The user signs in again:
@@ -104,16 +104,17 @@ System Settings → **Disable Username/Password Login** is on. This setting has 
 Administrator exemption. It does not block **Login with Passkey**, email link, social
 login or LDAP.
 
-1. A user with another working passkey signs in with it; disable the lost one.
+1. A user with another working passkey signs in with it; disable the lost one. They sign in
+   again with the working one.
 2. A user who is still signed in somewhere enrolls a replacement first, then you
-   disable the lost one.
+   disable the lost one. They sign in again with the replacement.
 3. A user with no passkey and no other sign-in method cannot get in while the setting
    is on, and the form refuses to disable their last usable credential. There is no per-user
    override. Reopening password sign-in is site-wide: see
    [Last resort](#last-resort--at-your-own-risk).
 
-A stolen device that is still signed in keeps its session after its passkey is disabled; also
-sign the user out everywhere (see [the Desk actions](#the-desk-actions-used-below)).
+Disabling the lost passkey signs the user out everywhere, so a stolen device that is still
+signed in loses its session too.
 
 ## Passkeys fail after a restore or host change
 
