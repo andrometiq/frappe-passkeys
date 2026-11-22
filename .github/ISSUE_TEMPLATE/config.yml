@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Andrometiq/frappe-passkeys/security/advisories/new
+    about: Report it privately here, never in a public issue.
+  - name: Documentation
+    url: https://andrometiq.github.io/frappe-passkeys/
+    about: Installation, configuration, operations and recovery guides.

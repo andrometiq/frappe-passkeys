@@ -1,0 +1,100 @@
+name: Bug report
+description: Passkey sign-in, setup, confirmation or management does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to the [private reporting form](https://github.com/Andrometiq/frappe-passkeys/security/advisories/new), not here.
+        Before you paste anything, remove passwords, cookies, session IDs, API keys and personal data.
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Paste the output of `bench version`.
+      placeholder: |
+        frappe 16.18.3
+        passkeys 16.0.8
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+      placeholder: Chrome 131 on Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: authenticator
+    attributes:
+      label: Authenticator
+      description: Where the passkey is stored, such as a password manager, the device itself, or a security key.
+      placeholder: iCloud Keychain, Google Password Manager, 1Password, Windows Hello, a security key
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Sign in with a passkey
+        - Passkey as a second factor
+        - Confirmation for a protected action
+        - Adding or managing passkeys
+        - Passkey Settings
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: relying-party
+    attributes:
+      label: RP ID and origins
+      description: |
+        **Passkey RP ID** and **Passkey Origins** from Passkey Settings (write "blank" if empty), and the address you open the site at.
+        You may replace real hostnames with example ones, as long as the shape stays the same (subdomains, ports).
+        Can't open Passkey Settings? Leave this blank.
+      placeholder: |
+        Passkey RP ID: example.com
+        Passkey Origins: https://erp.example.com
+        Site opened at: https://erp.example.com/login
+      render: text
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Tick Login with Passkey in Passkey Settings
+        2. Open /login in Safari on iOS
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Screenshots help; drag them in here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Log or browser console
+      description: From Error Log (filter the title for `passkeys:`) or the browser console. Remove secrets first.
+      render: text
