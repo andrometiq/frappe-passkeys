@@ -101,11 +101,8 @@ bench get-app --branch version-16 https://github.com/Andrometiq/frappe-passkeys
 bench --site <site> install-app passkeys
 ```
 
-Installing is not enabling: every login mode ships off. Before you enable one, set the site's
-`host_name` (or an explicit Passkey RP ID) and check the resolved Relying Party ID and origins shown
-in Passkey Settings. Changing the RP ID later invalidates every enrolled passkey. Details:
-[`docs/install.md`](docs/install.md), [`docs/configuration.md`](docs/configuration.md), and the
-[rollout checklist](docs/operations.md#before-you-enable-passkeys-on-a-production-site).
+Installing turns nothing on. To set it up and sign in with your first passkey, follow the
+[Quickstart](docs/quickstart.md).
 
 ### Status and supported versions
 

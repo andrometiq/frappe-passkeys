@@ -43,8 +43,8 @@ dependency or worker-health monitoring.
 
 **Installing is not enabling.** `install-app` creates the DocTypes and the
 `Passkey Settings` single with every login mode **off**. Nothing about
-authentication changes until you enable a mode in Passkey Settings — see
-[`configuration.md`](configuration.md).
+authentication changes until you enable a mode in Passkey Settings — see the
+[Quickstart](quickstart.md).
 
 ### The `before_install` guard
 

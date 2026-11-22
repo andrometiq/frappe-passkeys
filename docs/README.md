@@ -1,10 +1,11 @@
 # Passkeys for Frappe: documentation
 
 Passkey (WebAuthn / FIDO2) sign-in and action confirmation for Frappe and ERPNext v15 and v16.
-New here? Start with [Install](install.md), then [Configuration](configuration.md).
+New here? The [Quickstart](quickstart.md) takes you from install to your first passkey sign-in.
 
 ## Set up and run
 
+- [**Quickstart**](quickstart.md): turn passkeys on and add your first one, in five steps.
 - [**Install**](install.md): install, upgrade, uninstall, the version matrix, reverse-proxy
   / RP ID / origin requirements, and the password-manager discovery file.
 - [**Configuration**](configuration.md): every Passkey Settings field, its default, and the
@@ -13,6 +14,8 @@ New here? Start with [Install](install.md), then [Configuration](configuration.m
   restore, incident response, revocation, and monitoring.
 - [**Recovery**](recovery.md): System Manager recovery through Desk, then Administrator and
   account-specific console procedures when no manager can sign in.
+- [**Glossary**](glossary.md): the words the settings and these docs use, such as RP ID and stale
+  passkey.
 
 ## Build on it
 

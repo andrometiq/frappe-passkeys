@@ -1,12 +1,8 @@
 # Configuration — Passkey Settings
 
-Everything is configured from the **Passkey Settings** single DocType
-(Desk → Passkey Settings). This page documents every field, its default, and the
-security consequence of changing it, then the way the settings interact with each
-other and with core's Two Factor Authentication.
-
-The fieldnames below are the app's stored fieldnames. The upstream documents propose
-reusing them in System Settings, but no current-core compatibility or merge is assumed.
+All settings are on one form: in Desk, search for **Passkey Settings**. Turning passkeys on for the
+first time? Follow the [Quickstart](quickstart.md). Words such as *RP ID* and *stale* are in the
+[Glossary](glossary.md).
 
 ## Login Modes
 
@@ -145,7 +141,7 @@ API-key and OAuth-token requests are not subject to them (see
 
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
-| **Notify on Passkey Changes** (`passkey_notify_on_change`) | On | Sends the account owner an email (with label, time, and IP) whenever a passkey is added, removed, disabled, or flagged. This email is the **compensating control for registration hijack** — a user who did not initiate the change can react. Turning it off is warned against; only do so on mail-less development sites. Activity Log rows are written either way. |
+| **Notify on Passkey Changes** (`passkey_notify_on_change`) | On | Sends the account owner an email whenever a passkey is added, removed, disabled, or flagged. This email is the **compensating control for registration hijack** — a user who did not initiate the change can react. Turning it off is warned against; only do so on mail-less development sites. Activity Log rows are written either way. |
 | **Notify on Password Fallback** (`passkey_notify_password_fallback`) | Off | When on, emails a passkey holder if a sign-in used a one-time code instead of their passkey. Opt-in telemetry; off by default. |
 | **Log password sign-ins by passkey holders** (`passkey_notify_password_login`) | Off | When on, records an Activity Log risk event whenever a user who holds at least one usable passkey signs in with their password instead. This is telemetry, not an email — it surfaces accounts still leaning on the password so an operator can drive enrollment. Opt-in and off by default *specifically* so the "does this user have a passkey?" lookup never touches the hot login path on a default site; a site that wants the signal turns it on. |
 
@@ -248,8 +244,10 @@ bulk stale removal serializes its RP read with settings saves. See the
 ### Request hardening and numeric limits
 
 Guest endpoint limits also count IPv6 addresses together by /64; IPv4 limits are unchanged.
-Credential audit records and notification emails retain the full client IP. Frappe's own
-IP-based login tracker remains under core control; the app does not monkeypatch it.
+Credential audit records and the passkey-added email retain the full client IP.
+Frappe's own lock after repeated wrong passwords counts failures per user and per IP address
+(System Settings → **Allow Consecutive Login Attempts** and **Allow Login After Fail**). The app
+leaves it to core, and passwordless passkey sign-in doesn't count toward it.
 Email login identifiers are trimmed and lowercased before authentication. Non-email usernames
 (including `Administrator`) are trimmed but retain their case. Discoverable passkey login takes
 no identifier; subsequent fallback legs use the canonical user stored by the server.
