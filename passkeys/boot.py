@@ -12,8 +12,13 @@ exemption survives Role Profile syncs."""
 
 import hashlib
 import json
+import re
 
 import frappe
+from frappe.model.document import Document
+from frappe.permissions import ALL_USER_ROLE, AUTOMATIC_ROLES, GUEST_ROLE, SYSTEM_USER_ROLE
+from frappe.query_builder import Criterion
+from frappe.query_builder.functions import Concat, Count
 from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
 from passkeys import ceremony, notifications, policy, rp_admin, session
@@ -21,6 +26,19 @@ from passkeys.install import DEFAULTS_PARENT, dormant
 
 ENFORCEMENT_PREVIEW_KEY = "passkeys:enforcement-preview"
 ENFORCEMENT_PREVIEW_TTL = 8 * 24 * 60 * 60
+# The unsaved form inputs a draft count reads: everything enforcement_preview_signature covers.
+ENFORCEMENT_DRAFT_TEXT_FIELDS = ("passkey_rp_id", "passkey_origins", "passkey_app_origins")
+ENFORCEMENT_DRAFT_CHECK_FIELDS = (
+	"login_with_passkey",
+	"passkey_as_second_factor",
+	"passkey_enforce_privileged_always",
+)
+ENFORCEMENT_DRAFT_FIELDS = {
+	*ENFORCEMENT_DRAFT_TEXT_FIELDS,
+	*ENFORCEMENT_DRAFT_CHECK_FIELDS,
+	"passkey_enforce_scope",
+	"passkey_enforce_roles",
+}
 # Scans are numbered within an epoch that is born with the hash, so a scan begun before an
 # eviction or flush can never publish into the hash that replaced it.
 _ENFORCEMENT_PREVIEW_START = """
@@ -277,6 +295,69 @@ def _user_in_enforce_scope(user: str, settings) -> bool:
 	return scope == "All users"
 
 
+def users_to_enroll_query(settings, site_rp_id: str):
+	"""One query for the names of the enabled users ``settings`` requires a passkey from who
+	have no enabled passkey for ``site_rp_id``; ``None`` when it requires nobody. The set form
+	of ``_user_in_enforce_scope``, ``frappe.get_roles`` included: change them together
+	(``test_enforcement`` checks they agree). Index-driven left joins, not ``EXISTS``: MariaDB
+	materializes those, which is ten times slower at 20,000 users."""
+	user = frappe.qb.DocType("User")
+	has_role = frappe.qb.DocType("Has Role")  # one joined row per matching role, or none
+	is_administrator = user.name == "Administrator"
+	scope = settings.passkey_enforce_scope or "No one"
+	is_privileged_included = bool(cint(settings.passkey_enforce_privileged_always))
+	target = (
+		{row.role for row in (settings.passkey_enforce_roles or [])} if scope == "Selected roles" else set()
+	)
+	in_scope = []
+	if is_privileged_included:
+		in_scope.append(is_administrator | has_role.role.isin(sorted(PRIVILEGED_ROLES)))
+	# Administrator: its assigned rows only. Everyone else: assigned roles minus the automatic
+	# ones, plus All and Guest, plus Desk User for a System User.
+	if target:
+		in_scope.append(is_administrator & has_role.role.isin(sorted(target)))
+	if target & {ALL_USER_ROLE, GUEST_ROLE}:
+		in_scope.append(~is_administrator)
+	if assigned := target - set(AUTOMATIC_ROLES):
+		in_scope.append(~is_administrator & has_role.role.isin(sorted(assigned)))
+	if SYSTEM_USER_ROLE in target:
+		in_scope.append(~is_administrator & (user.user_type == "System User"))
+	if scope != "All users" and not in_scope:
+		return None
+
+	credential = frappe.qb.DocType("WebAuthn Credential")
+	default = frappe.qb.DocType("DefaultValue")
+	query = (
+		frappe.qb.from_(user)
+		.left_join(credential)
+		.on((credential.user == user.name) & (credential.enabled == 1) & (credential.rp_id == site_rp_id))
+		.left_join(default)  # the exemption marker
+		.on(
+			(default.parent == DEFAULTS_PARENT)
+			& (default.defkey == Concat(user.name, _exempt_key("")))
+			& (default.defvalue == "1")
+		)
+		.select(user.name)
+		.distinct()
+		.where((user.enabled == 1) & (user.name != "Guest"))
+		.where(credential.name.isnull() & default.name.isnull())
+	)
+	if scope == "All users":
+		return query
+	if roles := target | (PRIVILEGED_ROLES if is_privileged_included else set()):
+		query = query.left_join(has_role).on(
+			(has_role.parenttype == "User")
+			& (has_role.parent == user.name)
+			& has_role.role.isin(sorted(roles))
+		)
+	return query.where(Criterion.any(in_scope))
+
+
+def count_users_to_enroll(settings, site_rp_id: str) -> int:
+	query = users_to_enroll_query(settings, site_rp_id)
+	return cint(frappe.qb.from_(query).select(Count("*")).run()[0][0]) if query else 0
+
+
 def build_enforcement(user: str, settings, credential_count: int, nudge_state: dict | None = None) -> dict:
 	"""The server-owned enforcement verdict; the client only ANDs its device-capability
 	probe. ``in_scope`` is the enforce rung (scope match, start date reached, a login mode on);
@@ -374,28 +455,73 @@ def enforcement_preview_signature(settings) -> str:
 	return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()[:16]
 
 
-def settings_banner_context() -> dict:
-	"""Settings-form context; the enforcement preview is read only from cache."""
-	settings = frappe.get_doc("Passkey Settings")
-	signature = enforcement_preview_signature(settings)
+def get_enforcement_preview(signature: str) -> dict | None:
+	"""The cached count for one policy signature, saved or draft; never computes."""
+	if not (isinstance(signature, str) and re.fullmatch(r"[0-9a-f]{16}", signature)):
+		frappe.throw(frappe._("Unknown enforcement preview."), frappe.ValidationError)
 	scan, result = frappe.cache.hmget(
 		frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY), [f"scan:{signature}", f"result:{signature}"]
 	)
-	preview = {**json.loads(result), "scan": int(scan)} if result is not None else None
+	return {**json.loads(result), "scan": int(scan)} if result is not None else None
+
+
+def get_draft_settings(draft) -> Document:
+	"""The saved Passkey Settings with a form's unsaved enforcement inputs laid over, in memory
+	only: what a draft count reads. Refuses any other shape."""
+	settings = frappe.get_doc("Passkey Settings")
+	is_valid = (
+		isinstance(draft, dict)
+		and set(draft) == ENFORCEMENT_DRAFT_FIELDS
+		and all(isinstance(draft[field], str) for field in ENFORCEMENT_DRAFT_TEXT_FIELDS)
+		and all(draft[field] in (0, 1) for field in ENFORCEMENT_DRAFT_CHECK_FIELDS)
+		and draft["passkey_enforce_scope"] in settings.meta.get_options("passkey_enforce_scope").split("\n")
+		and isinstance(draft["passkey_enforce_roles"], list)
+		and all(isinstance(role, str) and role for role in draft["passkey_enforce_roles"])
+	)
+	if not is_valid:
+		frappe.throw(frappe._("The unsaved enforcement settings could not be read."), frappe.ValidationError)
+	settings.update({field: value for field, value in draft.items() if field != "passkey_enforce_roles"})
+	settings.set("passkey_enforce_roles", [{"role": role} for role in draft["passkey_enforce_roles"]])
+	return settings
+
+
+def count_enforcement_draft(draft_json: str) -> dict | None:
+	"""Queue a count of an unsaved enforcement choice (the form's JSON). Returns its signature
+	and the scan number its count will exceed, or ``None`` when the job queue is full."""
+	try:
+		draft = json.loads(draft_json)
+	except (TypeError, ValueError):
+		draft = None
+	signature = enforcement_preview_signature(get_draft_settings(draft))
+	after_scan = get_enforcement_preview_scan()
+	if not enqueue_enforcement_preview(draft):
+		return None
+	return {"signature": signature, "after_scan": after_scan}
+
+
+def settings_banner_context() -> dict:
+	"""Settings-form context; the enforcement preview is read only from cache."""
+	settings = frappe.get_doc("Passkey Settings")
 	return {
 		"core_two_factor_auth": bool(cint(frappe.get_system_settings("enable_two_factor_auth"))),
 		"disable_user_pass_login": bool(cint(frappe.get_system_settings("disable_user_pass_login"))),
 		"passkey_only_user_count": frappe.db.count("WebAuthn User Handle", {"passkey_only_login": 1}),
-		"enforcement_preview": preview,
+		"enforcement_preview": get_enforcement_preview(enforcement_preview_signature(settings)),
 		"stale_passkeys": rp_admin.stale_passkey_summary(settings),
 	}
 
 
-def enqueue_enforcement_preview() -> bool:
+def enqueue_enforcement_preview(draft: dict | None = None) -> bool:
+	"""Queue a count of the saved policy, or of ``draft`` on the short queue: the form waits on it."""
 	# No job_id dedupe: rq's lookup of a just-finished job can raise, which would fail the
-	# settings save; the job is idempotent and the Recalculate endpoint is rate-limited.
+	# settings save; the job is idempotent and the endpoints that queue it are rate-limited.
 	try:
-		frappe.enqueue("passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True)
+		frappe.enqueue(
+			"passkeys.boot.refresh_enforcement_preview",
+			queue="short" if draft else "long",
+			enqueue_after_commit=True,
+			draft=draft,
+		)
 	except frappe.QueueOverloaded as exc:
 		message_id = getattr(exc, "__frappe_exc_id", None)
 		if message_id:
@@ -412,8 +538,9 @@ def get_enforcement_preview_scan() -> int:
 	return int(frappe.cache.hmget(frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY), ["seq"])[0] or 0)
 
 
-def refresh_enforcement_preview() -> None:
-	"""Cache the saved policy's enrollment count using the runtime scope evaluator."""
+def refresh_enforcement_preview(draft: dict | None = None) -> None:
+	"""Cache the enrollment count of the saved policy, or of an unsaved ``draft`` of it, under
+	its signature."""
 	if dormant():
 		return
 	name = frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY)
@@ -421,7 +548,7 @@ def refresh_enforcement_preview() -> None:
 		keys=[name], args=[frappe.generate_hash(length=16), ENFORCEMENT_PREVIEW_TTL]
 	)
 	computed_at = frappe.utils.now()
-	settings = frappe.get_doc("Passkey Settings")
+	settings = get_draft_settings(draft) if draft else frappe.get_doc("Passkey Settings")
 	count = 0
 	site_rp_id = policy.get_site_rp_id(settings)
 	if (
@@ -429,15 +556,7 @@ def refresh_enforcement_preview() -> None:
 		and (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor))
 		and is_enforcing(settings)
 	):
-		enrolled = set(
-			frappe.get_all("WebAuthn Credential", filters={"enabled": 1, "rp_id": site_rp_id}, pluck="user")
-		)
-		users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
-		count = sum(
-			1
-			for user in users
-			if user != "Guest" and user not in enrolled and _user_in_enforce_scope(user, settings)
-		)
+		count = count_users_to_enroll(settings, site_rp_id)
 	signature = enforcement_preview_signature(settings)
 	frappe.cache.register_script(_ENFORCEMENT_PREVIEW_PUBLISH)(
 		keys=[name],

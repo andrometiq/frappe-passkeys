@@ -80,14 +80,23 @@ every scope rule, including System Managers.
 | **Days between prompts** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between those prompts. |
 | **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. The owner still gets the "passkey added" email; it says their browser saved the passkey after a password sign-in. Off: only the explicit nudge/enroll flow creates passkeys. |
 
-The enforcement preview counts users in the background on save, daily, or when you select
-**Recalculate**; opening the page only reads the cached count. Only the saved policy's count is
-shown, with the time counting started; a policy without one shows **Not counted yet**. After a
-save or recount the open form checks every three seconds, up to ten times, for the new count. A
-recount that started earlier never replaces a newer one, and if the cache is cleared the preview
-shows **Not counted yet** until the next count. A full job queue does not prevent saving the
-policy, but its preview may remain uncounted or keep the previous count for that policy.
-**Recalculate** reports when the recount cannot start; retry after queue capacity is available.
+The enforcement preview counts the in-scope users who have no passkey yet, in the background, on
+save, daily, or when you select **Recalculate**; opening the page only reads the cached count. With
+no unsaved changes the saved policy's count is shown, with the time counting started; a policy
+without one shows **Not counted yet**. After a save or recount the open form checks every three
+seconds, up to ten times, for the new count. A recount that started earlier never replaces a newer
+one, and if the cache is cleared the preview shows **Not counted yet** until the next count. A full
+job queue does not prevent saving the policy, but its preview may remain uncounted or keep the
+previous count for that policy. **Recalculate** reports when the recount cannot start; retry after
+queue capacity is available.
+
+Changing **Require a passkey from**, **Roles**, **Always require a passkey from System Managers**,
+a login mode, or the RP ID or origins counts that unsaved choice too, a second after you stop
+changing it: the form shows **Counting who will be affected…**, then how many users without a
+passkey the change would require one from. Save never waits for this count. If it fails or has no
+answer within about 30 seconds, the form says **We couldn't count who will be affected. Check the
+user list before saving.** instead of a number; **Recalculate** on that line tries again. Each count
+is one database query, so it stays quick on sites with tens of thousands of users.
 
 For sites upgrading from before 15.0.0, the migration maps the old enrollment policy and scope
 to these settings. Non-enforcing policies also turn off **Always require a passkey from System

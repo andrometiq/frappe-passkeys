@@ -252,6 +252,30 @@ def recalculate_enforcement_preview() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def count_enforcement_draft(draft: str) -> dict:
+	"""Count the form's unsaved enforcement choice in the background; poll
+	``get_enforcement_preview`` with the returned signature."""
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	state.rate_limit_user("count_enforcement_draft", 20, 60)
+	queued = boot.count_enforcement_draft(draft)
+	if queued is None:
+		frappe.throw(
+			_("The count could not start because the job queue is full. Try again later."),
+			frappe.QueueOverloaded,
+		)
+	return queued
+
+
+@frappe.whitelist(methods=["POST"])
+def get_enforcement_preview(signature: str) -> dict | None:
+	refuse_if_core_native()
+	frappe.only_for("System Manager")
+	state.rate_limit_user("get_enforcement_preview", 30, 60)
+	return boot.get_enforcement_preview(signature)
+
+
+@frappe.whitelist(methods=["POST"])
 def get_rp_id_change_impact(
 	rp_id: str, passkey_origins: str | None = None, passkey_app_origins: str | None = None
 ) -> dict:

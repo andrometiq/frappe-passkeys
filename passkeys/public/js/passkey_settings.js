@@ -1,12 +1,17 @@
 // The Passkey Settings form: the banners from passkey_manage_common's settingsBanners,
-// the security-posture report and the RP-ID impact confirmation.
+// the security-posture report, the RP-ID impact confirmation and the count of an unsaved
+// enforcement choice.
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
 		if (!hasPasskeyScripts()) return frm.set_intro(missingScriptsMessage(), "red");
 		// The last-saved RP ID, for reverting a backed-out change (refresh re-fires on save).
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
-		if (!(frm.is_dirty && frm.is_dirty())) frm._passkey_rp_saved = rpCandidate(frm);
+		if (!(frm.is_dirty && frm.is_dirty())) {
+			frm._passkey_rp_saved = rpCandidate(frm);
+			frm._passkey_enforcement_saved = enforcementDraftJson(frm);
+			dropEnforcementDraft(frm);
+		}
 		var rpIdField = frm.fields_dict.passkey_rp_id;
 		if (rpIdField && rpIdField.$input) {
 			rpIdField.$input.off("blur.passkeys").on("blur.passkeys", function () {
@@ -26,17 +31,18 @@ frappe.ui.form.on("Passkey Settings", {
 		frm._passkey_rpid_suggestion = null;
 		pollEnforcementPreview(frm, frm.doc.__onload && frm.doc.__onload.passkeys_preview_after_scan);
 	},
-	// Repaint on any knob change so the banners stay live before save.
-	login_with_passkey: paintBanners,
-	passkey_as_second_factor: paintBanners,
+	// Repaint on any knob change so the banners stay live before save; the inputs the
+	// enforcement count reads also recount the unsaved choice.
+	login_with_passkey: onEnforcementInput,
+	passkey_as_second_factor: onEnforcementInput,
 	passkey_notify_on_change: paintBanners,
-	passkey_origins: paintBanners,
-	passkey_app_origins: paintBanners,
+	passkey_origins: onEnforcementInput,
+	passkey_app_origins: onEnforcementInput,
 	passkey_everyone_else: paintBanners,
 	passkey_enforce_after: paintBanners,
-	passkey_enforce_scope: paintBanners,
-	passkey_enforce_roles: paintBanners,
-	passkey_enforce_privileged_always: paintBanners,
+	passkey_enforce_scope: onEnforcementInput,
+	passkey_enforce_roles: onEnforcementInput,
+	passkey_enforce_privileged_always: onEnforcementInput,
 	passkey_enforce_incapable: paintBanners,
 	validate: function (frm) {
 		// Without the app's scripts the login page can't offer passkeys either: refuse a save that
@@ -60,7 +66,7 @@ frappe.ui.form.on("Passkey Settings", {
 	},
 	// Repaint per keystroke; the impact confirmation waits for blur (or save), so typing
 	// a new RP ID raises it once, not once per character.
-	passkey_rp_id: paintBanners,
+	passkey_rp_id: onEnforcementInput,
 });
 
 // The app's Desk bundles (hooks.py app_include_js). They are missing when the server doesn't
@@ -230,6 +236,110 @@ function pollEnforcementPreview(frm, threshold) {
 	schedule();
 }
 
+// The inputs boot.get_draft_settings reads, as the JSON a draft count sends.
+function enforcementDraftJson(frm) {
+	var doc = frm.doc;
+	function flag(value) { return Number(value) ? 1 : 0; }
+	return JSON.stringify({
+		passkey_rp_id: doc.passkey_rp_id || "",
+		passkey_origins: doc.passkey_origins || "",
+		passkey_app_origins: doc.passkey_app_origins || "",
+		login_with_passkey: flag(doc.login_with_passkey),
+		passkey_as_second_factor: flag(doc.passkey_as_second_factor),
+		passkey_enforce_scope: doc.passkey_enforce_scope || "No one",
+		passkey_enforce_privileged_always: flag(doc.passkey_enforce_privileged_always),
+		passkey_enforce_roles: frappe.passkeys_manage_common.roleNames(doc.passkey_enforce_roles).sort(),
+	});
+}
+
+// An enforcement input changed: repaint now, and count the unsaved choice in the background
+// once typing settles. Save never waits for the count.
+function onEnforcementInput(frm) {
+	if (!hasPasskeyScripts()) return;
+	paintBanners(frm);
+	if (frm._passkey_draft_timer) clearTimeout(frm._passkey_draft_timer);
+	frm._passkey_draft_timer = setTimeout(function () {
+		frm._passkey_draft_timer = null;
+		countEnforcementDraft(frm);
+	}, 1000);
+}
+
+// isRetry: the banner's Recalculate, which counts the same choice again.
+function countEnforcementDraft(frm, isRetry) {
+	var json = enforcementDraftJson(frm);
+	var current = frm._passkey_draft;
+	if (!isRetry && current && current.json === json) return;
+	dropEnforcementDraft(frm);
+	if (json === frm._passkey_enforcement_saved) return paintBanners(frm);
+	var draft = { json: json, status: "counting" };
+	frm._passkey_draft = draft;
+	// The one owner of "too long": whatever is still in flight after 30 s, the count failed.
+	draft.deadline = setTimeout(function () { settleDraft(frm, draft, null); }, 30000);
+	paintBanners(frm);
+	frappe.call({
+		method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.count_enforcement_draft",
+		args: { draft: json },
+		silent: true,
+		callback: function (r) {
+			if (!isCounting(frm, draft)) return;
+			if (r && r.message) pollDraftCount(frm, draft, r.message);
+			else settleDraft(frm, draft, null);
+		},
+		error: function () { settleDraft(frm, draft, null); },
+	});
+}
+
+// Every 3 s, until the deadline, for a count newer than queued.after_scan.
+function pollDraftCount(frm, draft, queued) {
+	draft.timer = setTimeout(function () {
+		if (!isCounting(frm, draft)) return;
+		frappe.call({
+			method: "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_enforcement_preview",
+			args: { signature: queued.signature },
+			silent: true,
+			callback: function (r) {
+				if (!isCounting(frm, draft)) return;
+				var preview = r && r.message;
+				if (preview && Number(preview.scan) > queued.after_scan) settleDraft(frm, draft, preview.count);
+				else pollDraftCount(frm, draft, queued);
+			},
+			error: function () { settleDraft(frm, draft, null); },
+		});
+	}, 3000);
+}
+
+function isCounting(frm, draft) {
+	return frm._passkey_draft === draft && draft.status === "counting";
+}
+
+// count is null when counting failed or took too long: the banner then says so, never a number.
+function settleDraft(frm, draft, count) {
+	if (!isCounting(frm, draft)) return;
+	clearTimeout(draft.deadline);
+	if (draft.timer) clearTimeout(draft.timer);
+	draft.status = count === null ? "failed" : "counted";
+	draft.count = count;
+	paintBanners(frm);
+}
+
+function dropEnforcementDraft(frm) {
+	var draft = frm._passkey_draft;
+	if (draft) {
+		clearTimeout(draft.deadline);
+		if (draft.timer) clearTimeout(draft.timer);
+	}
+	frm._passkey_draft = null;
+}
+
+// The banner's view of the unsaved choice; undefined while the form matches the saved policy.
+// Inputs not counted yet (typing has not settled) read as counting.
+function enforcementDraftContext(frm) {
+	var json = enforcementDraftJson(frm);
+	if (frm._passkey_enforcement_saved === undefined || json === frm._passkey_enforcement_saved) return undefined;
+	var draft = frm._passkey_draft;
+	return draft && draft.json === json ? { status: draft.status, count: draft.count } : { status: "counting" };
+}
+
 // The hosted explainer the report footer links to (new tab, never iframed).
 var POSTURE_THEORY_URL = "https://andrometiq.com/software/passkey/why-passkeys-are-safer/";
 
@@ -388,10 +498,13 @@ function paintBanners(frm) {
 			? linkedBanner(bannerEl(bn.level), __(bn.key), bn.link)
 			: bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
 		if (bn.muted) banner.classList.add("text-muted");
-		if (bn.action === "recalculate") {
+		if (bn.action === "recalculate" || bn.action === "recount_draft") {
 			var button = settingsElement("button", "btn btn-xs btn-default ml-2", __("Recalculate"));
 			button.type = "button";
-			button.addEventListener("click", function () { recalculateEnforcementPreview(frm, button); });
+			button.addEventListener("click", function () {
+				if (bn.action === "recount_draft") countEnforcementDraft(frm, true);
+				else recalculateEnforcementPreview(frm, button);
+			});
 			banner.appendChild(button);
 		}
 		return banner;
@@ -489,6 +602,7 @@ function buildContext(frm) {
 			count: sc.enforcement_preview.count,
 			computed_at: frappe.datetime.str_to_user(sc.enforcement_preview.computed_at),
 		},
+		enforcementDraft: enforcementDraftContext(frm),
 	};
 }
 

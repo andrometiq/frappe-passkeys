@@ -969,6 +969,7 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 	let handlers;
 	let blur;
 	const warns = [];
+	const timers = [];
 	const context = {
 		frappe: {
 			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
@@ -984,6 +985,8 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 		},
 		window: { location: { hostname: "example.com", origin: "https://example.com" } },
 		__: (text) => text,
+		setTimeout: (callback) => timers.push(callback),
+		clearTimeout: () => {},
 	};
 	vm.createContext(context);
 	vm.runInContext(fs.readFileSync(require.resolve("../../public/js/passkey_settings.js"), "utf8"), context);
@@ -1003,7 +1006,11 @@ test(`RP ID confirm waits for blur or save, and asks once (${changedRpId || "bla
 	};
 	let saves = 0;
 	handlers.refresh(frm);
-	assert.strictEqual(handlers.passkey_rp_id.name, "paintBanners", "typing only repaints the banners");
+	frm.doc.passkey_rp_id = "new.example";
+	handlers.passkey_rp_id(frm);
+	assert.strictEqual(warns.length, 0, "typing never raises the confirm");
+	assert.strictEqual(timers.length, 1, "it only queues the background count");
+	frm.doc.passkey_rp_id = "example.com";
 	// Typed but not yet debounced into the doc: blur commits the input's text first.
 	typed = changedRpId;
 	assert.strictEqual(warns.length, 0);
@@ -1165,6 +1172,183 @@ test("settings save without onload threshold repaints for the full polling windo
 	}
 	assert.strictEqual(h.calls.length, 10);
 	assert.strictEqual(h.timers.size, 0);
+});
+
+test("settingsBanners: an unsaved choice shows its own count in place of the saved one", () => {
+	const doc = { login_with_passkey: 1, passkey_enforce_scope: "All users" };
+	const saved = { enforcementPreview: { count: 7, computed_at: "2026-10-20T10:00:00" } };
+	const preview = (draft) => M.settingsBanners(doc, { ...saved, enforcementDraft: draft })
+		.filter((x) => [M.COPY.enforcePreview, M.COPY.enforcePreviewPending, M.COPY.enforceDraftCounting,
+			M.COPY.enforceDraftPreview, M.COPY.enforceDraftFailed].includes(x.key));
+	assert.deepStrictEqual(preview({ status: "counting" }),
+		[{ level: "info", key: "Counting who will be affected…", muted: true }]);
+	assert.deepStrictEqual(preview({ status: "counted", count: 0 }), [{
+		level: "info", key: "This unsaved change would require a passkey from {0} user(s) who do not have one yet.",
+		args: [0], action: "recount_draft",
+	}]);
+	assert.deepStrictEqual(preview({ status: "failed" }), [{
+		level: "warning", key: "We couldn't count who will be affected. Check the user list before saving.",
+		action: "recount_draft",
+	}]);
+	assert.deepStrictEqual(preview(undefined).map((x) => x.key), [M.COPY.enforcePreview], "no draft: the saved count");
+	const off = M.settingsBanners({ ...doc, login_with_passkey: 0 }, { enforcementDraft: { status: "counting" } });
+	assert.ok(!off.some((x) => x.key === M.COPY.enforceDraftCounting), "nothing to count while passkeys are off");
+});
+
+const SETTINGS_API = "passkeys.passkeys.doctype.passkey_settings.passkey_settings.";
+
+function draftForm(doc) {
+	const calls = [];
+	const timers = new Map();
+	let timerId = 0;
+	let handlers;
+	const context = {
+		frappe: {
+			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
+			passkeys_manage_common: M,
+			passkeys_common: require("../../public/js/passkey_common.bundle.js"),
+			call: (options) => { calls.push(options); },
+			boot: { passkeys: {} },
+		},
+		window: { location: { hostname: "example.com", origin: "https://example.com" } },
+		__: (text) => text,
+		setTimeout: (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; },
+		clearTimeout: (id) => timers.delete(id),
+	};
+	require("node:vm").createContext(context);
+	require("node:vm").runInContext(require("node:fs").readFileSync(
+		require.resolve("../../public/js/passkey_settings.js"), "utf8"
+	), context);
+	context.paintBanners = () => {};
+	context.fetchResolvedRpId = () => {};
+	context.fetchSettingsContext = () => {};
+	context.fetchSecurityPosture = () => {};
+	context.pickupRpSuggestion = () => {};
+	let dirty = false;
+	const frm = {
+		doc: {
+			passkey_rp_id: "example.com", passkey_origins: "https://example.com", login_with_passkey: 1,
+			passkey_enforce_scope: "No one", passkey_enforce_privileged_always: 1, passkey_enforce_roles: [],
+			...doc,
+		},
+		fields_dict: {},
+		is_dirty: () => dirty,
+	};
+	handlers.refresh(frm);
+	dirty = true;
+	return { context, frm, handlers, calls, timers, draft: () => context.buildContext(frm).enforcementDraft,
+		tick(delay) { // fire the one pending timer of this delay
+			const due = [...timers].filter(([, timer]) => timer.delay === delay);
+			assert.strictEqual(due.length, 1);
+			timers.delete(due[0][0]);
+			due[0][1].callback();
+		} };
+}
+
+test("an unsaved enforcement choice is counted in the background, then shown", () => {
+	const h = draftForm();
+	assert.strictEqual(h.draft(), undefined, "the saved policy needs no draft count");
+	h.frm.doc.passkey_enforce_scope = "Selected roles";
+	h.frm.doc.passkey_enforce_roles = [{ role: "Sales User" }, { role: "Accounts User" }];
+	h.handlers.passkey_enforce_scope(h.frm);
+	h.handlers.passkey_enforce_roles(h.frm);
+	assert.strictEqual(h.calls.length, 0, "nothing is asked while the admin is still choosing");
+	assert.strictEqual(h.draft().status, "counting");
+	h.tick(1000);
+	assert.strictEqual(h.calls.length, 1);
+	const count = h.calls.shift();
+	assert.strictEqual(count.method, SETTINGS_API + "count_enforcement_draft");
+	assert.strictEqual(count.silent, true);
+	assert.deepStrictEqual(JSON.parse(count.args.draft), {
+		passkey_rp_id: "example.com", passkey_origins: "https://example.com", passkey_app_origins: "",
+		login_with_passkey: 1, passkey_as_second_factor: 0, passkey_enforce_scope: "Selected roles",
+		passkey_enforce_privileged_always: 1, passkey_enforce_roles: ["Accounts User", "Sales User"],
+	});
+	count.callback({ message: { signature: "0123456789abcdef", after_scan: 5 } });
+	h.tick(3000);
+	const stale = h.calls.shift();
+	assert.strictEqual(stale.method, SETTINGS_API + "get_enforcement_preview");
+	assert.deepStrictEqual({ ...stale.args }, { signature: "0123456789abcdef" });
+	stale.callback({ message: { count: 9, scan: 5, computed_at: "2026-10-20 09:00:00" } });
+	assert.strictEqual(h.draft().status, "counting", "an older count of this choice is not its count");
+	h.tick(3000);
+	h.calls.shift().callback({ message: { count: 42, scan: 6, computed_at: "2026-10-20 10:00:00" } });
+	assert.deepStrictEqual({ ...h.draft() }, { status: "counted", count: 42 });
+	assert.strictEqual(h.timers.size, 0);
+	// The same choice again asks nothing; Recalculate on its banner counts it again.
+	h.handlers.passkey_enforce_privileged_always(h.frm);
+	h.tick(1000);
+	assert.strictEqual(h.calls.length, 0);
+	h.context.countEnforcementDraft(h.frm, true);
+	assert.strictEqual(h.calls.length, 1);
+	assert.strictEqual(h.draft().status, "counting");
+});
+
+for (const failure of ["count error", "empty answer", "poll error", "no count in 30 s", "no answer in 30 s"]) {
+	test(`a draft count that fails says so instead of a number (${failure})`, () => {
+		const h = draftForm();
+		h.frm.doc.passkey_enforce_scope = "All users";
+		h.handlers.passkey_enforce_scope(h.frm);
+		h.tick(1000);
+		const count = h.calls.shift();
+		if (failure === "count error") count.error({ exc_type: "QueueOverloaded" });
+		else if (failure === "empty answer") count.callback({});
+		else if (failure === "no answer in 30 s") h.tick(30000);
+		else {
+			count.callback({ message: { signature: "0123456789abcdef", after_scan: 5 } });
+			if (failure === "poll error") {
+				h.tick(3000);
+				h.calls.shift().error({});
+			} else {
+				for (let i = 0; i < 9; i++) {
+					h.tick(3000);
+					h.calls.shift().callback({ message: { count: 3, scan: 5 } });
+				}
+				h.tick(30000);
+			}
+		}
+		assert.deepStrictEqual({ ...h.draft() }, { status: "failed", count: null });
+		assert.strictEqual(h.timers.size, 0, "no poll or deadline left running");
+		assert.strictEqual(h.calls.length, 0);
+		if (failure === "no answer in 30 s") {
+			count.callback({ message: { signature: "0123456789abcdef", after_scan: 5 } });
+			assert.strictEqual(h.timers.size, 0, "a late answer changes nothing");
+			assert.strictEqual(h.draft().status, "failed");
+		}
+	});
+}
+
+test("a changed or reverted choice drops the count in flight; save never waits for it", () => {
+	const h = draftForm();
+	h.frm.doc.passkey_enforce_scope = "All users";
+	h.handlers.passkey_enforce_scope(h.frm);
+	h.tick(1000);
+	const first = h.calls.shift();
+	first.callback({ message: { signature: "0123456789abcdef", after_scan: 5 } });
+	h.frm.doc.passkey_enforce_privileged_always = 0;
+	h.handlers.passkey_enforce_privileged_always(h.frm);
+	assert.strictEqual(h.draft().status, "counting", "a new choice is not the old one's count");
+	h.tick(1000);
+	const pending = () => [...h.timers.values()].map((timer) => timer.delay);
+	assert.deepStrictEqual(pending(), [30000], "the new count stops the old one's poll and deadline");
+	const second = h.calls.shift();
+	assert.strictEqual(JSON.parse(second.args.draft).passkey_enforce_privileged_always, 0);
+	first.callback({ message: { signature: "0123456789abcdef", after_scan: 5 } });
+	assert.deepStrictEqual(pending(), [30000], "a late answer for the old choice starts no poll");
+
+	h.context.frappe.validated = true;
+	h.handlers.validate(h.frm);
+	assert.strictEqual(h.context.frappe.validated, true, "a count in flight never holds up Save");
+
+	h.frm.doc.passkey_enforce_scope = "No one";
+	h.frm.doc.passkey_enforce_privileged_always = 1;
+	h.handlers.passkey_enforce_scope(h.frm);
+	assert.strictEqual(h.draft(), undefined, "back to the saved policy: its own count shows");
+	h.tick(1000);
+	assert.strictEqual(h.calls.length, 0);
+	second.callback({ message: { signature: "fedcba9876543210", after_scan: 5 } });
+	assert.strictEqual(h.timers.size, 0);
+	assert.strictEqual(h.frm._passkey_draft, null);
 });
 
 test("RP provenance determines staleness, independently of enabled and flagged", () => {

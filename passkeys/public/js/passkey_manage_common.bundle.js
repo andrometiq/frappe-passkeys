@@ -164,6 +164,10 @@
 		enforcePreview:
 			"The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}.",
 		enforcePreviewPending: "Not counted yet",
+		enforceDraftCounting: "Counting who will be affected…",
+		enforceDraftPreview:
+			"This unsaved change would require a passkey from {0} user(s) who do not have one yet.",
+		enforceDraftFailed: "We couldn't count who will be affected. Check the user list before saving.",
 	};
 
 	// {0}/{1} placeholders; the caller translates first.
@@ -452,8 +456,10 @@
 				banners.push({ level: "warning", key: COPY.enforceBlockIncapable });
 			}
 			var preview = ctx.enforcementPreview; // undefined until the form has fetched it
+			var draft = ctx.enforcementDraft; // {status, count} while the form differs from the saved policy
 			// Nobody is required while passkeys are off, so there is nothing to count yet.
-			if (anyMode && preview !== undefined) banners.push({
+			if (anyMode && draft) banners.push(draftPreviewBanner(draft));
+			else if (anyMode && preview !== undefined) banners.push({
 				level: "info",
 				key: preview ? COPY.enforcePreview : COPY.enforcePreviewPending,
 				args: preview ? [preview.count, preview.computed_at] : [],
@@ -467,6 +473,15 @@
 		}
 
 		return banners;
+	}
+
+	// The unsaved choice's count: counting, counted, or failed (an error or no count within ~30 s).
+	function draftPreviewBanner(draft) {
+		if (draft.status === "counted") {
+			return { level: "info", key: COPY.enforceDraftPreview, args: [draft.count], action: "recount_draft" };
+		}
+		if (draft.status === "failed") return { level: "warning", key: COPY.enforceDraftFailed, action: "recount_draft" };
+		return { level: "info", key: COPY.enforceDraftCounting, muted: true };
 	}
 
 	// A Table MultiSelect value (child rows or strings) as role names.

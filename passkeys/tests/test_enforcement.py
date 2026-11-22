@@ -12,7 +12,7 @@ import frappe
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime, nowdate
 
 from passkeys import boot, enforcement_admin, notifications, passkey, state
-from passkeys.errors import ImpersonatedSessionRefused
+from passkeys.errors import ImpersonatedSessionRefused, PasskeyServedByCore
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.passkeys.doctype.passkey_settings import passkey_settings
 from passkeys.tests.committed_state import delete_fixture, restore_rows
@@ -513,7 +513,12 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		cache_key.start()
 		self.addCleanup(cache_key.stop)
 		self.addCleanup(frappe.cache.delete, frappe.cache.make_key(key))
-		for method in ("get_settings_context", "recalculate_enforcement_preview"):
+		for method in (
+			"get_settings_context",
+			"recalculate_enforcement_preview",
+			"count_enforcement_draft",
+			"get_enforcement_preview",
+		):
 			key = f"{state.RATE_LIMIT_PREFIX}{method}:Administrator"
 			state.clear_counter(key)
 			self.addCleanup(state.clear_counter, key)
@@ -523,6 +528,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		sign_in("Administrator")
 		with (
 			patch.object(boot, "refresh_enforcement_preview") as preview,
+			patch.object(boot, "count_users_to_enroll") as count,
 			patch.object(frappe, "get_all") as scan,
 			patch.object(frappe, "enqueue") as enqueue,
 		):
@@ -530,6 +536,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		self.assertIsNone(context["enforcement_preview"])
 		self.assertNotIn("configured_site_origin", context)
 		preview.assert_not_called()
+		count.assert_not_called()
 		scan.assert_not_called()
 		enqueue.assert_not_called()
 
@@ -597,23 +604,20 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 
 	def test_earlier_scan_finishing_last_keeps_later_same_policy_result(self):
 		self._clear_preview_cache()
-		user = self._user()
 		earlier = "2026-10-20 10:00:00.000000"
 		later = "2026-10-20 09:00:00.000000"
 
-		def scan(doctype, **kwargs):
-			if doctype == "WebAuthn Credential":
-				return []
+		def scan(settings, site_rp_id):
 			with (
 				patch.object(frappe.utils, "now", return_value=later),
-				patch.object(frappe, "get_all", side_effect=[[user], [user]]),
+				patch.object(boot, "count_users_to_enroll", return_value=0),
 			):
 				boot.refresh_enforcement_preview()
-			return [user]
+			return 1
 
 		with (
 			patch.object(frappe.utils, "now", return_value=earlier),
-			patch.object(frappe, "get_all", side_effect=scan),
+			patch.object(boot, "count_users_to_enroll", side_effect=scan),
 		):
 			boot.refresh_enforcement_preview()
 		self.assertEqual(
@@ -623,12 +627,11 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 
 	def test_later_scan_replaces_earlier_result_when_clock_goes_backwards(self):
 		self._clear_preview_cache()
-		user = self._user()
 		earlier = "2026-10-20 10:00:00.000000"
 		later = "2026-10-20 09:00:00.000000"
 		with (
 			patch.object(frappe.utils, "now", return_value=earlier),
-			patch.object(frappe, "get_all", side_effect=[[], [user]]),
+			patch.object(boot, "count_users_to_enroll", return_value=1),
 		):
 			boot.refresh_enforcement_preview()
 		self.assertEqual(
@@ -637,7 +640,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		)
 		with (
 			patch.object(frappe.utils, "now", return_value=later),
-			patch.object(frappe, "get_all", side_effect=[[user], [user]]),
+			patch.object(boot, "count_users_to_enroll", return_value=0),
 		):
 			boot.refresh_enforcement_preview()
 		self.assertEqual(
@@ -647,48 +650,42 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 
 	def test_reset_drops_an_inflight_scan_after_a_new_scan_publishes(self):
 		self._clear_preview_cache()
-		user = self._user()
 		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
 		frappe.cache.hincrby(name, "seq", 49)
 
-		def scan(doctype, **kwargs):
-			if doctype == "WebAuthn Credential":
-				return []
+		def scan(settings, site_rp_id):
 			self.assertEqual(boot.get_enforcement_preview_scan(), 50)
 			frappe.cache.delete(name)
-			with patch.object(frappe, "get_all", side_effect=[[user], [user]]):
+			with patch.object(boot, "count_users_to_enroll", return_value=0):
 				boot.refresh_enforcement_preview()
 			self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
-			return [user]
+			return 1
 
-		with patch.object(frappe, "get_all", side_effect=scan):
+		with patch.object(boot, "count_users_to_enroll", side_effect=scan):
 			boot.refresh_enforcement_preview()
 		preview = boot.settings_banner_context()["enforcement_preview"]
 		self.assertEqual((preview["count"], preview["scan"]), (0, 1))
 
 	def test_scan_from_before_a_reset_never_publishes_even_with_a_reused_number(self):
 		self._clear_preview_cache()
-		user = self._user()
 		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
 
-		def scan(doctype, **kwargs):
-			if doctype == "WebAuthn Credential":
-				return []
+		def scan(settings, site_rp_id):
 			# Reset mid-scan, then enough new scans that the in-flight number (1) is reused.
 			frappe.cache.delete(name)
-			with patch.object(frappe, "get_all", side_effect=[[user], [user]] * 2):
+			with patch.object(boot, "count_users_to_enroll", return_value=0):
 				boot.refresh_enforcement_preview()
 				boot.refresh_enforcement_preview()
-			return [user]
+			return 1
 
-		with patch.object(frappe, "get_all", side_effect=scan):
+		with patch.object(boot, "count_users_to_enroll", side_effect=scan):
 			boot.refresh_enforcement_preview()
 		preview = boot.settings_banner_context()["enforcement_preview"]
 		self.assertEqual((preview["count"], preview["scan"]), (0, 2))
 
 	def test_reset_removes_previous_results_and_scan_counter(self):
 		self._clear_preview_cache()
-		with patch.object(frappe, "get_all", return_value=[]):
+		with patch.object(boot, "count_users_to_enroll", return_value=0):
 			boot.refresh_enforcement_preview()
 		self.assertIsNotNone(boot.settings_banner_context()["enforcement_preview"])
 		self.assertEqual(boot.get_enforcement_preview_scan(), 1)
@@ -717,7 +714,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		):
 			with self.subTest(settings=settings):
 				self._set(**settings)
-				with patch.object(frappe, "get_all") as scan:
+				with patch.object(boot, "count_users_to_enroll") as scan:
 					boot.refresh_enforcement_preview()
 				scan.assert_not_called()
 				self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["count"], 0)
@@ -726,7 +723,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		with (
 			patch.object(boot, "dormant", return_value=True),
 			patch.object(frappe, "get_doc") as settings,
-			patch.object(frappe, "get_all") as scan,
+			patch.object(boot, "count_users_to_enroll") as scan,
 		):
 			boot.refresh_enforcement_preview()
 		settings.assert_not_called()
@@ -741,7 +738,10 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		):
 			frappe.get_doc("Passkey Settings").save(ignore_permissions=True)
 			enqueue.assert_called_once_with(
-				"passkeys.boot.refresh_enforcement_preview", queue="long", enqueue_after_commit=True
+				"passkeys.boot.refresh_enforcement_preview",
+				queue="long",
+				enqueue_after_commit=True,
+				draft=None,
 			)
 			enqueue.reset_mock()
 			self.assertEqual(boot.get_enforcement_preview_scan(), 0)
@@ -802,32 +802,248 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 	def test_settings_preview_endpoints_enforce_rate_limits(self):
 		self._clear_preview_cache()
 		sign_in("Administrator")
-		for endpoint, limit, operation in (
-			(passkey_settings.get_settings_context, 30, "settings_banner_context"),
-			(passkey_settings.recalculate_enforcement_preview, 3, "enqueue_enforcement_preview"),
+		draft = json.dumps(self._draft())
+		for endpoint, args, limit, operation in (
+			(passkey_settings.get_settings_context, (), 30, "settings_banner_context"),
+			(passkey_settings.recalculate_enforcement_preview, (), 3, "enqueue_enforcement_preview"),
+			(passkey_settings.count_enforcement_draft, (draft,), 20, "count_enforcement_draft"),
+			(passkey_settings.get_enforcement_preview, ("0" * 16,), 30, "get_enforcement_preview"),
 		):
 			with self.subTest(endpoint=endpoint.__name__), patch.object(boot, operation) as action:
 				for _ in range(limit):
-					endpoint()
+					endpoint(*args)
 				self.assertEqual(action.call_count, limit)
 				with self.assertRaises(frappe.TooManyRequestsError):
-					endpoint()
+					endpoint(*args)
 				self.assertEqual(action.call_count, limit)
 
 	def test_settings_preview_endpoints_refuse_non_system_managers(self):
+		self._clear_preview_cache()
 		sign_in(self._user())
 		# v15's frappe.only_for is a no-op while flags.in_test is set.
 		saved_in_test = getattr(frappe.flags, "in_test", False)
 		frappe.flags.in_test = False
 		self.addCleanup(setattr, frappe.flags, "in_test", saved_in_test)
 		with patch.object(frappe, "enqueue") as enqueue:
-			for endpoint in (
-				passkey_settings.get_settings_context,
-				passkey_settings.recalculate_enforcement_preview,
+			for endpoint, args in (
+				(passkey_settings.get_settings_context, ()),
+				(passkey_settings.recalculate_enforcement_preview, ()),
+				(passkey_settings.count_enforcement_draft, (json.dumps(self._draft()),)),
+				(passkey_settings.get_enforcement_preview, ("0" * 16,)),
 			):
 				with self.subTest(endpoint=endpoint.__name__), self.assertRaises(frappe.PermissionError):
-					endpoint()
+					endpoint(*args)
 		enqueue.assert_not_called()
+
+	# ---- unsaved (draft) choice --------------------------------------
+
+	def _draft(self, **overrides) -> dict:
+		"""The form's enforcement inputs as passkey_settings.js sends them."""
+		return {
+			"passkey_rp_id": RP_ID,
+			"passkey_origins": "https://example.com",
+			"passkey_app_origins": "",
+			"login_with_passkey": 1,
+			"passkey_as_second_factor": 0,
+			"passkey_enforce_scope": "All users",
+			"passkey_enforce_privileged_always": 1,
+			"passkey_enforce_roles": [],
+			**overrides,
+		}
+
+	def _role(self, name: str, desk_access: int = 1) -> str:
+		frappe.get_doc({"doctype": "Role", "role_name": name, "desk_access": desk_access}).insert(
+			ignore_permissions=True
+		)
+		self.addCleanup(
+			delete_fixture, "Role", name, force=1, ignore_permissions=True, delete_permanently=True
+		)
+		return name
+
+	def test_draft_count_runs_in_the_background_and_leaves_the_saved_policy_alone(self):
+		self._clear_preview_cache()
+		role = self._role("Passkeys Draft Test Role")
+		self._user([role])
+		make_credential(self._user([role]))  # has a passkey: not counted
+		self._set(passkey_enforce_scope="No one", passkey_enforce_privileged_always=0)
+		sign_in("Administrator")
+		draft = self._draft(
+			passkey_enforce_scope="Selected roles",
+			passkey_enforce_privileged_always=0,
+			passkey_enforce_roles=[role],
+		)
+		with (
+			patch.object(frappe, "enqueue") as enqueue,
+			patch.object(boot, "count_users_to_enroll", wraps=boot.count_users_to_enroll) as count,
+		):
+			queued = passkey_settings.count_enforcement_draft(json.dumps(draft))
+			count.assert_not_called()  # the request only queues
+			enqueue.assert_called_once_with(
+				"passkeys.boot.refresh_enforcement_preview",
+				queue="short",
+				enqueue_after_commit=True,
+				draft=draft,
+			)
+			self.assertEqual(queued["after_scan"], 0)
+			self.assertIsNone(passkey_settings.get_enforcement_preview(queued["signature"]))
+			boot.refresh_enforcement_preview(draft=enqueue.call_args.kwargs["draft"])  # the worker
+			count.assert_called_once()
+		preview = passkey_settings.get_enforcement_preview(queued["signature"])
+		self.assertEqual(preview["count"], 1)
+		self.assertGreater(preview["scan"], queued["after_scan"])
+		self.assertIsNone(boot.settings_banner_context()["enforcement_preview"])
+		self.assertEqual(frappe.db.get_single_value("Passkey Settings", "passkey_enforce_scope"), "No one")
+
+		# Saving that choice makes it the saved policy: the same signature and count.
+		self._set(passkey_enforce_scope="Selected roles")
+		self._set_enforced_roles(role)
+		self.assertEqual(boot.settings_banner_context()["enforcement_preview"], preview)
+
+	def test_draft_count_refuses_malformed_drafts(self):
+		self._clear_preview_cache()
+		sign_in("Administrator")
+		draft = self._draft()
+		missing = dict(draft)
+		del missing["passkey_enforce_roles"]
+		for value in (
+			"not json",
+			json.dumps(["All users"]),
+			json.dumps(missing),
+			json.dumps({**draft, "passkey_enforce_grace_logins": 0}),
+			json.dumps({**draft, "passkey_enforce_scope": "Everyone"}),
+			json.dumps({**draft, "login_with_passkey": "1"}),
+			json.dumps({**draft, "passkey_rp_id": None}),
+			json.dumps({**draft, "passkey_enforce_roles": "System Manager"}),
+			json.dumps({**draft, "passkey_enforce_roles": [""]}),
+			json.dumps({**draft, "passkey_enforce_roles": [{"role": "System Manager"}]}),
+			json.dumps({**draft, "passkey_rp_id": "https://example.com"}),
+		):
+			with (
+				self.subTest(value=value),
+				patch.object(frappe, "enqueue") as enqueue,
+				self.assertRaises(frappe.ValidationError),
+			):
+				passkey_settings.count_enforcement_draft(value)
+			enqueue.assert_not_called()
+		with self.assertRaises(frappe.ValidationError):
+			boot.refresh_enforcement_preview(draft=missing)
+		for signature in ("", "0" * 15, "A" * 16, "../" + "0" * 13):
+			with self.subTest(signature=signature), self.assertRaises(frappe.ValidationError):
+				passkey_settings.get_enforcement_preview(signature)
+		self.assertRaises(frappe.ValidationError, boot.get_enforcement_preview, None)
+
+	def test_draft_count_reports_a_full_queue(self):
+		self._clear_preview_cache()
+		sign_in("Administrator")
+		with (
+			patch.object(frappe.local, "message_log", []),
+			patch.dict(frappe.flags, {"mute_messages": False}),
+			patch(
+				"frappe.utils.background_jobs._check_queue_size", side_effect=self._full_preview_queue
+			) as capacity,
+			self.assertRaisesRegex(frappe.QueueOverloaded, "count could not start"),
+		):
+			passkey_settings.count_enforcement_draft(json.dumps(self._draft()))
+		capacity.assert_called_once()
+
+	def test_draft_endpoints_refuse_when_core_serves_passkeys(self):
+		sign_in("Administrator")
+		with patch("passkeys.install.is_core_native", return_value=True):
+			for endpoint, args in (
+				(passkey_settings.count_enforcement_draft, (json.dumps(self._draft()),)),
+				(passkey_settings.get_enforcement_preview, ("0" * 16,)),
+			):
+				with self.subTest(endpoint=endpoint.__name__), self.assertRaises(PasskeyServedByCore):
+					endpoint(*args)
+
+	# ---- the set query agrees with the per-user rule -----------------
+
+	def _users_by_rule(self, settings) -> set[str]:
+		"""The per-user count this query replaced, kept as the reference."""
+		enrolled = set(
+			frappe.get_all("WebAuthn Credential", filters={"enabled": 1, "rp_id": RP_ID}, pluck="user")
+		)
+		return {
+			user
+			for user in frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+			if user != "Guest" and user not in enrolled and boot._user_in_enforce_scope(user, settings)
+		}
+
+	def test_set_query_matches_the_per_user_rule(self):
+		role = self._role("Passkeys Scope Role A")
+		other = self._role("Passkeys Scope Role B")
+		portal = self._role("Passkeys Portal Role", desk_access=0)
+		users = {
+			"role": self._user([role]),
+			"other": self._user([other]),
+			"both": self._user([role, other]),
+			"manager": self._user(["System Manager"]),
+			"website": self._user(),
+			"portal": self._user([portal]),
+			"disabled": self._user([role]),
+			"exempt": self._user([role, "System Manager"]),
+			"marker_not_1": self._user([role]),
+			"enrolled": self._user([role]),
+			"stale": self._user([role]),
+			"disabled_passkey": self._user([role]),
+			"automatic_rows": self._user(),
+		}
+		frappe.db.set_value("User", users["disabled"], "enabled", 0)
+		boot.set_exempt(users["exempt"], True)
+		self.addCleanup(boot.set_exempt, users["exempt"], False)
+		frappe.db.set_default(f"{users['marker_not_1']}_passkey_exempt", "0", parent=DEFAULTS_PARENT)
+		self.addCleanup(boot.set_exempt, users["marker_not_1"], False)
+		make_credential(users["enrolled"])
+		make_credential(users["stale"], rp_id="old.example.com")
+		make_credential(users["disabled_passkey"], enabled=0)
+		# Rows for automatic roles count only for Administrator; get_roles drops them for others.
+		for automatic in ("Desk User", "Administrator", "All"):
+			frappe.get_doc(
+				{
+					"doctype": "Has Role",
+					"parent": users["automatic_rows"],
+					"parenttype": "User",
+					"parentfield": "roles",
+					"role": automatic,
+				}
+			).db_insert()
+		frappe.clear_cache(user=users["automatic_rows"])
+		self.assertEqual(frappe.db.get_value("User", users["portal"], "user_type"), "Website User")
+		self.assertEqual(frappe.db.get_value("User", users["role"], "user_type"), "System User")
+
+		for scope, privileged, roles in (
+			("All users", 1, []),
+			("All users", 0, []),
+			("No one", 1, []),
+			("No one", 0, []),
+			("Selected roles", 0, []),
+			("Selected roles", 1, []),
+			("Selected roles", 0, [role]),
+			("Selected roles", 1, [role, other]),
+			("Selected roles", 0, [portal]),
+			("Selected roles", 0, ["System Manager"]),
+			("Selected roles", 0, ["All"]),
+			("Selected roles", 0, ["Guest"]),
+			("Selected roles", 0, ["Desk User"]),
+			("Selected roles", 0, ["Administrator"]),
+			("Selected roles", 0, [other, "Desk User"]),
+		):
+			settings = frappe.get_doc("Passkey Settings")
+			settings.passkey_enforce_scope = scope
+			settings.passkey_enforce_privileged_always = privileged
+			settings.set("passkey_enforce_roles", [{"role": name} for name in roles])
+			expected = self._users_by_rule(settings)
+			query = boot.users_to_enroll_query(settings, RP_ID)
+			with self.subTest(scope=scope, privileged=privileged, roles=roles):
+				names = query.run(pluck=True) if query else []
+				self.assertEqual((set(names), len(names)), (expected, len(expected)))
+				self.assertEqual(boot.count_users_to_enroll(settings, RP_ID), len(expected))
+			if (scope, roles) == ("Selected roles", [role]):
+				# The seeds exercise the rule: roles, exemption, disabled users and passkeys.
+				counted = {
+					users[key] for key in ("role", "both", "marker_not_1", "stale", "disabled_passkey")
+				}
+				self.assertEqual(expected & set(users.values()), counted)
 
 	def test_administrator_scope_uses_assigned_roles_not_every_role(self):
 		# get_roles("Administrator") returns every Role, which used to put Administrator

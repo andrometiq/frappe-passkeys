@@ -309,6 +309,8 @@ password attempt.
 | `get_security_posture` | 30 / min |
 | `get_settings_context` | 30 / min |
 | `recalculate_enforcement_preview` | 3 / min |
+| `count_enforcement_draft` | 20 / min |
+| `get_enforcement_preview` | 30 / min |
 | `get_rp_id_change_impact` | 30 / min |
 | `remove_stale_passkeys` | 3 / min |
 | `get_user_enforcement_admin` | 60 / min |
