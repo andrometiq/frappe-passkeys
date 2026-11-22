@@ -85,16 +85,17 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 			policy.validate_app_origins(self)
 
 	def _validate_numeric_bounds(self):
-		for fieldname, maximum, label in (
-			("passkey_max_per_user", 100, _("Maximum Passkeys per User")),
-			("passkey_nudge_cooldown_days", 365, _("Days between prompts")),
-			("passkey_nudge_max_prompts", 100, _("Maximum prompts per user")),
-			("passkey_enforce_grace_logins", 100, _("Grace sign-ins")),
-			("passkey_reauth_window", 3600, _("Re-authentication Window (Seconds)")),
+		for fieldname, maximum in (
+			("passkey_max_per_user", 100),
+			("passkey_nudge_cooldown_days", 365),
+			("passkey_nudge_max_prompts", 100),
+			("passkey_enforce_grace_logins", 100),
+			("passkey_reauth_window", 3600),
 		):
 			if not 0 <= cint(self.get(fieldname)) <= maximum:
 				frappe.throw(
-					_("{0} must be between 0 and {1}.").format(label, maximum), frappe.ValidationError
+					_("'{0}' must be between 0 and {1}.").format(_(self.meta.get_label(fieldname)), maximum),
+					frappe.ValidationError,
 				)
 
 	def _validate_second_factor_floor(self):

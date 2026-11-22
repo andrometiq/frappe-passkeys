@@ -170,11 +170,12 @@ class TestDocTypeSchemas(PasskeyTestCase):
 
 	def test_messages_quote_only_labels_the_forms_show(self):
 		"""A setting named in quotes in a message is one the admin can find: a field label on
-		these forms, or a Passkey Settings option."""
-		names = {"All", "Passwordless login only"}  # the role; the switch on /passkeys
+		these forms, or a Passkey Settings option. A field is never named by a bare label."""
+		labels = set()
 		for doctype in ("Passkey Settings", "System Settings", "WebAuthn User Handle"):
 			fields = frappe.get_meta(doctype).fields
-			names.update(field.label for field in fields if field.fieldtype not in display_fieldtypes)
+			labels.update(field.label for field in fields if field.fieldtype not in display_fieldtypes)
+		names = labels | {"All", "Passwordless login only"}  # the role; the switch on /passkeys
 		for field in frappe.get_meta("Passkey Settings").fields:
 			if field.fieldtype == "Select":
 				names.update(field.options.split("\n"))
@@ -189,6 +190,16 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			if name not in names
 		]
 		self.assertEqual(unknown, [])
+		# A bare translatable label names a field without the quotes this check reads; take the
+		# label from the meta and quote it in the message instead.
+		translatable = re.compile(r"(?<!\w)_{1,2}\(\s*\"([^\"\n]+)\"\s*\)")
+		bare = [
+			f"{path.relative_to(app)}: {name}"
+			for path in sources
+			for name in translatable.findall(path.read_text(encoding="utf-8"))
+			if name in labels
+		]
+		self.assertEqual(bare, [])
 
 
 class TestWebAuthnCredential(PasskeyTestCase):
@@ -608,7 +619,10 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 						**{fieldname: value},
 					)
 					if value < 0 or value > maximum:
-						with self.assertRaisesRegex(frappe.ValidationError, "must be between"):
+						label = frappe.get_meta("Passkey Settings").get_label(fieldname)
+						with self.assertRaisesRegex(
+							frappe.ValidationError, re.escape(f"'{label}' must be between 0 and {maximum}.")
+						):
 							doc.save()
 					else:
 						doc.save()
