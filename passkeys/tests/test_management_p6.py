@@ -333,7 +333,7 @@ class AdminInterlockTest(_Base):
 
 class RevocationSignOutTest(_Base):
 	"""Someone else disabling or deleting a passkey ends every session of its owner; the
-	actor keeps theirs. The owner revoking their own passkey ends no session."""
+	actor keeps theirs. The owner revoking their own passkey ends their other sessions."""
 
 	def setUp(self):
 		super().setUp()
@@ -381,7 +381,7 @@ class RevocationSignOutTest(_Base):
 		self.assertEqual(
 			self.sent[-1]["message"],
 			"The passkey “Test Passkey” on your account was disabled by an administrator on"
-			" erp.example.com. You can no longer sign in with it. You were also signed out everywhere."
+			" erp.example.com. You can no longer sign in with it. You may need to sign in again."
 			" Contact your administrator if this was unexpected.",
 		)
 
@@ -394,20 +394,74 @@ class RevocationSignOutTest(_Base):
 		self.assertEqual(
 			self.sent[-1]["message"],
 			"An administrator removed the passkey “Test Passkey” from your account on erp.example.com."
-			" It no longer works there. You were also signed out everywhere. If your phone, computer or"
+			" It no longer works there. You may need to sign in again. If your phone, computer or"
 			" password manager still lists it, delete it there too. If you didn't expect this, contact"
 			" your administrator.",
 		)
 
-	def test_the_owner_revoking_their_own_passkey_keeps_their_sessions(self):
-		disabled, removed = make_credential(self.owner), make_credential(self.owner)
-		self._sign_in_for_real(self.owner)
-		self._sign_in_for_real(self.owner)
-		doc = frappe.get_doc("WebAuthn Credential", disabled.name)
-		doc.enabled = 0
-		doc.save(ignore_permissions=True)
-		frappe.delete_doc("WebAuthn Credential", removed.name, ignore_permissions=True)
-		self.assertEqual(self._sessions(self.owner), 2)
+	def _sign_in_on_another_connection(self, user: str) -> None:
+		"""A sign-in committed by another request, as a login holding the credential lock does
+		while the revoking request waits for it."""
+		sid = frappe.generate_hash()
+		conf = frappe.conf
+		other = frappe.database.get_db(
+			host=conf.db_host,
+			port=conf.db_port,
+			user=conf.db_user or conf.db_name,
+			password=conf.db_password,
+			cur_db_name=conf.db_name,
+		)
+		try:
+			other.sql(
+				"insert into tabSessions (sid, user, sessiondata, lastupdate, status) values (%s, %s, %s, %s, %s)",
+				(sid, user, "{}", frappe.utils.now(), "Active"),
+			)
+			other.commit()
+		finally:
+			other.close()
+		self.addCleanup(frappe.db.commit)
+		self.addCleanup(frappe.db.sql, "delete from tabSessions where sid=%s", sid)
+
+	def test_a_sign_in_committed_after_the_revoking_request_began_is_ended_too(self):
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.actor)
+				frappe.db.sql("select count(*) from tabSessions")  # the revoking request's first read
+				self._sign_in_on_another_connection(self.owner)
+				if action == "disable":
+					doc = frappe.get_doc("WebAuthn Credential", cred.name)
+					doc.enabled = 0
+					doc.save(ignore_permissions=True)
+				else:
+					frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+				frappe.db.commit()  # count the table as it is now, not through this request's snapshot
+				self.assertEqual(self._sessions(self.owner), 0)
+
+	def _session_ids(self, user: str) -> list[str]:
+		return frappe.db.sql_list("select sid from tabSessions where user=%s", user)
+
+	def _current_session_id(self) -> str:
+		"""The current session's id as the Sessions table stores it (hashed from v16)."""
+		return getattr(frappe.sessions, "hash_sid", lambda sid: sid)(frappe.session.sid)
+
+	def test_the_owner_revoking_their_own_passkey_ends_their_other_sessions(self):
+		"""A lost device's session ends when its owner revokes that passkey from another device;
+		the session they are using stays, so the email doesn't say they were signed out."""
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)  # the lost device
+				self._sign_in_for_real(self.owner)  # the device in hand
+				current = self._current_session_id()
+				if action == "disable":
+					doc = frappe.get_doc("WebAuthn Credential", cred.name)
+					doc.enabled = 0
+					doc.save(ignore_permissions=True)
+				else:
+					frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+				self.assertEqual(self._session_ids(self.owner), [current])
+				self.assertEqual(frappe.session.user, self.owner)
 		self.assertEqual(
 			[mail["message"] for mail in self.sent],
 			[

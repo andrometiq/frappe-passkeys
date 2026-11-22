@@ -35,6 +35,7 @@ def begin_registration(flow: str = "explicit"):
 
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)
+	_require_flow_enabled(settings, flow)
 	authorization = _require_sudo_for_registration(settings, user, flow)
 
 	rp_id = policy.get_site_rp_id(settings)
@@ -97,9 +98,10 @@ def verify_registration(state_id: str, credential: object, label: str | None = N
 		raise CeremonyFailed(_("Passkey registration could not be verified."))
 	settings = frappe.get_cached_doc("Passkey Settings")
 	_require_any_login_mode(settings)  # a mid-ceremony disable fails closed
+	flow = record["flow"]
+	_require_flow_enabled(settings, flow)
 	ceremony.enforce_request_host(record.get("origins") or [], error=CeremonyFailed)
 
-	flow = record["flow"]
 	result = engine.verify_registration(
 		credential=credential,
 		expected_challenge=record["challenge_b64"],
@@ -163,6 +165,13 @@ def _require_any_login_mode(settings) -> None:
 	"""Either login mode allows enrollment: a 2FA-only site's users must enroll too."""
 	if not (cint(settings.login_with_passkey) or cint(settings.passkey_as_second_factor)):
 		raise CeremonyFailed(_("Passkeys are not enabled."))
+
+
+def _require_flow_enabled(settings, flow: str) -> None:
+	"""Conditional Create is the site's choice, never the caller's: off, the server refuses it
+	(and the calmer "browser saved a passkey" email it sends)."""
+	if flow == "conditional_create" and not cint(settings.passkey_conditional_create):
+		raise CeremonyFailed(_("Conditional Create is off on this site."))
 
 
 def _require_sudo_for_registration(settings, user: str, flow: str) -> str:

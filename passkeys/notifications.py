@@ -231,7 +231,7 @@ def _ip_suffix(ip: str | None) -> str:
 
 
 def _signed_out_sentence(is_signed_out: bool) -> str:
-	return " " + _("You were also signed out everywhere.") if is_signed_out else ""
+	return " " + _("You may need to sign in again.") if is_signed_out else ""
 
 
 def _passkeys_page_link_suffix() -> str:

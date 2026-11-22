@@ -71,8 +71,10 @@ origins makes retained, enabled passkeys work again. Disabled current-RP rows ar
 1. Before a move, keep a tested recovery path for a System Manager. Review **Passkey Settings →
    Relying Party**. The RP change confirmation previews enabled passkeys and distinct users that
    will stop or start working; invalid origin entries must be fixed before proceeding.
-2. Set `host_name`, the RP ID and exact trusted origins for the destination. Blank RP uses the
-   exact `host_name` host, so changing that host can change the RP without a settings dialog.
+2. Set `host_name` for the destination and wait a minute (on version-16 each worker re-reads the
+   site config within a minute), then set the RP ID and exact trusted origins and save. Blank RP
+   uses the exact `host_name` host, so changing that host can change the RP without a settings
+   dialog.
    Moving between trusted origins under an unchanged RP does not require re-enrollment.
 3. Check the resolved configuration, the stale count and users' cards. Stale-only users can use
    their password (plus core OTP where required); their passkey-only flag persists and applies
@@ -101,9 +103,11 @@ only if you control and trust its entire subdomain scope. Keep the exact origin 
 an apex RP does not automatically trust every origin. This lets a later move from
 `login.example.com` to `portal.example.com` retain the RP and keys.
 
-`host_name` is reloaded per request, not at a worker-restart boundary. In-flight requests can
-still use the old configuration; database changes also have a request-length visibility window.
-For a strict cutover, stop incoming traffic, drain requests, change configuration, then resume.
+`host_name` takes effect without a restart: version-15 re-reads it on every request, and on
+version-16 each worker keeps the site config for up to a minute. In-flight requests can still use
+the old configuration; database changes also have a request-length visibility window. For a
+strict cutover, stop incoming traffic, drain requests, change configuration, wait a minute, then
+resume.
 See [residual risks](security.md#residual-risks).
 
 For a staging clone, repair the intended RP/origins and recover one manager first; do not
@@ -137,11 +141,15 @@ credential revoked after the backup was taken returns with the backup and may wo
   [account recovery](recovery.md#a-user-lost-their-passkey) for the correct order; the
   site-wide case requires its own recovery path.
 
-  **Disabling or deleting someone else's passkey signs that user out everywhere.** The app ends
-  every session of the passkey's owner with the call Frappe itself uses for a disabled user, and
-  the change email says so. Your own session stays. A user who disables or removes their own
-  passkey stays signed in, and **Remove stale passkeys** signs nobody out: a stale passkey cannot
-  sign in on this site.
+  **Disabling or deleting a passkey signs its owner out.** When it is someone else's, the app
+  ends every session of the owner with the call Frappe itself uses for a disabled user, and the
+  change email tells them they may need to sign in again; your own session stays. When it is
+  your own, every other session of yours ends and the one you are using stays, so a lost device's
+  session ends too. **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on
+  this site.
+
+  For an account you believe someone is using right now, follow
+  [Someone may be using the account right now](recovery.md#someone-may-be-using-the-account-right-now).
 
   To sign a user out without touching a passkey, open their **User** record, untick **Enabled**
   and save: Frappe ends the sessions of a user who is disabled. Tick **Enabled** again and save

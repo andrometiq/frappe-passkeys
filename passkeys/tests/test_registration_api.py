@@ -327,6 +327,33 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 		self.assertIn("state_id", begun)
 		self.assertEqual(begun["options"]["authenticatorSelection"]["residentKey"], "preferred")
 
+	def test_conditional_create_needs_the_setting_on(self):
+		"""Off is enforced by the server, so a caller can't pick the calmer "your browser saved a
+		passkey" email on a site that turned Conditional Create off."""
+		saved = frappe.db.get_single_value("Passkey Settings", "passkey_conditional_create")
+		self.addCleanup(flush_settings_cache)
+		self.addCleanup(frappe.db.set_single_value, "Passkey Settings", "passkey_conditional_create", saved)
+
+		def turn(value):
+			frappe.db.set_single_value("Passkey Settings", "passkey_conditional_create", value)
+			flush_settings_cache()
+
+		user = self._user()
+		sign_in(user)
+		self._seed_sudo(user, seeded_by="password")
+		turn(0)
+		with self.assertRaisesRegex(CeremonyFailed, "Conditional Create is off"):
+			registration.begin_registration(flow="conditional_create")
+		self.assertIn("state_id", registration.begin_registration(flow="explicit"))
+
+		# Begun while on, then turned off: the verify is refused and nothing is saved.
+		turn(1)
+		begun, credential, _auth = self._register(user, seed="conditional-off", flow="conditional_create")
+		turn(0)
+		with self.assertRaisesRegex(CeremonyFailed, "Conditional Create is off"):
+			registration.verify_registration(begun["state_id"], credential)
+		self.assertFalse(frappe.db.exists("WebAuthn Credential", {"user": user}))
+
 	def test_added_email_says_when_the_browser_saved_the_passkey(self):
 		"""A Conditional Create passkey (the browser saved it after a password sign-in) gets its
 		own "added" wording; an explicit add keeps the plain one. Both say where to remove it."""

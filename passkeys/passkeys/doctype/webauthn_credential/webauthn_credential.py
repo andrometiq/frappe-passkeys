@@ -29,8 +29,8 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 			self._guard_last_login_method("disable")
 
 	def on_update(self):
-		# A disable (preferred to a delete, for forensics) signs the owner out when someone else
-		# did it, then tells the owner. Fires after the write persisted.
+		# A disable (preferred to a delete, for forensics) ends the owner's sessions, then tells
+		# the owner. Fires after the write persisted.
 		if self._is_disabling():
 			self._notify(removed=False, is_signed_out=self._sign_out_owner())
 
@@ -136,17 +136,22 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 			)
 
 	def _sign_out_owner(self) -> bool:
-		"""End every session of the owner when someone else revoked this passkey, with core's
-		call for a disabled User; the actor's sessions belong to another user and stay. The
-		stale-passkey bulk removal is left out: a stale passkey cannot sign in here, and the
-		commit inside core's call would release the RP lock that removal holds. Returns
-		whether the owner was signed out."""
-		if self._is_by_owner() or self.flags.passkeys_remove_stale:
+		"""End the owner's sessions with core's call for a disabled User: all of them when someone
+		else revoked this passkey (the actor's sessions belong to another user and stay), all but
+		the current one when the owner did, so a lost device's session ends too. The stale-passkey
+		bulk removal is left out: a stale passkey cannot sign in here, and the commits would
+		release the RP lock that removal holds. Returns whether the owner was signed out
+		everywhere."""
+		if self.flags.passkeys_remove_stale:
 			return False
 		from frappe.sessions import clear_sessions
 
-		clear_sessions(user=self.user, force=True)
-		return True
+		by_owner = self._is_by_owner()
+		# A fresh snapshot: a sign-in that committed while this request waited on the row lock
+		# is listed too; any later one reads the revoked row and fails.
+		frappe.db.commit()
+		clear_sessions(user=self.user, keep_current=by_owner, force=True)
+		return not by_owner
 
 	def _is_by_owner(self) -> bool:
 		return frappe.session.user == self.user

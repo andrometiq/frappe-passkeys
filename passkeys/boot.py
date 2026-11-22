@@ -39,6 +39,9 @@ ENFORCEMENT_DRAFT_FIELDS = {
 	"passkey_enforce_scope",
 	"passkey_enforce_roles",
 }
+# Far above any real site's settings; they bound what one draft count costs.
+ENFORCEMENT_DRAFT_TEXT_MAX_LENGTH = 10_000
+ENFORCEMENT_DRAFT_MAX_ROLES = 1_000
 # Scans are numbered within an epoch that is born with the hash, so a scan begun before an
 # eviction or flush can never publish into the hash that replaced it.
 _ENFORCEMENT_PREVIEW_START = """
@@ -58,6 +61,14 @@ end
 redis.call("HSET", KEYS[1], "scan:" .. ARGV[1], ARGV[2], "result:" .. ARGV[1], ARGV[3])
 redis.call("EXPIRE", KEYS[1], ARGV[4])
 return 1
+"""
+_ENFORCEMENT_PREVIEW_PRUNE = """
+local keep = {epoch = true, seq = true, ["scan:" .. ARGV[1]] = true, ["result:" .. ARGV[1]] = true}
+for _, field in ipairs(redis.call("HKEYS", KEYS[1])) do
+    if not keep[field] then
+        redis.call("HDEL", KEYS[1], field)
+    end
+end
 """
 
 NUDGE_EVENTS = ("shown", "declined", "opt_out")
@@ -467,16 +478,23 @@ def get_enforcement_preview(signature: str) -> dict | None:
 
 def get_draft_settings(draft) -> Document:
 	"""The saved Passkey Settings with a form's unsaved enforcement inputs laid over, in memory
-	only: what a draft count reads. Refuses any other shape."""
+	only: what a draft count reads. Refuses any other shape or an oversized input."""
 	settings = frappe.get_doc("Passkey Settings")
 	is_valid = (
 		isinstance(draft, dict)
 		and set(draft) == ENFORCEMENT_DRAFT_FIELDS
-		and all(isinstance(draft[field], str) for field in ENFORCEMENT_DRAFT_TEXT_FIELDS)
+		and all(
+			isinstance(draft[field], str) and len(draft[field]) <= ENFORCEMENT_DRAFT_TEXT_MAX_LENGTH
+			for field in ENFORCEMENT_DRAFT_TEXT_FIELDS
+		)
 		and all(draft[field] in (0, 1) for field in ENFORCEMENT_DRAFT_CHECK_FIELDS)
 		and draft["passkey_enforce_scope"] in settings.meta.get_options("passkey_enforce_scope").split("\n")
 		and isinstance(draft["passkey_enforce_roles"], list)
-		and all(isinstance(role, str) and role for role in draft["passkey_enforce_roles"])
+		and len(draft["passkey_enforce_roles"]) <= ENFORCEMENT_DRAFT_MAX_ROLES
+		and all(
+			isinstance(role, str) and 0 < len(role) <= frappe.db.VARCHAR_LEN
+			for role in draft["passkey_enforce_roles"]
+		)
 	)
 	if not is_valid:
 		frappe.throw(frappe._("The unsaved enforcement settings could not be read."), frappe.ValidationError)
@@ -567,6 +585,17 @@ def refresh_enforcement_preview(draft: dict | None = None) -> None:
 			ENFORCEMENT_PREVIEW_TTL,
 			epoch,
 		],
+	)
+
+
+def prune_enforcement_previews() -> None:
+	"""Daily: drop every cached count but the saved policy's (drafts, earlier policies). The scan
+	numbering stays, so a form waiting on a newer scan still gets it."""
+	if dormant():
+		return
+	signature = enforcement_preview_signature(frappe.get_doc("Passkey Settings"))
+	frappe.cache.register_script(_ENFORCEMENT_PREVIEW_PRUNE)(
+		keys=[frappe.cache.make_key(ENFORCEMENT_PREVIEW_KEY)], args=[signature]
 	)
 
 

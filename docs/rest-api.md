@@ -207,7 +207,8 @@ Rate limit: **20 / 3600 s / user**.
   (⊆ `["passkey","password"]`). Run the
   [confirmation](#authenticated--action-confirmation-passkey-signing)
   to mint a grant, then retry `begin_registration`. Also `ValidationError`
-  (`passkey_max_per_user` reached; passkeys not configured).
+  (`passkey_max_per_user` reached; passkeys not configured), and `CeremonyFailed` (401) for
+  `conditional_create` while **Conditional Create** is off.
 
 ### `passkeys.api.registration.verify_registration`
 
@@ -230,7 +231,8 @@ Rate limit: **20 / 3600 s / user**.
   (`signalAllAcceptedCredentials` / `signalCurrentUserDetails`); IDs include only usable keys
   for that response RP. Use it rather than a cached boot RP.
 - **Errors**: `401 CeremonyExpired`; `CeremonyFailed` (401 — already registered /
-  could-not-verify; the user stays signed in).
+  could-not-verify / a `conditional_create` ceremony after **Conditional Create** was turned
+  off; the user stays signed in).
 
 ---
 
@@ -283,7 +285,8 @@ Display-only; no sudo. Rate limit: **20 / 3600 s / user**.
   passkey-only account or a site with password login disabled (message surfaced verbatim in
   `_server_messages`).
 
-Stale removal is allowed by the last-passkey guard; ownership and sudo still apply.
+Stale removal is allowed by the last-passkey guard; ownership and sudo still apply. A removal ends
+the caller's other sessions; the one making the request stays.
 
 ### `passkeys.api.credentials.set_passkey_only_login`
 

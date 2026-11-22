@@ -44,7 +44,8 @@ for your account.
 ## Remove a passkey
 
 On **My Passkeys**, find the passkey by its name and **Last used** date. Click its trash icon, then
-**Remove passkey**. You may be asked to confirm it's you.
+**Remove passkey**. You may be asked to confirm it's you. Removing a passkey signs you out on your
+other devices; the one you're using stays signed in.
 
 ## New or lost device
 
@@ -52,7 +53,7 @@ On **My Passkeys**, find the passkey by its name and **Last used** date. Click i
   password-manager account. If not, sign in with your password or your phone's QR code, then add a
   passkey on the new device.
 - **Lost device:** sign in with another passkey or your password, open **My Passkeys** and remove
-  the lost device's passkey.
+  the lost device's passkey. That also signs the lost device out.
 - **Can't sign in at all:** ask your administrator to let you back in.
 
 Something went wrong? See [Troubleshooting](troubleshooting.md).

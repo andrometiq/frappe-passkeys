@@ -407,10 +407,11 @@ real sign-in gets a random session id.
   [recovery](recovery.md#passkeys-fail-after-a-restore-or-host-change). Bulk removal alone locks
   settings before handles and credentials and reads the RP from that locked result; it can
   legitimately delete RP-B rows if it runs before the switch from A to B.
-- **File configuration overlaps across requests.** `host_name` reloads per request, not at a
-  restart boundary. In-flight requests can still see the old value, and a database lock cannot
-  serialize a file change. For a strict RP/host cutover, stop traffic, drain requests, change
-  configuration, then resume.
+- **File configuration overlaps across requests.** `host_name` takes effect without a restart:
+  version-15 re-reads it on every request, version-16 workers within a minute. In-flight requests
+  can still see the old value, and a database lock cannot serialize a file change. For a strict
+  RP/host cutover, stop traffic, drain requests, change configuration, wait a minute, then
+  resume.
 - **Recovery is part of the boundary.** An account's assurance is only as strong
   as its weakest fallback. Keep recovery flows at parity-or-stronger friction than
   the passkey itself; the account-recovery story is admin-mediated

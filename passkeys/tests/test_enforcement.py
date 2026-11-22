@@ -9,6 +9,7 @@ import json
 from unittest.mock import patch
 
 import frappe
+import redis
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime, nowdate
 
 from passkeys import boot, enforcement_admin, notifications, passkey, state
@@ -931,6 +932,66 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 			with self.subTest(signature=signature), self.assertRaises(frappe.ValidationError):
 				passkey_settings.get_enforcement_preview(signature)
 		self.assertRaises(frappe.ValidationError, boot.get_enforcement_preview, None)
+
+	def test_draft_count_refuses_oversized_drafts(self):
+		"""Each text input and the role list have a size cap, so one call stays cheap in the request,
+		the job payload and the count; the largest allowed draft still counts."""
+		self._clear_preview_cache()
+		sign_in("Administrator")
+		draft = self._draft()
+		largest = {
+			**draft,
+			**{
+				field: draft[field].ljust(boot.ENFORCEMENT_DRAFT_TEXT_MAX_LENGTH)
+				for field in boot.ENFORCEMENT_DRAFT_TEXT_FIELDS
+			},
+			"passkey_enforce_roles": [
+				str(number).rjust(frappe.db.VARCHAR_LEN, "0")
+				for number in range(boot.ENFORCEMENT_DRAFT_MAX_ROLES)
+			],
+		}
+		oversized = {
+			**{
+				field: {**largest, field: largest[field] + " "}
+				for field in boot.ENFORCEMENT_DRAFT_TEXT_FIELDS
+			},
+			"one role too many": {
+				**largest,
+				"passkey_enforce_roles": [*largest["passkey_enforce_roles"], "Extra"],
+			},
+			"role name too long": {**draft, "passkey_enforce_roles": ["0" * (frappe.db.VARCHAR_LEN + 1)]},
+		}
+		for case, value in oversized.items():
+			with self.subTest(case=case), patch.object(frappe, "enqueue") as enqueue:
+				with self.assertRaises(frappe.ValidationError):
+					passkey_settings.count_enforcement_draft(json.dumps(value))
+				enqueue.assert_not_called()
+		with patch.object(frappe, "enqueue") as enqueue:
+			passkey_settings.count_enforcement_draft(json.dumps(largest))
+		enqueue.assert_called_once()
+
+	def test_daily_jobs_keep_only_the_saved_policys_count(self):
+		"""Draft counts live until the next daily run, so the preview hash can't keep growing; the
+		saved count and the scan numbering open forms wait on stay."""
+		self._clear_preview_cache()
+		drafts = [
+			self._draft(passkey_enforce_scope="No one"),
+			self._draft(passkey_enforce_privileged_always=0),
+		]
+		signatures = [boot.enforcement_preview_signature(boot.get_draft_settings(draft)) for draft in drafts]
+		saved = boot.enforcement_preview_signature(frappe.get_doc("Passkey Settings"))
+		self.assertNotIn(saved, signatures)
+		with patch.object(boot, "count_users_to_enroll", return_value=0):
+			for draft in drafts:
+				boot.refresh_enforcement_preview(draft=draft)
+			self.assertTrue(all(boot.get_enforcement_preview(signature) for signature in signatures))
+			for method in frappe.get_hooks("scheduler_events", app_name="passkeys")["daily_long"]:
+				frappe.get_attr(method)()
+		name = frappe.cache.make_key(boot.ENFORCEMENT_PREVIEW_KEY)
+		fields = {field.decode() for field in redis.Redis.hkeys(frappe.cache, name)}
+		self.assertEqual(fields, {"epoch", "seq", f"scan:{saved}", f"result:{saved}"})
+		self.assertEqual(boot.settings_banner_context()["enforcement_preview"]["scan"], 3)
+		self.assertEqual(boot.get_enforcement_preview_scan(), 3)
 
 	def test_draft_count_reports_a_full_queue(self):
 		self._clear_preview_cache()

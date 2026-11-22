@@ -14,9 +14,12 @@ If no System Manager can sign in, go to
 - **Disable a lost passkey.** Open **WebAuthn Credential**, filter **User** to the
   account, open the lost credential, untick **Enabled**, and save. A disabled
   credential can no longer sign in and no longer counts for the passkey second
-  factor or for enforcement. Disabling another user's passkey also signs that user out
-  everywhere, so a stolen device that is still signed in loses its session too. Prefer
-  disabling to deleting: the row stays for investigation. The owner is emailed when
+  factor or for enforcement. Disabling a passkey also signs its owner out: everywhere when
+  it's another user's, everywhere but the session you're using when it's your own. A stolen
+  device that is still signed in loses its session too, unless it is making a request at that
+  very moment: see
+  [Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
+  Prefer disabling to deleting: the row stays for investigation. The owner is emailed when
   **Notify on Passkey Changes** is on. If outgoing email is unconfigured, Desk may show an email-setup message even though the disable
   succeeds; check the saved row. The email failure is recorded in Error Log as
   `passkeys: change-notification email failed`; the Activity Log is written independently. The
@@ -34,7 +37,9 @@ If no System Manager can sign in, go to
   `frappe.sessions.clear_sessions(user="user@example.com", force=True)` in the
   [console](#console-access) instead (it commits on its own); a User disabled from the
   console keeps its sessions. Each of these, the passkey sign-out included, ends the 100 most
-  recently active sessions; run the console line for an account that might have more.
+  recently active sessions; run the console line for an account that might have more. None of
+  them is certain for a session in use at that moment: see
+  [Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
 - **Clear Passkey Only Login.** Open **WebAuthn User Handle**, open the user's row,
   untick **Passkey Only Login**, and save. Clearing is always allowed. The user's own
   switch at `/passkeys` needs a fresh passkey confirmation, so a user who has lost
@@ -59,8 +64,10 @@ factor. It applies with **Allow OTP Fallback for Passkey Second Factor** off: le
 off. Do not turn it on to get one user in.
 
 If the device may be in someone else's hands (stolen, or lost while signed in), disable the
-lost passkey yourself rather than leaving it to the user: when you disable it, the user is
-signed out everywhere, so a session already open on that device ends too.
+lost passkey straight away. That signs the user out, so a session left open on that device ends
+too: everywhere when you disable it, everywhere but the session in use when the user removes it
+themselves. If someone may be using the device right now, also follow
+[Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
 
 1. If the user still has another working passkey, they sign in with it. Then disable
    the lost one: that signs them out everywhere, and they sign in again with the working one.
@@ -82,6 +89,38 @@ remains: the passkey rule still applies.
 If the site's **Maximum Passkeys per User** blocks the replacement, delete obsolete
 disabled rows for that user after noting what you need for the record: disabled rows
 still count toward the cap.
+
+## Someone may be using the account right now
+
+Revoking a passkey ends its owner's sessions for good: a session ended that way can't be used
+again. If you believe someone is using the account right now (a stolen device, a sign-in you
+don't recognise), do all of these, in order:
+
+1. Disable every passkey they may hold, as under [the Desk actions](#the-desk-actions-used-below).
+2. Untick **Enabled** on the user's **User** record and save. Keep it off until the device is
+   dealt with. For an account that may have more than 100 sessions, also run the console line
+   from [the Desk actions](#the-desk-actions-used-below) until
+   `frappe.db.count("Sessions", {"user": "user@example.com"})` returns 0.
+3. Clear the site cache: `bench --site <site> clear-cache`, or `frappe.clear_cache()` in the
+   [console](#console-access). Other users stay signed in.
+4. If the account has no passkey you could disable, or it is still in use after step 3, take the
+   site offline: stop its web workers, or turn on maintenance mode
+   (`bench --site <site> set-maintenance-mode on`, with `allow_reads_during_maintenance` off in the
+   site config) and wait a minute or two so every worker has picked it up. Then clear the cache
+   again and bring the site back (start the workers, or
+   `bench --site <site> set-maintenance-mode off`).
+5. If the password may be known, set a new one on the **User** record (**Change Password** →
+   **Set New Password**). Revoke their API access: if the user has an API key, **Generate Keys** on
+   the **User** record replaces the API secret; their **OAuth Bearer Token** rows get **Status**
+   Revoked (see [API keys and OAuth tokens](security.md#api-keys-and-oauth-tokens)).
+6. Tick **Enabled** again only after that, and restore the fields listed under
+   [the Desk actions](#the-desk-actions-used-below).
+
+Administrator's User can't be disabled, so for Administrator change the password and the API
+secret first (step 5). Then disable its passkeys, run
+`frappe.sessions.clear_sessions(user="Administrator", force=True)` in the
+[console](#console-access) instead of step 2 (again until
+`frappe.db.count("Sessions", {"user": "Administrator"})` returns 0), then do steps 3 and 4.
 
 ## The enrollment prompt blocks a user
 
@@ -113,8 +152,10 @@ login or LDAP.
    override. Reopening password sign-in is site-wide: see
    [Last resort](#last-resort--at-your-own-risk).
 
-Disabling the lost passkey signs the user out everywhere, so a stolen device that is still
-signed in loses its session too.
+Disabling the lost passkey signs the user out (everywhere but the session in use when it's
+your own), so a stolen device that is still signed in loses its session too. If someone may be
+using the device right now, also follow
+[Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
 
 ## Passkeys fail after a restore or host change
 
@@ -124,8 +165,8 @@ an Error Log; requests to an untrusted host can still produce a host-mismatch er
 
 1. A System Manager opens **Passkey Settings → Relying Party** and checks `host_name`, RP ID and
    exact origins. If the change was accidental, restore the original RP and origins: retained,
-   enabled passkeys work again. For an intentional move, follow the
-   [domain-change runbook](operations.md#changing-the-rp-id-or-moving-domains) and enroll new keys.
+   enabled passkeys work again. After changing `host_name`, wait a minute before you save. For an
+   intentional move, follow the [domain-change runbook](operations.md#changing-the-rp-id-or-moving-domains) and enroll new keys.
 2. Stale-only users can sign in with their password and core OTP where required; the passkey-only
    flag stays stored but does not veto them. It applies again once a usable passkey exists.
    Site-wide **Disable Username/Password Login** is never bypassed. An enforcement exemption or

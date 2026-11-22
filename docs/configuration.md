@@ -78,7 +78,7 @@ every scope rule, including System Managers.
 | **Device cannot create a passkey** (`passkey_enforce_incapable`) | Degrade to Nudge | What to do when a device genuinely cannot create a passkey (no platform authenticator and no cross-device option). *Degrade to Nudge* uses the ordinary opt-out, prompt cap and cooldown on both Desk and portal, and never locks the device out; *Block + Notify Admin* keeps prompting and records a risk event instead. |
 | **Maximum prompts per user** (`passkey_nudge_max_prompts`) | 3 | How many times the dismissible prompt may appear. Applies to *Everyone else* = Nudge, to in-scope users before **Starting on**, and to incapable devices under *Degrade to Nudge*. Counters are server-side per user (a three-browser user gets 3 prompts total, not 9). |
 | **Days between prompts** (`passkey_nudge_cooldown_days`) | 30 | Minimum days between those prompts. |
-| **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. The owner still gets the "passkey added" email; it says their browser saved the passkey after a password sign-in. Off: only the explicit nudge/enroll flow creates passkeys. |
+| **Conditional Create** (`passkey_conditional_create`) | On | Lets the browser silently create a passkey after a password login when the platform supports it (no dialog). The server only allows this off a **password**-seeded fresh-login window. The owner still gets the "passkey added" email; it says their browser saved the passkey after a password sign-in. Off: the server refuses it, and only the explicit nudge/enroll flow creates passkeys. |
 
 The enforcement preview counts the in-scope users who have no passkey yet, in the background, on
 save, daily, or when you select **Recalculate**; opening the page only reads the cached count. With
@@ -254,7 +254,7 @@ Settings mode changes lock the Single rows before checking flagged users; and th
 System Settings floor checks read each other's values with locking reads. These locks protect the credential and mode floors. RP reads in ordinary census and ceremony
 effect checks are uncached but non-locking; they can retain a request transaction snapshot. Only
 bulk stale removal serializes its RP read with settings saves. See the
-[RP-change residual risks](security.md#residual-risks), including per-request `host_name` overlap.
+[RP-change residual risks](security.md#residual-risks), including the `host_name` overlap.
 
 ### Request hardening and numeric limits
 

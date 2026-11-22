@@ -11,8 +11,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 - A user signed in during the update may be asked to confirm it's them once more before managing
   passkeys or confirming an action.
-- Disabling or deleting a user's passkey now signs that user out everywhere. Removing your own
-  passkey doesn't.
+- Disabling or deleting a passkey now signs its owner out: everywhere when it's someone else's,
+  everywhere but the session in use when it's your own.
 
 ### Added
 
@@ -39,20 +39,27 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
-- When an administrator disables or deletes someone's passkey, that user is signed out everywhere
-  and the email they get says so. Removing your own passkey keeps you signed in, and removing stale
-  passkeys signs nobody out.
+- Disabling or deleting a passkey signs its owner out, so a lost or stolen device that is still
+  signed in loses its session: everywhere when it's someone else's (the email says they may need
+  to sign in again), on every other device when it's your own. Removing stale passkeys signs
+  nobody out. [Recovery](docs/recovery.md#someone-may-be-using-the-account-right-now) gives the steps for an
+  account someone is using right now.
 
 ### Security
 
 - The app's Redis data no longer holds session ids, only their SHA-256, so anyone who can read it
   (a backup, a monitoring tool) sees no live session id.
+- With Conditional Create off, the server now refuses a browser-saved passkey too, so nobody can
+  pick the calmer "your browser saved a passkey" email on a site that turned it off.
+- Signing a passkey's owner out also catches a sign-in that finished at that moment, and the
+  unsaved-settings count refuses oversized input and keeps its cached counts for a day at most.
 
 ### Fixed
 
 - Passkey Settings no longer fails silently on Save when the app's files didn't load in the browser
   (for example a deploy that didn't publish them): the form says so and what to run, and won't turn
-  passkeys on until they load; turning them off still saves.
+  passkeys on until they load; turning them off still saves. The User form no longer shows an
+  error then either; its Passkeys section just stays hidden.
 - A flagged passkey's card no longer says it was disabled: flagging never disables a passkey.
 - An out-of-range number in Passkey Settings names the setting exactly as the form labels it.
 - Passkey cards show short provider names (one provider's name was a long description with a web
