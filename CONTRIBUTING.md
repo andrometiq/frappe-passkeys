@@ -163,6 +163,10 @@ Do not describe `develop`, an untagged commit, or an upstream-tip compatibility 
 Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid
 test counts and commit hashes that become stale as soon as the tree changes.
 
+Dependabot opens one grouped update PR per ecosystem (GitHub Actions, pre-commit, Python) each
+week, only for releases at least 7 days old. Maintainers merge them into `develop` like every other
+change once CI is green; the version branches pick them up at the next release.
+
 ## Code style
 
 `pre-commit` is the style gate: **Ruff** (import sort, lint, format) for Python plus the standard

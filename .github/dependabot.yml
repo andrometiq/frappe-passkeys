@@ -1,0 +1,54 @@
+# One grouped update PR per ecosystem each week, against develop, for releases at least
+# 7 days old. CI runs the full matrix on each PR; merge it like any other change.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      # Pilot's asset workflow is bumped by hand when Pilot changes the archive format
+      # (see .github/workflows/assets.yml).
+      - dependency-name: "frappe/pilot*"
+
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      pre-commit:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    # passkeys/modules.txt is Frappe's module list, not a requirements file.
+    exclude-paths: ["passkeys/**"]
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "build(deps)"
+    # Keep a range that already allows the new release (cbor2's floor stays as set).
+    versioning-strategy: "increase-if-necessary"
+    groups:
+      python:
+        patterns: ["*"]
+    ignore:
+      # 3.x conflicts with Frappe's cryptography stack: see the webauthn note in pyproject.toml.
+      - dependency-name: "webauthn"
+        update-types: ["version-update:semver-major"]
