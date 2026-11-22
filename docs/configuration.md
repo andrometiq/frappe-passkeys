@@ -20,13 +20,6 @@ there can still sign in with a passkey until its Frappe **User** is disabled.
 
 ## Relying Party
 
-Enabling either authentication mode also uses the site's `encryption_key`: second-factor ceremonies
-bind password-hash versions with it, and lifecycle exports use it for integrity. When
-`site_config.json` has no key, Frappe core's `get_encryption_key()` creates and saves one on save, as
-it does for any encrypted field. An entry that is present but empty is refused. Back the key up
-separately before enrolling production users, and restore the original key (not a new one) when
-recovering existing encrypted data or a credential export.
-
 | Field | Default | What it does / consequence of changing it |
 |---|---|---|
 | **Passkey RP ID** (`passkey_rp_id`) | *blank ⇒ resolved from `host_name`* | The bare host a passkey is bound to (no scheme, port, or path). Blank means "use the exact host of the site's `host_name`". Changing it makes passkeys for the previous RP stale until it is changed back; retained enabled rows work again on revert. The confirmation previews enabled passkeys/users that stop or start working. Widening to a parent RP still requires new passkeys. See [domain moves](operations.md#changing-the-rp-id-or-moving-domains). |
@@ -39,6 +32,13 @@ Configuration** panel shows the exact server-resolved set, plus the RP-change wa
 inventory. The System Manager Desk alert distinguishes
 no working path, an app-only path, and web access at other configured origins. It uses configured
 `host_name`, not the request Host header.
+
+Enabling either authentication mode also uses the site's `encryption_key`: second-factor ceremonies
+bind password-hash versions with it, and lifecycle exports use it for integrity. When
+`site_config.json` has no key, Frappe core's `get_encryption_key()` creates and saves one on save, as
+it does for any encrypted field. An entry that is present but empty is refused. Back the key up
+separately before enrolling production users, and restore the original key (not a new one) when
+recovering existing encrypted data or a credential export.
 
 ## Mobile Apps
 

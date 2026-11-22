@@ -19,18 +19,19 @@ access, and a System Manager login.
    bench --site <site> set-config host_name https://erp.example.com
    ```
 
-   It can take a minute to apply.
+3. Turn passkeys on. Reload Desk, then search for **Passkey Settings**. On the **Login Modes**
+   tab, tick **Login with Passkey**.
 
-3. Turn passkeys on. In Desk, search for **Passkey Settings**. On the **Login Modes** tab, tick
-   **Login with Passkey** and save. If the save is refused, the message says what to fix.
-   Passwords keep working.
+   Saving asks System Managers to add a passkey (they can put it off for 3 sign-ins). Everyone
+   else gets a reminder they can dismiss; some browsers add a passkey for them on their own after
+   a password sign-in. The **Enrollment** tab changes who is asked. Passwords keep working.
 
-   System Managers are now asked to add a passkey (they can put it off for 3 sign-ins); everyone
-   else sees a reminder they can dismiss. Change this on the **Enrollment** tab.
+   Save. If the form says no Relying Party ID can be resolved, wait a minute for step 2 to take
+   effect and save again.
 
 4. Add your passkey. Reload the page. When **Set up a passkey to continue** appears, click
-   **Create a passkey** and follow your browser's prompt. No prompt? Open `/passkeys` and click
-   **Add a passkey**.
+   **Create a passkey** (enter your password if asked) and follow your browser's prompt. Not
+   asked to set one up? Open `/passkeys` and click **Add a passkey**.
 
 5. Sign in with it. Log out, then click **Sign in with a passkey** on the login page.
 

@@ -17,15 +17,14 @@ works again if the RP ID is changed back. **Remove stale passkeys** on the **Rel
 deletes them. A passkey that is neither stale nor disabled is *usable*.
 
 ### Required passkey
-Users picked by **Require a passkey from** (System Managers too, by default) see
-**Set up a passkey to continue** after signing in; the docs call this *enforcement*.
-**Remind me later** works for 3 sign-ins (**Grace sign-ins**), then only **Create a passkey**,
-**I can't set one up here** and **Sign out** remain.
+By default every System Manager must add a passkey, and **Require a passkey from** adds other
+users. After signing in they see **Set up a passkey to continue** and can put it off for 3
+sign-ins (**Grace sign-ins**). The docs call this *enforcement*.
 
 ### Nudge
-The **Sign in faster next time** prompt. Users who aren't required to add a passkey get it unless
-**Everyone else** is **Off**; required users get it until the **Starting on** date. They can choose
-**Not now** or **Don't ask again**; by default it shows at most 3 times, 30 days apart.
+The **Sign in faster next time** reminder for users who aren't required to add a passkey. They
+can dismiss it or switch it off for themselves. By default it appears at most 3 times, 30 days
+apart. Set **Everyone else** to **Off** to stop it.
 
 ### Re-authentication window
 For 10 minutes (by default) after signing in with a password or passkey, or confirming it's them,

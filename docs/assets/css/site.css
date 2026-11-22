@@ -40,7 +40,7 @@ a:hover { text-decoration: underline; }
 .iq { color: #3FB6DE; }
 .docs-label { color: var(--secondary); }
 .site-title { color: var(--text); border-left: 1px solid var(--line); padding-left: 24px; }
-nav { display: flex; gap: 24px; overflow-x: auto; padding-top: 0; font-size: 16px; }
+nav { display: flex; gap: 16px; overflow-x: auto; padding-top: 0; font-size: 16px; }
 nav a { flex-shrink: 0; color: var(--secondary); padding: 4px 0; }
 nav a:hover, nav a[aria-current="page"] { color: var(--link); }
 nav a[aria-current="page"] { box-shadow: 0 2px var(--link); }
