@@ -46,7 +46,9 @@ class DocsSyncTest(IntegrationTestCase):
 			for error in wire_errors
 			if f"`{error.__name__}` ({error.http_status_code}" not in contract
 		]
-		self.assertEqual(missing, [], "passkeys.errors classes missing from the rest-api.md Typed errors list")
+		self.assertEqual(
+			missing, [], "passkeys.errors classes missing from the rest-api.md Typed errors list"
+		)
 
 
 def _bullet(path: Path, start: str) -> str:

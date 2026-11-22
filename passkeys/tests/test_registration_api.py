@@ -342,11 +342,13 @@ class RegistrationCeremonyTest(IntegrationTestCase):
 			" you can sign in with it. If you didn't just sign in, remove it on your My"
 			f" Passkeys page {page} and change your password.",
 		}
+		# Restored, never deleted: a later Activity Log insert on v15 reads frappe.local.request_ip.
+		self.addCleanup(setattr, frappe.local, "request_ip", getattr(frappe.local, "request_ip", None))
+		frappe.local.request_ip = "203.0.113.7"
 		for flow, body in expected.items():
 			with (
 				self.subTest(flow=flow),
 				patch.dict(frappe.conf, {"host_name": "https://erp.example.com"}),
-				patch.object(frappe.local, "request_ip", "203.0.113.7", create=True),
 				patch("frappe.sendmail") as sendmail,
 			):
 				begun, credential, _auth = self._register(self._user(), seed=f"added-email-{flow}", flow=flow)
