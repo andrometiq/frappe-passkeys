@@ -39,9 +39,12 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_enforce_privileged_always: paintBanners,
 	passkey_enforce_incapable: paintBanners,
 	validate: function (frm) {
-		// Without the app's scripts the login page can't offer passkeys either: refuse to turn
-		// anything on rather than save a setup that can't work.
-		if (!hasPasskeyScripts()) frappe.throw(missingScriptsMessage());
+		// Without the app's scripts the login page can't offer passkeys either: refuse a save that
+		// leaves a mode on, but always let the admin turn passkeys off.
+		if (!hasPasskeyScripts()) {
+			if (Number(frm.doc.login_with_passkey) || Number(frm.doc.passkey_as_second_factor)) frappe.throw(missingScriptsMessage());
+			return;
+		}
 		if (rpIdChangeUnconfirmed(frm)) {
 			frappe.validated = false;
 			confirmRpIdChange(frm, true); // the save goes ahead once confirmed
@@ -68,7 +71,7 @@ function hasPasskeyScripts() {
 }
 
 function missingScriptsMessage() {
-	return __("The Passkeys app's files didn't load in this browser, so these settings can't be saved. Reload the page. If this stays, the server isn't serving the app's files: run bench build --app passkeys and bench restart, or on Frappe Cloud, deploy the bench again.");
+	return __("The Passkeys app's files didn't load in this browser, so passkeys can't be turned on here (you can still turn them off). Reload the page. If this stays, the server isn't serving the app's files: run bench build --app passkeys and bench restart, or on Frappe Cloud, deploy the bench again.");
 }
 
 function rpIdChangeUnconfirmed(frm) {

@@ -236,4 +236,21 @@ test("without the app's scripts the form says what to do and Save is refused, ne
 	handlers.after_save(frm);
 	assert.throws(() => handlers.validate(frm), /didn't load in this browser/);
 	assert.equal(thrown.length, 1);
+	// Turning passkeys off must always save.
+	frm.doc.login_with_passkey = 0;
+	frm.doc.passkey_as_second_factor = 0;
+	handlers.validate(frm);
+	assert.equal(thrown.length, 1);
+});
+test("the User form's passkeys section stays hidden, without an error, when the app's files didn't load", () => {
+	let handlers;
+	const shown = [];
+	const context = { window: {}, document: {}, __: text => text,
+		frappe: { ui: { form: { on: (_, value) => { handlers = value; } } }, boot: {}, session: { user: "a@example.com" } } };
+	vm.createContext(context);
+	vm.runInContext(fs.readFileSync(require.resolve("../../public/js/user_passkeys.js"), "utf8"), context);
+	const frm = { doc: { name: "a@example.com" }, is_new: () => false, fields_dict: { passkeys_html: {} },
+		toggle_display: (field, value) => shown.push([field, value]), refresh_field: () => {} };
+	handlers.refresh(frm);
+	assert.deepEqual(shown, [["passkeys_html", false]]);
 });

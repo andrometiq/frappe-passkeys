@@ -13,7 +13,7 @@ frappe.ui.form.on("User", {
 			frm.refresh_field("passkeys_html");
 		}
 
-		var manage = frappe.passkeys.manage;
+		var manage = frappe.passkeys && frappe.passkeys.manage; // absent when the app's files didn't load
 		var boot = frappe.boot.passkeys;
 		// Both modes off, or a dormant app (no boot payload): no section.
 		if (frm.is_new() || !manage || !boot || boot.enabled === false) return hideSection();

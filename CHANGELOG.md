@@ -16,6 +16,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A [Quickstart](docs/quickstart.md): five steps from install to your first passkey sign-in.
 - Each Passkey Settings tab has a "Learn more" link to its part of the settings guide.
 - A [Glossary](docs/glossary.md) of the words the settings and docs use.
+- [Using passkeys](docs/using-passkeys.md), a page to send your users, and a
+  [Troubleshooting](docs/troubleshooting.md) page keyed by the messages people see.
+- Frappe's update pop-up now tells System Managers about new releases of this app.
+- [RELEASES.md](RELEASES.md): which line to install, what a version number means, and what counts as
+  public API. SECURITY.md says how fast reports are answered and what isn't a vulnerability.
+- Every docs page links to the bug-report form.
 
 ### Changed
 
@@ -31,8 +37,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 ### Fixed
 
 - Passkey Settings no longer fails silently on Save when the app's files didn't load in the browser
-  (for example a deploy that didn't publish them): the form says so and what to run, and refuses to
-  save.
+  (for example a deploy that didn't publish them): the form says so and what to run, and won't turn
+  passkeys on until they load; turning them off still saves.
 - A flagged passkey's card no longer says it was disabled: flagging never disables a passkey.
 - An out-of-range number in Passkey Settings names the setting exactly as the form labels it.
 - Passkey cards show short provider names (one provider's name was a long description with a web
