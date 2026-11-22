@@ -107,6 +107,18 @@ bash .github/helper/aaguid_freshness.sh   # provider names fresh enough to ship 
 git push origin develop version-15 version-16
 ```
 
+Once CI passes on both version branches, tag each release commit and publish a GitHub release for
+each tag, with that version's changelog section as its notes. Frappe's update check reads these
+releases.
+
+```bash
+git tag -a v15.x.y version-15 -m "15.x.y"
+git tag -a v16.x.y version-16 -m "16.x.y"
+git push origin v15.x.y v16.x.y
+gh release create v16.x.y --verify-tag --title "16.x.y" --notes-file notes.md --latest
+gh release create v15.x.y --verify-tag --title "15.x.y" --notes-file notes.md --latest=false
+```
+
 `develop` keeps the full `frappe = ">=15.108.0,<18.0.0"` range under
 `[tool.bench.frappe-dependencies]` in `pyproject.toml`. Each release commit narrows it to its own
 line, because the Frappe Cloud Marketplace requires a release's advertised Frappe range to equal
@@ -133,7 +145,9 @@ Closes #123
   `test`.
 - **scope** is optional and free-form (e.g. `fix(login): …`).
 - Keep the summary concise and imperative ("add", not "added").
-- `feat` and `fix` drive the version bump and changelog, so classify accurately.
+- `feat` and `fix` decide the changelog section, so classify accurately. They don't pick the
+  version number: every release raises the last number, and only a removed or renamed public API
+  raises the middle one ([RELEASES.md](RELEASES.md#what-a-version-number-means)).
 - Reference issues in the footer with `Closes #123`; flag incompatibilities with `BREAKING CHANGE:`.
 
 No `Signed-off-by` / DCO, CLA, or co-author trailer is required — a clear conventional message is all

@@ -94,10 +94,11 @@ passkey first.
 
 ## Passkey Settings
 
-### The Passkeys app's files didn't load in this browser, so these settings can't be saved…
+### The Passkeys app's files didn't load in this browser, so passkeys can't be turned on here (you can still turn them off)…
 
 The browser didn't get the app's scripts. The tab may predate the install, or the server isn't
-serving the app's files.
+serving the app's files. Turning passkeys off still saves, so you can back out of a setup that
+doesn't load.
 
 Reload the page. If the message stays, run `bench build --app passkeys`, then `bench restart`. On
 Frappe Cloud, deploy the bench again. Wait a minute, then reload.
@@ -121,6 +122,6 @@ Also **Passkeys are off on this site: its address … isn't covered by the RP ID
 resolved RP ID / origins do not match this site's current host…** on Passkey Settings. The address
 in use, often an IP address or a second domain, isn't on the passkey domain.
 
-Open the site at its usual address. If the address is right, set `host_name` to it or add it to
-**Passkey Origins**; it must be the RP ID or a subdomain of it. Changing the RP ID makes existing
-passkeys [stale](glossary.md#stale-passkey).
+Open the site at its usual address. If the address is right, set `host_name` to it (then wait a
+minute) or add it to **Passkey Origins**; it must be the RP ID or a subdomain of it. Changing the
+RP ID makes existing passkeys [stale](glossary.md#stale-passkey).
