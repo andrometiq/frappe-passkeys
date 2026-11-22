@@ -46,6 +46,10 @@ test("cardList: one labelled list item per credential; actions only when asked f
 	assert.ok(list.children[1].className.includes("passkey-card-disabled"));
 	const flagged = find(list.children[1], (n) => (n.className || "").includes("alert-danger"));
 	assert.strictEqual(flagged.getAttribute("role"), "alert");
+	assert.strictEqual(
+		flagged.textContent,
+		"This passkey was flagged: it may have been copied. If you don't recognize a recent sign-in, remove it."
+	);
 	assert.ok(byClass(list.children[1], "gray"), "a disabled credential carries the gray pill");
 
 	const rename = byClass(list.children[0], "passkey-rename");
@@ -55,6 +59,11 @@ test("cardList: one labelled list item per credential; actions only when asked f
 
 	const readOnly = M.cardList(creds, {}, () => null);
 	assert.strictEqual(byClass(readOnly, "passkey-card-actions"), null, "a read-only list has no actions");
+	assert.strictEqual(
+		byClass(readOnly.children[1], "alert-danger").textContent,
+		"This passkey was flagged: it may have been copied.",
+		"a read-only card offers no remove, so it doesn't ask for one"
+	);
 });
 
 test("cardList: backup pills are calm and translated; no pill without a true claim", () => {

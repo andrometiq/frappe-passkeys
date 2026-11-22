@@ -42,6 +42,8 @@
 
 	var ZERO_AAGUID = "00000000-0000-0000-0000-000000000000";
 
+	var QUICKSTART_URL = "https://andrometiq.github.io/frappe-passkeys/quickstart.html";
+
 	// English source strings; the renderer translates them.
 	var COPY = {
 		// cards / empty state
@@ -61,7 +63,8 @@
 		deleteConfirmTitle: "Remove this passkey?",
 		deleteConfirmBody: "You won't be able to sign in with {0} after this.",
 		deleteConfirmCta: "Remove passkey",
-		flaggedBanner: "This passkey was flagged and disabled for your security.",
+		flaggedNote: "This passkey was flagged: it may have been copied.",
+		flaggedRemoveHint: "If you don't recognize a recent sign-in, remove it.",
 		staleNote: "Made for {0}, doesn't work on this site",
 		staleNudgeBody: "Your passkeys were made for another address and don't work on this site.",
 		staleNudgeCta: "Add a passkey for this site",
@@ -146,12 +149,8 @@
 		strandsPasskeyOnlyUsers:
 			"This change would leave {0} passwordless-only user(s) with no way to sign in. " +
 			"Clear their passwordless-only flag first.",
-		allModesOff:
-			"Both passkey login modes are off — the login-page passkey UI is hidden and no new " +
-			"passkeys can be used to sign in. Existing passkeys are preserved.",
-		enforceNoMode:
-			"Enrollment enforcement has no effect while both passkey login modes are off. Enable a " +
-			"passkey login mode for the policy to apply.",
+		allModesOff: "Passkeys are off. To turn them on, follow the {0}.",
+		quickstartLink: "Quickstart",
 		enforcePrivilegedOutside:
 			"Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
 			"the accounts attackers target first — industry practice enforces them first.",
@@ -442,7 +441,6 @@
 		var enforcing = scope !== "No one" || privileged;
 
 		if (enforcing) {
-			if (!anyMode) banners.push({ level: "warning", key: COPY.enforceNoMode });
 			if (scope === "Selected roles" && !privileged) {
 				banners.push({ level: "warning", key: COPY.enforcePrivilegedOutside });
 			}
@@ -453,7 +451,8 @@
 				banners.push({ level: "warning", key: COPY.enforceBlockIncapable });
 			}
 			var preview = ctx.enforcementPreview; // undefined until the form has fetched it
-			if (preview !== undefined) banners.push({
+			// Nobody is required while passkeys are off, so there is nothing to count yet.
+			if (anyMode && preview !== undefined) banners.push({
 				level: "info",
 				key: preview ? COPY.enforcePreview : COPY.enforcePreviewPending,
 				args: preview ? [preview.count, preview.computed_at] : [],
@@ -463,7 +462,7 @@
 		}
 
 		if (!anyMode) {
-			banners.push({ level: "info", key: COPY.allModesOff });
+			banners.push({ level: "info", key: COPY.allModesOff, link: { key: COPY.quickstartLink, url: QUICKSTART_URL } });
 		}
 
 		return banners;
@@ -773,7 +772,9 @@
 		main.appendChild(meta);
 		if (vm.stale) main.appendChild(el("div", "passkey-stale-note", format(t(COPY.staleNote), [vm.rpId])));
 		if (vm.flagged) {
-			var flagged = el("div", "alert alert-danger", t(COPY.flaggedBanner));
+			// A read-only card has no remove action, so it doesn't ask for one.
+			var flagged = el("div", "alert alert-danger",
+				t(COPY.flaggedNote) + (actions ? " " + t(COPY.flaggedRemoveHint) : ""));
 			flagged.setAttribute("role", "alert");
 			main.appendChild(flagged);
 		}

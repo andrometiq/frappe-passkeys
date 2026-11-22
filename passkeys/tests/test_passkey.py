@@ -108,10 +108,12 @@ class TestDocTypeSchemas(PasskeyTestCase):
 		meta = frappe.get_meta("Passkey Settings")
 		expected_order = (
 			"login_modes_tab",
+			"login_modes_section",
 			"login_with_passkey",
 			"passkey_as_second_factor",
 			"passkey_2fa_allow_otp_fallback",
 			"relying_party_tab",
+			"relying_party_section",
 			"passkey_rp_id",
 			"passkey_origins",
 			"resolved_rp_html",
@@ -123,6 +125,7 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			"passkey_ios_team_id",
 			"passkey_ios_bundle_id",
 			"enrollment_tab",
+			"enrollment_section",
 			"passkey_enforce_scope",
 			"passkey_enforce_roles",
 			"passkey_enforce_privileged_always",
@@ -136,12 +139,14 @@ class TestDocTypeSchemas(PasskeyTestCase):
 			"passkey_nudge_cooldown_days",
 			"passkey_conditional_create",
 			"security_tab",
+			"security_section",
 			"passkey_sign_count_hard_fail",
 			"passkey_max_per_user",
 			"column_break_policy",
 			"passkey_reauth_window",
 			"passkey_allow_first_enrollment_on_external_login",
 			"notifications_tab",
+			"notifications_section",
 			"passkey_notify_on_change",
 			"passkey_notify_password_fallback",
 			"passkey_notify_password_login",
@@ -166,6 +171,36 @@ class TestDocTypeSchemas(PasskeyTestCase):
 		self.assertEqual(meta.get_field("prompts_section").label, "Prompts")
 		self.assertEqual(
 			meta.get_field("passkey_notify_password_login").label, "Log password sign-ins by passkey holders"
+		)
+
+	def test_each_settings_tab_opens_with_a_link_to_its_guide_section(self):
+		guide = Path(frappe.get_app_path("passkeys")).parent / "docs" / "configuration.md"
+		anchors = {
+			re.sub(r"[^\w\- ]", "", line[3:].strip().lower()).replace(" ", "-")
+			for line in guide.read_text(encoding="utf-8").splitlines()
+			if line.startswith("## ")
+		}
+		link = re.compile(
+			r'<a href="https://andrometiq\.github\.io/frappe-passkeys/configuration\.html#([\w-]+)"'
+			r' target="_blank" rel="noopener noreferrer">Learn more</a>'
+		)
+		fields = frappe.get_meta("Passkey Settings").fields
+		tabs = [index for index, field in enumerate(fields) if field.fieldtype == "Tab Break"]
+		for index in tabs:
+			section = fields[index + 1]
+			with self.subTest(tab=fields[index].fieldname):
+				self.assertEqual((section.fieldtype, section.label), ("Section Break", None))
+				match = link.fullmatch(section.description or "")
+				self.assertIsNotNone(match, section.description)
+				self.assertIn(match[1], anchors)
+
+	def test_settings_descriptions_link_the_docs_site_not_repo_paths(self):
+		descriptions = [field.description or "" for field in frappe.get_meta("Passkey Settings").fields]
+		self.assertEqual([text for text in descriptions if re.search(r"docs/[\w-]+\.md", text)], [])
+		self.assertIn(
+			'see the <a href="https://andrometiq.github.io/frappe-passkeys/mobile-apps.html" target="_blank"'
+			' rel="noopener noreferrer">mobile apps guide</a>.',
+			frappe.get_meta("Passkey Settings").get_field("passkey_app_origins").description,
 		)
 
 	def test_messages_quote_only_labels_the_forms_show(self):

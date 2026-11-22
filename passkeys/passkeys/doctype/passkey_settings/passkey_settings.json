@@ -5,10 +5,12 @@
  "engine": "InnoDB",
  "field_order": [
   "login_modes_tab",
+  "login_modes_section",
   "login_with_passkey",
   "passkey_as_second_factor",
   "passkey_2fa_allow_otp_fallback",
   "relying_party_tab",
+  "relying_party_section",
   "passkey_rp_id",
   "passkey_origins",
   "resolved_rp_html",
@@ -20,6 +22,7 @@
   "passkey_ios_team_id",
   "passkey_ios_bundle_id",
   "enrollment_tab",
+  "enrollment_section",
   "passkey_enforce_scope",
   "passkey_enforce_roles",
   "passkey_enforce_privileged_always",
@@ -33,12 +36,14 @@
   "passkey_nudge_cooldown_days",
   "passkey_conditional_create",
   "security_tab",
+  "security_section",
   "passkey_sign_count_hard_fail",
   "passkey_max_per_user",
   "column_break_policy",
   "passkey_reauth_window",
   "passkey_allow_first_enrollment_on_external_login",
   "notifications_tab",
+  "notifications_section",
   "passkey_notify_on_change",
   "passkey_notify_password_fallback",
   "passkey_notify_password_login"
@@ -48,6 +53,11 @@
    "fieldname": "login_modes_tab",
    "fieldtype": "Tab Break",
    "label": "Login Modes"
+  },
+  {
+   "description": "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#login-modes\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>",
+   "fieldname": "login_modes_section",
+   "fieldtype": "Section Break"
   },
   {
    "default": "0",
@@ -77,6 +87,11 @@
    "label": "Relying Party"
   },
   {
+   "description": "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#relying-party\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>",
+   "fieldname": "relying_party_section",
+   "fieldtype": "Section Break"
+  },
+  {
    "description": "Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back. Blank resolves to the exact host of the site's configured host_name when a login mode is enabled.",
    "fieldname": "passkey_rp_id",
    "fieldtype": "Data",
@@ -102,7 +117,7 @@
    "label": "Mobile Apps"
   },
   {
-   "description": "Native app origins that may assert the site's passkeys, one per line. A native Android app presents android:apk-key-hash:<hash>, where <hash> is the unpadded base64url SHA-256 of its signing certificate; use Google's Play app-signing certificate (Play Console → App integrity → App signing), NOT the upload key. iOS needs no entry here; configure its https://<RP ID> value under Passkey Origins. Serve the association files (assetlinks.json / apple-app-site-association) so a native app can share these passkeys; see docs/mobile-apps.md.",
+   "description": "Native Android app origins, one per line, as android:apk-key-hash:&lt;hash&gt;. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin. To let a native app share these passkeys, see the <a href=\"https://andrometiq.github.io/frappe-passkeys/mobile-apps.html\" target=\"_blank\" rel=\"noopener noreferrer\">mobile apps guide</a>.",
    "fieldname": "passkey_app_origins",
    "fieldtype": "Small Text",
    "label": "Trusted App Origins"
@@ -139,6 +154,11 @@
    "fieldname": "enrollment_tab",
    "fieldtype": "Tab Break",
    "label": "Enrollment"
+  },
+  {
+   "description": "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#enrollment\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>",
+   "fieldname": "enrollment_section",
+   "fieldtype": "Section Break"
   },
   {
    "default": "No one",
@@ -233,6 +253,11 @@
    "label": "Security"
   },
   {
+   "description": "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#security\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>",
+   "fieldname": "security_section",
+   "fieldtype": "Section Break"
+  },
+  {
    "default": "0",
    "description": "Reject logins on a signature-counter regression instead of logging and flagging the credential",
    "fieldname": "passkey_sign_count_hard_fail",
@@ -270,6 +295,11 @@
    "label": "Notifications"
   },
   {
+   "description": "<a href=\"https://andrometiq.github.io/frappe-passkeys/configuration.html#notifications\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a>",
+   "fieldname": "notifications_section",
+   "fieldtype": "Section Break"
+  },
+  {
    "default": "1",
    "description": "Email the user when a passkey is added, removed, disabled or flagged. This is the compensating control for registration hijack — leave it on outside mail-less development sites.",
    "fieldname": "passkey_notify_on_change",
@@ -293,7 +323,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-15 23:00:00.000000",
+ "modified": "2026-11-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Passkeys",
  "name": "Passkey Settings",

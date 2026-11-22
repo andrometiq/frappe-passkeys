@@ -172,14 +172,6 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		the banner matrix in ``passkey_manage_common.bundle.js``."""
 		if not self._enforcing():
 			return
-		# The requirement is inert without a passkey login mode — nothing to require.
-		if not self._any_mode_enabled():
-			frappe.msgprint(
-				_(
-					"Enrollment enforcement has no effect while both passkey login modes are off — enable 'Login with Passkey' or 'Passkey as Second Factor' for the policy to apply."
-				),
-				indicator="orange",
-			)
 		# Privileged accounts are the first targets; leaving them out of a role list weakens it.
 		if self.passkey_enforce_scope == "Selected roles" and not cint(
 			self.passkey_enforce_privileged_always

@@ -538,17 +538,23 @@ test("settingsBanners: a blank Starting on is not a Save-blocking error", () => 
 	assert.strictEqual(M.COPY.enforceNoDate, undefined);
 });
 
-test("settingsBanners: enforcing while no mode enabled warns it is inert", () => {
-	const b = M.settingsBanners(
-		{
-			login_with_passkey: 0,
-			passkey_as_second_factor: 0,
-			passkey_enforce_scope: "All users",
-			passkey_enforce_privileged_always: 1,
-		},
-		{}
-	);
-	assert.ok(b.some((x) => x.key === M.COPY.enforceNoMode && x.level === "warning"));
+test("settingsBanners: a fresh install shows one info line that links the Quickstart", () => {
+	const fresh = {
+		login_with_passkey: 0,
+		passkey_as_second_factor: 0,
+		passkey_enforce_scope: "No one",
+		passkey_enforce_privileged_always: 1,
+		passkey_notify_on_change: 1,
+	};
+	for (const enforcementPreview of [null, { count: 2, computed_at: "2026-11-22 10:00" }]) {
+		assert.deepStrictEqual(M.settingsBanners(fresh, { enforcementPreview, passkeyOnlyUserCount: 0 }), [
+			{
+				level: "info",
+				key: "Passkeys are off. To turn them on, follow the {0}.",
+				link: { key: "Quickstart", url: "https://andrometiq.github.io/frappe-passkeys/quickstart.html" },
+			},
+		]);
+	}
 });
 
 test("settingsBanners: privileged-always opt-out warns only for Selected roles", () => {
@@ -615,7 +621,7 @@ test("settingsBanners: no enforcement banners when scope is No one and privilege
 		{ login_with_passkey: 1, passkey_enforce_scope: "No one", passkey_enforce_privileged_always: 0, passkey_everyone_else: "Nudge" },
 		{ enforcementPreview: { count: 3, computed_at: "2026-10-20T10:00:00" } }
 	);
-	assert.ok(!nudge.some((x) => [M.COPY.enforceNoMode, M.COPY.enforcePrivilegedOutside, M.COPY.enforcePreview].indexOf(x.key) !== -1));
+	assert.ok(!nudge.some((x) => [M.COPY.enforcePrivilegedOutside, M.COPY.enforcePreview].indexOf(x.key) !== -1));
 });
 
 // ---------------------------------------------------- security-posture panel

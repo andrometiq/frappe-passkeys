@@ -6,9 +6,6 @@ frappe.ui.form.on("Passkey Settings", {
 		// The last-saved RP ID, for reverting a backed-out change (refresh re-fires on save).
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
 		if (!(frm.is_dirty && frm.is_dirty())) frm._passkey_rp_saved = rpCandidate(frm);
-		frm.set_df_property("passkey_app_origins", "description", __(
-			"Native Android app origins may be listed here as android:apk-key-hash:<hash>. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin."
-		));
 		var rpIdField = frm.fields_dict.passkey_rp_id;
 		if (rpIdField && rpIdField.$input) {
 			rpIdField.$input.off("blur.passkeys").on("blur.passkeys", function () {
@@ -351,7 +348,9 @@ function paintBanners(frm) {
 	var order = { error: 0, warning: 1, info: 2 };
 	var banners = M.settingsBanners(frm.doc, ctx).sort(function (a, b) { return order[a.level] - order[b.level]; });
 	fillHost(host, banners.map(function (bn) {
-		var banner = bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
+		var banner = bn.link
+			? linkedBanner(bannerEl(bn.level), __(bn.key), bn.link)
+			: bannerEl(bn.level, M.format(__(bn.key), bn.args || []));
 		if (bn.muted) banner.classList.add("text-muted");
 		if (bn.action === "recalculate") {
 			var button = settingsElement("button", "btn btn-xs btn-default ml-2", __("Recalculate"));
@@ -420,6 +419,17 @@ function bannerEl(level, msg) {
 	div.setAttribute("role", level === "info" ? "status" : "alert");
 	div.setAttribute("data-indicator", { error: "red", warning: "orange", info: "blue" }[level]);
 	return div;
+}
+
+// The banner text with its {0} as a link; the text stays text, so a translation can't add markup.
+function linkedBanner(banner, text, link) {
+	var parts = text.split("{0}");
+	var anchor = settingsElement("a", "", __(link.key));
+	anchor.href = link.url;
+	anchor.target = "_blank";
+	anchor.rel = "noopener noreferrer";
+	banner.append(parts[0], anchor, parts.slice(1).join("{0}"));
+	return banner;
 }
 
 // Cross-flag data is fetched only when the settings form opens.

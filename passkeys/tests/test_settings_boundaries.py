@@ -550,6 +550,12 @@ class EnrollmentPolicyValidatorTest(PinnedSiteRp, IntegrationTestCase):
 			any("Privileged users (System Manager) are outside" in message for message in messages)
 		)
 
+	def test_enforcing_while_passkeys_are_off_saves_quietly(self):
+		# The form already says passkeys are off; the save adds no "has no effect" warning.
+		with patch("frappe.msgprint") as msgprint:
+			self._save(passkey_enforce_scope="All users", passkey_enforce_privileged_always=1)
+		self.assertEqual(msgprint.call_args_list, [])
+
 	def test_recommended_privileged_enforcement_has_no_self_lockout_warning(self):
 		with patch("frappe.msgprint") as msgprint:
 			self._save(
