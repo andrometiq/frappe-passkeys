@@ -1,0 +1,55 @@
+# CodeQL code scanning for the Python server code and the JavaScript bundles and tests.
+#
+# Runs beside the Semgrep step in ci.yml: Semgrep checks Frappe's own rules, CodeQL adds GitHub's
+# data-flow queries. This is an advanced setup, so it needs no repository setting; leave the
+# repository's CodeQL "default setup" off, or GitHub rejects this workflow's uploads. Findings
+# appear under Security > Code scanning and, on a pull request, as GitHub's code scanning check.
+#
+# The action is pinned to a reviewed commit like the others here; Dependabot bumps it weekly, and
+# each action version brings the matching CodeQL bundle, so new queries arrive with that PR.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [develop, version-15, version-16]
+  pull_request:
+  schedule:
+    # Weekly on develop (the default branch), so new queries also reach code nobody touched.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event_name }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write # upload results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both are interpreted languages: CodeQL reads the source, no build step.
+        # passkeys/public/dist (built assets) is gitignored, so it is never in the checkout.
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:${{ matrix.language }}"
