@@ -925,6 +925,7 @@ test("settings form fetches context on demand and recalculates only on request",
 			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
 			boot: { passkeys: { rp_id: "example.com" } },
 			passkeys_manage_common: M,
+			passkeys_common: require("../../public/js/passkey_common.bundle.js"),
 			call: (options) => { calls.push(options); },
 			show_alert: (options) => { alerts.push(options); },
 			datetime: { str_to_user: (value) => `user:${value}` },
@@ -1041,6 +1042,8 @@ function previewPollingForm() {
 	const context = {
 		frappe: {
 			ui: { form: { on: (_doctype, value) => { handlers = value; } } },
+			passkeys_manage_common: M,
+			passkeys_common: require("../../public/js/passkey_common.bundle.js"),
 			call: (options) => { calls.push(options); },
 			show_alert: () => {},
 		},

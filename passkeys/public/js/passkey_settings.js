@@ -3,6 +3,7 @@
 // eslint-env browser
 frappe.ui.form.on("Passkey Settings", {
 	refresh: function (frm) {
+		if (!hasPasskeyScripts()) return frm.set_intro(missingScriptsMessage(), "red");
 		// The last-saved RP ID, for reverting a backed-out change (refresh re-fires on save).
 		frm._passkey_rpid_saved = frm.doc.passkey_rp_id;
 		if (!(frm.is_dirty && frm.is_dirty())) frm._passkey_rp_saved = rpCandidate(frm);
@@ -21,6 +22,7 @@ frappe.ui.form.on("Passkey Settings", {
 		pickupRpSuggestion(frm);
 	},
 	after_save: function (frm) {
+		if (!hasPasskeyScripts()) return;
 		frm._passkey_rpid_suggestion = null;
 		pollEnforcementPreview(frm, frm.doc.__onload && frm.doc.__onload.passkeys_preview_after_scan);
 	},
@@ -37,6 +39,9 @@ frappe.ui.form.on("Passkey Settings", {
 	passkey_enforce_privileged_always: paintBanners,
 	passkey_enforce_incapable: paintBanners,
 	validate: function (frm) {
+		// Without the app's scripts the login page can't offer passkeys either: refuse to turn
+		// anything on rather than save a setup that can't work.
+		if (!hasPasskeyScripts()) frappe.throw(missingScriptsMessage());
 		if (rpIdChangeUnconfirmed(frm)) {
 			frappe.validated = false;
 			confirmRpIdChange(frm, true); // the save goes ahead once confirmed
@@ -54,6 +59,17 @@ frappe.ui.form.on("Passkey Settings", {
 	// a new RP ID raises it once, not once per character.
 	passkey_rp_id: paintBanners,
 });
+
+// The app's Desk bundles (hooks.py app_include_js). They are missing when the server doesn't
+// serve /assets/passkeys (a deploy that didn't publish the app's files), or in a Desk tab
+// opened before the app was installed.
+function hasPasskeyScripts() {
+	return !!(frappe.passkeys_common && frappe.passkeys_manage_common);
+}
+
+function missingScriptsMessage() {
+	return __("The Passkeys app's files didn't load in this browser, so these settings can't be saved. Reload the page. If this stays, the server isn't serving the app's files: run bench build --app passkeys and bench restart, or on Frappe Cloud, deploy the bench again.");
+}
 
 function rpIdChangeUnconfirmed(frm) {
 	var value = frm.doc.passkey_rp_id || "";
@@ -358,6 +374,7 @@ function settingsFormHost(frm, key, className) {
 }
 
 function paintBanners(frm) {
+	if (!hasPasskeyScripts()) return;
 	var M = frappe.passkeys_manage_common;
 	var host = settingsFormHost(frm, "_passkey_banner_host", "passkey-settings-banners");
 	var ctx = buildContext(frm);

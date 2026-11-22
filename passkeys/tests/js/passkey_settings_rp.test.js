@@ -217,3 +217,23 @@ test("the posture card stays hidden while no mode is on, and shows once one is",
 	h.calls[4].error({});
 	assert.equal(JSON.stringify(rendered), JSON.stringify(["notice: Checking your security posture…", "failure", []]));
 });
+
+test("without the app's scripts the form says what to do and Save is refused, never a TypeError", () => {
+	let handlers, intro;
+	const thrown = [];
+	const context = { window: {}, __: text => text,
+		frappe: { ui: { form: { on: (_, value) => { handlers = value; } } },
+			throw: message => { thrown.push(message); throw new Error(message); } } };
+	vm.createContext(context);
+	vm.runInContext(fs.readFileSync(require.resolve("../../public/js/passkey_settings.js"), "utf8"), context);
+	const frm = { doc: { login_with_passkey: 1 }, set_intro: (text, color) => { intro = [text, color]; } };
+	handlers.refresh(frm);
+	assert.equal(intro[1], "red");
+	assert.match(intro[0], /didn't load in this browser/);
+	assert.match(intro[0], /bench build --app passkeys/);
+	assert.match(intro[0], /Frappe Cloud/);
+	handlers.login_with_passkey(frm); // a field change only repaints; it must not throw either
+	handlers.after_save(frm);
+	assert.throws(() => handlers.validate(frm), /didn't load in this browser/);
+	assert.equal(thrown.length, 1);
+});

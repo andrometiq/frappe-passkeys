@@ -28,6 +28,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Fixed
 
+- Passkey Settings no longer fails silently on Save when the app's files didn't load in the browser
+  (for example a deploy that didn't publish them): the form says so and what to run, and refuses to
+  save.
 - A flagged passkey's card no longer says it was disabled: flagging never disables a passkey.
 - An out-of-range number in Passkey Settings names the setting exactly as the form labels it.
 - Passkey cards show short provider names (one provider's name was a long description with a web
