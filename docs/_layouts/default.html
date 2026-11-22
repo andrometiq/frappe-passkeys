@@ -16,14 +16,12 @@
 			<a class="site-title" href="{{ '/' | relative_url }}">Passkeys for Frappe <span class="docs-label">Docs</span></a>
 		</div>
 		<nav aria-label="Documentation">
-			{% assign navigation = 'quickstart|Quickstart,install|Install,configuration|Configuration,operations|Operations,recovery|Recovery,custom-ui|Custom UI,rest-api|REST API,mobile-apps|Mobile apps,security|Security,webauthn-l3|WebAuthn L3,glossary|Glossary' | split: ',' %}
-			<a href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}>Docs home</a>
+			{% assign navigation = 'quickstart|Quickstart,using-passkeys|For users,install|Install,configuration|Configuration,operations|Operations,recovery|Recovery,troubleshooting|Troubleshooting,custom-ui|Custom UI,rest-api|REST API,mobile-apps|Mobile apps,security|Security,webauthn-l3|WebAuthn L3,glossary|Glossary' | split: ',' %}
 			{% for item in navigation %}
 				{% assign parts = item | split: '|' %}
 				{% assign target = '/' | append: parts[0] | append: '.html' %}
 				<a href="{{ target | relative_url }}"{% if page.url == target %} aria-current="page"{% endif %}>{{ parts[1] }}</a>
 			{% endfor %}
-			<a href="https://github.com/Andrometiq/frappe-passkeys">GitHub</a>
 		</nav>
 	</header>
 	<main id="main" tabindex="-1">
@@ -40,7 +38,9 @@
 	<footer class="site-footer">
 		<a class="footer-brand" href="https://andrometiq.com/">{% include mark.html %}<span>Engineered at Andrometiq</span></a>
 		<p>© Andrometiq — Enabling Your Highest Potential</p>
-		<p class="source-links"><a href="https://github.com/Andrometiq/frappe-passkeys">MIT licensed · Source on GitHub</a><a href="{{ repository_root }}docs/{{ page.path | escape }}">View this page on GitHub</a></p>
+		{% assign page_name = page.title | default: page.path %}
+		{% assign issue_title = 'Docs: ' | append: page_name %}
+		<p class="source-links"><a href="https://github.com/Andrometiq/frappe-passkeys">MIT licensed · Source on GitHub</a><a href="{{ repository_root }}docs/{{ page.path | escape }}">View this page on GitHub</a><a href="https://github.com/Andrometiq/frappe-passkeys/issues/new?template=bug-report.yml&amp;title={{ issue_title | url_encode }}">Report a problem with this page</a></p>
 	</footer>
 </body>
 </html>

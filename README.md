@@ -28,8 +28,9 @@ Documentation: [andrometiq.github.io/frappe-passkeys](https://andrometiq.github.
 
 This app adds [WebAuthn / FIDO2 passkeys](https://fidoalliance.org/passkeys/) to any Frappe site.
 Users sign in with the fingerprint, face, screen lock, or security key they already use for their
-Apple, Google, and Microsoft accounts. Administrators decide how hard to push adoption, and any app
-can require a passkey before a sensitive action runs.
+Apple, Google, and Microsoft accounts ([which devices support passkeys](https://passkeys.dev/device-support/)).
+Administrators decide how hard to push adoption, and any app can require a passkey before a
+sensitive action runs.
 
 It uses only sanctioned hooks and whitelisted endpoints, with no monkeypatching. One codebase serves
 Frappe v15, v16, and develop.
@@ -101,6 +102,8 @@ bench get-app --branch version-16 https://github.com/Andrometiq/frappe-passkeys
 bench --site <site> install-app passkeys
 ```
 
+On Frappe Cloud, install it from the [Marketplace listing](https://cloud.frappe.io/marketplace/apps/passkeys).
+
 Installing turns nothing on. To set it up and sign in with your first passkey, follow the
 [Quickstart](docs/quickstart.md).
 
@@ -108,6 +111,7 @@ Installing turns nothing on. To set it up and sign in with your first passkey, f
 
 Each Frappe line has its own release branch: `version-15` carries the 15.x releases and
 `version-16` the 16.x releases (see [Releases](https://github.com/Andrometiq/frappe-passkeys/releases)).
+[RELEASES.md](RELEASES.md) says what a version number means and what counts as public API.
 
 How releases are tested:
 

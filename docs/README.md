@@ -2,10 +2,13 @@
 
 Passkey (WebAuthn / FIDO2) sign-in and action confirmation for Frappe and ERPNext v15 and v16.
 New here? The [Quickstart](quickstart.md) takes you from install to your first passkey sign-in.
+On Frappe Cloud, install the app from its [Marketplace listing](https://cloud.frappe.io/marketplace/apps/passkeys).
 
 ## Set up and run
 
 - [**Quickstart**](quickstart.md): turn passkeys on and add your first one, in five steps.
+- [**Using passkeys**](using-passkeys.md): help to send your users, from adding a passkey to a lost
+  device.
 - [**Install**](install.md): install, upgrade, uninstall, the version matrix, reverse-proxy
   / RP ID / origin requirements, and the password-manager discovery file.
 - [**Configuration**](configuration.md): every Passkey Settings field, its default, and the
@@ -14,6 +17,8 @@ New here? The [Quickstart](quickstart.md) takes you from install to your first p
   restore, incident response, revocation, and monitoring.
 - [**Recovery**](recovery.md): System Manager recovery through Desk, then Administrator and
   account-specific console procedures when no manager can sign in.
+- [**Troubleshooting**](troubleshooting.md): the messages people see, what each means, and what to
+  do.
 - [**Glossary**](glossary.md): the words the settings and these docs use, such as RP ID and stale
   passkey.
 
@@ -40,6 +45,8 @@ New here? The [Quickstart](quickstart.md) takes you from install to your first p
 ## Project
 
 - [**Changelog**](../CHANGELOG.md): what changed in each release.
+- [**Releases**](../RELEASES.md): which line to install, what a version number means, and what
+  counts as public API.
 - [**Upstream proposal**](upstream/): a design and validation checklist for adopting passkeys in
   Frappe core.
 - [**Contributing**](../CONTRIBUTING.md): development setup, branches, tests, and releases.
