@@ -7,6 +7,47 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Nothing to do.
+
+### Added
+
+- A [Quickstart](docs/quickstart.md): five steps from install to your first passkey sign-in.
+- Each Passkey Settings tab has a "Learn more" link to its part of the settings guide.
+- A [Glossary](docs/glossary.md) of the words the settings and docs use.
+
+### Changed
+
+- On a new install, Passkey Settings shows one line, "Passkeys are off. To turn them on, follow the
+  Quickstart.", instead of three stacked notices, a security-posture card and a pop-up on save.
+- The "passkey removed" email says who removed it and asks the user to delete it from their phone,
+  computer or password manager too.
+- Passkey emails name the address users open, not the server's internal site name.
+- The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
+
+### Fixed
+
+- A flagged passkey's card no longer says it was disabled: flagging never disables a passkey.
+- An out-of-range number in Passkey Settings names the setting exactly as the form labels it.
+- Passkey cards show short provider names (one provider's name was a long description with a web
+  link), and Desk picks up new provider names right after an app update.
+- Trusted App Origins help links to the mobile apps guide and shows its whole text.
+- Saving an RP ID change now finishes after you confirm "Change the RP ID?"; you no longer click
+  Save twice.
+- Links in Passkey Settings ("Learn more", links in notices) are underlined so they read as links.
+- Change emails: a passkey name containing `<` or `&` shows as typed, a passkey with no name is
+  named by its ID, and the added email's IP address sits inside its sentence.
+- Docs: the login lock is per user and per IP address (not "IP-based"), and passkey sign-in doesn't
+  count toward it; the security guide names the real System Settings option to turn off.
+
+### Maintenance
+
+- Weekly grouped update PRs for GitHub Actions, pre-commit and Python, only for releases at least 7
+  days old.
+- Bug report and feature request forms; security reports go to the private form.
+- pre-commit now checks the YAML under `.github/`.
+
 ## [15.0.8] / [16.0.8] — 2026-11-16
 
 ### Upgrade notes
