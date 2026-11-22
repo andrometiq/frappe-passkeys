@@ -44,12 +44,18 @@ recovering existing encrypted data or a credential export.
 
 If a native iOS / Android app should share the site's passkeys, the **Mobile
 Apps** section at the bottom of the Relying Party tab configures the trusted native
-origins and the two well-known association files: `passkey_app_origins`,
-`passkey_android_package_name`, `passkey_android_cert_fingerprints`,
-`passkey_ios_team_id`, and `passkey_ios_bundle_id`. They are documented in full —
-including how to obtain the Android signing-certificate fingerprint and how the
-association files are served — in [`mobile-apps.md`](mobile-apps.md). Leave them blank
-for a web-only site; the section stays folded until one of them is set.
+origins and the two well-known association files. The full setup, including how to obtain the
+Android signing-certificate fingerprint and how the association files are served, is in
+[`mobile-apps.md`](mobile-apps.md). Leave these fields blank for a web-only site; the section
+stays folded until one of them is set.
+
+| Field | Default | What it does / consequence of changing it |
+|---|---|---|
+| **Trusted App Origins** (`passkey_app_origins`) | *blank* | Android app origins, one per line, as `android:apk-key-hash:<hash>`: the unpadded base64url SHA-256 of Google's Play app-signing certificate, not the upload key. Passkey ceremonies from a listed app are accepted. Anything else is refused on save, including web URLs and iOS entries: iOS needs no entry here; put the exact HTTPS origin the iOS app asserts under **Passkey Origins**. |
+| **Android Package Name** (`passkey_android_package_name`) | *blank* | The application id (for example `com.example.app`) in the served `/.well-known/assetlinks.json`. That file is served only when this and the fingerprints below are both set; otherwise it returns 404. |
+| **Android Signing Certificate SHA-256 Fingerprints** (`passkey_android_cert_fingerprints`) | *blank* | The app's signing-certificate fingerprints for `assetlinks.json`, one per line: 64 hex characters, colons optional. Use Google's Play app-signing certificate, and during rollout the upload key too. Saving refuses a line that is not a SHA-256 fingerprint. |
+| **iOS Team ID** (`passkey_ios_team_id`) | *blank* | The Apple Team ID (App ID Prefix, 10 uppercase letters or digits) in the served `/.well-known/apple-app-site-association`. |
+| **iOS Bundle ID** (`passkey_ios_bundle_id`) | *blank* | The app's bundle identifier (reverse-DNS, for example `com.example.app`). `apple-app-site-association` is served only when this and the Team ID are both set; otherwise it returns 404. |
 
 ## Enrollment
 

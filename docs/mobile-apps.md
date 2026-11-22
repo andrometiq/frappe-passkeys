@@ -70,9 +70,9 @@ const b64url = Buffer.from(hex, "hex").toString("base64")
 > (Play Console → App integrity → App signing), **not** your local upload key.
 > During rollout, include both the upload key and the Play app-signing key.
 
-iOS needs **no** Trusted App Origin entry, but its `https://<RP ID>` origin must be explicitly
-trusted under **Passkey Origins** unless the site's compatible `host_name` contributes that exact
-origin. Adding a web URL or an iOS-style entry to **Trusted App Origins** is rejected; only
+iOS needs **no** Trusted App Origin entry, but the exact HTTPS origin the iOS app asserts (usually
+`https://<RP ID>`) must be explicitly trusted under **Passkey Origins** unless the site's compatible
+`host_name` contributes that exact origin. Adding a web URL or an iOS-style entry to **Trusted App Origins** is rejected; only
 `android:apk-key-hash:<hash>` is accepted there.
 
 ### 1.3 Association-file inputs

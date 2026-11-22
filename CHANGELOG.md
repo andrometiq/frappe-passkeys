@@ -65,6 +65,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Bug report and feature request forms; security reports go to the private form.
 - pre-commit now checks the YAML under `.github/`.
 - CodeQL code scanning for Python and JavaScript on every push and pull request.
+- A server test keeps the reference docs in step with the code: every Passkey Settings field needs a
+  row in the configuration guide (the five mobile-app fields now have one), and every error type a
+  client can receive needs an entry in the REST API reference.
 
 ## [15.0.8] / [16.0.8] — 2026-11-16
 
