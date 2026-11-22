@@ -21,7 +21,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A [Glossary](docs/glossary.md) of the words the settings and docs use.
 - [Using passkeys](docs/using-passkeys.md), a page to send your users, and a
   [Troubleshooting](docs/troubleshooting.md) page keyed by the messages people see.
-- Frappe's update pop-up now tells System Managers about new releases of this app.
+- System Managers now see new releases of this app in Frappe's update notice.
 - [RELEASES.md](RELEASES.md): which line to install, what a version number means, and what counts as
   public API. SECURITY.md says how fast reports are answered and what isn't a vulnerability.
 - Every docs page links to the bug-report form.
@@ -39,20 +39,15 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
-- Disabling or deleting a passkey signs its owner out, so a lost or stolen device that is still
-  signed in loses its session: everywhere when it's someone else's (the email says they may need
-  to sign in again), on every other device when it's your own. Removing stale passkeys signs
-  nobody out. [Recovery](docs/recovery.md#someone-may-be-using-the-account-right-now) gives the steps for an
-  account someone is using right now.
+- Disabling or deleting a passkey signs its owner out, so a lost or stolen device loses its
+  session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)).
 
 ### Security
 
-- The app's Redis data no longer holds session ids, only their SHA-256, so anyone who can read it
-  (a backup, a monitoring tool) sees no live session id.
-- With Conditional Create off, the server now refuses a browser-saved passkey too, so nobody can
-  pick the calmer "your browser saved a passkey" email on a site that turned it off.
-- Signing a passkey's owner out also catches a sign-in that finished at that moment, and the
-  unsaved-settings count refuses oversized input, and a daily job prunes its cached counts.
+- Session ids are no longer kept in the app's Redis data, so a backup or monitoring tool can't see
+  them.
+- With Conditional Create off, the server now refuses a passkey the browser tries to save on its
+  own; before, only the browser checked the setting.
 
 ### Fixed
 
@@ -89,7 +84,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A server test keeps the reference docs in step with the code: every Passkey Settings field needs a
   row in the configuration guide (the five mobile-app fields now have one), and every error type a
   client can receive needs an entry in the REST API reference.
-- A translation template (`passkeys/locale/main.pot`) so translators can start.
+- A translation template (`passkeys/locale/main.pot`) for the server-side strings, so translators
+  can start.
 
 ## [15.0.8] / [16.0.8] — 2026-11-16
 

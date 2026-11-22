@@ -129,8 +129,9 @@ If a line ever needs code that a feature check in `develop` cannot express, it s
 
 ## Translations
 
-`passkeys/locale/main.pot` lists every translatable string. Regenerate it when you add or change
-one: `bench generate-pot-file --app passkeys`. Translators add `passkeys/locale/<language>.po`.
+`passkeys/locale/main.pot` lists the strings Frappe's extractor finds (literal `_()` and `__()`
+calls). Most screen text in `passkeys/public/js` is kept in tables and passed to `__()` by key, so
+it is not in the template yet. Regenerate it with `bench generate-pot-file --app passkeys`.
 
 ## Commit messages
 
