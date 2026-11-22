@@ -1,4 +1,4 @@
-exclude: 'node_modules|.git'
+exclude: '(^|/)(node_modules|\.git)/'
 default_stages: [pre-commit]
 fail_fast: false
 
@@ -28,6 +28,8 @@ repos:
 
       - id: ruff-format
         name: "Run ruff formatter"
+        # ruff 0.17+ also formats Markdown; this repo formats Python only.
+        types_or: [python, pyi]
 
 ci:
   autoupdate_schedule: weekly
