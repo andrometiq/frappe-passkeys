@@ -104,6 +104,7 @@ git merge -s ours version-15 version-16 -m "chore: join release lines"   # on de
 git checkout -B version-15 develop   # then set __version__ = "15.x.y" and frappe = ">=15.108.0,<16.0.0"; commit "chore(release): 15.x.y"
 git checkout -B version-16 develop   # then set __version__ = "16.x.y" and frappe = ">=16.18.3,<17.0.0"; commit "chore(release): 16.x.y"
 bash .github/helper/aaguid_freshness.sh   # provider names fresh enough to ship (docs/aaguid-map.md)
+bash .github/helper/public_api_release_check.sh "$(git describe --tags --abbrev=0 --match 'v16.*' version-16)" 16.x.y   # public API kept, or retired as RELEASES.md says
 git push origin develop version-15 version-16
 ```
 
@@ -178,6 +179,11 @@ green on each release branch, after a changelog review and a private-data scan. 
 provider-name snapshot first ([`docs/aaguid-map.md`](docs/aaguid-map.md)) and run
 `.github/helper/aaguid_freshness.sh` before pushing the release branches; their CI runs it again
 and fails when the snapshot misses an upstream change older than 30 days.
+
+Pick the version number by [RELEASES.md](RELEASES.md#what-a-version-number-means).
+`passkeys/tests/test_public_api.py` fails when public API disappears from the code or docs, and
+`.github/helper/public_api_release_check.sh` fails when a release removes a public name without a
+deprecation release before it and a raised middle number.
 
 Do not describe `develop`, an untagged commit, or an upstream-tip compatibility run as production-ready.
 Record exact refs and dates when a document intentionally captures a test snapshot; otherwise avoid

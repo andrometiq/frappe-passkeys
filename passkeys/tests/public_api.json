@@ -1,0 +1,196 @@
+{
+  "middle": 0,
+  "deprecated": [],
+  "endpoints": {
+    "passkeys.api.credentials.delete_credential": [
+      "name"
+    ],
+    "passkeys.api.credentials.list_credentials": [],
+    "passkeys.api.credentials.rename_credential": [
+      "name",
+      "label"
+    ],
+    "passkeys.api.credentials.set_passkey_only_login": [
+      "enabled"
+    ],
+    "passkeys.api.registration.begin_registration": [
+      "flow"
+    ],
+    "passkeys.api.registration.verify_registration": [
+      "state_id",
+      "credential",
+      "label"
+    ],
+    "passkeys.confirm.begin_confirmation": [
+      "action",
+      "params",
+      "payload_hash"
+    ],
+    "passkeys.confirm.reauth_password": [
+      "pwd",
+      "action",
+      "payload_fingerprint"
+    ],
+    "passkeys.confirm.verify_confirmation": [
+      "state_id",
+      "credential"
+    ],
+    "passkeys.passkey.begin_login": [],
+    "passkeys.passkey.complete_uv_setup": [
+      "setup_id",
+      "pwd"
+    ],
+    "passkeys.passkey.fallback_to_otp": [
+      "state_id"
+    ],
+    "passkeys.passkey.get_app_translations": [],
+    "passkeys.passkey.get_signal_data": [],
+    "passkeys.passkey.login_with_password": [
+      "usr",
+      "pwd"
+    ],
+    "passkeys.passkey.record_enforcement": [
+      "event"
+    ],
+    "passkeys.passkey.record_nudge": [
+      "event"
+    ],
+    "passkeys.passkey.verify_login": [
+      "state_id",
+      "credential"
+    ],
+    "passkeys.passkey.verify_second_factor": [
+      "state_id",
+      "credential"
+    ],
+    "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_resolved_rp_id": [],
+    "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_rp_id_change_impact": [
+      "rp_id",
+      "passkey_origins",
+      "passkey_app_origins"
+    ],
+    "passkeys.passkeys.doctype.passkey_settings.passkey_settings.get_settings_context": [],
+    "passkeys.passkeys.doctype.passkey_settings.passkey_settings.remove_stale_passkeys": [
+      "site_rp_id"
+    ]
+  },
+  "decorator": {
+    "passkeys.confirm.passkey_protected": [
+      "action",
+      "bind_params",
+      "allow_password_fallback",
+      "allow_sudo_window",
+      "display_label",
+      "display_params"
+    ]
+  },
+  "errors": [
+    "BrowserSessionRequired",
+    "CeremonyExpired",
+    "CeremonyFailed",
+    "CredentialNotForThisSite",
+    "ImpersonatedSessionRefused",
+    "PasskeyConfirmationRequired",
+    "PasskeyServedByCore",
+    "UVSetupRequired",
+    "UnknownCredential"
+  ],
+  "settings_fields": [
+    "login_with_passkey",
+    "passkey_2fa_allow_otp_fallback",
+    "passkey_allow_first_enrollment_on_external_login",
+    "passkey_android_cert_fingerprints",
+    "passkey_android_package_name",
+    "passkey_app_origins",
+    "passkey_as_second_factor",
+    "passkey_conditional_create",
+    "passkey_enforce_after",
+    "passkey_enforce_grace_logins",
+    "passkey_enforce_incapable",
+    "passkey_enforce_privileged_always",
+    "passkey_enforce_roles",
+    "passkey_enforce_scope",
+    "passkey_everyone_else",
+    "passkey_ios_bundle_id",
+    "passkey_ios_team_id",
+    "passkey_max_per_user",
+    "passkey_notify_on_change",
+    "passkey_notify_password_fallback",
+    "passkey_notify_password_login",
+    "passkey_nudge_cooldown_days",
+    "passkey_nudge_max_prompts",
+    "passkey_origins",
+    "passkey_reauth_window",
+    "passkey_rp_id",
+    "passkey_sign_count_hard_fail"
+  ],
+  "activity_events": [
+    "passkeys:enforce_incapable_device",
+    "passkeys:external_login_enrollment",
+    "passkeys:fallback_used",
+    "passkeys:grant_consumed",
+    "passkeys:grant_issued",
+    "passkeys:passkey_added",
+    "passkeys:passkey_disabled",
+    "passkeys:passkey_flagged",
+    "passkeys:passkey_removed",
+    "passkeys:password_login_by_passkey_holder"
+  ],
+  "js_globals": [
+    "frappe.passkeys.call",
+    "frappe.passkeys.confirm",
+    "frappe.passkeys.headless",
+    "frappe.passkeys.manage",
+    "frappe.passkeys_common",
+    "frappe.passkeys_manage_common",
+    "frappe.ui.passkey.call",
+    "frappe.ui.passkey.confirm",
+    "frappe.ui.passkey.headless"
+  ],
+  "css_hooks": [
+    "#passkey-portal-nudge",
+    ".alert",
+    ".alert-danger",
+    ".alert-info",
+    ".btn-passkey-login",
+    ".indicator-pill",
+    ".no-result",
+    ".passkey-btn",
+    ".passkey-card",
+    ".passkey-card-actions",
+    ".passkey-card-add-row",
+    ".passkey-card-created",
+    ".passkey-card-disabled",
+    ".passkey-card-glyph",
+    ".passkey-card-label",
+    ".passkey-card-labelrow",
+    ".passkey-card-lastused",
+    ".passkey-card-list",
+    ".passkey-card-meta",
+    ".passkey-card-provider",
+    ".passkey-card-stale",
+    ".passkey-cards-root",
+    ".passkey-glyph",
+    ".passkey-icon-btn",
+    ".passkey-impersonated",
+    ".passkey-impersonated-notice",
+    ".passkey-label",
+    ".passkey-only-help",
+    ".passkey-only-label",
+    ".passkey-only-row",
+    ".passkey-only-toggle",
+    ".passkey-sr-only",
+    ".passkey-stale-note",
+    ".passkey-status",
+    ".passkey-status--error",
+    ".passkey-status--progress",
+    ".passkey-status--success",
+    ".passkey-status__icon",
+    ".passkey-status__text"
+  ],
+  "well_known": [
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+    "/.well-known/passkey-endpoints"
+  ]
+}

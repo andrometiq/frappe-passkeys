@@ -32,7 +32,7 @@ These are public; anything else can change in any release.
   [markup contract](docs/custom-ui.md#semantic-markup-contract).
 - Passkey Settings field names ([Configuration](docs/configuration.md)) and the Activity Log event
   names ([Operations](docs/operations.md#monitoring-the-risk-events)).
-- The well-known files and endpoints for [mobile apps](docs/mobile-apps.md).
+- The well-known files and endpoints in [Mobile apps](docs/mobile-apps.md).
 
 ## How something is retired
 
@@ -46,3 +46,5 @@ says so under **Security**.
 Why: 15.0.4 renamed a Passkey Settings field
 (`passkey_allow_first_enrollment_on_weak_login` → `passkey_allow_first_enrollment_on_external_login`)
 in a patch release, with no overlap. Code that read the old name had to change in the same upgrade.
+
+The test suite and the release steps check these rules, so a public name can't disappear by accident.

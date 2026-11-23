@@ -161,6 +161,11 @@ spaces. These rules apply to any change here:
   report can arrive: private vulnerability reports, issues and pull requests, Dependabot and code
   scanning alerts, and the app's forum thread. An open high or critical report is that session's
   first job.
+- **Version numbers follow `RELEASES.md`.** Every release raises the last number on both lines.
+  Public API (`RELEASES.md` §Public API) is retired in two releases, and the release that removes a
+  name raises the middle number. `passkeys/tests/test_public_api.py` and
+  `.github/helper/public_api_release_check.sh` enforce this: when either fails, do what its message
+  says; never edit the snapshot only to make it pass.
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets
   and personal data; CI runs a `gitleaks` secret scan over full history. Never weaken a security
   gate to make a test pass.
