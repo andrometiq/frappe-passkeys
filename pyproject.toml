@@ -20,7 +20,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://andrometiq.com/software/passkey/"
 Documentation = "https://andrometiq.github.io/frappe-passkeys/"
-# Frappe's daily update check reads Repository to find this app's GitHub releases.
+# Frappe's weekly update check reads Repository to find this app's GitHub releases.
 Repository = "https://github.com/Andrometiq/frappe-passkeys"
 
 [build-system]
