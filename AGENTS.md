@@ -155,6 +155,12 @@ spaces. These rules apply to any change here:
   website/homepage fields; the explainer `https://andrometiq.com/software/passkey/why-passkeys-are-safer/`
   is only for "why passkeys are safer" links (posture panel, README/docs); the docs site
   `https://andrometiq.github.io/frappe-passkeys/` fills documentation fields.
+- **Security reports.** `SECURITY.md` promises one thing: high and critical issues are fixed on
+  both release lines within 30 days of the report. Don't add other response-time promises. At the
+  start of a maintainer session, once 3 days have passed since the last check, check every place a
+  report can arrive: private vulnerability reports, issues and pull requests, Dependabot and code
+  scanning alerts, and the app's forum thread. An open high or critical report is that session's
+  first job.
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets
   and personal data; CI runs a `gitleaks` secret scan over full history. Never weaken a security
   gate to make a test pass.

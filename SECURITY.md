@@ -26,10 +26,8 @@ and include:
 
 ## What Happens Next
 
-- We confirm we got your report within 3 working days.
-- Within 10 working days we tell you whether it is a vulnerability and how severe we think it is.
-- High and critical issues are fixed on both release lines within 30 days of that answer; others ship
-  in the next release.
+- High and critical issues are fixed on both release lines within 30 days of your report. Other
+  issues are fixed in a later release.
 - Each fix gets a GitHub security advisory naming the affected and fixed versions of each line, and
   credits you if you want.
 

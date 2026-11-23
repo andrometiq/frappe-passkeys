@@ -23,7 +23,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   [Troubleshooting](docs/troubleshooting.md) page keyed by the messages people see.
 - System Managers now see new releases of this app in Frappe's update notice.
 - [RELEASES.md](RELEASES.md): which line to install, what a version number means, and what counts as
-  public API. SECURITY.md says how fast reports are answered and what isn't a vulnerability.
+  public API. SECURITY.md says how fast high and critical issues are fixed and what isn't a
+  vulnerability.
 - Every docs page links to the bug-report form.
 - Before you save a change to who must use a passkey, Passkey Settings shows how many users without
   one it would affect. Saving never waits for this count, and it stays quick on sites with tens of
