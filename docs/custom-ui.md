@@ -40,7 +40,7 @@ building blocks it (and you, if you go lower-level) are built on.
 
 | Method | Resolves | Notes |
 | --- | --- | --- |
-| `detectCapabilities()` | `{supported, conditionalMediation, uvpaa, hybrid}` | `null` fields mean *unknown* — never coerce to `false`. |
+| `detectCapabilities()` | `{supported, conditionalMediation, uvpaa, hybrid, immediateGet}` | `null` fields mean *unknown* — never coerce to `false`. `immediateGet` is Chrome's immediate UI mode (`uiMode: "immediate"`). |
 | `login(opts?)` | a structured result (below) | First-factor discoverable sign-in: begin → `get()` → verify. `opts.mediation` / `opts.signal` for autofill. |
 | `beginLogin()` | `{enabled, modes, stateId, options}` | Lower-level: fetch fresh options (also the config channel). |
 | `completeUvSetup(setupId, password)` | a structured login result | Finish `uv_setup_required` with the returned `setupId` and a password collected by your UI. |
@@ -308,6 +308,14 @@ Implement all six methods:
 | `done(isOk)` | The confirmation finished or failed. Close your modal here. |
 
 With only password available, the engine goes straight to `collectPassword`.
+
+When a passkey is available, the engine opens the passkey prompt (`runGesture`) right after
+calling `chooseMethod`, so the user confirms without a click while your dialog shows what is being
+confirmed. If that succeeds, the engine verifies and calls `done(true)`; your `chooseMethod`
+promise is simply left unsettled. If the browser refuses the prompt or the user closes it, the engine
+reports nothing and waits for `chooseMethod`: `"passkey"` then runs a fresh gesture on the same
+ceremony, `"password"` the password leg. A `"passkey"` pick while the prompt is still open uses that
+prompt. While the automatic prompt is open the engine calls neither `busy` nor `announce`.
 
 `passkey_portal.bundle.js` is a full, self-contained reference implementation of
 `makeYourConfirmModal` (a `role="dialog"` overlay with focus trap and Esc handling).

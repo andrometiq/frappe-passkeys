@@ -1,9 +1,10 @@
 // Copyright (c) 2026, Frappe Passkeys Contributors
 // License: MIT. See LICENSE
 //
-// First-factor retry recovery in one login-page lifetime. Automatic re-arms are
-// bounded, but a later user click can always replace a state the client watched
-// fail before opening WebAuthn.
+// First-factor retry recovery in one login-page lifetime. Each failed attempt prepares
+// the next ceremony in the background, so the next click opens WebAuthn without waiting
+// on begin_login; a later user click can always replace a state the client watched fail
+// before opening WebAuthn.
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";
@@ -33,7 +34,7 @@ chromium_only("passkey login retry recovery", () => {
 		cy.clearCookies();
 	});
 
-	it("fails twice, then succeeds with a valid passkey without reloading the login page", () => {
+	it("fails twice, then succeeds with a valid passkey, each retry on a ceremony prepared before the click", () => {
 		let beginCalls = 0;
 		let loginLoads = 0;
 		const pageToken = {};
@@ -74,30 +75,29 @@ chromium_only("passkey login retry recovery", () => {
 		});
 		cy.wait("@begin").its("response.statusCode").should("be.within", 200, 299);
 
-		cy.get("#passkey-login-btn").click();
-		cy.window().its("__passkey_modal_get_calls").should("eq", 1);
-		cy.get("#passkey-login-status").should("contain", "No passkey was used");
-		cy.wait("@begin").its("response.statusCode").should("be.within", 200, 299);
-		// The response lands before the page adopts it; click only once the re-arm is held.
-		cy.window().its("frappe._passkey_login._state.login").should((login) => {
-			expect(login.spent, "re-armed state adopted").to.equal(false);
-			expect(login.rearmCount, "automatic re-arm budget spent").to.equal(1);
-		});
-
-		cy.get("#passkey-login-btn").click();
-		cy.window().its("__passkey_modal_get_calls").should("eq", 2);
-		cy.get("#passkey-login-status").should("contain", "No passkey was used");
+		// Each failure prepares the next ceremony; the response lands before the page adopts
+		// it, so click only once the prepared state is held.
+		const failThenPrepare = (attempt) => {
+			cy.get("#passkey-login-btn").click();
+			cy.window().its("__passkey_modal_get_calls").should("eq", attempt);
+			cy.get("#passkey-login-status").should("contain", "No passkey was used");
+			cy.wait("@begin").its("response.statusCode").should("be.within", 200, 299);
+			cy.window().its("frappe._passkey_login._state.login").should((login) => {
+				expect(login.spent, `ceremony prepared after failure ${attempt}`).to.equal(false);
+			});
+		};
+		failThenPrepare(1);
+		failThenPrepare(2);
 		cy.window().should((win) => {
 			expect(win.__passkey_retry_page_token, "same login-page window after two failures").to.equal(pageToken);
 		});
 
 		cy.get("#passkey-login-btn").click();
-		cy.wait("@begin").its("response.statusCode").should("be.within", 200, 299);
 		cy.wait("@verify", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
 		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk)/);
 		cy.assert_logged_user(USER);
 		cy.then(() => {
-			expect(beginCalls, "initial begin, one auto re-arm, and one click recovery").to.eq(3);
+			expect(beginCalls, "the page's begin plus one prepared after each failure; none from a click").to.eq(3);
 			expect(loginLoads, "the login page loaded once across all three attempts").to.eq(1);
 		});
 	});

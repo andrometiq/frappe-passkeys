@@ -29,6 +29,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Before you save a change to who must use a passkey, Passkey Settings shows how many users without
   one it would affect. Saving never waits for this count, and it stays quick on sites with tens of
   thousands of users.
+- In Chrome 149 and later, "Sign in with a passkey" shows the passkeys saved on that device at once;
+  with none there, the usual prompt with the phone and security-key options opens in the same click.
 
 ### Changed
 
@@ -43,6 +45,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Disabling or deleting a passkey signs its owner out, so a lost or stolen device loses its
   session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)).
 - The Remove passkey dialog says your other devices will be signed out.
+- When a passkey is asked for after the password, its prompt opens by itself; "Use a passkey" is
+  still there if it doesn't.
+- Confirming an action, or confirming it's you before managing passkeys, opens the passkey prompt
+  with the dialog. The dialog still shows what you're confirming, and its other options stay.
+- Trying a passkey sign-in again after a cancelled or failed one opens the prompt straight away.
 
 ### Security
 

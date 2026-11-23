@@ -117,13 +117,10 @@ function installCall(scenario) {
 }
 
 // Fresh surface + a live ceremony before each drive.
-function primeVerify(opts) {
-	opts = opts || {};
+function primeVerify() {
 	mod.state.status = new C.LoginStatus();
 	mod.state.slowTimer = null;
 	mod.state.login.adopt("sid-under-test", { rpId: "example.test" });
-	// Force canRearm() false so the unknown_credential path never kicks off a rebegin fetch.
-	if (opts.blockRearm) mod.state.login.rearmCount = 999;
 }
 
 const fakeCred = {
@@ -181,7 +178,7 @@ test("verify: the finalizer does NOT overwrite the success beat a 200 handler al
 });
 
 test("verify: the finalizer does NOT overwrite a specific typed-401 state (removed) the on401 handler set", async () => {
-	primeVerify({ blockRearm: true });
+	primeVerify();
 	installCall({ status: 401, data: { exc_type: "UnknownCredential" } });
 
 	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
@@ -204,7 +201,7 @@ test("stale credential gets its own status and never prunes the authenticator", 
 	const calls = [];
 	window.PublicKeyCredential = { signalUnknownCredential: (p) => calls.push(p) };
 	assert.strictEqual(C.mapServerExcType("CredentialNotForThisSite"), "credential_not_for_site");
-	primeVerify({ blockRearm: true });
+	primeVerify();
 	installCall({ status: 401, data: { exc_type: "CredentialNotForThisSite" } });
 	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();
@@ -212,7 +209,7 @@ test("stale credential gets its own status and never prunes the authenticator", 
 	assert.strictEqual(mod.state.status.state, "stale");
 	assert.strictEqual(mod.state.status.view().text, "This passkey was made for another address and doesn't work on this site.");
 	assert.strictEqual(mod.state.slowTimer, null);
-	primeVerify({ blockRearm: true });
+	primeVerify();
 	installCall({ status: 401, data: { exc_type: "UnknownCredential" } });
 	mod.runVerify(fakeCred, { source: "button" }, "sid-under-test");
 	await tick();

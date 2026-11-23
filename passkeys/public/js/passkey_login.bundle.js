@@ -25,6 +25,7 @@
 	var UPSELL_FLAG_KEY = "passkey_upsell_add_local";
 	var STATUS_ID = "passkey-login-status";
 	var SLOW_MS = 4000; // "still verifying" escalation on a slow connection
+	var IMMEDIATE_SETTLE_MS = 1000; // Chrome rejects an immediate request it can't show within 500 ms
 	var BOOTED = false;
 
 	var state = {
@@ -37,6 +38,7 @@
 		sfInterceptor: null, // the capture-phase submit listener
 		busyModal: false, // a modal get() is in flight
 		rebeginInFlight: null, // the pending re-begin, shared by concurrent callers
+		immediateGet: false, // the next click asks for this device's passkeys first (once per page)
 	};
 
 	// -------------------------------------------------------------- boot glue
@@ -86,6 +88,7 @@
 					if (cfg.state_id && cfg.options) {
 						state.login.adopt(cfg.state_id, cfg.options, Date.now());
 					}
+					state.immediateGet = caps.immediateGet === true;
 					ensureStatusEl();
 					// Conditional UI first, unless explicitly unavailable.
 					state.conditionalEnabled = caps.conditionalMediation !== false;
@@ -227,8 +230,7 @@
 			abortConditional(); // a re-arm sharing this re-begin may have started conditional UI
 			var restore = C.captureFocus(document);
 			applyLoginStatus("waiting");
-			navigator.credentials
-				.get({ publicKey: publicKey })
+			requestCredential(publicKey)
 				.then(function (cred) {
 					state.busyModal = false;
 					restore();
@@ -247,6 +249,19 @@
 		} else {
 			proceed();
 		}
+	}
+
+	// Immediate UI mode (Chrome 149+) shows this device's passkeys at once. A rejection within
+	// IMMEDIATE_SETTLE_MS means it had none to show, so the full sheet (phone, security key) opens in
+	// the same click on the same ceremony; a later one means the user closed the picker.
+	function requestCredential(publicKey) {
+		if (!state.immediateGet) return navigator.credentials.get({ publicKey: publicKey });
+		state.immediateGet = false;
+		var startedAt = Date.now();
+		return navigator.credentials.get({ publicKey: publicKey, uiMode: "immediate" }).catch(function (err) {
+			if (!err || err.name !== "NotAllowedError" || Date.now() - startedAt >= IMMEDIATE_SETTLE_MS) throw err;
+			return navigator.credentials.get({ publicKey: publicKey });
+		});
 	}
 
 	// Fetch a fresh state without a gesture. Single-flight: a click never races an automatic
@@ -328,7 +343,7 @@
 			// Only a missing credential may be pruned; an RP revert heals a stale one.
 			if (kind === "unknown_credential") signalUnknownCredential(cred);
 			applyLoginStatus(C.loginStatusForServerKind(kind));
-			rearmAfterVisibleFailure();
+			rebeginAndRearm();
 			return;
 		}
 		if (kind === "uv_setup_required") {
@@ -336,19 +351,8 @@
 			openUvSetup(data && data.setup_id);
 			return;
 		}
-		// Re-arm once so the user is never dead-ended.
 		neutralFail();
-		rearmAfterVisibleFailure();
-	}
-
-	// After a visible failure that spent the state, re-begin once (bounded, never a loop).
-	function rearmAfterVisibleFailure() {
-		if (!state.login.canRearm()) return;
-		rebegin().then(function (ok) {
-			if (!ok) return;
-			state.login.markRearm();
-			startConditional();
-		});
+		rebeginAndRearm();
 	}
 
 	// ---------------------------------------------- uv-setup step-up
@@ -498,6 +502,7 @@
 			publicKey = C.parseRequestOptionsFromJSON(options, window.PublicKeyCredential);
 		} catch (e) { restore(); showSecondFactorUnavailable(stateId, fallbackOtp); return; }
 
+		var ctxState = { stateId: stateId };
 		var dlg = buildDialog({
 			titleText: t("Confirm it's you"),
 			bodyHtml:
@@ -505,68 +510,73 @@
 				'<p class="passkey-dialog-error" role="alert"></p>',
 			primaryText: t("Use a passkey"),
 			secondaryText: fallbackOtp ? t("Use a verification code instead") : null,
-			onPrimary: function (root, close, ctxState) {
-				if (ctxState.ceremonyPending) return;
-				ctxState.ceremonyPending = true;
-				announce(t("Waiting for your passkey."));
-				Promise.resolve()
-					.then(function () {
-						if (!secondFactorWebAuthnAvailable()) {
-							var unsupported = new Error("WebAuthn unavailable");
-							unsupported.name = "NotSupportedError";
-							throw unsupported;
-						}
-						return navigator.credentials.get({ publicKey: publicKey });
-					})
-					.then(function (cred) {
-						var handled = false;
-						function settle(message) {
-							handled = true;
-							ctxState.ceremonyPending = false;
-							if (message) setDialogError(root, message);
-						}
-						var call = frappeCall(API.verify_second_factor,
-							{ state_id: ctxState.stateId, credential: JSON.stringify(C.authAssertionToJSON(cred)) },
-							composedHandlers({
-								on401: function (d) {
-									var expired = C.mapServerExcType(d && d.exc_type) === "ceremony_expired";
-									var freshOptions = d && d.verification && d.verification.options;
-									if (!expired) return settle(t("That passkey couldn't be verified — try again."));
-									// The server re-armed: a fresh state rides in the 401 body.
-									if (!d.state_id || !freshOptions) { settle(); close(); coreDelegate401(d); return; }
-									ctxState.stateId = d.state_id;
-									try {
-										publicKey = C.parseRequestOptionsFromJSON(freshOptions, window.PublicKeyCredential);
-									} catch (e) { /* keep the old options */ }
-									settle(t("That didn't work — try your passkey again."));
-								},
-								on429: function () { settle(t("Too many attempts. Wait a moment, then try again.")); },
-								onSuccess: function () { handled = true; rememberHint(); close(); }, // core redirects
-							})
-						);
-						function finish() {
-							if (!handled) settle(t("That passkey couldn't be verified — try again."));
-						}
-						return call.then(finish, finish);
-					})
-					.catch(function (err) {
-						ctxState.ceremonyPending = false;
-						var m = C.mapDomException(err);
-						if (m.code === "not_supported") {
-							close();
-							showSecondFactorUnavailable(ctxState.stateId, fallbackOtp);
-							return;
-						}
-						setDialogError(root, t(m.messageKey));
-					});
-			},
+			onPrimary: usePasskey,
 			onSecondary: fallbackOtp ? function (root, close, ctxState) {
 				requestOtpFallback(ctxState.stateId, root, close);
 			} : null,
 			onClose: restore,
-			ctxState: { stateId: stateId },
+			ctxState: ctxState,
 		});
 		openDialog(dlg);
+		// The sheet opens without a click; a refused or cancelled try leaves the dialog as it is.
+		usePasskey(dlg.root, dlg.close, ctxState, true);
+
+		function usePasskey(root, close, ctxState, isAutomatic) {
+			if (ctxState.ceremonyPending) return;
+			ctxState.ceremonyPending = true;
+			announce(t("Waiting for your passkey."));
+			Promise.resolve()
+				.then(function () {
+					if (!secondFactorWebAuthnAvailable()) {
+						var unsupported = new Error("WebAuthn unavailable");
+						unsupported.name = "NotSupportedError";
+						throw unsupported;
+					}
+					return navigator.credentials.get({ publicKey: publicKey });
+				})
+				.then(function (cred) {
+					var handled = false;
+					function settle(message) {
+						handled = true;
+						ctxState.ceremonyPending = false;
+						if (message) setDialogError(root, message);
+					}
+					var call = frappeCall(API.verify_second_factor,
+						{ state_id: ctxState.stateId, credential: JSON.stringify(C.authAssertionToJSON(cred)) },
+						composedHandlers({
+							on401: function (d) {
+								var expired = C.mapServerExcType(d && d.exc_type) === "ceremony_expired";
+								var freshOptions = d && d.verification && d.verification.options;
+								if (!expired) return settle(t("That passkey couldn't be verified — try again."));
+								// The server re-armed: a fresh state rides in the 401 body.
+								if (!d.state_id || !freshOptions) { settle(); close(); coreDelegate401(d); return; }
+								ctxState.stateId = d.state_id;
+								try {
+									publicKey = C.parseRequestOptionsFromJSON(freshOptions, window.PublicKeyCredential);
+								} catch (e) { /* keep the old options */ }
+								settle(t("That didn't work — try your passkey again."));
+							},
+							on429: function () { settle(t("Too many attempts. Wait a moment, then try again.")); },
+							onSuccess: function () { handled = true; rememberHint(); close(); }, // core redirects
+						})
+					);
+					function finish() {
+						if (!handled) settle(t("That passkey couldn't be verified — try again."));
+					}
+					return call.then(finish, finish);
+				})
+				.catch(function (err) {
+					ctxState.ceremonyPending = false;
+					if (isAutomatic) return;
+					var m = C.mapDomException(err);
+					if (m.code === "not_supported") {
+						close();
+						showSecondFactorUnavailable(ctxState.stateId, fallbackOtp);
+						return;
+					}
+					setDialogError(root, t(m.messageKey));
+				});
+		}
 	}
 
 	// ------------------------------------------------------- signals (fire-and-forget)
@@ -736,10 +746,10 @@
 	}
 
 	// ----------------------------------------------------------- error paths / UX
-	// A visible state over the untouched form, then one re-arm so the user is never stuck.
+	// A visible state over the untouched form; the next ceremony is prepared for the retry.
 	function onCeremonyError(err) {
 		applyLoginStatus(C.loginStatusForDomCode(C.mapDomException(err).code));
-		rearmAfterVisibleFailure();
+		rebeginAndRearm();
 	}
 
 	function neutralFail() {
@@ -804,6 +814,8 @@
 		if (state.slowTimer) { clearTimeout(state.slowTimer); state.slowTimer = null; }
 	}
 
+	// Hold a fresh ceremony so the next click opens the sheet at once. Callers run once per user
+	// action or page restore, never in a loop.
 	function rebeginAndRearm() {
 		rebegin().then(function (ok) { if (ok) startConditional(); });
 	}

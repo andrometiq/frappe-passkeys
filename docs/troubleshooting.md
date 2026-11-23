@@ -10,7 +10,8 @@ The passkey prompt closed without one: it was cancelled or timed out, or this de
 for this site.
 
 Try again. Is your passkey on your phone? Pick the phone option in the prompt and scan the QR code.
-No passkey yet? Sign in with your password and [add one](using-passkeys.md#add-a-passkey).
+In Chrome, the first try may show only the passkeys saved on this device; the next one has the phone
+option. No passkey yet? Sign in with your password and [add one](using-passkeys.md#add-a-passkey).
 
 ### That passkey didn't work here — it may have been removed. Sign in another way.
 

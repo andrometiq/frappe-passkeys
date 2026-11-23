@@ -169,18 +169,21 @@ chromium_only("passkey management — User form", () => {
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 		});
 
-		it("prompts a passkey confirmation when the sudo window is cold, then completes", () => {
+		it("confirms it's you with the passkey sheet the cold-window dialog opens, with no click in it", () => {
 			cy.login(USER, PW());
 			visit_user_passkeys();
 			// expire the fresh-login window so delete must re-confirm
 			cy.call(CLEAR_SUDO, {});
+			cy.intercept("POST", "**/api/method/passkeys.confirm.begin_confirmation").as("begin_confirmation");
+			cy.intercept("POST", "**/api/method/passkeys.confirm.verify_confirmation").as("verify_confirmation");
 			own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
 			cy.get(".modal-dialog:visible")
 				.contains(".btn-modal-primary, .btn-primary", "Remove passkey")
 				.click();
-			// the sudo dance dialog appears — a passkeys.manage confirmation
-			cy.get(".passkey-confirm-passkey", { timeout: 20000 }).should("be.visible").click();
-			// virtual authenticator auto-UV completes the ceremony → credential removed
+			// a passkeys.manage confirmation; its dialog opens the sheet, and the virtual
+			// authenticator's auto-UV answers it → credential removed
+			cy.wait("@begin_confirmation").its("request.body.action").should("eq", "passkeys.manage");
+			cy.wait("@verify_confirmation").its("response.statusCode").should("eq", 200);
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 		});
 	});

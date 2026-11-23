@@ -59,6 +59,7 @@ It was checked on 2026-09-24 against the app's source and the pinned server libr
 | Feature | Where | Notes |
 |---|---|---|
 | Conditional mediation (passkey autofill) | [`passkey_login.bundle.js`](../passkeys/public/js/passkey_login.bundle.js), [`passkey_headless.bundle.js`](../passkeys/public/js/passkey_headless.bundle.js) | With `autocomplete="username webauthn"`. |
+| Immediate UI mode (`uiMode: "immediate"`, Chrome 149+) | `passkey_login.bundle.js` | The first click on **Sign in with a passkey** asks for this device's passkeys when `getClientCapabilities()` reports `immediateGet`. A rejection within a second means there were none, so the full prompt opens in the same click on the same challenge; a later one means the user closed the picker. Not part of Level 3. |
 | Conditional create (automatic passkey upgrade) | [`passkey_desk.bundle.js`](../passkeys/public/js/passkey_desk.bundle.js), `api/registration.py` | Offered only after a password sign-in. |
 | `signalUnknownCredential` | `passkey_login.bundle.js` | Sent when the server reports an unknown credential. |
 | `signalAllAcceptedCredentials`, `signalCurrentUserDetails` | [`passkey_manage_common.bundle.js`](../passkeys/public/js/passkey_manage_common.bundle.js) | After adding, removing or listing passkeys. |

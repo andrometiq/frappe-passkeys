@@ -254,7 +254,7 @@
 		env = env || {};
 		var win = env.window || (typeof window !== "undefined" ? window : {});
 		var PKC = env.PublicKeyCredential || win.PublicKeyCredential;
-		var result = { supported: false, conditionalMediation: null, uvpaa: null, hybrid: null };
+		var result = { supported: false, conditionalMediation: null, uvpaa: null, hybrid: null, immediateGet: null };
 		if (!PKC) return Promise.resolve(result);
 		result.supported = true;
 
@@ -291,6 +291,7 @@
 						result.uvpaa = !!caps.userVerifyingPlatformAuthenticator;
 					}
 					if ("hybridTransport" in caps) result.hybrid = !!caps.hybridTransport;
+					if ("immediateGet" in caps) result.immediateGet = !!caps.immediateGet;
 					return staticProbes();
 				})
 				.catch(function () { return staticProbes(); });
@@ -847,8 +848,8 @@
 				var controller = ui();
 				return Promise.resolve()
 					.then(function () {
-						if (!caps.passkey) return "password";
-						return controller.chooseMethod({
+						if (!caps.passkey) return { method: "password" };
+						return chooseWithSheetOpen(controller, options, {
 							action: displayContext.action,
 							actionLabel: displayContext.actionLabel,
 							parameterSummary: displayContext.parameterSummary,
@@ -856,11 +857,11 @@
 							canPassword: caps.password,
 						});
 					})
-					.then(function (method) {
-						if (method === "password") {
+					.then(function (picked) {
+						if (picked.method === "password") {
 							return passwordLeg(controller, action, fingerprint, displayContext);
 						}
-						return passkeyLeg(controller, stateId, options);
+						return passkeyLeg(controller, stateId, picked.sheet || startGesture(options));
 					})
 					.then(function (grant) {
 						controller.done(true);
@@ -875,11 +876,27 @@
 			});
 		}
 
-		function passkeyLeg(controller, stateId, options) {
+		function startGesture(options) {
+			return Promise.resolve().then(function () { return runGesture(options); });
+		}
+
+		// The passkey sheet opens with the dialog. If the browser refuses it or the user closes
+		// it, nothing is shown and the dialog's own choices stay; a passkey pick joins an open sheet.
+		function chooseWithSheetOpen(controller, options, choice) {
+			return new Promise(function (resolve, reject) {
+				var sheet = null;
+				Promise.resolve(controller.chooseMethod(choice)).then(function (method) {
+					resolve({ method: method, sheet: method === "passkey" ? sheet : null });
+				}, reject);
+				var automatic = sheet = startGesture(options);
+				automatic.then(function () { resolve({ method: "passkey", sheet: automatic }); }, function () { sheet = null; });
+			});
+		}
+
+		function passkeyLeg(controller, stateId, sheet) {
 			controller.busy(true);
 			controller.announce(tr("Waiting for your passkey…"));
-			return Promise.resolve()
-				.then(function () { return runGesture(options); })
+			return sheet
 				.catch(function (err) { throw mapGestureError(err); })
 				.then(function (assertion) {
 					return post(CONFIRM_METHODS.verify, { state_id: stateId, credential: assertion }, {});

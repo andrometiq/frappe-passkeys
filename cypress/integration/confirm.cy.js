@@ -2,7 +2,9 @@
 // License: MIT. See LICENSE
 //
 // Action-confirmation Cypress suites (happy path, accessibility, call() retry,
-// concurrency, error taxonomy, grant semantics), merged into one file. Each
+// concurrency, error taxonomy, grant semantics), merged into one file. The passkey sheet
+// opens with the dialog, so with the virtual authenticator a confirmation completes with
+// no click in the dialog. Each
 // nested describe keeps its OWN before/after via cy.confirm_setup() /
 // cy.confirm_teardown(), so every suite runs against a freshly reset virtual
 // authenticator (no cross-suite state coupling).
@@ -39,13 +41,12 @@ chromium_only("passkey action-confirmation", () => {
 
 		after(() => cy.confirm_teardown());
 
-		it("confirm(action, params) resolves a grant token that authorizes the action", () => {
+		it("confirm(action, params) resolves a grant token with no click in the dialog", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.window().its("frappe.passkeys").should("exist");
 			cy.window().then((win) => {
 				const p = win.frappe.passkeys.confirm(ACTION, { token: "T1" });
-				cy.get(".passkey-confirm-passkey").should("be.visible").click();
 				return cy.wrap(p, { timeout: 20000 }).then((grant) => {
 					expect(grant, "grant token").to.be.a("string").and.have.length.greaterThan(10);
 					return cy
@@ -116,7 +117,6 @@ chromium_only("passkey action-confirmation", () => {
 			cy.intercept("POST", "**/passkeys.confirm.begin_confirmation").as("begin");
 			cy.window().then((win) => {
 				const p = win.frappe.passkeys.call(PROBE, { token: "R1" });
-				cy.get(".passkey-confirm-passkey").should("be.visible").click();
 				return cy.wrap(p, { timeout: 20000 }).then((message) => {
 					expect(message.confirmed).to.eq(true);
 					expect(message.token).to.eq("R1");
@@ -150,8 +150,6 @@ chromium_only("passkey action-confirmation", () => {
 					win.frappe.passkeys.call(PROBE, args),
 				]);
 			});
-			cy.get(".modal.show").should("be.visible");
-			cy.get(".passkey-confirm-passkey").should("be.visible").click();
 			cy.window().then((win) =>
 				cy.wrap(win.__passkey_confirm_results, { timeout: 20000 }).then((results) => {
 					const fulfilled = results.filter((r) => r.status === "fulfilled");
@@ -181,19 +179,25 @@ chromium_only("passkey action-confirmation", () => {
 
 		after(() => cy.confirm_teardown());
 
-		it("maps a cancelled OS sheet to user_cancelled", () => {
+		it("keeps the dialog silent when the automatic sheet is closed, then maps a cancelled sheet to user_cancelled", () => {
 			cy.login(USER, PW());
 			cy.visit_desk(USER);
 			cy.window().then((win) => {
 				const err = new Error("cancelled");
 				err.name = "NotAllowedError";
-				cy.stub(win.navigator.credentials, "get").rejects(err);
+				cy.stub(win.navigator.credentials, "get").as("credentials_get").rejects(err);
 				win.__passkey_confirm_reject = reject_code(
 					win,
 					win.frappe.passkeys.confirm(ACTION, { token: "E1" })
 				);
 			});
-			cy.get(".passkey-confirm-passkey").should("be.visible").click();
+			// The sheet opened with the dialog and was closed: the dialog stays, as it was.
+			cy.get("@credentials_get").should("have.been.calledOnce");
+			cy.get(".modal.show .passkey-confirm-action").should("be.visible");
+			cy.get(".modal.show .passkey-confirm-msg").should("have.text", "");
+			cy.contains(".modal.show button", "Use your password instead").should("be.visible");
+			cy.get(".passkey-confirm-passkey").should("be.visible").and("not.be.disabled").click();
+			cy.get("@credentials_get").should("have.been.calledTwice");
 			cy.window().then((win) =>
 				cy.wrap(win.__passkey_confirm_reject, { timeout: 20000 }).should("eq", "user_cancelled")
 			);
@@ -227,7 +231,6 @@ chromium_only("passkey action-confirmation", () => {
 					.confirm(ACTION, { token: "G1" })
 					.then((g) => (win.__gs.grant = g), (e) => (win.__gs.err = (e && e.code) || "err"));
 			});
-			cy.get(".passkey-confirm-passkey").should("be.visible").click();
 			// Poll the grant off the window instead of cy.wrap()-ing a cross-realm promise.
 			cy.window().its("__gs.grant", { timeout: 20000 }).should("be.a", "string");
 			cy.window().then((win) => {
@@ -257,7 +260,6 @@ chromium_only("passkey action-confirmation", () => {
 					.confirm(PROBE_FAIL, { token: "G2" })
 					.then((g) => (win.__gs.grant = g), (e) => (win.__gs.err = (e && e.code) || "err"));
 			});
-			cy.get(".passkey-confirm-passkey").should("be.visible").click();
 			cy.window().its("__gs.grant", { timeout: 20000 }).should("be.a", "string");
 			cy.window().then((win) => {
 				// the action throws AFTER the grant is consumed → the gesture is spent

@@ -203,6 +203,17 @@ test("detectCapabilities: no getClientCapabilities => legacy statics; unknown le
 	assert.strictEqual(caps.uvpaa, null);
 });
 
+test("detectCapabilities: immediateGet comes only from getClientCapabilities; absent stays unknown", async () => {
+	const caps = (reported) => C.detectCapabilities({ window: { PublicKeyCredential: {
+		getClientCapabilities() { return Promise.resolve(reported); },
+	} } });
+	assert.strictEqual((await caps({ immediateGet: true })).immediateGet, true);
+	assert.strictEqual((await caps({ immediateGet: false })).immediateGet, false);
+	assert.strictEqual((await caps({ conditionalGet: true })).immediateGet, null);
+	const legacy = await C.detectCapabilities({ window: { PublicKeyCredential: {} } });
+	assert.strictEqual(legacy.immediateGet, null);
+});
+
 test("detectCapabilities: no PublicKeyCredential => unsupported", async () => {
 	const caps = await C.detectCapabilities({ window: {} });
 	assert.strictEqual(caps.supported, false);

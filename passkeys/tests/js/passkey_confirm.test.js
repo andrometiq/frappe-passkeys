@@ -8,7 +8,7 @@
 // 401 retry + VERBATIM payload_fingerprint echo + grant-header attach,
 // params/payload_hash mutual exclusion, password-fallback leg, fallback_unavailable,
 // user-cancel mapping, DOMException mapping through the gesture, single-retry cap,
-// and concurrent-invocation dialog sharing.
+// concurrent-invocation dialog sharing, and the passkey sheet opening with the dialog.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -310,6 +310,120 @@ test("concurrency (A44): identical concurrent confirms share ONE ceremony", asyn
 	assert.strictEqual(a, "G");
 	assert.strictEqual(b, "G");
 	assert.strictEqual(beginCount, 1, "identical concurrent confirms must not start two ceremonies");
+});
+
+// ------------------------------------------- the passkey sheet opens with the dialog
+// The engine starts the gesture as soon as it shows the method choice. A refused or dismissed
+// sheet is silent and leaves the dialog's own choices; a passkey pick joins an open sheet.
+
+function deferred() {
+	let resolve, reject;
+	const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+	return { promise, resolve, reject };
+}
+const flush = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)); };
+
+function sheetScript(extra) {
+	return Object.assign({
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["passkey", "password"] } } }],
+		"passkeys.confirm.verify_confirmation": [{ ok: true, status: 200, body: { message: { grant: "SHEET-GRANT" } } }],
+	}, extra);
+}
+
+// A dialog double whose method choice resolves only when the test picks.
+function makeWaitingUI() {
+	const events = [];
+	const choice = deferred();
+	const controller = {
+		chooseMethod(info) { events.push(["choose", info]); return choice.promise; },
+		collectPassword() { events.push(["password"]); return Promise.resolve("hunter2"); },
+		announce(m) { events.push(["announce", m]); },
+		busy(b) { events.push(["busy", b]); },
+		passwordError(m) { events.push(["pwerror", m]); },
+		done(ok) { events.push(["done", ok]); },
+	};
+	return { controller, events, pick: choice.resolve, cancel: () => choice.reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, "x")) };
+}
+
+test("the passkey sheet opens with the dialog: a grant with no click", async () => {
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	let gestures = 0;
+	const engine = C.createConfirmEngine({ post, runGesture: () => { gestures += 1; return Promise.resolve(ASSERTION); }, ui: () => ui.controller });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await flush();
+	assert.strictEqual(gestures, 1, "the gesture started without a pick");
+	assert.strictEqual(await grant, "SHEET-GRANT");
+	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"], "the dialog showed first, then closed");
+	assert.deepStrictEqual(ui.events[ui.events.length - 1], ["done", true]);
+});
+
+test("a refused or dismissed sheet is silent; the dialog's passkey button runs a fresh gesture on the same ceremony", async () => {
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	const gestures = [];
+	const err = new Error("cancelled"); err.name = "NotAllowedError";
+	const engine = C.createConfirmEngine({
+		post,
+		runGesture: (o) => { gestures.push(o); return gestures.length === 1 ? Promise.reject(err) : Promise.resolve(ASSERTION); },
+		ui: () => ui.controller,
+	});
+	let settled = null;
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	grant.then((g) => { settled = g; }, (e) => { settled = e; });
+	await flush();
+	assert.strictEqual(gestures.length, 1);
+	assert.strictEqual(settled, null, "the refused sheet neither rejects nor closes the dialog");
+	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose"], "no error, no busy state, no message");
+
+	ui.pick("passkey");
+	assert.strictEqual(await grant, "SHEET-GRANT");
+	assert.strictEqual(gestures.length, 2);
+	assert.strictEqual(gestures[1], REQ_OPTIONS, "the same begin_confirmation options");
+	assert.strictEqual(post.calls.filter((c) => c.method === "passkeys.confirm.begin_confirmation").length, 1);
+});
+
+test("after a refused sheet the password choice still works", async () => {
+	const post = makePost(sheetScript({
+		"passkeys.confirm.reauth_password": [{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } }],
+	}));
+	const ui = makeWaitingUI();
+	const err = new Error("cancelled"); err.name = "NotAllowedError";
+	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(err), ui: () => ui.controller });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await flush();
+	ui.pick("password");
+	assert.strictEqual(await grant, "PW-GRANT");
+	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"));
+});
+
+test("a passkey pick while the sheet is open joins it: one gesture", async () => {
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	const sheet = deferred();
+	let gestures = 0;
+	const engine = C.createConfirmEngine({ post, runGesture: () => { gestures += 1; return sheet.promise; }, ui: () => ui.controller });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await flush();
+	ui.pick("passkey");
+	await flush();
+	sheet.resolve(ASSERTION);
+	assert.strictEqual(await grant, "SHEET-GRANT");
+	assert.strictEqual(gestures, 1);
+});
+
+test("closing the dialog while the sheet is open cancels, and a late assertion is never verified", async () => {
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	const sheet = deferred();
+	const engine = C.createConfirmEngine({ post, runGesture: () => sheet.promise, ui: () => ui.controller });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await flush();
+	ui.cancel();
+	await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+	sheet.resolve(ASSERTION);
+	await flush();
+	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"), "fail closed");
 });
 
 // ----------------------------------------------------- HTTP vs network (C11)

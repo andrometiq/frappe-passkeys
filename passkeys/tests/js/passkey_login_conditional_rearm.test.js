@@ -7,10 +7,11 @@
 // question B12 pins: does the conditional/autofill flow re-arm with a FRESH challenge
 // after expiry, or does a stale-challenge 401 dead-end the user?
 //
-// Behaviour (verified here): automatic re-arms stay bounded within one failure episode,
-// while a fresh adopted state resets capacity and any spent state makes the next explicit
-// click await a fresh begin before opening WebAuthn. The state_id/options pair is pinned
-// across the gesture, so an asynchronous adopt cannot mismatch the verify POST.
+// Behaviour (verified here): automatic retries of an expired ceremony stay bounded, every
+// failed click prepares the next ceremony (one begin per failure) so the next click opens
+// WebAuthn at once, and any spent state makes the next explicit click await a fresh begin
+// before opening WebAuthn. The state_id/options pair is pinned across the gesture, so an
+// asynchronous adopt cannot mismatch the verify POST.
 //
 // Same hand-rolled DOM + fake timers + frappe.call stub as passkey_login_verify.test.js,
 // loaded through the bundle's node seam. Own process per file (node:test), so the
@@ -330,7 +331,7 @@ test("two quick clicks during an in-flight begin send one begin_login and open W
 	assert.strictEqual(mod.state.login.stateId, "single-flight-sid");
 });
 
-test("a click during the automatic re-arm's begin shares it and keeps the re-arm budget spent", async () => {
+test("every failed click prepares the next ceremony, so the next click opens WebAuthn without a begin", async () => {
 	primeConditional();
 	const begins = [];
 	global.fetch = function () { const d = deferred(); begins.push(d); return d.promise; };
@@ -344,12 +345,12 @@ test("a click during the automatic re-arm's begin shares it and keeps the re-arm
 		},
 	});
 
-	mod.onButtonClick(); // fresh state: get() fails at once and the failure re-arms
+	mod.onButtonClick(); // fresh state: get() fails at once and the failure prepares the next one
 	await tick();
 	assert.strictEqual(gets.length, 1);
-	assert.strictEqual(begins.length, 1, "the visible failure started one automatic re-arm");
+	assert.strictEqual(begins.length, 1, "the visible failure started one background begin");
 
-	mod.onButtonClick(); // state still spent: the click joins the pending re-arm begin
+	mod.onButtonClick(); // state still spent: the click joins the pending begin
 	assert.strictEqual(begins.length, 1, "the click did not start a second begin");
 
 	begins[0].resolve(beginResponse("rearm-sid", "Bw"));
@@ -357,10 +358,21 @@ test("a click during the automatic re-arm's begin shares it and keeps the re-arm
 	await tick();
 	await tick();
 
-	assert.strictEqual(gets.length, 2, "the joined click opened WebAuthn on the re-armed state");
-	assert.strictEqual(begins.length, 1, "the second failure found the budget spent and did not re-arm");
-	assert.strictEqual(mod.state.login.rearmCount, 1);
-	assert.strictEqual(mod.state.login.spent, true, "the next click will re-begin");
+	assert.strictEqual(gets.length, 2, "the joined click opened WebAuthn on the prepared state");
+	assert.strictEqual(begins.length, 2, "the second failure prepared one more ceremony");
+
+	begins[1].resolve(beginResponse("next-sid", "CA"));
+	await tick();
+	await tick();
+	assert.strictEqual(mod.state.login.stateId, "next-sid");
+	assert.strictEqual(mod.state.login.spent, false, "the prepared state is live");
+
+	mod.onButtonClick();
+	assert.strictEqual(gets.length, 3, "the next click opened WebAuthn at once, in the click");
+	assert.strictEqual(begins.length, 2, "and sent no begin_login of its own");
+	await tick();
+	await tick();
+	assert.strictEqual(begins.length, 3, "one prepared ceremony per failure, never more");
 });
 
 test("a joined click aborts conditional UI a sharing re-arm started before opening WebAuthn", async () => {
@@ -436,10 +448,10 @@ test("a re-arm that shares a click's begin never starts conditional UI under the
 		await tick();
 		await tick();
 		assert.strictEqual(mod.state.busyModal, false);
-		assert.strictEqual(conditionalGets(), 0, "the spent re-arm budget still bounds automatic re-arms");
+		assert.strictEqual(begins.length, 2, "the cancelled modal prepared the next ceremony");
+		assert.strictEqual(conditionalGets(), 0, "nothing starts before that ceremony arrives");
 
-		global.fetch = function () { return Promise.resolve(beginResponse("after-modal-sid", "Cg")); };
-		mod.onPageShow({ persisted: true });
+		begins[1].resolve(beginResponse("after-modal-sid", "Cg"));
 		await tick();
 		await tick();
 		assert.strictEqual(conditionalGets(), 1, "conditional UI starts again once the dialog has settled");

@@ -3,9 +3,10 @@
 //
 // Password → passkey second factor. Four
 // journeys against the real committed bundle + a CDP virtual authenticator:
-//   1. password submit → passkey step-up dialog → session (dispatch, not stacked
-//      onto OTP);
-//   2. the OTP-fallback secondary action hands off to core's own OTP UI
+//   1. password submit → the passkey sheet opens by itself → session, with no click on
+//      "Use a passkey" (dispatch, not stacked onto OTP);
+//   2. when the browser refuses that automatic sheet, the dialog stays as it was, with no
+//      error, and the OTP-fallback secondary action hands off to core's own OTP UI
 //      (`#login_token`) when passkey_2fa_allow_otp_fallback is on;
 //   3. a failed leg-2 verify re-arms the UI and a second gesture succeeds WITHOUT
 //      ever re-POSTing an assertion (fresh server re-arm is covered
@@ -59,10 +60,10 @@ chromium_only("password → passkey second factor", () => {
 		cy.clearCookies();
 	});
 
-	function submitPassword() {
+	function submitPassword(options = {}) {
 		cy.intercept_frappe_method("passkeys.passkey.begin_login", "begin_login");
 		cy.intercept_frappe_method("passkeys.passkey.login_with_password", "login_with_password");
-		cy.visit_login();
+		cy.visit_login(options);
 		cy.wait("@begin_login", { timeout: 15000 }).then(({ response }) => {
 			const body = response && response.body;
 			const config = (body && (body.message || body)) || {};
@@ -84,19 +85,18 @@ chromium_only("password → passkey second factor", () => {
 		cy.wait("@login_with_password", { timeout: 15000 }).then(({ response }) => {
 			expect(response && response.statusCode, JSON.stringify(response && response.body)).to.eq(200);
 		});
-		cy.get(".passkey-dialog", { timeout: 15000 }).should("be.visible");
 	}
 
-	it("password submit drives the passkey step-up and mints a session", () => {
+	it("password submit opens the passkey sheet by itself and mints a session", () => {
 		cy.intercept_frappe_method("passkeys.passkey.verify_second_factor", "verify_sf");
 		submitPassword();
-		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		// No click on "Use a passkey": the virtual authenticator answers the automatic sheet.
 		cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 200);
 		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
 		cy.assert_logged_user(SF_USER);
 	});
 
-	it("offers the OTP fallback and completes sign-in through core's OTP UI", () => {
+	it("keeps the dialog silent when the browser refuses the automatic sheet, and the OTP fallback completes sign-in", () => {
 		let fallbackTmpId;
 		cy.intercept_frappe_method("passkeys.passkey.fallback_to_otp", "fallback_otp");
 		cy.intercept_frappe_method("login", "core_otp", (req, body) => {
@@ -104,7 +104,24 @@ chromium_only("password → passkey second factor", () => {
 			expect(body.tmp_id).to.eq(fallbackTmpId);
 			expect(body).not.to.have.property("usr");
 		});
-		submitPassword();
+		// The browser refuses the sheet opened without a click (Safari can, after the password
+		// request), as it would a dismissed one.
+		submitPassword({
+			onBeforeLoad(win) {
+				win.__passkey_sf_gets = 0;
+				Object.defineProperty(win.navigator.credentials, "get", {
+					configurable: true,
+					value() {
+						win.__passkey_sf_gets += 1;
+						return Promise.reject(new win.DOMException("refused", "NotAllowedError"));
+					},
+				});
+			},
+		});
+		cy.window().its("__passkey_sf_gets").should("eq", 1);
+		cy.get(".passkey-dialog").should("be.visible");
+		cy.get(".passkey-dialog .passkey-dialog-error").should("have.text", "");
+		cy.contains(".passkey-dialog button", "Use a passkey").should("be.visible").and("not.be.disabled");
 		// the secondary action exists only because passkey_2fa_allow_otp_fallback
 		// is on AND the user is OTP-capable (server-gated).
 		cy.contains(".passkey-dialog button", "Use a verification code instead").click();
@@ -176,7 +193,7 @@ chromium_only("password → passkey second factor", () => {
 		});
 
 		submitPassword();
-		cy.contains(".passkey-dialog button", "Use a passkey").click();
+		// The automatic sheet's assertion meets the stubbed re-arm.
 		cy.wait("@verify_sf", { timeout: 20000 });
 		// re-arm keeps the dialog open with an inline error; a fresh gesture retries
 		cy.get(".passkey-dialog .passkey-dialog-error", { timeout: 15000 }).should("not.be.empty");
@@ -205,7 +222,6 @@ chromium_only("password → passkey second factor", () => {
 		});
 
 		submitPassword();
-		cy.contains(".passkey-dialog button", "Use a passkey").click();
 		cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 500);
 		cy.get(".passkey-dialog .passkey-dialog-error", { timeout: 15000 }).should("not.be.empty");
 		cy.contains(".passkey-dialog button", "Use a passkey").click();
