@@ -265,6 +265,7 @@
 	function deleteCard(vm) {
 		var modal = buildModal({ title: t(M.COPY.deleteConfirmTitle) });
 		modal.body.appendChild(el("p", "", M.format(t(vm.stale ? M.COPY.deleteStaleConfirmBody : M.COPY.deleteConfirmBody), [vm.label])));
+		modal.body.appendChild(el("p", "", t(M.COPY.deleteConfirmSignOut)));
 		modal.actions.appendChild(M.button("primary", t(M.COPY.deleteConfirmCta), function () {
 			modal.close();
 			setPortalStatus(t("Confirming it's you…"), "pending");

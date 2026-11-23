@@ -73,6 +73,7 @@ describe("passkeys after an RP ID change", () => {
 		cy.get(`${ROOT} .passkey-delete`).should("be.enabled").click();
 		cy.get(".passkey-dialog:visible")
 			.should("contain.text", `${LABEL} was made for another address and doesn't work on this site.`)
+			.and("contain.text", "Your other devices will be signed out. This one stays signed in.")
 			.contains("button", "Remove passkey").click();
 		cy.wait("@remove").then(({ response }) => {
 			expect(response.statusCode).to.eq(200);

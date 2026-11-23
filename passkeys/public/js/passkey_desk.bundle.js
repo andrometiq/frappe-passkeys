@@ -122,7 +122,7 @@
 		var d = new frappe.ui.Dialog({
 			title: t(M.COPY.deleteConfirmTitle),
 			indicator: "red",
-			fields: [{ fieldtype: "HTML", options: "<p>" + escapeHtml(M.format(t(vm.stale ? M.COPY.deleteStaleConfirmBody : M.COPY.deleteConfirmBody), [vm.label])) + "</p>" }],
+			fields: [{ fieldtype: "HTML", options: "<p>" + escapeHtml(M.format(t(vm.stale ? M.COPY.deleteStaleConfirmBody : M.COPY.deleteConfirmBody), [vm.label])) + "</p><p>" + escapeHtml(t(M.COPY.deleteConfirmSignOut)) + "</p>" }],
 			primary_action_label: t(M.COPY.deleteConfirmCta),
 			primary_action: function () {
 				d.hide();

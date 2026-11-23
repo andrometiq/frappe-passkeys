@@ -62,6 +62,7 @@
 		renamePrompt: "New name for this passkey",
 		deleteConfirmTitle: "Remove this passkey?",
 		deleteConfirmBody: "You won't be able to sign in with {0} after this.",
+		deleteConfirmSignOut: "Your other devices will be signed out. This one stays signed in.",
 		deleteConfirmCta: "Remove passkey",
 		flaggedNote: "This passkey was flagged: it may have been copied.",
 		flaggedRemoveHint: "If you don't recognize a recent sign-in, remove it.",

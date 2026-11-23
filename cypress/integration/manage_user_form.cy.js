@@ -163,6 +163,7 @@ chromium_only("passkey management — User form", () => {
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 2);
 			own_passkey_root().find(".passkey-card .passkey-delete").first().click();
 			cy.get(".modal-dialog:visible")
+				.should("contain.text", "Your other devices will be signed out. This one stays signed in.")
 				.contains(".btn-modal-primary, .btn-primary", "Remove passkey")
 				.click();
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);

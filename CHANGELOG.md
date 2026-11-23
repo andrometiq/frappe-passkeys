@@ -41,6 +41,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
 - Disabling or deleting a passkey signs its owner out, so a lost or stolen device loses its
   session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)).
+- The Remove passkey dialog says your other devices will be signed out.
 
 ### Security
 
