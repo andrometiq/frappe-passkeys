@@ -496,8 +496,8 @@ def _require_developer_test_site(caller: str) -> None:
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def clear_all_test_sessions() -> dict:
-	"""Delete EVERY server-side session — ``tabSessions`` row AND redis cache
-	entry — so the next /login visit is deterministically Guest.
+	"""Delete EVERY server-side session, its row and its cache entry, so the
+	next /login visit is deterministically Guest.
 
 	/login decides its redirect against the SERVER session store
 	(``frappe/www/login.py``: ``if frappe.session.user != "Guest"``), while
@@ -513,20 +513,16 @@ def clear_all_test_sessions() -> dict:
 	:func:`slow_guest_echo`; POST-only, so the whitelist guardrail still holds):
 	the caller has just cleared its cookies, so ``only_for`` would see Guest.
 	Safety = the same site gate as ``slow_guest_echo`` plus a body that can only
-	log users out. Uses core's ``delete_session`` (DB row + cache entry +
-	commit) because session resolution reads the CACHE first
-	(``frappe/sessions.py``) — both stores must go. The final
-	``set_user("Guest")`` keeps this request's own teardown
-	(``Session.update`` via ``request.after_response``) from re-seeding the
-	wiped store out of its in-memory session copy on the cache-miss path
-	(``_update_in_cache`` forces a write-back even for a fresh session)."""
+	log users out. Uses core's ``delete_session`` for every row (row, cache
+	entry, commit), then clears the whole session cache too, so neither store
+	keeps a session. The final ``set_user("Guest")`` leaves this request
+	signed out."""
 	_require_developer_test_site("clear_all_test_sessions")
 	from frappe.sessions import delete_session
 
-	# Counted at entry so a caller can PROBE the substrate: a second call's
-	# cache_purged is exactly the number of sessions that (re)appeared in the
-	# cache since the previous wipe — the regression spec asserts it is 0
-	# after an in-flight straggler lands.
+	# Counted at entry so a caller can check the store: a second call's
+	# cache_purged is the number of cached sessions since the previous wipe
+	# (the isolation spec asserts it is 0).
 	cache_purged = len(frappe.cache.hkeys("session") or [])
 
 	started = frappe.utils.now()
@@ -544,24 +540,12 @@ def clear_all_test_sessions() -> dict:
 			delete_session(sid_hash=sid, reason="Cleared for UI test isolation")
 		else:
 			delete_session(sid, reason="Cleared for UI test isolation")
-		# Close the in-flight-straggler resurrect (observed on CI's frappe-v15
-		# cells, reproduced raw with curl): core's delete_session REMOVES the
-		# sid's `last_db_session_update` marker, and v15's Session.update gates
-		# its WHOLE write block — DB update AND `hset("session", ...)` — on
-		# that marker (absent ⇒ time_diff None ⇒ write). So a request that
-		# loaded this sid BEFORE the wipe would re-seed the cache when it
-		# lands AFTER it, and cache-first resolution resurrects the sid.
-		# Re-seeding a fresh timestamp AFTER delete_session makes such
-		# stragglers skip their write block entirely. On v16/develop update()
-		# gates on the session's in-memory last_updated instead, so the marker
-		# is inert there.
+		# Set core's per-session update marker for the wiped sid (keeps UI test
+		# isolation stable on version-15).
 		frappe.cache.hset("last_db_session_update", sid, now)
-	# Final sweep: drop the ENTIRE session cache hash. A cache-only orphan —
-	# a straggler's write-back that landed after a PREVIOUS wipe — has no
-	# tabSessions row, so the sid loop above can never reach it, yet
-	# cache-first resolution would still authenticate it. Live sessions were
-	# all deleted above and Guest resolution never reads the cache, so
-	# dropping the hash wholesale is safe.
+	# Then drop the whole session cache, so no cached entry outlives the wipe.
+	# Every session was deleted above and Guest never reads the cache, so this
+	# is safe.
 	frappe.cache.delete_key("session")
 	frappe.set_user("Guest")
 	# Survivors are described without session data: whether the wipe saw them (a delete that

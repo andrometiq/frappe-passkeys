@@ -92,20 +92,11 @@ describe("server session isolation", () => {
 		cy.get("#login_email").should("be.visible");
 	});
 
-	it("an in-flight authenticated straggler cannot resurrect the wiped store", () => {
-		// The frappe-v15 CI failure mechanism (reproduced raw with curl):
-		// core's delete_session removes the sid's last_db_session_update
-		// marker, and v15's Session.update gates its whole write block (DB
-		// update + cache hset) on that marker — so a request that loaded its
-		// session BEFORE the wipe re-seeds the cache when it lands AFTER it,
-		// and cache-first resolution resurrects the sid. The wipe re-seeds the
-		// marker AND sweeps the whole cache hash; this pins both
-		// deterministically: slow_guest_echo sleeps ~1.5s server-side, far
-		// longer than the wipe round-trips, so the ordering is fixed, not
-		// load-dependent. The substrate assertion is jar-free on purpose —
-		// cache_purged on a SECOND wipe counts exactly the sessions that
-		// (re)appeared since the first, so a resurrect cannot hide behind
-		// lazy cookie-jar sync.
+	it("a slow signed-in request that ends after the wipe leaves nothing to purge", () => {
+		// slow_guest_echo sleeps about 1.5 s server-side, far longer than the wipe's round
+		// trips, so the order is fixed, not load-dependent: the request starts, the store is
+		// wiped, the request finishes, and a SECOND wipe must find nothing to purge. The
+		// assertion reads the server store, not the cookie jar, on purpose.
 		cy.visit_login();
 		page_login(); // session A, minted in the browser jar
 		// A quiet authed portal page — the desk's session-expired handler
@@ -116,11 +107,11 @@ describe("server session isolation", () => {
 		fire_straggler(); // rides sid A; sleeps server-side while we wipe
 		cy.clearCookies({ log: false });
 		cy.clear_all_test_sessions(); // completes while the straggler sleeps
-		await_straggler(); // its session write-back (if any) has now landed
+		await_straggler(); // the slow request has finished
 		cy.clear_all_test_sessions().then((message) => {
 			expect(
 				message.cache_purged,
-				"sessions that re-appeared in the cache after the previous wipe"
+				"cached sessions the second wipe found"
 			).to.eq(0);
 		});
 		cy.visit("/login");

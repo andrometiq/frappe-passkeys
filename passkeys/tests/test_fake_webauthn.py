@@ -408,9 +408,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 							ui_test_helpers.clear_all_test_sessions()
 
 	def test_clear_all_test_sessions_wipes_db_and_cache(self):
-		# A live server session must be dead in BOTH stores after the wipe —
-		# resolution reads the cache first (frappe/sessions.py), so a cache
-		# survivor would keep authenticating /login visits.
+		# A server session must be gone from both the table and the cache after the wipe.
 		sid = frappe.generate_hash()
 		Sessions = frappe.qb.DocType("Sessions")
 		(
@@ -419,8 +417,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 			.insert((sid, "Administrator", "{}", frappe.utils.now(), "Active"))
 		).run()
 		frappe.cache.hset("session", sid, {"user": "Administrator", "data": {"user": "Administrator"}})
-		# A cache-ONLY orphan — no tabSessions row, like a straggler's post-wipe
-		# write-back. The sid loop cannot reach it; only the hash sweep can.
+		# A cache entry with no row: only the whole-cache clear reaches it.
 		orphan = frappe.generate_hash()
 		frappe.cache.hset("session", orphan, {"user": "Administrator", "data": {"user": "Administrator"}})
 		self.addCleanup(frappe.set_user, "Administrator")
@@ -433,8 +430,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 		self.assertIsNone(frappe.cache.hget("session", sid))
 		self.assertIsNone(frappe.cache.hget("session", orphan))
 		self.assertFalse(frappe.qb.from_(Sessions).select(Sessions.sid).where(Sessions.sid == sid).run())
-		# The wipe must also re-seed the straggler-suppression marker that
-		# core's delete_session removes (the v15 resurrect gate).
+		# The wipe also sets core's per-session update marker for the wiped sid.
 		self.assertTrue(frappe.cache.hget("last_db_session_update", sid))
 
 	def test_clear_all_test_sessions_sees_a_login_committed_after_the_request_began(self):

@@ -235,7 +235,7 @@ Cypress.Commands.add("server_logout", (attempt = 0) =>
 	})
 );
 
-// Wipe EVERY server-side session (tabSessions row + redis cache entry) on the
+// Wipe EVERY server-side session (database row and cache entry) on the
 // test site — the server half of test isolation. Cypress testIsolation clears
 // only the CLIENT jar; stacked cy.login calls (register_passkey's re-login)
 // orphan server sessions no client-side logout can end, and /login redirects
@@ -253,7 +253,7 @@ Cypress.Commands.add("server_logout", (attempt = 0) =>
 // whatever session the jar actually carries and returns ITS token (or the
 // guest login page's "None" → no header), so token and session always agree.
 // Retries: transient 5xx like server_logout above (the wipe touches
-// tabSessions harder than the single-row delete that already 508s on CI's
+// the Sessions table harder than the single-row delete that already 508s on CI's
 // constrained MariaDB), plus ONE bounded 400 retry — a straggler response can
 // flip the jar between the token fetch and the POST; refetching realigns.
 // A non-retryable failure (e.g. the missing-flag 417) fails immediately, by name.
@@ -304,7 +304,7 @@ const site_host = () => new URL(Cypress.config("baseUrl")).hostname;
 // can finish waiting on `load`.
 Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
 	const deskUser = encodeURIComponent(String(user || "Administrator"));
-	// The desk GET writes tabSessions; under CI's constrained MariaDB it can
+	// The desk GET writes the session row; under CI's constrained MariaDB it can
 	// transiently deadlock / lock-wait-timeout, which Frappe returns as HTTP 508.
 	// Retry the visit on a transient non-2xx/network blip rather than failing a
 	// before/after hook on the first hiccup.
@@ -337,9 +337,8 @@ Cypress.Commands.add("visit_login", (options = {}) => {
 		//   2. clear_all_test_sessions — wipes EVERY server session (DB row + redis
 		//      cache), including sessions ORPHANED by stacked cy.login calls
 		//      (register_passkey's re-login) that no client-side logout can reach.
-		//      Whatever sid a lazily-synced jar layer or straggler response then
-		//      re-presents is dead, which makes the /desk-resurrect class
-		//      (passkey_a11y on CI) structurally impossible rather than unlikely.
+		//      Whatever sid a lazily-synced jar layer then presents is dead, so a
+		//      login-page spec can't land on the desk (passkey_a11y on CI).
 		//   3. the passkeys_deterministic_test_cookies after_request hook
 		//      (passkeys/cookie_determinism.py) — strips in-flight stale sid
 		//      re-seeds, covering the cookie-level race window (both directions;
@@ -356,14 +355,11 @@ Cypress.Commands.add("visit_login", (options = {}) => {
 		cy.visit("/login", options);
 		return cy.location("pathname", { log: false }).then((pathname) => {
 			if (pathname !== "/login") {
-				// A stale session leaked past the wipe — an in-flight straggler
-				// re-seeded the store after it ran. The substrate fixes make
-				// this vanishingly rare; when it fires anyway, heal ONCE: by
-				// now the straggler has landed, so a second wipe reaches its
-				// session, and the re-visit must then render the form. A
-				// second leak fails the hard assertion below — this never
-				// masks a real guest-redirect defect, which would fail both
-				// visits identically.
+				// A stale session is still there after the wipe. This is rare;
+				// heal ONCE: wipe again and re-visit, and the form must render
+				// then. A second leak fails the hard assertion below, so this
+				// never masks a real guest-redirect defect, which would fail
+				// both visits identically.
 				Cypress.log({
 					name: "visit_login",
 					message: "stale server session leaked; healing once (wipe + re-visit)",
