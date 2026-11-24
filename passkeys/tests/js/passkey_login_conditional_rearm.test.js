@@ -459,3 +459,47 @@ test("a re-arm that shares a click's begin never starts conditional UI under the
 		global.document.querySelector = originalQuerySelector;
 	}
 });
+
+test("an autofill request that answers by itself re-arms once in a row, then waits for a click", async () => {
+	primeConditional();
+	mod.state.modes.first_factor = true;
+	const originalQuerySelector = global.document.querySelector;
+	global.document.querySelector = (selector) => (selector === "#login_email" ? fakeEl() : null);
+	try {
+		let verifies = 0;
+		global.window.frappe.call = function (opts) {
+			verifies += 1;
+			const xhr = { responseJSON: { exc_type: "UnknownCredential" }, status: 401 };
+			opts.statusCode[401](xhr);
+			return Promise.reject(xhr);
+		};
+		let begins = 0;
+		global.fetch = function () {
+			begins += 1;
+			return Promise.resolve(begins > 10 ? { ok: false } : beginResponse("loop-sid-" + begins, "DA"));
+		};
+		const gets = [];
+		installNavigator({
+			credentials: {
+				get(options) { gets.push(options); return Promise.resolve(fakeCred); },
+			},
+		});
+
+		mod.runVerify(fakeCred, { source: "conditional" }, "sid-under-test");
+		for (let i = 0; i < 20; i++) await tick();
+
+		assert.strictEqual(begins, 1, "one automatic re-arm after the first failure");
+		assert.strictEqual(verifies, 2, "the re-armed request's failure starts nothing more");
+		assert.strictEqual(gets.length, 1);
+
+		mod.onButtonClick();
+		for (let i = 0; i < 20; i++) await tick();
+		// The click re-begins its spent state; its failure prepares and re-arms the next, and that
+		// request's own failure re-arms once more before everything waits again.
+		assert.strictEqual(begins, 4);
+		assert.strictEqual(verifies, 5);
+		assert.strictEqual(gets.filter((options) => options.mediation === "conditional").length, 3);
+	} finally {
+		global.document.querySelector = originalQuerySelector;
+	}
+});

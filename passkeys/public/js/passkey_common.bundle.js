@@ -391,9 +391,10 @@
 	}
 
 	// ---------------------------------------------------- retry state machine
-	// Pins the retry contract. An assertion is NEVER re-POSTed; retry always
-	// means a NEW ceremony + a NEW get()/create(). Re-arm is bounded at one per
-	// user-visible failure, never an automatic loop.
+	// Pins the retry contract. A challenge is spent once an assertion is posted, and
+	// an assertion is NEVER re-POSTed; a prompt that returned no assertion may be
+	// reopened on the same live options. Re-arm is bounded at one per user-visible
+	// failure, never an automatic loop.
 	var PRE_MODAL_REBEGIN_MARGIN_MS = 30000;
 	function CeremonyState(opts) {
 		opts = opts || {};
@@ -778,14 +779,28 @@
 
 	var MAX_PASSWORD_TRIES = 5;
 
+	// A missing API counts as no activation: the dialog's button stays the way in.
+	function hasUserActivation() {
+		var activation = typeof navigator !== "undefined" && navigator.userActivation;
+		return !!(activation && activation.isActive);
+	}
+
+	// A frame callback runs before its paint; a task queued from it runs after.
+	function afterPaint(fn) {
+		if (typeof requestAnimationFrame !== "function") { setTimeout(fn, 0); return; }
+		requestAnimationFrame(function () { setTimeout(fn, 0); });
+	}
+
 	// deps: post(method, body, headers) -> Promise<{ok, status, body}>;
-	// runGesture(optionsJSON) -> Promise<assertionJSON>; ui: a controller, or a factory for
-	// one per ceremony (contract: docs/custom-ui.md); translate (optional).
+	// runGesture(optionsJSON[, {signal}]) -> Promise<assertionJSON>; ui: a controller, or a factory
+	// for one per ceremony (contract: docs/custom-ui.md); translate (optional);
+	// promptWithDialog (optional): open the passkey prompt with the dialog.
 	function createConfirmEngine(deps) {
 		var post = deps.post;
 		var runGesture = deps.runGesture;
 		var makeUI = deps.ui;
 		var tr = deps.translate || function (s) { return s; };
+		var promptWithDialog = deps.promptWithDialog === true;
 
 		var inflight = {}; // signature -> Promise: identical concurrent calls share one
 		var chain = Promise.resolve(); // distinct confirmations run one after another
@@ -849,19 +864,21 @@
 				return Promise.resolve()
 					.then(function () {
 						if (!caps.passkey) return { method: "password" };
-						return chooseWithSheetOpen(controller, options, {
+						var choice = {
 							action: displayContext.action,
 							actionLabel: displayContext.actionLabel,
 							parameterSummary: displayContext.parameterSummary,
 							canPasskey: caps.passkey,
 							canPassword: caps.password,
-						});
+						};
+						if (promptWithDialog) return chooseWithPromptOpen(controller, options, choice);
+						return Promise.resolve(controller.chooseMethod(choice)).then(function (method) { return { method: method }; });
 					})
 					.then(function (picked) {
 						if (picked.method === "password") {
 							return passwordLeg(controller, action, fingerprint, displayContext);
 						}
-						return passkeyLeg(controller, stateId, picked.sheet || startGesture(options));
+						return passkeyLeg(controller, stateId, options, picked.sheet);
 					})
 					.then(function (grant) {
 						controller.done(true);
@@ -876,27 +893,40 @@
 			});
 		}
 
-		function startGesture(options) {
-			return Promise.resolve().then(function () { return runGesture(options); });
-		}
-
-		// The passkey sheet opens with the dialog. If the browser refuses it or the user closes
-		// it, nothing is shown and the dialog's own choices stay; a passkey pick joins an open sheet.
-		function chooseWithSheetOpen(controller, options, choice) {
+		// One frame after chooseMethod (the controller's dialog must be on screen by then), and only
+		// when the page had a click or key press in the last few seconds, the passkey prompt opens by
+		// itself. A refused or closed prompt is silent and the dialog's choices stay; a passkey pick
+		// joins an open prompt; a password pick or a cancel aborts it.
+		function chooseWithPromptOpen(controller, options, choice) {
 			return new Promise(function (resolve, reject) {
+				var chosen = false;
 				var sheet = null;
+				var request = new AbortController();
 				Promise.resolve(controller.chooseMethod(choice)).then(function (method) {
-					resolve({ method: method, sheet: method === "passkey" ? sheet : null });
-				}, reject);
-				var automatic = sheet = startGesture(options);
-				automatic.then(function () { resolve({ method: "passkey", sheet: automatic }); }, function () { sheet = null; });
+					chosen = true;
+					if (method === "password") request.abort();
+					resolve({ method: method, sheet: method === "password" ? null : sheet });
+				}, function (err) {
+					chosen = true;
+					request.abort();
+					reject(err);
+				});
+				afterPaint(function () {
+					if (chosen || !hasUserActivation()) return;
+					var automatic = sheet = new Promise(function (start) {
+						start(runGesture(options, { signal: request.signal }));
+					});
+					automatic.then(function () { resolve({ method: "passkey", sheet: automatic }); },
+						function () { if (sheet === automatic) sheet = null; });
+				});
 			});
 		}
 
-		function passkeyLeg(controller, stateId, sheet) {
+		// sheet: the automatic prompt the user's pick joins, if one is open.
+		function passkeyLeg(controller, stateId, options, sheet) {
 			controller.busy(true);
 			controller.announce(tr("Waiting for your passkey…"));
-			return sheet
+			return (sheet || Promise.resolve().then(function () { return runGesture(options); }))
 				.catch(function (err) { throw mapGestureError(err); })
 				.then(function (assertion) {
 					return post(CONFIRM_METHODS.verify, { state_id: stateId, credential: assertion }, {});

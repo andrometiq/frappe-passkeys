@@ -20,6 +20,9 @@ non-passkey behavior.
       accident.
 - [ ] Integrate second-factor dispatch through the accepted core design, including the alternate-path
       veto and one-time OTP fallback marker.
+- [ ] Carry the prompt timing: immediate UI mode on the button's first click, the second-factor
+      prompt opening by itself (with the autofill request aborted first), a ceremony prepared
+      after each failed attempt, and a dialog that cannot be closed while its verify is pending.
 - [ ] Test password reset, email-link/social/LDAP, OTP, translations, keyboard/screen-reader behavior,
       conditional UI, explicit button, cancellation, retry, and session redirect.
 

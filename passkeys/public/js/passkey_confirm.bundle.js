@@ -30,6 +30,8 @@
 				dialog = new window.frappe.ui.Dialog({
 					title: t("Confirm it's you"),
 					size: "small",
+					// On screen when show() returns, before the engine opens the passkey prompt.
+					animate: false,
 					fields: [
 						{ fieldname: "summary", fieldtype: "HTML" },
 						{ fieldname: "password", fieldtype: "Password", label: t("Password") },
@@ -213,12 +215,11 @@
 
 			done: function () {
 				settled = true;
-				if (!dialog) { restoreCapturedFocus(); return; }
+				// Without the fade a close (Esc, a route change) has already finished hiding.
+				if (!dialog || !dialog.display) { restoreCapturedFocus(); return; }
 				// Bootstrap moves focus while hiding, so restore only once it has finished.
 				dialog.$wrapper.one("hidden.bs.modal", restoreCapturedFocus);
 				dialog.hide();
-				// Bootstrap 4 ignores hide() during the show transition; hide again once shown.
-				dialog.$wrapper.one("shown.bs.modal", function () { dialog.$wrapper.modal("hide"); });
 			},
 		};
 		return controller;
@@ -229,6 +230,7 @@
 		runGesture: C.getAssertion,
 		ui: makeDialogUI,
 		translate: t,
+		promptWithDialog: true,
 	});
 
 	function confirm(action, params) {

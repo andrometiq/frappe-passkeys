@@ -185,7 +185,7 @@
 			},
 		};
 	}
-	var engine = C.createConfirmEngine({ post: post, runGesture: C.getAssertion, ui: makeConfirmUI, translate: t });
+	var engine = C.createConfirmEngine({ post: post, runGesture: C.getAssertion, ui: makeConfirmUI, translate: t, promptWithDialog: true });
 	// Any portal script (and the headless delete) can confirm through it.
 	window.frappe.passkeys = window.frappe.passkeys || {};
 	if (!window.frappe.passkeys.confirm) window.frappe.passkeys.confirm = engine.confirm;

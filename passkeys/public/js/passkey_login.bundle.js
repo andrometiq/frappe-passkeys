@@ -37,6 +37,7 @@
 		conditionalEnabled: false,
 		sfInterceptor: null, // the capture-phase submit listener
 		busyModal: false, // a modal get() is in flight
+		secondFactorOpen: false, // the second-factor dialog owns the authenticator
 		rebeginInFlight: null, // the pending re-begin, shared by concurrent callers
 		immediateGet: false, // the next click asks for this device's passkeys first (once per page)
 	};
@@ -118,7 +119,7 @@
 	// ------------------------------------------------------- conditional UI
 	function startConditional() {
 		// Overlapping get() calls make the browser abort one; the open modal owns the authenticator.
-		if (!state.conditionalEnabled || state.busyModal) return;
+		if (!state.conditionalEnabled || state.busyModal || state.secondFactorOpen) return;
 		// A selector miss (a core redesign) skips conditional UI; the button still works.
 		var input = C.resolveIdentifierInput(document);
 		if (!input) return;
@@ -140,11 +141,12 @@
 		navigator.credentials
 			.get({ mediation: "conditional", publicKey: publicKey, signal: controller.signal })
 			.then(function (cred) {
-				state.conditionalAbort = null;
+				if (state.conditionalAbort === controller) state.conditionalAbort = null;
 				runVerify(cred, { source: "conditional" }, stateId);
 			})
 			.catch(function (err) {
-				state.conditionalAbort = null;
+				// A newer request may own the field by now; leave its controller in place.
+				if (state.conditionalAbort === controller) state.conditionalAbort = null;
 				// We abort it for a modal get or a re-begin. Other failures stay silent: the
 				// user made no gesture yet.
 				if (err && err.name === "AbortError") return;
@@ -343,7 +345,7 @@
 			// Only a missing credential may be pruned; an RP revert heals a stale one.
 			if (kind === "unknown_credential") signalUnknownCredential(cred);
 			applyLoginStatus(C.loginStatusForServerKind(kind));
-			rebeginAndRearm();
+			rearmAfterFailure(ctx);
 			return;
 		}
 		if (kind === "uv_setup_required") {
@@ -352,7 +354,14 @@
 			return;
 		}
 		neutralFail();
-		rebeginAndRearm();
+		rearmAfterFailure(ctx);
+	}
+
+	// Something other than a person can answer a conditional request (a virtual or auto-answering
+	// authenticator), so its failures re-arm once in a row; a click's failure always prepares the next.
+	function rearmAfterFailure(ctx) {
+		if (ctx.source !== "conditional") rebeginAndRearm();
+		else if (state.login.canRearm()) rebegin().then(function (ok) { if (ok) { state.login.markRearm(); startConditional(); } });
 	}
 
 	// ---------------------------------------------- uv-setup step-up
@@ -503,6 +512,9 @@
 		} catch (e) { restore(); showSecondFactorUnavailable(stateId, fallbackOtp); return; }
 
 		var ctxState = { stateId: stateId };
+		// Chromium refuses a second request while the autofill one is pending.
+		abortConditional();
+		state.secondFactorOpen = true;
 		var dlg = buildDialog({
 			titleText: t("Confirm it's you"),
 			bodyHtml:
@@ -512,9 +524,17 @@
 			secondaryText: fallbackOtp ? t("Use a verification code instead") : null,
 			onPrimary: usePasskey,
 			onSecondary: fallbackOtp ? function (root, close, ctxState) {
+				if (ctxState.request) ctxState.request.abort();
 				requestOtpFallback(ctxState.stateId, root, close);
 			} : null,
-			onClose: restore,
+			onClose: function () {
+				restore();
+				if (ctxState.request) ctxState.request.abort();
+				state.secondFactorOpen = false;
+				if (!state.conditionalEnabled || ctxState.signedIn) return;
+				if (state.login.needsPreModalRebegin(Date.now())) rebeginAndRearm();
+				else startConditional();
+			},
 			ctxState: ctxState,
 		});
 		openDialog(dlg);
@@ -522,9 +542,15 @@
 		usePasskey(dlg.root, dlg.close, ctxState, true);
 
 		function usePasskey(root, close, ctxState, isAutomatic) {
-			if (ctxState.ceremonyPending) return;
+			if (root._passkeyOtpPending) return;
+			if (ctxState.ceremonyPending) {
+				if (!isAutomatic) announce(t("Waiting for your passkey."));
+				return;
+			}
 			ctxState.ceremonyPending = true;
-			announce(t("Waiting for your passkey."));
+			// Closing the dialog or choosing the code cancels the request; its assertion is dropped.
+			var request = ctxState.request = new AbortController();
+			if (!isAutomatic) announce(t("Waiting for your passkey."));
 			Promise.resolve()
 				.then(function () {
 					if (!secondFactorWebAuthnAvailable()) {
@@ -532,17 +558,23 @@
 						unsupported.name = "NotSupportedError";
 						throw unsupported;
 					}
-					return navigator.credentials.get({ publicKey: publicKey });
+					return navigator.credentials.get({ publicKey: publicKey, signal: request.signal });
 				})
 				.then(function (cred) {
+					if (request.signal.aborted) { ctxState.ceremonyPending = false; return; }
+					var credential = JSON.stringify(C.authAssertionToJSON(cred));
+					// A posted assertion can't be called back: no way out until the verify settles.
+					dlg.setLocked(true);
+					setDialogError(root, t("Verifying…"));
 					var handled = false;
 					function settle(message) {
 						handled = true;
 						ctxState.ceremonyPending = false;
+						dlg.setLocked(false);
 						if (message) setDialogError(root, message);
 					}
 					var call = frappeCall(API.verify_second_factor,
-						{ state_id: ctxState.stateId, credential: JSON.stringify(C.authAssertionToJSON(cred)) },
+						{ state_id: ctxState.stateId, credential: credential },
 						composedHandlers({
 							on401: function (d) {
 								var expired = C.mapServerExcType(d && d.exc_type) === "ceremony_expired";
@@ -557,7 +589,7 @@
 								settle(t("That didn't work — try your passkey again."));
 							},
 							on429: function () { settle(t("Too many attempts. Wait a moment, then try again.")); },
-							onSuccess: function () { handled = true; rememberHint(); close(); }, // core redirects
+							onSuccess: function () { handled = true; ctxState.signedIn = true; rememberHint(); close(); }, // core redirects
 						})
 					);
 					function finish() {
@@ -567,7 +599,8 @@
 				})
 				.catch(function (err) {
 					ctxState.ceremonyPending = false;
-					if (isAutomatic) return;
+					dlg.setLocked(false);
+					if (isAutomatic || request.signal.aborted) return;
 					var m = C.mapDomException(err);
 					if (m.code === "not_supported") {
 						close();
@@ -682,8 +715,12 @@
 
 		var ctxState = cfg.ctxState || {};
 		var actions = root.querySelector(".passkey-dialog-actions");
+		var buttons = [];
+		var closed = false;
 
 		function close() {
+			if (closed) return;
+			closed = true;
 			if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 			document.removeEventListener("keydown", onKey, true);
 			if (cfg.onClose) cfg.onClose();
@@ -694,29 +731,50 @@
 			secBtn.type = "button";
 			secBtn.className = "btn btn-sm btn-default btn-block";
 			secBtn.textContent = cfg.secondaryText;
-			secBtn.addEventListener("click", function () { cfg.onSecondary(root, close, ctxState); });
-			actions.appendChild(secBtn);
+			secBtn.addEventListener("click", function () { if (!ctxState.locked) cfg.onSecondary(root, close, ctxState); });
+			buttons.push(actions.appendChild(secBtn));
 		}
 		var primary = document.createElement("button");
 		primary.type = "button";
 		primary.className = "btn btn-sm btn-primary btn-block";
 		primary.textContent = cfg.primaryText;
-		primary.addEventListener("click", function () { cfg.onPrimary(root, close, ctxState); });
-		actions.appendChild(primary);
+		primary.addEventListener("click", function () { if (!ctxState.locked) cfg.onPrimary(root, close, ctxState); });
+		buttons.push(actions.appendChild(primary));
 
 		var cancel = document.createElement("button");
 		cancel.type = "button";
 		cancel.className = "btn btn-sm btn-default btn-block passkey-dialog-cancel";
 		cancel.textContent = t("Not now");
-		cancel.addEventListener("click", close);
-		actions.appendChild(cancel);
+		cancel.addEventListener("click", dismiss);
+		buttons.push(actions.appendChild(cancel));
+
+		// While locked, only the code (close()) can close the dialog.
+		function dismiss() { if (!ctxState.locked) close(); }
+		var focusBeforeLock = null;
+		function setLocked(locked) {
+			if (!!ctxState.locked === !!locked) return;
+			ctxState.locked = locked;
+			if (locked) {
+				// Disabling the focused button would drop focus to the page: hold it on the dialog.
+				focusBeforeLock = root.contains(document.activeElement) ? document.activeElement : null;
+				root.setAttribute("tabindex", "-1");
+				root.focus();
+			}
+			buttons.forEach(function (button) { button.disabled = locked; });
+			if (!locked) {
+				var target = focusBeforeLock && root.contains(focusBeforeLock) ? focusBeforeLock : primary;
+				focusBeforeLock = null;
+				if (!root.contains(document.activeElement) || document.activeElement === root) target.focus();
+			}
+		}
 
 		function focusables() {
 			return root.querySelectorAll("button, input, a[href], [tabindex]:not([tabindex='-1'])");
 		}
 		function onKey(e) {
-			if (e.key === "Escape") { e.preventDefault(); close(); return; }
+			if (e.key === "Escape") { e.preventDefault(); dismiss(); return; }
 			if (e.key === "Tab") {
+				if (ctxState.locked) { e.preventDefault(); return; }
 				var f = focusables();
 				if (!f.length) return;
 				var first = f[0], last = f[f.length - 1];
@@ -725,7 +783,7 @@
 			}
 		}
 
-		return { overlay: overlay, root: root, close: close, primary: primary, onKey: onKey, focusables: focusables };
+		return { overlay: overlay, root: root, close: close, setLocked: setLocked, primary: primary, onKey: onKey, focusables: focusables };
 	}
 
 	function openDialog(dlg) {

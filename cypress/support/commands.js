@@ -17,6 +17,37 @@ const cdp = (command, params = {}) =>
 
 let current_authenticator_id = null;
 
+// A click through the browser's input pipeline, at the element's place on screen. Unlike
+// cy.click(), it gives the page a user activation (navigator.userActivation.isActive).
+Cypress.Commands.add("real_click", { prevSubject: "element" }, ($element) =>
+	cy
+		.wrap($element, { log: false })
+		.scrollIntoView()
+		.should("be.visible")
+		// A modal still sliding in would move the element away from the point clicked.
+		.should(($subject) => {
+			for (let node = $subject[0]; node && node.getAnimations; node = node.parentElement) {
+				const running = node.getAnimations().filter((animation) => animation.playState === "running");
+				expect(running, "no running animation on the element or its ancestors").to.have.length(0);
+			}
+		})
+		.then(() => {
+			const frame = window.top.document.querySelector("iframe.aut-iframe");
+			const frame_rect = frame.getBoundingClientRect();
+			const scale = frame_rect.width / frame.offsetWidth;
+			const rect = $element[0].getBoundingClientRect();
+			const at = {
+				x: frame_rect.left + (rect.left + rect.width / 2) * scale,
+				y: frame_rect.top + (rect.top + rect.height / 2) * scale,
+				button: "left",
+				clickCount: 1,
+			};
+			return cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...at }).then(() =>
+				cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...at })
+			);
+		})
+);
+
 // Platform passkey: discoverable ES256, UV supported + passing, presence auto.
 const DEFAULT_AUTHENTICATOR_OPTIONS = {
 	protocol: "ctap2",
@@ -278,7 +309,18 @@ Cypress.Commands.add("visit_desk", (user = "Administrator", options = {}) => {
 	// Retry the visit on a transient non-2xx/network blip rather than failing a
 	// before/after hook on the first hiccup.
 	const opts = { retryOnNetworkFailure: true, retryOnStatusCodeFailure: true, ...options };
-	return cy.visit(`/app/user/${deskUser}`, opts).window().its("frappe").should("exist");
+	// Each desk route hides the open dialog (frappe.ui.hide_open_dialog, before the page renders),
+	// so a spec's dialog opens only after the first route has rendered its page.
+	return cy
+		.visit(`/app/user/${deskUser}`, opts)
+		.window()
+		.its("frappe")
+		.should("exist")
+		.window()
+		.should((win) => {
+			expect(win.frappe.router && win.frappe.router.current_route, "the desk's first route ran").to.be.ok;
+			expect(win.frappe.container && win.frappe.container.page, "the first page rendered").to.be.ok;
+		});
 });
 
 // Login-page specs often configure site state while authenticated, then need to

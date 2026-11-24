@@ -284,10 +284,11 @@ const engine = C.createConfirmEngine({
     headers: { "Content-Type": "application/json", "X-Frappe-CSRF-Token": frappe.csrf_token, ...headers },
     body: JSON.stringify(body || {}),
   }).then((r) => r.json().then((body) => ({ ok: r.ok, status: r.status, body }))),
-  runGesture: (opts) => navigator.credentials
-    .get({ publicKey: C.parseRequestOptionsFromJSON(opts) })
+  runGesture: (opts, { signal } = {}) => navigator.credentials
+    .get({ publicKey: C.parseRequestOptionsFromJSON(opts), signal })
     .then((cred) => C.authAssertionToJSON(cred)),
   ui: makeYourConfirmModal,   // your DOM; see the controller contract below
+  promptWithDialog: true,     // optional: open the passkey prompt with the dialog (below)
 });
 frappe.passkeys = frappe.passkeys || {};
 frappe.passkeys.confirm = frappe.passkeys.confirm || engine.confirm;
@@ -300,22 +301,49 @@ Implement all six methods:
 
 | Method | Called when |
 |---|---|
-| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. |
+| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. With `promptWithDialog`, it may stay unsettled: the automatic prompt can finish first. |
 | `collectPassword({action, actionLabel, parameterSummary})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. |
 | `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
 | `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
-| `busy(isBusy)` | The passkey gesture is in progress. |
-| `done(isOk)` | The confirmation finished or failed. Close your modal here. |
+| `busy(isBusy)` | A passkey is being verified, or a prompt the user picked is open. |
+| `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending. |
 
 With only password available, the engine goes straight to `collectPassword`.
 
-When a passkey is available, the engine opens the passkey prompt (`runGesture`) right after
-calling `chooseMethod`, so the user confirms without a click while your dialog shows what is being
-confirmed. If that succeeds, the engine verifies and calls `done(true)`; your `chooseMethod`
-promise is simply left unsettled. If the browser refuses the prompt or the user closes it, the engine
-reports nothing and waits for `chooseMethod`: `"passkey"` then runs a fresh gesture on the same
-ceremony, `"password"` the password leg. A `"passkey"` pick while the prompt is still open uses that
-prompt. While the automatic prompt is open the engine calls neither `busy` nor `announce`.
+Without `promptWithDialog` (the default), the engine opens the passkey prompt only after
+`chooseMethod` resolves `"passkey"`: it calls `busy(true)` and `announce`, then `runGesture`, and
+`done` comes after `chooseMethod` has settled.
+
+With `promptWithDialog: true` (the desk and portal dialogs set it), the engine opens the prompt
+itself, so the user confirms without a click while your dialog shows what is being confirmed:
+
+1. The engine calls `chooseMethod`, then waits one frame (a frame callback, then a task). It does
+   not watch your DOM: have your dialog on screen, with no fade or slide-in, before `chooseMethod`
+   returns.
+2. It then calls `runGesture(options, { signal })`, but only if `chooseMethod` has not settled
+   and the user clicked or pressed a key on the page in the last few seconds
+   (`navigator.userActivation.isActive`; without that API it waits for the dialog's button). The
+   check is page-wide: it does not show that this confirmation came from that input, so one your
+   script starts from a timer, a route change or a realtime event soon after the user clicked or
+   typed also gets the automatic prompt. One started with no recent input, such as on page load,
+   waits for the user's pick, as without the option. The prompt itself still needs the user's
+   touch, PIN or biometric.
+3. If the prompt succeeds, the engine verifies and calls `done(true)`, or `done(false)` if the
+   verify fails; your `chooseMethod` promise is left unsettled.
+4. If the browser refuses the prompt or the user closes it, the engine reports nothing and waits
+   for `chooseMethod`: `"passkey"` then runs a fresh gesture on the same ceremony, `"password"` the
+   password leg. A `"passkey"` pick while the prompt is still open uses that prompt and calls
+   `busy(true)` and `announce` under it. Until the prompt finishes or the user picks passkey, the
+   engine calls neither `busy` nor `announce`.
+5. `signal` is aborted when `chooseMethod` resolves `"password"` or rejects (the user closed the
+   dialog). Pass it to `navigator.credentials.get` so the prompt closes with your dialog; an
+   assertion that arrives after that is never verified. After a `"passkey"` pick the engine no
+   longer cancels the prompt: closing your dialog then does not stop it, and an assertion that
+   still arrives is verified.
+
+Only the prompt the engine opens by itself gets `{ signal }`. A gesture started by the user's
+`"passkey"` pick, and every gesture without the option, gets `options` only, so give the second
+parameter a default, `(opts, { signal } = {})`, as in the example.
 
 `passkey_portal.bundle.js` is a full, self-contained reference implementation of
 `makeYourConfirmModal` (a `role="dialog"` overlay with focus trap and Esc handling).
@@ -372,6 +400,10 @@ codes). `fallback_unavailable` means neither a passkey nor password confirmation
 available. `confirmation_failed` also covers a protected method's refusal after successful
 confirmation and a server's refusal to start one (for example an impersonated session); show
 `.message`. Expired confirmations say "That took too long — please try again."
+
+On Desk, a route change closes any open dialog, so a confirmation that is open when Desk routes
+rejects with `user_cancelled`. Start confirmations from a user action on a page that has finished
+loading, not while Desk is still routing its first page.
 
 For server tests, follow the enrollment, request, confirmation and grant helpers in
 [`test_confirm_api.py`](../passkeys/tests/test_confirm_api.py), using
@@ -463,9 +495,9 @@ that requested it. A custom UI keeps that intact by holding these lines:
    origin either fails closed or *is* the phishing attack the technology exists to
    stop.
 3. **Never cache, store, or replay a challenge.** `begin_*` responses are single-use
-   and short-lived; the server consumes each one atomically. Always fetch fresh
-   options for every attempt — never reuse `state_id`/`options`, and never re-POST an
-   assertion (retry means a *new* ceremony).
+   and short-lived; the server consumes each one atomically. A challenge is spent once an
+   assertion is posted: never re-POST one, and fetch fresh options after any verify. A prompt
+   that returned no assertion may be reopened on the same options while they are live.
 4. **Keep requests same-origin and CSRF-safe.** Send `credentials: "same-origin"` and
    attach `X-Frappe-CSRF-Token: frappe.csrf_token` on authenticated POSTs (the
    headless transport does both for you). Guest login endpoints are CSRF-exempt but

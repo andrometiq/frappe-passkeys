@@ -29,8 +29,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - Before you save a change to who must use a passkey, Passkey Settings shows how many users without
   one it would affect. Saving never waits for this count, and it stays quick on sites with tens of
   thousands of users.
-- In Chrome 149 and later, "Sign in with a passkey" shows the passkeys saved on that device at once;
-  with none there, the usual prompt with the phone and security-key options opens in the same click.
+- In Chrome 149 and later, the first click on "Sign in with a passkey" shows the passkeys saved on
+  that device; with none there, the usual prompt with the phone and security-key options opens in
+  the same click.
+- Custom confirmation dialogs: `createConfirmEngine({..., promptWithDialog: true})` opens the passkey
+  prompt with the dialog when the page had a click or key press in the last few seconds, as the desk
+  and portal dialogs now do ([Custom UI](docs/custom-ui.md)).
+  `detectCapabilities()` also reports `immediateGet`.
 
 ### Changed
 
@@ -46,9 +51,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)).
 - The Remove passkey dialog says your other devices will be signed out.
 - When a passkey is asked for after the password, its prompt opens by itself; "Use a passkey" is
-  still there if it doesn't.
+  still there if it doesn't. Closing the dialog closes the prompt; once your passkey is being
+  checked, the dialog says "Verifying…" and stays open until the check finishes.
 - Confirming an action, or confirming it's you before managing passkeys, opens the passkey prompt
-  with the dialog. The dialog still shows what you're confirming, and its other options stay.
+  with the dialog when you clicked or pressed a key on the page in the last few seconds, as when
+  your click started it. The dialog still shows what you're confirming, and its other options stay.
 - Trying a passkey sign-in again after a cancelled or failed one opens the prompt straight away.
 
 ### Security
@@ -60,6 +67,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Fixed
 
+- With passkey sign-in and the passkey second factor both on, Chrome and other Chromium browsers now
+  open the passkey prompt asked for after the password; before, they refused it and "Use a passkey"
+  said it couldn't reach the passkey service.
 - Passkey Settings no longer fails silently on Save when the app's files didn't load in the browser
   (for example a deploy that didn't publish them): the form says so and what to run, and won't turn
   passkeys on until they load; turning them off still saves. The User form no longer shows an

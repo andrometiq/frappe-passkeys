@@ -175,7 +175,6 @@ Also planned:
 - Several mobile apps per site. Today the settings take one Android app (with any number of signing certificates) and one iOS app.
 - Related Origins (WebAuthn Level 3), so one passkey can sign in on sites under different domains. Sites under one parent domain can already share an RP ID.
 - Passkey-only by role: a role list in Passkey Settings whose users sign in with a passkey only, once they have a working one.
-- Immediate sign-in in Chrome: the passkey button shows the passkeys on this device at once, and falls back to the current flow when there are none.
 - Prompt a user whose only passkey lives on one device (its card says "This device only") to add another.
 - Offer passkey setup right after an account recovery or a password confirmation.
 - Record how each session signed in (method, user verification, time), so audits and `@passkey_protected` actions can check it.

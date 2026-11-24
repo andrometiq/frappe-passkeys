@@ -12,6 +12,8 @@
 //      ever re-POSTing an assertion (fresh server re-arm is covered
 //      by passkeys/tests/test_second_factor.py).
 //   4. a non-401 server failure clears the pending state so a fresh gesture works.
+//   5. with passkey sign-in also on, the pending autofill request is aborted first, so the
+//      browser lets the second-factor request through.
 //
 // These run as a dedicated non-admin user registered while a first-factor mode is on, then
 // covered by a core-2FA role once the passkey exists.
@@ -60,7 +62,7 @@ chromium_only("password → passkey second factor", () => {
 		cy.clearCookies();
 	});
 
-	function submitPassword(options = {}) {
+	function submitPassword(options = {}, { autofill = false } = {}) {
 		cy.intercept_frappe_method("passkeys.passkey.begin_login", "begin_login");
 		cy.intercept_frappe_method("passkeys.passkey.login_with_password", "login_with_password");
 		cy.visit_login(options);
@@ -71,12 +73,16 @@ chromium_only("password → passkey second factor", () => {
 			expect(config.modes && config.modes.second_factor, "second-factor mode reached the browser").to.eq(
 				true
 			);
+			if (autofill) expect(config.modes.first_factor, "passkey sign-in mode reached the browser").to.eq(true);
 		});
 		cy.get("html", { timeout: 15000 }).should(
 			"have.attr",
 			"data-passkeys-second-factor-ready",
 			"true"
 		);
+		if (autofill) {
+			cy.window().its("frappe._passkey_login._state.conditionalAbort").should("not.be.null");
+		}
 		cy.get("#login_email").clear().type(SF_USER);
 		cy.get("#login_password").clear().type(SF_PW, { log: false });
 		cy.get(".form-login:visible")
@@ -229,5 +235,60 @@ chromium_only("password → passkey second factor", () => {
 
 		cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
 		cy.then(() => expect(verifyCalls).to.eq(2));
+	});
+
+	describe("with passkey sign-in also on", () => {
+		before(() => {
+			cy.login("Administrator", ADMIN_PW());
+			cy.visit_desk("Administrator");
+			cy.setup_second_factor({ first_factor: true, otp_fallback: true });
+			cy.clear_guest_ceremony_rate_limit();
+			cy.call("logout");
+		});
+
+		it("aborts the autofill request so the second-factor sheet opens by itself and mints a session", () => {
+			const gets = [];
+			cy.intercept_frappe_method("passkeys.passkey.verify_second_factor", "verify_sf");
+			submitPassword({
+				onBeforeLoad(win) {
+					// The virtual authenticator would answer the autofill request by itself (it holds
+					// the user's passkey), so it is held pending here, and another request made while
+					// it is open is refused the way Chromium refuses it.
+					const credentials = win.navigator.credentials;
+					const real_get = credentials.get.bind(credentials);
+					let autofill = null;
+					Object.defineProperty(credentials, "get", {
+						configurable: true,
+						value(options) {
+							gets.push({ mediation: options.mediation, autofill_open: !!autofill });
+							if (options.mediation !== "conditional") {
+								if (autofill) {
+									return Promise.reject(new win.DOMException("A request is already pending.", "OperationError"));
+								}
+								return real_get(options);
+							}
+							return new Promise((resolve, reject) => {
+								autofill = options.signal;
+								options.signal.addEventListener(
+									"abort",
+									() => {
+										autofill = null;
+										reject(new win.DOMException("aborted", "AbortError"));
+									},
+									{ once: true }
+								);
+							});
+						},
+					});
+				},
+			}, { autofill: true });
+			cy.wait("@verify_sf", { timeout: 20000 }).its("response.statusCode").should("eq", 200);
+			cy.location("pathname", { timeout: 25000 }).should("match", /^\/(app|desk|me)/);
+			cy.assert_logged_user(SF_USER);
+			cy.then(() => {
+				expect(gets.map((get) => get.mediation)).to.deep.eq(["conditional", undefined]);
+				expect(gets[1].autofill_open, "the autofill request was aborted first").to.eq(false);
+			});
+		});
 	});
 });

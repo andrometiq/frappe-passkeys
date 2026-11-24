@@ -14,20 +14,20 @@ To add one at any time:
 1. Open **My Passkeys**: add `/passkeys` to your site's address, such as
    `https://erp.example.com/passkeys`.
 2. Click **Add a passkey**.
-3. If **Confirm it's you** appears, your device's passkey prompt opens with it. Confirm there, or
-   close the prompt and click **Use your password instead** if the dialog offers it.
+3. If **Confirm it's you** appears and you already have a passkey, your device's passkey prompt
+   opens with it: confirm there, or close it and click **Use your password instead** if offered.
+   Otherwise enter your password.
 4. Follow your device's prompt. You'll see **Passkey added.**
 
 ## Sign in
 
-On the sign-in page, click **Sign in with a passkey** and follow your device's prompt. In Chrome,
-the passkeys saved on this device show at once; if there are none, the usual prompt with the phone
-and security-key options opens instead. Some browsers also offer your passkey when you click into
-the email or username box.
+On the sign-in page, click **Sign in with a passkey** and follow your device's prompt. Some browsers
+also offer your passkey when you click into the email or username box.
 
 If your passkey is on your phone and you're on a computer, pick the phone option in the browser's
 prompt and scan the QR code with your phone. The site may then offer **Add a passkey to this device**,
-so next time you can skip the phone.
+so next time you can skip the phone. In Chrome, the first prompt may list only this device's
+passkeys; to use your phone or a security key, close it and click **Sign in with a passkey** again.
 
 If your site asks for a passkey after your password, your device's prompt opens by itself. If it
 doesn't, or you closed it, click **Use a passkey**.

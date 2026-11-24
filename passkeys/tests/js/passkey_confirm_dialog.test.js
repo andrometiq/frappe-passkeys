@@ -162,3 +162,35 @@ test("a wrong-password message stays in the re-rendered prompt until the next su
 	entered = await viaEnter;
 	assert.strictEqual(entered, "secret", "Enter submits the password field");
 });
+
+test("the desk dialog opens without the fade, so it is on screen when the engine opens the prompt", () => {
+	const Dialog = makeDialogClass();
+	global.document = makeDoc();
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true });
+	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	const ui = require("../../public/js/passkey_confirm.bundle.js").makeDialogUI();
+
+	ui.chooseMethod({ action: "myapp.release_payment", canPasskey: true, canPassword: true });
+	assert.strictEqual(Dialog.instances.length, 1);
+	// Bootstrap's fade keeps the modal display:none for ~150 ms after show(); the engine waits one frame.
+	assert.strictEqual(Dialog.instances[0].opts.animate, false);
+});
+
+test("focus goes back to the opener when the dialog was closed before done()", () => {
+	const Dialog = makeDialogClass();
+	const doc = makeDoc();
+	let focused = false;
+	doc.activeElement = { focus() { focused = true; } };
+	global.document = doc;
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true });
+	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	const ui = require("../../public/js/passkey_confirm.bundle.js").makeDialogUI();
+
+	ui.chooseMethod({ action: "myapp.release_payment", canPasskey: true, canPassword: true }).catch(() => {});
+	// Esc hid the dialog at once (no fade), so no hidden.bs.modal follows done().
+	Dialog.instances[0].display = false;
+	ui.done(false);
+	assert.strictEqual(focused, true);
+});

@@ -46,28 +46,7 @@ const record_gets = (win) => {
 const button_gets = () => gets.filter((get) => get.mediation !== "conditional");
 
 // Immediate mode needs a real user activation, which Cypress's synthetic click doesn't give, so
-// click through the browser's input pipeline (CDP) at the button's place on screen.
-const cdp = (command, params) => Cypress.automation("remote:debugger:protocol", { command, params });
-const real_click = (selector) =>
-	cy
-		.get(selector)
-		.scrollIntoView()
-		.should("be.visible")
-		.then(($element) => {
-			const frame = window.top.document.querySelector("iframe.aut-iframe");
-			const frame_rect = frame.getBoundingClientRect();
-			const scale = frame_rect.width / frame.offsetWidth;
-			const rect = $element[0].getBoundingClientRect();
-			const at = {
-				x: frame_rect.left + (rect.left + rect.width / 2) * scale,
-				y: frame_rect.top + (rect.top + rect.height / 2) * scale,
-				button: "left",
-				clickCount: 1,
-			};
-			return cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...at }).then(() =>
-				cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...at })
-			);
-		});
+// the button is clicked through the browser's input pipeline (cy.real_click).
 
 immediate_only("passkey sign-in with immediate UI mode", () => {
 	before(() => {
@@ -102,7 +81,7 @@ immediate_only("passkey sign-in with immediate UI mode", () => {
 		cy.stub_post_login_shell();
 		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify");
 		visit_with_conditional_armed();
-		real_click("#passkey-login-btn");
+		cy.get("#passkey-login-btn").real_click();
 		cy.wait("@verify", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
 		cy.then(() => {
 			expect(button_gets().map((get) => get.ui_mode), "one immediate request").to.deep.eq(["immediate"]);
@@ -116,7 +95,7 @@ immediate_only("passkey sign-in with immediate UI mode", () => {
 	it("with no passkey on this device, opens the full sheet in the same click on the same ceremony", () => {
 		cy.clear_virtual_credentials();
 		visit_with_conditional_armed();
-		real_click("#passkey-login-btn");
+		cy.get("#passkey-login-btn").real_click();
 		cy.wrap(gets).should(() => {
 			const requests = button_gets();
 			expect(requests.map((get) => get.ui_mode), "immediate, then the full sheet").to.deep.eq([

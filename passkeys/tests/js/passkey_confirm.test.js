@@ -8,7 +8,7 @@
 // 401 retry + VERBATIM payload_fingerprint echo + grant-header attach,
 // params/payload_hash mutual exclusion, password-fallback leg, fallback_unavailable,
 // user-cancel mapping, DOMException mapping through the gesture, single-retry cap,
-// concurrent-invocation dialog sharing, and the passkey sheet opening with the dialog.
+// concurrent-invocation dialog sharing, and the opt-in passkey prompt opening with the dialog.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -312,9 +312,11 @@ test("concurrency (A44): identical concurrent confirms share ONE ceremony", asyn
 	assert.strictEqual(beginCount, 1, "identical concurrent confirms must not start two ceremonies");
 });
 
-// ------------------------------------------- the passkey sheet opens with the dialog
-// The engine starts the gesture as soon as it shows the method choice. A refused or dismissed
-// sheet is silent and leaves the dialog's own choices; a passkey pick joins an open sheet.
+// ---------------------------------------- the passkey prompt opening with the dialog
+// Opt-in (promptWithDialog): once the dialog has painted, and only when the user's own click led
+// here, the engine starts the gesture itself. A refused or dismissed prompt is silent and leaves
+// the dialog's choices; a passkey pick joins an open prompt; a password pick or a cancel aborts it.
+// Without the option the gesture waits for the pick, as before.
 
 function deferred() {
 	let resolve, reject;
@@ -322,6 +324,30 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 const flush = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)); };
+
+// The browser seams the engine reads: user activation and the next frame.
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+let frames = [];
+function browser({ activation = true } = {}) {
+	Object.defineProperty(globalThis, "navigator", {
+		configurable: true, writable: true,
+		value: activation === null ? {} : { userActivation: { isActive: activation } },
+	});
+	frames = [];
+	globalThis.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+}
+// Runs the pending frames, then the task each one queued for after its paint.
+async function paint() {
+	await flush();
+	frames.splice(0).forEach((cb) => cb());
+	await new Promise((r) => setTimeout(r, 5));
+	await flush();
+}
+test.afterEach(() => {
+	delete globalThis.requestAnimationFrame;
+	if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+	else delete globalThis.navigator;
+});
 
 function sheetScript(extra) {
 	return Object.assign({
@@ -345,35 +371,94 @@ function makeWaitingUI() {
 	return { controller, events, pick: choice.resolve, cancel: () => choice.reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, "x")) };
 }
 
-test("the passkey sheet opens with the dialog: a grant with no click", async () => {
+function promptEngine(post, ui, runGesture) {
+	return C.createConfirmEngine({ post, runGesture, ui: () => ui.controller, promptWithDialog: true });
+}
+
+test("without promptWithDialog no gesture starts before the pick", async () => {
+	browser();
 	const post = makePost(sheetScript());
 	const ui = makeWaitingUI();
-	let gestures = 0;
-	const engine = C.createConfirmEngine({ post, runGesture: () => { gestures += 1; return Promise.resolve(ASSERTION); }, ui: () => ui.controller });
+	const gestures = [];
+	const engine = C.createConfirmEngine({ post, runGesture: (...args) => { gestures.push(args); return Promise.resolve(ASSERTION); }, ui: () => ui.controller });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await paint();
+	assert.strictEqual(gestures.length, 0, "the prompt waits for the dialog's button");
+	ui.pick("passkey");
+	assert.strictEqual(await grant, "SHEET-GRANT");
+	assert.deepStrictEqual(gestures, [[REQ_OPTIONS]], "one gesture, with no second argument");
+	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"], "busy comes before the gesture");
+});
+
+test("promptWithDialog: the prompt opens after the dialog has painted, and its grant needs no click", async () => {
+	browser();
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	const gestures = [];
+	const engine = promptEngine(post, ui, (...args) => { gestures.push(args); return Promise.resolve(ASSERTION); });
 	const grant = engine.confirm("myapp.pay", { id: 1 });
 	await flush();
-	assert.strictEqual(gestures, 1, "the gesture started without a pick");
+	await new Promise((r) => setTimeout(r, 5));
+	assert.strictEqual(ui.events.length, 1, "the dialog was shown");
+	assert.strictEqual(gestures.length, 0, "no prompt before the dialog's frame");
+	await paint();
+	assert.strictEqual(gestures.length, 1, "the gesture started without a pick");
+	assert.strictEqual(gestures[0][0], REQ_OPTIONS);
+	assert.ok(gestures[0][1].signal instanceof AbortSignal, "runGesture gets {signal}");
 	assert.strictEqual(await grant, "SHEET-GRANT");
 	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"], "the dialog showed first, then closed");
 	assert.deepStrictEqual(ui.events[ui.events.length - 1], ["done", true]);
 });
 
-test("a refused or dismissed sheet is silent; the dialog's passkey button runs a fresh gesture on the same ceremony", async () => {
+test("promptWithDialog: no automatic prompt without the user's activation, or without the API", async () => {
+	for (const [activation, before] of [[true, 1], [false, 0], [null, 0]]) {
+		browser({ activation });
+		const post = makePost(sheetScript());
+		const ui = makeWaitingUI();
+		const sheet = deferred();
+		let gestures = 0;
+		const engine = promptEngine(post, ui, () => { gestures += 1; return gestures === 1 && before ? sheet.promise : Promise.resolve(ASSERTION); });
+		const grant = engine.confirm("myapp.pay", { id: 1 });
+		await paint();
+		assert.strictEqual(gestures, before, `activation ${activation}: ${before ? "the prompt opened" : "the dialog waits for its button"}`);
+		ui.pick("passkey");
+		sheet.resolve(ASSERTION);
+		assert.strictEqual(await grant, "SHEET-GRANT");
+		assert.strictEqual(gestures, 1, "one gesture either way");
+	}
+});
+
+test("promptWithDialog: a choice made before the dialog painted starts no prompt", async () => {
+	browser();
+	const post = makePost(sheetScript({
+		"passkeys.confirm.reauth_password": [{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } }],
+	}));
+	let gestures = 0;
+	const controller = {
+		chooseMethod() { return "password"; }, // a dialog that remembers "use my password"
+		collectPassword() { return Promise.resolve("hunter2"); },
+		announce() {}, busy() {}, passwordError() {}, done() {},
+	};
+	const engine = C.createConfirmEngine({ post, runGesture: () => { gestures += 1; return Promise.resolve(ASSERTION); }, ui: () => controller, promptWithDialog: true });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await paint();
+	assert.strictEqual(await grant, "PW-GRANT");
+	assert.strictEqual(gestures, 0, "chooseMethod had settled, so no prompt opened");
+});
+
+test("promptWithDialog: a refused or dismissed prompt is silent; the passkey button runs a fresh gesture on the same ceremony", async () => {
+	browser();
 	const post = makePost(sheetScript());
 	const ui = makeWaitingUI();
 	const gestures = [];
 	const err = new Error("cancelled"); err.name = "NotAllowedError";
-	const engine = C.createConfirmEngine({
-		post,
-		runGesture: (o) => { gestures.push(o); return gestures.length === 1 ? Promise.reject(err) : Promise.resolve(ASSERTION); },
-		ui: () => ui.controller,
-	});
+	const engine = promptEngine(post, ui, (o) => { gestures.push(o); return gestures.length === 1 ? Promise.reject(err) : Promise.resolve(ASSERTION); });
 	let settled = null;
 	const grant = engine.confirm("myapp.pay", { id: 1 });
 	grant.then((g) => { settled = g; }, (e) => { settled = e; });
-	await flush();
-	assert.strictEqual(gestures.length, 1);
-	assert.strictEqual(settled, null, "the refused sheet neither rejects nor closes the dialog");
+	await paint();
+	assert.strictEqual(gestures.length, 1, "the automatic prompt opened");
+	assert.strictEqual(settled, null, "the refused prompt neither rejects nor closes the dialog");
 	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose"], "no error, no busy state, no message");
 
 	ui.pick("passkey");
@@ -383,44 +468,76 @@ test("a refused or dismissed sheet is silent; the dialog's passkey button runs a
 	assert.strictEqual(post.calls.filter((c) => c.method === "passkeys.confirm.begin_confirmation").length, 1);
 });
 
-test("after a refused sheet the password choice still works", async () => {
+test("promptWithDialog: after a refused prompt the password choice still works", async () => {
+	browser();
 	const post = makePost(sheetScript({
 		"passkeys.confirm.reauth_password": [{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } }],
 	}));
 	const ui = makeWaitingUI();
 	const err = new Error("cancelled"); err.name = "NotAllowedError";
-	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.reject(err), ui: () => ui.controller });
+	let gestures = 0;
+	const engine = promptEngine(post, ui, () => { gestures += 1; return Promise.reject(err); });
 	const grant = engine.confirm("myapp.pay", { id: 1 });
-	await flush();
+	await paint();
+	assert.strictEqual(gestures, 1, "the automatic prompt opened and was refused");
 	ui.pick("password");
 	assert.strictEqual(await grant, "PW-GRANT");
+	assert.strictEqual(gestures, 1);
 	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"));
 });
 
-test("a passkey pick while the sheet is open joins it: one gesture", async () => {
+test("promptWithDialog: a passkey pick while the prompt is open joins it: one gesture", async () => {
+	browser();
 	const post = makePost(sheetScript());
 	const ui = makeWaitingUI();
 	const sheet = deferred();
-	let gestures = 0;
-	const engine = C.createConfirmEngine({ post, runGesture: () => { gestures += 1; return sheet.promise; }, ui: () => ui.controller });
+	const signals = [];
+	const engine = promptEngine(post, ui, (o, opts) => { signals.push(opts.signal); return sheet.promise; });
 	const grant = engine.confirm("myapp.pay", { id: 1 });
-	await flush();
+	await paint();
+	assert.strictEqual(signals.length, 1, "the automatic prompt is open before the pick");
 	ui.pick("passkey");
 	await flush();
+	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce"], "the pick shows the busy state under the open prompt");
 	sheet.resolve(ASSERTION);
 	assert.strictEqual(await grant, "SHEET-GRANT");
-	assert.strictEqual(gestures, 1);
+	assert.strictEqual(signals.length, 1);
+	assert.strictEqual(signals[0].aborted, false);
 });
 
-test("closing the dialog while the sheet is open cancels, and a late assertion is never verified", async () => {
+test("promptWithDialog: a password pick while the prompt is open aborts it", async () => {
+	browser();
+	const post = makePost(sheetScript({
+		"passkeys.confirm.reauth_password": [{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } }],
+	}));
+	const ui = makeWaitingUI();
+	const sheet = deferred();
+	const signals = [];
+	const engine = promptEngine(post, ui, (o, opts) => { signals.push(opts.signal); return sheet.promise; });
+	const grant = engine.confirm("myapp.pay", { id: 1 });
+	await paint();
+	assert.strictEqual(signals.length, 1);
+	ui.pick("password");
+	assert.strictEqual(await grant, "PW-GRANT");
+	assert.strictEqual(signals[0].aborted, true, "the open prompt was cancelled");
+	sheet.resolve(ASSERTION);
+	await flush();
+	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"));
+});
+
+test("promptWithDialog: closing the dialog while the prompt is open aborts it, and a late assertion is never verified", async () => {
+	browser();
 	const post = makePost(sheetScript());
 	const ui = makeWaitingUI();
 	const sheet = deferred();
-	const engine = C.createConfirmEngine({ post, runGesture: () => sheet.promise, ui: () => ui.controller });
+	const signals = [];
+	const engine = promptEngine(post, ui, (o, opts) => { signals.push(opts.signal); return sheet.promise; });
 	const grant = engine.confirm("myapp.pay", { id: 1 });
-	await flush();
+	await paint();
+	assert.strictEqual(signals.length, 1, "the automatic prompt is open before the cancel");
 	ui.cancel();
 	await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+	assert.strictEqual(signals[0].aborted, true, "the cancel aborted the prompt");
 	sheet.resolve(ASSERTION);
 	await flush();
 	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"), "fail closed");
