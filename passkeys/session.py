@@ -277,7 +277,8 @@ def refuse_ended_session() -> None:
 	from frappe.auth import clear_cookies
 
 	clear_cookies()
-	frappe.set_user("Guest")
+	# Only ever to Guest: the refused request continues signed out, as after core's logout.
+	frappe.set_user("Guest")  # nosemgrep: frappe-setuser
 	frappe.local.response["session_expired"] = 1
 	raise frappe.SessionExpired
 

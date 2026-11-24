@@ -181,7 +181,8 @@ chromium_only("passkey action-confirmation", () => {
 			const button = win.document.createElement("button");
 			button.id = "confirm-trigger";
 			button.textContent = "Run the protected action";
-			button.style.cssText = "position:fixed;top:80px;left:16px;z-index:2000";
+			// Bottom right, clear of the desk's sidebar and navbar menus.
+			button.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:2000";
 			button.addEventListener("click", () => {
 				win.__confirm = {};
 				win.frappe.passkeys.confirm(ACTION, { token }).then(

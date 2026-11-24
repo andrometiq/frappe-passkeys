@@ -149,7 +149,7 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		by_owner = self._is_by_owner()
 		# A fresh snapshot: a sign-in that committed while this request waited on the row lock
 		# is listed too; any later one reads the revoked row and fails.
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		self.flags.passkeys_sign_out_incomplete = not end_sessions(self.user, keep_current=by_owner)
 		return not by_owner
 

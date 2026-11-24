@@ -42,9 +42,14 @@ Cypress.Commands.add("real_click", { prevSubject: "element" }, ($element) =>
 				button: "left",
 				clickCount: 1,
 			};
-			return cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...at }).then(() =>
-				cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...at })
-			);
+			// A click that lands elsewhere fails here, by name, not as a timeout in a later step.
+			let reached = false;
+			$element[0].addEventListener("mousedown", () => (reached = true), { once: true, capture: true });
+			return cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...at })
+				.then(() => cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...at }))
+				.then(() => {
+					expect(reached, "the real click reached the element").to.be.true;
+				});
 		})
 );
 
