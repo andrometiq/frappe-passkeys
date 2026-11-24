@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Passkeys VERSION\n"
 "Report-Msgid-Bugs-To: hello@andrometiq.com\n"
-"POT-Creation-Date: 2026-11-23 04:11+0553\n"
-"PO-Revision-Date: 2026-11-23 04:11+0553\n"
+"POT-Creation-Date: 2026-11-24 12:54+0553\n"
+"PO-Revision-Date: 2026-11-24 12:54+0553\n"
 "Last-Translator: hello@andrometiq.com\n"
 "Language-Team: hello@andrometiq.com\n"
 "MIME-Version: 1.0\n"
@@ -33,7 +33,7 @@ msgstr ""
 msgid "(empty)"
 msgstr ""
 
-#: passkeys/notifications.py:230
+#: passkeys/notifications.py:263
 #, python-brace-format
 msgid "(from IP {0})"
 msgstr ""
@@ -74,15 +74,15 @@ msgstr ""
 msgid "<p class=\"text-muted small\">The resolved RP ID and origins are validated when a login mode is enabled.</p>"
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:101
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:103
 msgid "A WebAuthn credential ID digest is immutable."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:99
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:101
 msgid "A WebAuthn credential ID is immutable."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:103
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:105
 msgid "A WebAuthn credential public key is immutable."
 msgstr ""
 
@@ -98,7 +98,7 @@ msgstr ""
 msgid "A custom app can register its own auth hooks or login endpoints, which cannot be detected deterministically."
 msgstr ""
 
-#: passkeys/notifications.py:46
+#: passkeys/notifications.py:51
 #, python-brace-format
 msgid "A new passkey “{0}” was just added to your account on {1}{2}. If this wasn't you, remove it on your My Passkeys page{3} and change your password immediately."
 msgstr ""
@@ -107,19 +107,24 @@ msgstr ""
 msgid "A passkey name cannot be empty."
 msgstr ""
 
-#: passkeys/notifications.py:86
+#: passkeys/notifications.py:180
+#, python-brace-format
+msgid "A passkey of {0} was disabled or removed on {1}, but some of {0}'s sessions may still be signed in. Clear the site cache once it can be reached: see {2}."
+msgstr ""
+
+#: passkeys/notifications.py:91
 msgid "A passkey on your account was disabled"
 msgstr ""
 
-#: passkeys/notifications.py:99
+#: passkeys/notifications.py:104
 msgid "A passkey on your account was flagged"
 msgstr ""
 
-#: passkeys/notifications.py:53
+#: passkeys/notifications.py:58
 msgid "A passkey was added to your account"
 msgstr ""
 
-#: passkeys/notifications.py:76
+#: passkeys/notifications.py:81
 msgid "A passkey was removed from your account"
 msgstr ""
 
@@ -139,7 +144,7 @@ msgstr ""
 msgid "A user can sign in with their LDAP / Active Directory password instead of a passkey."
 msgstr ""
 
-#: passkeys/notifications.py:148
+#: passkeys/notifications.py:153
 msgid "A user cannot satisfy passkey enrollment enforcement"
 msgstr ""
 
@@ -212,7 +217,7 @@ msgstr ""
 msgid "Always require a passkey from System Managers"
 msgstr ""
 
-#: passkeys/notifications.py:69
+#: passkeys/notifications.py:74
 #, python-brace-format
 msgid "An administrator removed the passkey “{0}” from your account on {1}. It no longer works there.{2} If your phone, computer or password manager still lists it, delete it there too. If you didn't expect this, contact your administrator."
 msgstr ""
@@ -297,7 +302,7 @@ msgstr ""
 msgid "Backup State"
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:105
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:107
 msgid "Backup eligibility is set at registration and can never change."
 msgstr ""
 
@@ -356,12 +361,12 @@ msgstr ""
 msgid "Cannot uninstall passkeys: username/password login is disabled and no other login method (Social Login, LDAP, Login with Email Link) is enabled. Enable one in System Settings first."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:131
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:133
 #, python-brace-format
 msgid "Cannot {0} the only enabled passkey of {1}: Disable Username/Password Login is on in System Settings. Add another enabled passkey or turn off Disable Username/Password Login in System Settings, then retry."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:125
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:127
 #, python-brace-format
 msgid "Cannot {0} the only enabled passkey of {1}: passwordless login is on for that account, so this would lock them out. Clear 'Passkey Only Login' on their WebAuthn User Handle first (or ensure another login method), then retry."
 msgstr ""
@@ -416,7 +421,7 @@ msgstr ""
 msgid "Confirm it's you to continue."
 msgstr ""
 
-#: passkeys/session.py:332
+#: passkeys/session.py:569
 msgid "Confirm it's you to manage passkeys."
 msgstr ""
 
@@ -797,7 +802,7 @@ msgstr ""
 msgid "None of this site's origins is inside the RP ID {0}, so passkey requirements are paused."
 msgstr ""
 
-#: passkeys/session.py:160
+#: passkeys/session.py:397
 msgid "Not permitted."
 msgstr ""
 
@@ -900,7 +905,7 @@ msgstr ""
 msgid "Passkey Settings"
 msgstr ""
 
-#: passkeys/notifications.py:52
+#: passkeys/notifications.py:57
 #, python-brace-format
 msgid "Passkey added: {0}"
 msgstr ""
@@ -961,17 +966,17 @@ msgstr ""
 msgid "Passkey credential id is too long."
 msgstr ""
 
-#: passkeys/notifications.py:85
+#: passkeys/notifications.py:90
 #, python-brace-format
 msgid "Passkey disabled: {0}"
 msgstr ""
 
-#: passkeys/notifications.py:98
+#: passkeys/notifications.py:103
 #, python-brace-format
 msgid "Passkey flagged: {0} ({1})"
 msgstr ""
 
-#: passkeys/session.py:132 passkeys/session.py:162
+#: passkeys/session.py:369 passkeys/session.py:399
 msgid "Passkey management requires a signed-in browser session."
 msgstr ""
 
@@ -997,7 +1002,7 @@ msgstr ""
 msgid "Passkey registration could not be verified."
 msgstr ""
 
-#: passkeys/notifications.py:75
+#: passkeys/notifications.py:80
 #, python-brace-format
 msgid "Passkey removed: {0}"
 msgstr ""
@@ -1063,7 +1068,7 @@ msgstr ""
 msgid "Passkeys aren't set up for this site."
 msgstr ""
 
-#: passkeys/session.py:182
+#: passkeys/session.py:419
 msgid "Passkeys can't be changed or used while impersonating a user."
 msgstr ""
 
@@ -1298,6 +1303,14 @@ msgstr ""
 msgid "Soft-disable without delete (admin revocation keeps the row for forensics)"
 msgstr ""
 
+#: passkeys/notifications.py:178
+msgid "Some sessions may still be signed in after a passkey was revoked"
+msgstr ""
+
+#: passkeys/notifications.py:191
+msgid "Someone may be using the account right now"
+msgstr ""
+
 #. Label of the passkey_enforce_after (Date) field in DocType 'Passkey
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:192
@@ -1338,7 +1351,7 @@ msgstr ""
 msgid "The RP ID changed since this page loaded. Reload and try again."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:95
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:97
 msgid "The RP ID of a WebAuthn Credential can never change."
 msgstr ""
 
@@ -1355,12 +1368,22 @@ msgstr ""
 msgid "The enforcement preview recount could not start because the job queue is full. Try again later."
 msgstr ""
 
-#: passkeys/notifications.py:88
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:170
+#, python-brace-format
+msgid "The passkey no longer works, but some of {0}'s sessions may still be signed in. Ask an administrator to clear the site cache: see {1}."
+msgstr ""
+
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:166
+#, python-brace-format
+msgid "The passkey no longer works, but some of {0}'s sessions may still be signed in. Clear the site cache once it can be reached: see {1}."
+msgstr ""
+
+#: passkeys/notifications.py:93
 #, python-brace-format
 msgid "The passkey “{0}” on your account was disabled by an administrator on {1}. You can no longer sign in with it.{2} Contact your administrator if this was unexpected."
 msgstr ""
 
-#: passkeys/notifications.py:63
+#: passkeys/notifications.py:68
 #, python-brace-format
 msgid "The passkey “{0}” was removed from your account on {1} and no longer works there. If your phone, computer or password manager still lists it, delete it there too. If you didn't expect this, contact your administrator."
 msgstr ""
@@ -1374,7 +1397,7 @@ msgstr ""
 msgid "The security report couldn’t be loaded right now."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:107
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:109
 msgid "The signature counter is never written downward."
 msgstr ""
 
@@ -1382,7 +1405,7 @@ msgstr ""
 msgid "The unsaved enforcement settings could not be read."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:97
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:99
 msgid "The user of a WebAuthn Credential can never change."
 msgstr ""
 
@@ -1632,29 +1655,29 @@ msgstr ""
 msgid "You have reached the maximum of {0} passkeys."
 msgstr ""
 
-#: passkeys/notifications.py:234
+#: passkeys/notifications.py:267
 msgid "You may need to sign in again."
 msgstr ""
 
-#: passkeys/notifications.py:121
+#: passkeys/notifications.py:126
 msgid "You signed in with a one-time code instead of your passkey"
 msgstr ""
 
-#: passkeys/request_security.py:31 passkeys/state.py:179
+#: passkeys/request_security.py:31 passkeys/state.py:216
 msgid "You've hit the rate limit. Please try again shortly."
 msgstr ""
 
-#: passkeys/notifications.py:123
+#: passkeys/notifications.py:128
 #, python-brace-format
 msgid "Your account has a passkey, but a recent sign-in on {0} used a one-time code (OTP) instead. If this wasn't you, review your account security."
 msgstr ""
 
-#: passkeys/notifications.py:40
+#: passkeys/notifications.py:45
 #, python-brace-format
 msgid "Your browser saved a passkey “{0}” for your account on {1}{2} after you signed in with your password. Next time you can sign in with it. If you didn't just sign in, remove it on your My Passkeys page{3} and change your password."
 msgstr ""
 
-#: passkeys/notifications.py:101
+#: passkeys/notifications.py:106
 #, python-brace-format
 msgid "Your passkey “{0}” was flagged after a sign-in on {1}: it may have been copied. If you don't recognize a recent sign-in, remove this passkey on your My Passkeys page{2} and contact your administrator."
 msgstr ""
@@ -1790,7 +1813,7 @@ msgstr ""
 msgid "{0} is not a passkeys credential export."
 msgstr ""
 
-#: passkeys/notifications.py:150
+#: passkeys/notifications.py:155
 #, python-brace-format
 msgid "{0} is required to register a passkey to keep signing in, but reports that their device cannot create one. Consider granting this user an exemption from the Passkeys section of their User form, resetting their grace budget, or issuing a hardware security key."
 msgstr ""

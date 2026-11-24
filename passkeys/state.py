@@ -11,6 +11,7 @@ the sole expiry authority."""
 
 import hashlib
 import json
+import time
 
 import frappe
 import redis
@@ -25,6 +26,8 @@ PASSWORD_FAILURE_TTL = 900
 PASSWORD_FAILURE_LIMIT = 5
 SECOND_FACTOR_MAX_ATTEMPTS = 3
 ENFORCEMENT_DEFER_TTL = 30 * 24 * 60 * 60
+# Margin past the longest of the site's and each ended session's own expiry.
+ENDED_SESSION_MARGIN = 24 * 60 * 60
 
 CEREMONY_PREFIX = "passkeys:ceremony:"
 SUDO_PREFIX = "passkeys:sudo:"
@@ -34,12 +37,15 @@ OTP_FALLBACK_PREFIX = "passkeys:otp-fallback:"
 PASSWORD_FAILURE_PREFIX = "passkeys:pwfail:"
 RATE_LIMIT_PREFIX = "passkeys:ratelimit:"
 ENFORCEMENT_DEFER_PREFIX = "passkeys:enforcement-defer:"
+ENDED_SESSIONS = "passkeys:ended-sessions"
 
 # Guest-ceremony browser binder. Ephemeral cookie; the ceremony record
 # stores only sha256(value). Cover the initial second-factor state plus every
 # re-armed state before the terminal attempt.
 BINDER_COOKIE = "passkey_binder"
 BINDER_MAX_AGE = SECOND_FACTOR_MAX_ATTEMPTS * CEREMONY_TTL
+
+_is_cache_error_logged = False  # per worker
 
 
 def new_id() -> str:
@@ -127,6 +133,37 @@ def get_sudo_window(sid: str) -> dict | None:
 
 def clear_sudo_window(sid: str) -> None:
 	frappe.cache.delete(_make_key(sudo_window_name(sid)))
+
+
+def mark_sessions_ended(session_keys: list[str], ttl: int) -> None:
+	"""Record each session (by ``sid_hash`` of the id core stores it under) as ended for ``ttl``
+	seconds. All marks live in one hash, field -> expiry epoch, read on every signed-in request;
+	expired fields are dropped here."""
+	if not session_keys:
+		return
+	name, now = _make_key(ENDED_SESSIONS), int(time.time())
+	# redis.Redis's own hash reads: the wrapper's pickle and re-make the key.
+	marks = redis.Redis.hgetall(frappe.cache, name)
+	expired = [field for field, until in marks.items() if int(until) <= now]
+	pipe = frappe.cache.pipeline()
+	if expired:
+		pipe.hdel(name, *expired)
+	pipe.hset(name, mapping=dict.fromkeys(session_keys, now + ttl))
+	pipe.execute()
+
+
+def is_session_ended(session_key: str) -> bool:
+	"""Whether the session is marked ended. An unreachable cache counts as not ended (logged once
+	per worker), so a cache outage doesn't fail every signed-in request."""
+	global _is_cache_error_logged
+	try:
+		until = redis.Redis.hget(frappe.cache, _make_key(ENDED_SESSIONS), session_key)
+	except redis.exceptions.ConnectionError:
+		if not _is_cache_error_logged:
+			_is_cache_error_logged = True
+			frappe.logger("passkeys").warning("ended-session check skipped: cache unreachable", exc_info=True)
+		return False
+	return until is not None and int(until) > time.time()
 
 
 def bump_counter(name: str, ttl: int) -> int:

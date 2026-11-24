@@ -1,16 +1,23 @@
 # Copyright (c) 2026, Frappe Passkeys Contributors
 # License: MIT. See LICENSE
 
-"""Sudo-window semantics, the impersonation guard and the action-grant consumer. Folds
-into ``frappe/passkey.py`` on the core merge.
+"""Sudo-window semantics, ending a user's sessions, the impersonation guard and the
+action-grant consumer. Folds into ``frappe/passkey.py`` on the core merge.
 
-On the ``on_session_creation`` / ``on_logout`` / ``after_request`` hook chains (every login,
-logout and request), so it must not import ``webauthn``, directly or transitively."""
+On the ``on_session_creation`` / ``on_logout`` / ``before_request`` / ``after_request`` hook
+chains (every login, logout and request), so it must not import ``webauthn``, directly or
+transitively."""
 
+import ast
 import hashlib
+import inspect
 import json
+import pickle
+import re
+import time
 
 import frappe
+import redis
 from frappe import _
 from frappe.utils import cint, now
 
@@ -31,6 +38,15 @@ FULL_SUDO_METHODS = ("password", "passkey", "reauth")
 
 GRANT_HEADER = "X-Passkey-Grant"
 GRANT_KWARG = "_passkey_grant"
+
+# Ending a user's sessions: rounds before it stops, pauses between marking tries while the cache
+# can't be reached, and the cache read chunk.
+MAX_SIGN_OUT_ROUNDS = 20
+MARKING_PAUSES = (0.1, 0.3)
+CACHE_READ_CHUNK = 500
+
+# The form of a session id core issues (frappe.generate_hash).
+ISSUED_SESSION_ID = re.compile("[0-9a-f]{56}")
 
 
 def seed_sudo_window(login_manager=None, **kwargs) -> None:
@@ -89,6 +105,227 @@ def clear_logged_out_sudo_window(response=None, request=None) -> None:
 			state.clear_sudo_window(sid)
 	except Exception:
 		frappe.log_error(title="passkeys: sudo-window clear failed")
+
+
+def end_sessions(user: str, *, keep_current: bool) -> bool:
+	"""End ``user``'s sessions for good (all but this request's with ``keep_current``): every
+	session of the user, on every device, is marked ended for ``refuse_ended_session``, then ended
+	with core's ``delete_session``; later rounds end sessions signed in meanwhile. The sessions are
+	ended even when a mark can't be written. Returns False (logged) when a session could not be
+	marked or some are left at the round limit, True otherwise."""
+	kept_key = get_stored_session_id(frappe.session.sid) if keep_current else None
+	is_complete, previous_keys = True, None
+	for round_number in range(MAX_SIGN_OUT_ROUNDS):
+		listed_keys = _get_session_keys(user, kept_key)
+		is_complete &= _mark_ended(listed_keys, _get_stored_expiries(listed_keys))
+		cached_by_key = {}
+		if round_number == 0:  # one cache read per call
+			cached_by_key, is_marked = _mark_cached_sessions(user, {kept_key, *listed_keys})
+			is_complete &= is_marked
+		_delete_sessions(user, listed_keys, cached_by_key)
+		if not listed_keys or listed_keys == previous_keys:  # none left, or the last round ended none
+			return is_complete and not listed_keys
+		previous_keys = listed_keys
+	if not _get_session_keys(user, kept_key):
+		return is_complete
+	frappe.log_error(title="passkeys: sign-out stopped at its round limit")
+	return False
+
+
+def _get_session_keys(user: str, kept_key: str | None) -> set:
+	"""The stored ids of all of ``user``'s sessions but ``kept_key``."""
+	sessions = frappe.qb.DocType("Sessions")
+	stored_keys = frappe.qb.from_(sessions).select(sessions.sid).where(sessions.user == user).run(pluck=True)
+	return set(stored_keys) - {kept_key}
+
+
+def _mark_cached_sessions(user: str, skipped_keys: set) -> tuple[dict[str, dict], bool]:
+	"""Mark ``user``'s cached sessions but ``skipped_keys``: (stored id -> session data, whether
+	they were marked)."""
+	try:
+		cached_by_key = _retry(_get_cached_sessions, user, skipped_keys)
+	except Exception:
+		frappe.log_error(title="passkeys: cached-session read failed", message=frappe.get_traceback())
+		return {}, False
+	expiries = [data.get("session_expiry") for data in cached_by_key.values()]
+	return cached_by_key, _mark_ended(cached_by_key, expiries)
+
+
+def _mark_ended(stored_keys, expiries: list) -> bool:
+	"""Mark each session ended past the longest of ``expiries`` and the site's. False (logged) when
+	the marks could not be written."""
+	if not stored_keys:
+		return True
+	try:
+		_retry(
+			state.mark_sessions_ended, [state.sid_hash(key) for key in stored_keys], _get_mark_ttl(expiries)
+		)
+	except Exception:
+		frappe.log_error(title="passkeys: ended-session mark failed", message=frappe.get_traceback())
+		return False
+	return True
+
+
+def _retry(func, *args):
+	"""``func(*args)``, tried again after a short pause while the cache can't be reached."""
+	for pause in (*MARKING_PAUSES, None):
+		try:
+			return func(*args)
+		except redis.exceptions.ConnectionError:
+			if pause is None:
+				raise
+			time.sleep(pause)
+
+
+def _delete_sessions(user: str, listed_keys: set, cached_by_key: dict) -> None:
+	"""End exactly these sessions: the listed ones with core's ``delete_session`` (by the stored
+	id where core takes it); drop the cached copies of the others."""
+	from frappe.sessions import delete_session
+
+	by_stored_id = "sid_hash" in inspect.signature(delete_session).parameters
+	for key in listed_keys:
+		if by_stored_id:
+			delete_session(user=user, reason="Force Logged out by the user", sid_hash=key)
+		else:
+			delete_session(key, user=user, reason="Force Logged out by the user")
+	for key in cached_by_key:
+		frappe.cache.hdel("session", key)
+
+
+def _get_cached_sessions(user: str, skipped_keys: set) -> dict[str, dict]:
+	"""``user``'s cached sessions but ``skipped_keys``: stored id -> session data. Read in
+	chunks; a value that doesn't load is skipped."""
+	cached_by_key = {}
+	name = frappe.cache.make_key("session")
+	for key, value in redis.Redis.hscan_iter(frappe.cache, name, count=CACHE_READ_CHUNK):
+		key = frappe.safe_decode(key)
+		data = None if key in skipped_keys else _load_cached_session(value)
+		if data and data.get("user") == user:
+			cached_by_key[key] = data
+	return cached_by_key
+
+
+def _load_cached_session(value: bytes) -> dict | None:
+	"""A cached value's session data, the part core resumes the session from (version-15
+	caches it under ``data``)."""
+	try:
+		value = pickle.loads(value)
+	except Exception:
+		return None
+	data = value.get("data") if isinstance(value, dict) and "data" in value else value
+	return data if isinstance(data, dict) else None
+
+
+def _get_stored_expiries(stored_keys: set) -> list:
+	"""Each session's own expiry as its Sessions row stores it; none for a row that doesn't
+	parse, and none (logged) when the rows can't be read."""
+	if not stored_keys:
+		return []
+	sessions = frappe.qb.DocType("Sessions")
+	try:
+		rows = (
+			frappe.qb.from_(sessions)
+			.select(sessions.sessiondata)
+			.where(sessions.sid.isin(list(stored_keys)))
+			.run()
+		)
+	except Exception:
+		frappe.log_error(title="passkeys: session expiry read failed", message=frappe.get_traceback())
+		return []
+	return [_parse_session_data(sessiondata).get("session_expiry") for (sessiondata,) in rows]
+
+
+def _parse_session_data(text: str | None) -> dict:
+	"""A Sessions row's data: JSON from version-16 on, a Python literal before; {} if neither."""
+	for parse in (json.loads, ast.literal_eval):
+		try:
+			data = parse(text or "{}")
+		except Exception:
+			continue
+		return data if isinstance(data, dict) else {}
+	return {}
+
+
+def _get_mark_ttl(expiries: list) -> int:
+	"""Past the longest of the site's session expiry and ``expiries``, plus a margin."""
+	from frappe.sessions import get_expiry_in_seconds
+
+	seconds = [get_expiry_in_seconds(expiry) for expiry in expiries if _is_expiry(expiry)]
+	return max([get_expiry_in_seconds(), *seconds]) + state.ENDED_SESSION_MARGIN
+
+
+def _is_expiry(value) -> bool:
+	return isinstance(value, str) and value.count(":") == 2
+
+
+def refuse_ended_session() -> None:
+	"""before_request: refuse a session this app ended, or a signed-in id not in the form core
+	issues (see ``has_issued_form``), with 401 ``SessionExpired``, signing the browser out (session
+	and cookies). At most one cache read per signed-in request; none for Guest."""
+	if not is_browser_session():
+		return
+	sid = frappe.session.sid
+	stored_key = get_stored_session_id(sid)
+	if not has_issued_form(sid):
+		drop_cached_session(stored_key)
+	elif state.is_session_ended(state.sid_hash(stored_key)):
+		from frappe.sessions import delete_session
+
+		delete_session(sid, user=frappe.session.user, reason="Passkey revoked")
+	else:
+		return
+	from frappe.auth import clear_cookies
+
+	clear_cookies()
+	frappe.set_user("Guest")
+	frappe.local.response["session_expired"] = 1
+	raise frappe.SessionExpired
+
+
+def drop_ended_session(response=None, request=None) -> None:
+	"""after_request: if this app ended this request's session, or its id is not in the form core
+	issues, drop its cached copy. At most one cache read; none for Guest. Never raises."""
+	try:
+		session = getattr(frappe.local, "session_obj", None)
+		sid = getattr(session, "sid", None)
+		callbacks = getattr(getattr(frappe.local, "request", None), "after_response", None)
+		if callbacks is None or not sid or "Guest" in (sid, frappe.session.user):
+			return
+		stored_key, is_checked = get_stored_session_id(sid), has_issued_form(sid)
+		# a lambda's repr holds no id
+		callbacks.add(lambda: drop_session_if_ended(stored_key, is_checked=is_checked))
+	except Exception:
+		frappe.log_error(title="passkeys: ended-session check failed")
+
+
+def drop_session_if_ended(stored_key: str, *, is_checked: bool = True) -> None:
+	"""Drop the session's cached copy if this app ended it, or without reading the mark when not
+	``is_checked``. Never raises; a failure is logged by its error class only."""
+	try:
+		if not is_checked or state.is_session_ended(state.sid_hash(stored_key)):
+			drop_cached_session(stored_key)
+	except Exception as error:
+		frappe.logger("passkeys").error(f"ended-session check failed: {type(error).__name__}")
+
+
+def drop_cached_session(stored_key: str) -> None:
+	"""Drop the session's cached copy, as core does when it ends a session."""
+	frappe.cache.hdel("session", stored_key)
+	frappe.cache.hdel("last_db_session_update", stored_key)
+
+
+def has_issued_form(sid: str) -> bool:
+	"""False when core stores session ids as they are and ``sid`` is not in the form core issues
+	them in (56 lowercase hex digits)."""
+	return get_stored_session_id(sid) != sid or bool(ISSUED_SESSION_ID.fullmatch(sid))
+
+
+def get_stored_session_id(sid: str) -> str:
+	"""``sid`` as core stores the session (hashed from version-16 on)."""
+	from frappe import sessions
+
+	hash_sid = getattr(sessions, "hash_sid", None)
+	return hash_sid(sid) if hash_sid else sid
 
 
 def _classify_login_method() -> str:

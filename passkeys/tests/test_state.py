@@ -39,6 +39,25 @@ class TestStateStore(IntegrationTestCase):
 		self.assertEqual(state.consume_otp_fallback(tmp_id), record)
 		self.assertIsNone(state.consume_otp_fallback(tmp_id))
 
+	def test_ended_session_mark_survives_site_cache_clear(self):
+		session_key = state.sid_hash(frappe.generate_hash())
+		state.mark_sessions_ended([session_key], ttl=60)
+		name = frappe.cache.make_key(state.ENDED_SESSIONS)
+		self.addCleanup(redis.Redis.hdel, frappe.cache, name, session_key)
+		frappe.clear_cache()
+		self.assertTrue(state.is_session_ended(session_key))
+		self.assertFalse(state.is_session_ended(state.sid_hash(frappe.generate_hash())))
+
+	def test_an_expired_ended_session_mark_counts_as_absent_and_is_dropped(self):
+		name = frappe.cache.make_key(state.ENDED_SESSIONS)
+		expired, fresh = (state.sid_hash(frappe.generate_hash()) for _ in range(2))
+		self.addCleanup(redis.Redis.hdel, frappe.cache, name, expired, fresh)
+		redis.Redis.hset(frappe.cache, name, expired, int(time.time()) - 1)
+		self.assertFalse(state.is_session_ended(expired))
+		state.mark_sessions_ended([fresh], ttl=60)
+		self.assertTrue(state.is_session_ended(fresh))
+		self.assertIsNone(redis.Redis.hget(frappe.cache, name, expired))
+
 	def test_store_and_consume_round_trip(self):
 		record = {"v": 1, "type": "login", "challenge_b64": "abc", "origins": ["https://x.example"]}
 		state_id = state.store_ceremony(record)

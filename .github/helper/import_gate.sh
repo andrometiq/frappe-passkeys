@@ -57,6 +57,7 @@ HOOK_KEYS = {
     "after_migrate",
     "after_request",
     "before_install",
+    "before_request",
     "before_uninstall",
     "doc_events",
     "extend_bootinfo",

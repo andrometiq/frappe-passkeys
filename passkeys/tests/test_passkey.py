@@ -541,6 +541,7 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		doc.save()
 
 	def test_localhost_origin_only_under_developer_mode(self):
+		frappe.local.conf["host_name"] = None
 		frappe.local.conf["developer_mode"] = 0
 		doc = self._settings(
 			login_with_passkey=1, passkey_rp_id="localhost", passkey_origins="http://localhost:8000"

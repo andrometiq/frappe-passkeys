@@ -47,8 +47,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
-- Disabling or deleting a passkey signs its owner out, so a lost or stolen device loses its
-  session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)).
+- Disabling or deleting a passkey signs its owner out for good, so a lost or stolen device loses
+  its session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)). If the
+  sign-out can't be completed (for example, the site cache is down), the System Managers are
+  emailed and a `passkeys:sign_out_incomplete` risk event is recorded.
 - The Remove passkey dialog says your other devices will be signed out.
 - When a passkey is asked for after the password, its prompt opens by itself; "Use a passkey" is
   still there if it doesn't. Closing the dialog closes the prompt; once your passkey is being

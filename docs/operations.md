@@ -32,13 +32,18 @@ This matters for every backup, restore, and deploy.
 - Action-confirmation grants and the "sudo" re-auth windows.
 - The guest browser-binder cookie value hashes and the per-user
   password-failure throttle counters.
+- A mark for each session ended by revoking a passkey, keyed by a hash of the session id and
+  kept until well after that session would have expired. Every signed-in request costs two
+  cache reads; Guest requests none. If the cache can't be reached, the read counts the session
+  as not ended (logged once per worker) rather than failing the request.
 
-A Redis flush (or a deploy that clears the cache) cancels only in-flight
-ceremonies: the worst case is a user retrying one sign-in. Nothing enrolled is
-lost. Sudo windows and grants simply have to be re-earned. The OTP-fallback prefix alone is
-registered in `persistent_cache_keys`: core's stock OTP form omits `usr`, causing a site-cache
-clear before the login veto consumes the marker. This hook preserves the marker across that
-clear, not across a Redis flush; its TTL and atomic, single-use consumption still apply.
+A Redis flush (or a deploy that clears the cache) cancels only the ceremonies under
+way: the worst case is a user retrying one sign-in. Nothing enrolled is
+lost. Sudo windows and grants simply have to be re-earned. Two prefixes are registered in
+`persistent_cache_keys`. The OTP-fallback one is there because core's stock OTP form omits
+`usr`, causing a site-cache clear before the login veto consumes the marker; the marker keeps its
+TTL and atomic, single-use consumption. The ended-session one keeps those marks across a
+`bench clear-cache` or migrate. Both survive a site-cache clear, not a Redis flush.
 
 ## Before you enable passkeys on a production site
 
@@ -142,12 +147,16 @@ credential revoked after the backup was taken returns with the backup and may wo
   site-wide case requires its own recovery path.
 
   **Disabling or deleting a passkey signs its owner out.** When it is someone else's, the app
-  ends every session of the owner with the call Frappe itself uses for a disabled user, and the
-  change email tells them they may need to sign in again; your own session stays. When it is
+  ends every session of the owner (all of them, not 100 at a time), and the change email tells
+  them they may need to sign in again; your own session stays. When it is
   your own, every other session of yours ends and the one you are using in the browser stays, so a
   lost device's session ends too (a bulk action, an API token or the console has no such session,
-  so all of yours end). **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on
-  this site.
+  so all of yours end). A session ended this way stays ended: its browser has to sign in again.
+  If the sign-out can't be completed (for example, the site cache can't be reached at that
+  moment), the passkey is still revoked, but some of the owner's sessions may still be signed in:
+  the app records a `passkeys:sign_out_incomplete` risk event, emails the System Managers, and a
+  save in the Desk form shows a warning. Clear the site cache once it is reachable.
+  **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on this site.
 
   For an account you believe someone is using right now, follow
   [Someone may be using the account right now](recovery.md#someone-may-be-using-the-account-right-now).
@@ -164,8 +173,10 @@ credential revoked after the backup was taken returns with the backup and may wo
   frappe.sessions.clear_sessions(user="user@example.com", force=True)
   ```
 
-  Each of these, the passkey sign-out included, ends the 100 most recently active sessions; run the
-  console line for an account that might have more. Ending sessions does not revoke the user's API
+  Each of these but the passkey sign-out ends up to the 100 most recently active sessions at a time
+  (the passkey sign-out ends them all); for an account that might have more, run the console line
+  again until `frappe.db.count("Sessions", {"user": "user@example.com"})` returns 0. Ending
+  sessions does not revoke the user's API
   keys or OAuth tokens; see [API keys and OAuth tokens](security.md#api-keys-and-oauth-tokens).
 
 ## Monitoring the risk events
@@ -182,6 +193,7 @@ Activity Log rows (filter on the `content` field, which is `passkeys:<event>`):
 | `passkeys:fallback_used` | A passkey holder completed the second factor with a one-time code instead. |
 | `passkeys:external_login_enrollment` | The restricted first-enrollment-on-external-login path was used. |
 | `passkeys:password_login_by_passkey_holder` | A user who holds a usable passkey signed in with their password instead. Recorded only when `passkey_notify_password_login` is on (default off). |
+| `passkeys:sign_out_incomplete` | A passkey was disabled or removed, but some of its owner's sessions may still be signed in (for example, the site cache couldn't be reached). The System Managers are emailed too. Clear the site cache; see [Someone may be using the account right now](recovery.md#someone-may-be-using-the-account-right-now). |
 | `passkeys:enforce_incapable_device` | A user in scope for enrollment enforcement reported their device cannot create a passkey (the block-and-notify-admin path); always recorded, even when the admin email is deduped. |
 | `passkeys:grant_issued` / `passkeys:grant_consumed` | A confirmation grant was issued or accepted for an action. A mismatched presentation spends the token without a `grant_consumed` event. |
 

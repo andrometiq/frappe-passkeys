@@ -23,6 +23,11 @@ RISK_FALLBACK_USED = "fallback_used"
 RISK_EXTERNAL_LOGIN_ENROLLMENT = "external_login_enrollment"
 RISK_PASSWORD_LOGIN_BY_PASSKEY_HOLDER = "password_login_by_passkey_holder"
 RISK_ENFORCE_INCAPABLE = "enforce_incapable_device"
+RISK_SIGN_OUT_INCOMPLETE = "sign_out_incomplete"
+
+SIGN_OUT_RECOVERY_URL = (
+	"https://andrometiq.github.io/frappe-passkeys/recovery.html#someone-may-be-using-the-account-right-now"
+)
 
 # At most one incapable-device admin email per user per day; the client guard resets on
 # every page load.
@@ -157,6 +162,34 @@ def record_enforcement_incapable(user: str) -> None:
 			_mark_incapable_notified(user)  # only after a dispatch — a manager-less site retries
 	except Exception:
 		frappe.log_error(title="passkeys: enforcement-incapable email failed")
+
+
+def record_sign_out_incomplete(user: str) -> None:
+	"""Record that revoking a passkey of ``user`` may have left some of their sessions signed in,
+	and email the System Managers."""
+	record_risk_event(
+		RISK_SIGN_OUT_INCOMPLETE, user, f"Passkey revoked; some of {user}'s sessions may still be signed in"
+	)
+	try:
+		managers = _system_manager_emails()
+		if managers:
+			frappe.sendmail(
+				recipients=managers,
+				subject=_("Some sessions may still be signed in after a passkey was revoked"),
+				message=_(
+					"A passkey of {0} was disabled or removed on {1}, but some of {0}'s sessions may"
+					" still be signed in. Clear the site cache once it can be reached: see {2}."
+				).format(escape_html(user), _site_label(), sign_out_recovery_link()),
+				now=False,
+			)
+	except Exception:
+		frappe.log_error(title="passkeys: sign-out-incomplete email failed")
+
+
+def sign_out_recovery_link() -> str:
+	return '<a href="{0}" target="_blank" rel="noopener noreferrer">{1}</a>'.format(
+		SIGN_OUT_RECOVERY_URL, _("Someone may be using the account right now")
+	)
 
 
 def incapable_notify_key(user: str) -> str:

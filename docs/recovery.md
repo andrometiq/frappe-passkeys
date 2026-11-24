@@ -16,8 +16,10 @@ If no System Manager can sign in, go to
   credential can no longer sign in and no longer counts for the passkey second
   factor or for enforcement. Disabling a passkey also signs its owner out: everywhere when
   it's another user's, everywhere but the session you're using when it's your own. A stolen
-  device that is still signed in loses its session too, unless it is making a request at that
-  very moment: see
+  device that is still signed in loses its session too. If the sign-out can't be completed (for
+  example, the site cache can't be reached), Desk warns that some of the owner's sessions may still
+  be signed in and the System Managers get an email: clear the site cache once it can be reached.
+  If someone may be using the account right now, also follow
   [Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
   Prefer disabling to deleting: the row stays for investigation. The owner is emailed when
   **Notify on Passkey Changes** is on. If outgoing email is unconfigured, Desk may show an email-setup message even though the disable
@@ -36,9 +38,11 @@ If no System Manager can sign in, go to
   it, or to keep an account enabled, run
   `frappe.sessions.clear_sessions(user="user@example.com", force=True)` in the
   [console](#console-access) instead (it commits on its own); a User disabled from the
-  console keeps its sessions. Each of these, the passkey sign-out included, ends the 100 most
-  recently active sessions; run the console line for an account that might have more. None of
-  them is certain for a session in use at that moment: see
+  console keeps its sessions. Each of these but the passkey sign-out ends up to the 100 most
+  recently active sessions at a time (the passkey sign-out ends them all); for an account that
+  might have more, run the console line again until
+  `frappe.db.count("Sessions", {"user": "user@example.com"})` returns 0. If someone
+  may be using the account right now, follow
   [Someone may be using the account right now](#someone-may-be-using-the-account-right-now).
 - **Clear Passkey Only Login.** Open **WebAuthn User Handle**, open the user's row,
   untick **Passkey Only Login**, and save. Clearing is always allowed. The user's own

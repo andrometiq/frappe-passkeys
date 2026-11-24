@@ -192,6 +192,12 @@ not drop the acting administrator's window: on version-15 and version-16 core ru
 in the administrator's request first, so the app clears a window only once the request has ended
 that session.
 
+**Revoking a passkey ends its owner's sessions.** Disabling or deleting someone else's passkey ends
+every session of its owner; revoking your own ends all of yours but the one you are using. A
+session ended this way stays ended: its browser has to sign in again. **Remove stale passkeys**
+signs nobody out. See [operations](operations.md) for how to sign a user out without touching a
+passkey.
+
 **An impersonated session is read-only for passkeys.** Core's "Impersonate" is open to the
 Administrator and, on Frappe v16, to any role granted the User `impersonate` permission. The lock
 stops accidental or hidden changes to the user's passkeys from that session. It is not a boundary

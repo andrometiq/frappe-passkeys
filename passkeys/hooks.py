@@ -74,7 +74,8 @@ scheduler_events = {
 }
 
 # Core OTP login omits usr and clears site cache before the on_login veto consumes this marker.
-persistent_cache_keys = ["passkeys:otp-fallback:"]
+# A session the app ended stays ended across a site-cache clear.
+persistent_cache_keys = ["passkeys:otp-fallback:", "passkeys:ended-sessions"]
 
 # Session lifecycle
 # -----------------
@@ -91,10 +92,16 @@ on_login = ["passkeys.auth_hooks.on_login_veto"]
 on_session_creation = ["passkeys.session.seed_sudo_window"]
 on_logout = ["passkeys.session.clear_sudo_window"]
 
-# The sudo-window clear above (a flag lookup unless this request logged out). UI-test sites
-# only (passkeys_deterministic_test_cookies): drop stale sid cookie re-seeds, a dict lookup
-# elsewhere; see cookie_determinism.py.
+# Refuses a session this app ended (revoking a passkey) before the endpoint runs; with
+# drop_ended_session below, two cache reads per signed-in request, none for Guest.
+before_request = ["passkeys.session.refuse_ended_session"]
+
+# The same check, after the endpoint (see before_request). The sudo-window clear above (a flag
+# lookup unless this request logged out). UI-test sites only
+# (passkeys_deterministic_test_cookies): drop stale sid cookie re-seeds, a dict lookup elsewhere;
+# see cookie_determinism.py.
 after_request = [
+	"passkeys.session.drop_ended_session",
 	"passkeys.session.clear_logged_out_sudo_window",
 	"passkeys.cookie_determinism.strip_stale_sid_reseed",
 ]

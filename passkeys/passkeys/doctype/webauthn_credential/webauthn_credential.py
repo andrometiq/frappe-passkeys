@@ -4,11 +4,11 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, strip_html
+from frappe.utils import cint, escape_html, strip_html
 
 from passkeys import policy
 from passkeys.passkeys.doctype.webauthn_user_handle.webauthn_user_handle import lock_login_floor
-from passkeys.session import ReadOnlyWhileImpersonated
+from passkeys.session import ReadOnlyWhileImpersonated, end_sessions
 
 LABEL_MAX_LENGTH = 140
 
@@ -33,6 +33,7 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		# the owner. Fires after the write persisted.
 		if self._is_disabling():
 			self._notify(removed=False, is_signed_out=self._sign_out_owner())
+			self._report_incomplete_sign_out()
 
 	def on_trash(self):
 		super().on_trash()
@@ -56,6 +57,7 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 	def after_delete(self):
 		# Single source for the endpoint delete and a form delete.
 		self._notify(removed=True, is_signed_out=self._sign_out_owner())
+		self._report_incomplete_sign_out()
 
 	def _is_disabling(self) -> bool:
 		"""True iff this save flips ``enabled`` 1→0 (disable direction)."""
@@ -136,22 +138,39 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 			)
 
 	def _sign_out_owner(self) -> bool:
-		"""End the owner's sessions with core's call for a disabled User: all of them when someone
+		"""End the owner's sessions for good (session.end_sessions): all of them when someone
 		else revoked this passkey (the actor's sessions belong to another user and stay), all but
 		the current one when the owner did, so a lost device's session ends too. The stale-passkey
 		bulk removal is left out: a stale passkey cannot sign in here, and the commits would
 		release the RP lock that removal holds. Returns whether the owner was signed out
-		everywhere."""
+		everywhere; flags a sign-out that could not end and mark every session."""
 		if self.flags.passkeys_remove_stale:
 			return False
-		from frappe.sessions import clear_sessions
-
 		by_owner = self._is_by_owner()
 		# A fresh snapshot: a sign-in that committed while this request waited on the row lock
 		# is listed too; any later one reads the revoked row and fails.
 		frappe.db.commit()
-		clear_sessions(user=self.user, keep_current=by_owner, force=True)
+		self.flags.passkeys_sign_out_incomplete = not end_sessions(self.user, keep_current=by_owner)
 		return not by_owner
+
+	def _report_incomplete_sign_out(self):
+		"""A sign-out that could not end and mark every session: a risk event, an email to the System
+		Managers, and a warning to the acting user."""
+		if not self.flags.passkeys_sign_out_incomplete:
+			return
+		from passkeys import notifications
+
+		notifications.record_sign_out_incomplete(self.user)
+		if "System Manager" in frappe.get_roles():
+			message = _(
+				"The passkey no longer works, but some of {0}'s sessions may still be signed in. Clear the site cache once it can be reached: see {1}."
+			)
+		else:
+			message = _(
+				"The passkey no longer works, but some of {0}'s sessions may still be signed in. Ask an administrator to clear the site cache: see {1}."
+			)
+		link = notifications.sign_out_recovery_link()
+		frappe.msgprint(message.format(escape_html(self.user), link), indicator="orange")
 
 	def _is_by_owner(self) -> bool:
 		return frappe.session.user == self.user

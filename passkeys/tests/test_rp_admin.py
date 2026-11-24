@@ -141,11 +141,13 @@ class RpAdminTest(PinnedSiteRp, IntegrationTestCase):
 		self.assertEqual(get_settings_context()["stale_passkeys"], expected)
 		with (
 			patch("frappe.sendmail") as mail,
-			patch("frappe.sessions.clear_sessions") as clear_sessions,
+			patch("frappe.sessions.delete_session") as delete_session,
+			patch("passkeys.state.mark_sessions_ended") as mark_ended,
 			patch.object(frappe.db, "commit") as commit,
 		):
 			self.assertEqual(remove_stale_passkeys("example.com"), {"removed": 3})
-		clear_sessions.assert_not_called()  # a stale passkey can't sign in here: no sign-out
+		delete_session.assert_not_called()  # a stale passkey can't sign in here: no sign-out
+		mark_ended.assert_not_called()
 		commit.assert_not_called()  # the removal keeps its RP lock to the end
 		self.assertEqual(mail.call_count, 3)
 		for call in mail.call_args_list:

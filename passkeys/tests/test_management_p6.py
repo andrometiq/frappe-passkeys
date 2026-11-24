@@ -6,15 +6,29 @@ notifications, risk-event telemetry, the admin
 lockout interlock, and the row-7 reauth refusal under
 ``disable_user_pass_login``."""
 
+import base64
+import hashlib
+import json
+import pickle
+import time
 import types
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import frappe
+import redis
 from frappe.auth import CookieManager, LoginManager
-from frappe.utils import set_request
+from frappe.utils import CallbackManager, set_request
+from frappe.utils.password import set_encrypted_password
 
-from passkeys import ceremony, confirm, notifications, state
+from passkeys import ceremony, confirm, notifications, session, state
 from passkeys.api import credentials
+from passkeys.session import (
+	drop_ended_session,
+	drop_session_if_ended,
+	end_sessions,
+	get_stored_session_id,
+	refuse_ended_session,
+)
 from passkeys.tests.committed_state import delete_fixture
 from passkeys.tests.compat import (
 	IntegrationTestCase,
@@ -352,6 +366,14 @@ class RevocationSignOutTest(_Base):
 		self.addCleanup(setattr, frappe.local, "login_manager", getattr(frappe.local, "login_manager", None))
 		self.owner, self.actor = self._user(), self._user()
 		self.addCleanup(frappe.set_user, "Administrator")
+		self.addCleanup(self._delete_new_ended_marks, self._ended_marks())
+
+	def _ended_marks(self) -> dict[bytes, bytes]:
+		return redis.Redis.hgetall(frappe.cache, frappe.cache.make_key(state.ENDED_SESSIONS))
+
+	def _delete_new_ended_marks(self, before: dict[bytes, bytes]) -> None:
+		if added := set(self._ended_marks()) - set(before):
+			redis.Redis.hdel(frappe.cache, frappe.cache.make_key(state.ENDED_SESSIONS), *added)
 
 	def _sign_in_for_real(self, user: str) -> None:
 		"""A real session row, as a browser sign-in makes; the current session becomes it."""
@@ -370,12 +392,21 @@ class RevocationSignOutTest(_Base):
 		self._sign_in_for_real(self.actor)
 		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (2, 1))
 
+	def _assert_nothing_reported(self, messages: list) -> None:
+		"""No warning, risk event or System Manager email for an incomplete sign-out."""
+		self.assertFalse([message for message in messages if "may still be signed in" in message.message])
+		risk = {"user": self.owner, "content": f"passkeys:{notifications.RISK_SIGN_OUT_INCOMPLETE}"}
+		self.assertEqual(activity_log_count(risk), 0)
+		self.assertEqual([mail["recipients"] for mail in self.sent], [[self.owner]])
+
 	def test_someone_elses_disable_signs_the_owner_out_everywhere(self):
 		cred = make_credential(self.owner)
 		self._two_owner_sessions_then_actor()
 		doc = frappe.get_doc("WebAuthn Credential", cred.name)
 		doc.enabled = 0
-		doc.save(ignore_permissions=True)
+		with patch.object(frappe.local, "message_log", []):
+			doc.save(ignore_permissions=True)
+			self._assert_nothing_reported(frappe.local.message_log)
 		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (0, 1))
 		self.assertEqual(frappe.session.user, self.actor)
 		self.assertEqual(
@@ -388,7 +419,9 @@ class RevocationSignOutTest(_Base):
 	def test_someone_elses_delete_signs_the_owner_out_everywhere(self):
 		cred = make_credential(self.owner)
 		self._two_owner_sessions_then_actor()
-		frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+		with patch.object(frappe.local, "message_log", []):
+			frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+			self._assert_nothing_reported(frappe.local.message_log)
 		self.assertEqual((self._sessions(self.owner), self._sessions(self.actor)), (0, 1))
 		self.assertEqual(frappe.session.user, self.actor)
 		self.assertEqual(
@@ -473,6 +506,583 @@ class RevocationSignOutTest(_Base):
 				" too. If you didn't expect this, contact your administrator.",
 			],
 		)
+
+	def _next_request(self, sid: str) -> None:
+		"""Resume ``sid`` from its cookie as the next request does; the current session becomes it."""
+		set_request(
+			method="GET", path="/api/method/frappe.auth.get_logged_user", headers={"Cookie": f"sid={sid}"}
+		)
+		frappe.local.cookie_manager = CookieManager()
+		frappe.local.form_dict = frappe._dict()
+		frappe.local.response = frappe._dict()
+		frappe.local.login_manager = LoginManager()
+
+	def _is_cached(self, sid: str) -> bool:
+		return bool(frappe.cache.hget("session", get_stored_session_id(sid)))
+
+	def _is_ended(self, sid: str) -> bool:
+		return state.is_session_ended(state.sid_hash(get_stored_session_id(sid)))
+
+	def _revoke(self, action: str, cred) -> None:
+		if action == "disable":
+			doc = frappe.get_doc("WebAuthn Credential", cred.name)
+			doc.enabled = 0
+			doc.save(ignore_permissions=True)
+		else:
+			frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+
+	def test_a_revocation_marks_every_session_it_ends(self):
+		self.assertIn("passkeys.session.refuse_ended_session", frappe.get_hooks("before_request"))
+		self.assertIn("passkeys.session.drop_ended_session", frappe.get_hooks("after_request"))
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)
+				first = frappe.session.sid
+				self._sign_in_for_real(self.owner)
+				second = frappe.session.sid
+				self._sign_in_for_real(self.actor)
+				self._revoke(action, cred)
+				self.assertEqual(self._sessions(self.owner), 0)
+				for sid in (first, second):
+					self.assertFalse(self._is_cached(sid))
+					self.assertTrue(self._is_ended(sid))
+				self.assertFalse(self._is_ended(frappe.session.sid))
+
+	def test_a_session_marked_ended_is_refused_and_stays_marked(self):
+		"""Its next request answers 401 SessionExpired, signs the browser out and deletes the
+		session; the mark outlives the refusal."""
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		state.mark_sessions_ended([state.sid_hash(get_stored_session_id(sid))], 60)
+		self._next_request(sid)
+		self.assertEqual(frappe.session.user, self.owner)
+
+		with self.assertRaises(frappe.SessionExpired):
+			refuse_ended_session()
+		self.assertEqual(frappe.session.user, "Guest")
+		self.assertEqual(frappe.local.response.session_expired, 1)
+		self.assertIn("sid", frappe.local.cookie_manager.to_delete)
+		self.assertEqual(self._sessions(self.owner), 0)
+		self.assertFalse(self._is_cached(sid))
+		self.assertTrue(self._is_ended(sid))
+		self._next_request(sid)
+		self.assertEqual(frappe.session.user, "Guest")
+
+	# Ids not in the form core issues (56 lowercase hex digits), each of a different kind.
+	MALFORMED_IDS = (
+		"g" * 56,
+		"٣" * 56,
+		frappe.generate_hash(length=40),
+		frappe.generate_hash() + "0",
+		"A" * 56,
+		frappe.generate_hash() + "\n",
+	)
+
+	@staticmethod
+	def _stored_as(stored_as_is: bool):
+		"""Session ids stored as they are, or (as from version-16 on) as a hash."""
+		return (lambda sid: sid) if stored_as_is else (lambda sid: hashlib.sha256(sid.encode()).hexdigest())
+
+	def test_a_signed_in_id_not_in_the_form_core_issues_is_refused(self):
+		"""Where core stores session ids as they are: 401 SessionExpired, the browser signed out and
+		that id's cached copy dropped, without a mark read and without ending a session. Where core
+		stores a hash of the id, the ended-session check decides."""
+		self._sign_in_for_real(self.owner)
+		signed_in = frappe.session.sid
+		for stored_as_is in (True, False):
+			for sid in self.MALFORMED_IDS:
+				with self.subTest(stored_as_is=stored_as_is, sid=sid):
+					self._next_request(signed_in)
+					frappe.session.sid = sid
+					with (
+						patch.object(
+							session, "get_stored_session_id", side_effect=self._stored_as(stored_as_is)
+						),
+						patch("frappe.sessions.delete_session") as delete_session,
+						patch.object(frappe.cache, "hdel", wraps=frappe.cache.hdel) as hdel,
+						patch.object(state, "is_session_ended", wraps=state.is_session_ended) as is_ended,
+					):
+						if stored_as_is:
+							with self.assertRaises(frappe.SessionExpired):
+								refuse_ended_session()
+						else:
+							refuse_ended_session()
+					delete_session.assert_not_called()
+					self.assertEqual(self._sessions(self.owner), 1)
+					if stored_as_is:
+						self.assertEqual(frappe.session.user, "Guest")
+						self.assertEqual(frappe.local.response.session_expired, 1)
+						self.assertIn("sid", frappe.local.cookie_manager.to_delete)
+						self.assertEqual(
+							hdel.call_args_list, [call("session", sid), call("last_db_session_update", sid)]
+						)
+						is_ended.assert_not_called()
+					else:
+						self.assertEqual(frappe.session.user, self.owner)
+						hdel.assert_not_called()
+						is_ended.assert_called_once()
+
+	def test_after_its_request_an_id_not_in_the_form_core_issues_is_dropped_without_a_mark_read(self):
+		self._sign_in_for_real(self.owner)
+		signed_in = frappe.session.sid
+		for stored_as_is in (True, False):
+			for sid in self.MALFORMED_IDS:
+				with self.subTest(stored_as_is=stored_as_is, sid=sid):
+					self._next_request(signed_in)
+					frappe.local.session_obj.sid = sid
+					frappe.local.request.after_response = CallbackManager()
+					stored_as = self._stored_as(stored_as_is)
+					with (
+						patch.object(session, "get_stored_session_id", side_effect=stored_as),
+						patch.object(frappe.cache, "hdel", wraps=frappe.cache.hdel) as hdel,
+						patch.object(state, "is_session_ended", wraps=state.is_session_ended) as is_ended,
+					):
+						drop_ended_session()
+						frappe.local.request.after_response.run()
+					if stored_as_is:
+						self.assertEqual(
+							hdel.call_args_list, [call("session", sid), call("last_db_session_update", sid)]
+						)
+						is_ended.assert_not_called()
+					else:
+						hdel.assert_not_called()
+						is_ended.assert_called_once_with(state.sid_hash(stored_as(sid)))
+		self.assertTrue(self._is_cached(signed_in))
+
+	def _bearer_token(self, user: str) -> str:
+		client = frappe.get_doc(
+			doctype="OAuth Client",
+			app_name=f"passkeys-test-{frappe.generate_hash(length=8)}",
+			scopes="all",
+			redirect_uris="http://localhost",
+			default_redirect_uri="http://localhost",
+			grant_type="Authorization Code",
+			response_type="Code",
+		).insert(ignore_permissions=True)
+		self.addCleanup(self._delete_committed, "OAuth Client", client.name)
+		token = frappe.get_doc(
+			doctype="OAuth Bearer Token",
+			access_token=frappe.generate_hash(),
+			client=client.name,
+			expires_in=3600,
+			scopes="all",
+			status="Active",
+			user=user,
+		).insert(ignore_permissions=True)
+		self.addCleanup(self._delete_committed, "OAuth Bearer Token", token.name)
+		return token.access_token
+
+	@staticmethod
+	def _delete_committed(doctype: str, name: str):
+		# The requests below commit these rows (core ends the unknown cookie's session), and the class
+		# cleanup starts with a rollback: delete and commit here.
+		frappe.delete_doc(doctype, name, force=1, ignore_permissions=True, delete_permanently=True)
+		frappe.db.commit()
+
+	def test_token_and_bearer_requests_are_never_refused(self):
+		"""Not even with a session cookie that names no session: core resumes such a cookie as Guest
+		before these checks and signs the request in from its Authorization header after."""
+		api_key, api_secret = frappe.generate_hash(length=15), frappe.generate_hash(length=15)
+		frappe.db.set_value("User", self.owner, "api_key", api_key)
+		set_encrypted_password("User", self.owner, api_secret, "api_secret")
+		authorizations = {
+			"token": f"token {api_key}:{api_secret}",
+			"basic": "Basic " + base64.b64encode(f"{api_key}:{api_secret}".encode()).decode(),
+			"bearer": f"Bearer {self._bearer_token(self.owner)}",
+		}
+		for kind, authorization in authorizations.items():
+			for cookie in (None, "Guest", "not-a-session-id", "g" * 56, frappe.generate_hash()):
+				with self.subTest(kind=kind, cookie=cookie):
+					headers = {"Authorization": authorization}
+					if cookie:
+						headers["Cookie"] = f"sid={cookie}"
+					set_request(method="GET", path="/api/method/frappe.auth.get_logged_user", headers=headers)
+					frappe.local.cookie_manager = CookieManager()
+					frappe.local.form_dict = frappe._dict()
+					frappe.local.response = frappe._dict()
+					frappe.local.login_manager = LoginManager()
+					frappe.local.request.after_response = CallbackManager()
+					refuse_ended_session()  # before_request
+					frappe.auth.validate_auth()
+					self.assertEqual(frappe.session.user, self.owner)
+					refuse_ended_session()
+					drop_ended_session()
+					self.assertEqual(len(frappe.local.request.after_response._functions), 0)
+
+	def test_a_marked_session_is_dropped_after_its_request(self):
+		self._sign_in_for_real(self.owner)
+		marked = frappe.session.sid
+		self._sign_in_for_real(self.owner)
+		unmarked = frappe.session.sid
+		state.mark_sessions_ended([state.sid_hash(get_stored_session_id(marked))], 60)
+		for sid in (marked, unmarked):
+			self._next_request(sid)
+			frappe.local.request.after_response = CallbackManager()
+			drop_ended_session()
+			self.assertEqual(len(frappe.local.request.after_response._functions), 1)
+			frappe.local.request.after_response.run()
+		self.assertFalse(self._is_cached(marked))
+		self.assertTrue(self._is_cached(unmarked))
+
+	def test_the_session_an_owner_revokes_from_keeps_working(self):
+		cred = make_credential(self.owner)
+		self._sign_in_for_real(self.owner)  # the lost device
+		lost = frappe.session.sid
+		self._sign_in_for_real(self.owner)  # the device in hand
+		current = frappe.session.sid
+		frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+		self._next_request(current)
+		refuse_ended_session()
+		self.assertEqual(frappe.session.user, self.owner)
+		self.assertTrue(self._is_cached(current))
+		self.assertFalse(self._is_ended(current))
+		self.assertTrue(self._is_ended(lost))
+
+	def test_ending_sessions_ends_every_cached_session_of_the_user(self):
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		self._sign_in_for_real(self.actor)
+		with patch.object(session, "_get_session_keys", return_value=set()):
+			end_sessions(self.owner, keep_current=False)
+		self.assertFalse(self._is_cached(sid))
+		self.assertTrue(self._is_ended(sid))
+		self.assertTrue(self._is_cached(frappe.session.sid))
+
+	def test_ending_sessions_lists_every_session_at_once(self):
+		sessions = frappe.qb.DocType("Sessions")
+		insert = frappe.qb.into(sessions).columns(
+			sessions.sid, sessions.user, sessions.sessiondata, sessions.lastupdate, sessions.status
+		)
+		keys = [frappe.generate_hash() for _ in range(105)]
+		for key in keys:
+			insert = insert.insert((key, self.owner, "{}", frappe.utils.now(), "Active"))
+		insert.run()
+		with (
+			patch("frappe.core.doctype.activity_log.feed.logout_feed"),
+			patch.object(session, "_get_cached_sessions", wraps=session._get_cached_sessions) as read,
+			patch.object(session, "_get_session_keys", wraps=session._get_session_keys) as listing,
+		):
+			self.assertTrue(end_sessions(self.owner, keep_current=False))
+		self.assertEqual(self._sessions(self.owner), 0)
+		self.assertTrue(all(state.is_session_ended(state.sid_hash(key)) for key in keys))
+		# one listing ends all 105, the next finds none; the cache is read once
+		self.assertEqual((listing.call_count, read.call_count), (2, 1))
+
+	def test_a_marking_failure_still_ends_the_sessions(self):
+		self._sign_in_for_real(self.owner)
+		self._sign_in_for_real(self.actor)
+		with patch.object(state, "mark_sessions_ended", side_effect=RuntimeError("cache write failed")):
+			self.assertFalse(end_sessions(self.owner, keep_current=False))
+		self.assertEqual(self._sessions(self.owner), 0)
+
+	def test_a_revocation_the_cache_cannot_mark_still_completes_and_is_reported(self):
+		"""Tried three times; the sessions end, the owner is emailed, the save or delete runs to the
+		end, a risk event is recorded, the System Managers are emailed, and the acting user is told
+		to clear the site cache, or to ask an administrator to when they can't."""
+		down = redis.exceptions.ConnectionError("cache down")
+		records = {
+			"disable": lambda cred: ("Version", {"ref_doctype": cred.doctype, "docname": cred.name}),
+			"delete": lambda cred: (
+				"Deleted Document",
+				{"deleted_doctype": cred.doctype, "deleted_name": cred.name},
+			),
+		}
+		instructions = {
+			"actor": "Ask an administrator to clear the site cache",
+			"Administrator": "Clear the site cache once it can be reached",
+		}
+		risk = {"user": self.owner, "content": f"passkeys:{notifications.RISK_SIGN_OUT_INCOMPLETE}"}
+		for (action, record), (acting, instruction) in (
+			(pair, other) for pair in records.items() for other in instructions.items()
+		):
+			with self.subTest(action=action, acting=acting):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)
+				if acting == "actor":
+					self._sign_in_for_real(self.actor)
+				else:
+					frappe.set_user("Administrator")
+				sent, risk_events = len(self.sent), activity_log_count(risk)
+				with (
+					patch.object(state, "mark_sessions_ended", side_effect=down) as mark,
+					patch.object(session.time, "sleep") as sleep,
+					patch.object(frappe.local, "message_log", []),
+					patch("frappe.utils.user.get_system_managers", return_value=["manager@example.com"]),
+				):
+					if action == "disable":  # tests skip version history unless asked
+						doc = frappe.get_doc("WebAuthn Credential", cred.name)
+						doc.enabled = 0
+						doc.save(ignore_permissions=True, ignore_version=False)
+					else:
+						self._revoke(action, cred)
+					warnings = [message.message for message in frappe.local.message_log]
+				self.assertEqual(mark.call_count, 3)
+				self.assertEqual([call.args for call in sleep.call_args_list], [(0.1,), (0.3,)])
+				self.assertEqual(self._sessions(self.owner), 0)
+				self.assertTrue(frappe.db.exists(*record(cred)))
+				self.assertEqual(activity_log_count(risk), risk_events + 1)
+				mails = self.sent[sent:]
+				self.assertEqual(
+					[mail["recipients"] for mail in mails], [[self.owner], ["manager@example.com"]]
+				)
+				self.assertIn(f"some of {self.owner}'s sessions may still be signed in", mails[1]["message"])
+				self.assertIn("recovery.html#someone-may-be-using-the-account-right-now", mails[1]["message"])
+				self.assertEqual(len(warnings), 1)
+				self.assertIn(f"some of {self.owner}'s sessions may still be signed in", warnings[0])
+				self.assertIn(instruction, warnings[0])
+				self.assertIn("recovery.html#someone-may-be-using-the-account-right-now", warnings[0])
+
+	def _fail_session_expiry_reads(self):
+		"""Make the Sessions expiry read fail as a database error would, its query in the frame."""
+		database = type(frappe.local.db)
+		sql = database.sql
+
+		def failing_sql(db, query, *args, **kwargs):
+			text = str(query).lstrip().lower()
+			if text.startswith("select") and "sessiondata" in text:
+				raise RuntimeError("database read failed")
+			return sql(db, query, *args, **kwargs)
+
+		return patch.object(database, "sql", failing_sql)
+
+	def test_an_expiry_read_failure_marks_past_the_site_setting(self):
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		self._sign_in_for_real(self.actor)
+		with (
+			self._fail_session_expiry_reads(),
+			patch("frappe.sessions.get_expiry_period", return_value="00:01:00"),
+		):
+			self.assertTrue(end_sessions(self.owner, keep_current=False))
+		self.assertEqual(self._sessions(self.owner), 0)
+		marks = {frappe.safe_decode(field): int(until) for field, until in self._ended_marks().items()}
+		expected = time.time() + 60 + state.ENDED_SESSION_MARGIN
+		self.assertTrue(expected - 60 <= marks[state.sid_hash(get_stored_session_id(sid))] <= expected)
+
+	def test_a_logged_sign_out_failure_holds_no_session_id(self):
+		"""Even with developer mode on, where Frappe logs a traceback's variables by default."""
+		self.addCleanup(setattr, frappe.conf, "developer_mode", frappe.conf.get("developer_mode"))
+		frappe.conf.developer_mode = 1
+		self._sign_in_for_real(self.owner)
+		listed = frappe.session.sid
+		self._sign_in_for_real(self.owner)
+		kept = frappe.session.sid
+		before = set(frappe.get_all("Error Log", pluck="name"))
+		with (
+			patch.object(redis.Redis, "hscan_iter", side_effect=RuntimeError("cache read failed")),
+			patch.object(state, "mark_sessions_ended", side_effect=RuntimeError("cache write failed")),
+			self._fail_session_expiry_reads(),
+		):
+			self.assertFalse(end_sessions(self.owner, keep_current=True))
+		logs = frappe.get_all(
+			"Error Log",
+			filters={"name": ["not in", list(before) or [""]]},
+			fields=["name", "method", "error"],
+		)
+		for log in logs:
+			self.addCleanup(frappe.delete_doc, "Error Log", log.name, force=1, ignore_permissions=True)
+		self.assertEqual(
+			{log.method for log in logs},
+			{
+				"passkeys: cached-session read failed",
+				"passkeys: ended-session mark failed",
+				"passkeys: session expiry read failed",
+			},
+		)
+		text = "\n".join(log.error for log in logs)
+		for sid in (listed, kept):
+			stored_id = get_stored_session_id(sid)
+			for form in (sid, stored_id, state.sid_hash(stored_id)):
+				self.assertNotIn(form, text)
+
+	def test_listed_sessions_are_marked_when_the_cache_read_fails(self):
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		self._sign_in_for_real(self.actor)
+		with patch.object(session, "_get_cached_sessions", side_effect=RuntimeError("bad value")):
+			self.assertFalse(end_sessions(self.owner, keep_current=False))
+		self.assertTrue(self._is_ended(sid))
+		self.assertEqual(self._sessions(self.owner), 0)
+
+	def test_the_cache_read_matches_the_user_a_session_resumes_as_and_skips_unreadable_values(self):
+		"""Version-15 caches the session data under ``data``; version-16 caches the data itself."""
+		owner_v15, actor_v15, owner_v16 = (frappe.generate_hash() for _ in range(3))
+		values = [
+			(b"unreadable", b"not a pickle"),
+			(owner_v15.encode(), pickle.dumps({"user": self.actor, "data": {"user": self.owner}})),
+			(actor_v15.encode(), pickle.dumps({"user": self.owner, "data": {"user": self.actor}})),
+			(owner_v16.encode(), pickle.dumps({"user": self.owner, "session_expiry": "06:00:00"})),
+		]
+		with patch.object(redis.Redis, "hscan_iter", return_value=iter(values)):
+			self.assertTrue(end_sessions(self.owner, keep_current=False))
+		ended = [state.is_session_ended(state.sid_hash(key)) for key in (owner_v15, actor_v15, owner_v16)]
+		self.assertEqual(ended, [True, False, True])
+
+	def test_the_mark_reads_each_session_s_own_expiry_field(self):
+		"""A user-controlled field that reads like an expiry doesn't shorten the mark, in either
+		stored form."""
+		crafted = "x 'session_expiry':'00:00:01'"
+		stored = {
+			frappe.generate_hash(): json.dumps(
+				{"full_name": crafted, "session_expiry": "240:00:00"}, sort_keys=True, separators=(",", ":")
+			),
+			frappe.generate_hash(): str({"session_ip": crafted, "session_expiry": "240:00:00"}),
+		}
+		sessions = frappe.qb.DocType("Sessions")
+		insert = frappe.qb.into(sessions).columns(
+			sessions.sid, sessions.user, sessions.sessiondata, sessions.lastupdate, sessions.status
+		)
+		for key, sessiondata in stored.items():
+			insert = insert.insert((key, self.owner, sessiondata, frappe.utils.now(), "Active"))
+		insert.run()
+		with (
+			patch("frappe.core.doctype.activity_log.feed.logout_feed"),
+			patch("frappe.sessions.get_expiry_period", return_value="06:00:00"),
+		):
+			self.assertTrue(end_sessions(self.owner, keep_current=False))
+		marks = {frappe.safe_decode(field): int(until) for field, until in self._ended_marks().items()}
+		expected = time.time() + 240 * 3600 + state.ENDED_SESSION_MARGIN
+		for key in stored:
+			self.assertTrue(expected - 60 <= marks[state.sid_hash(key)] <= expected)
+
+	def test_ending_sessions_ends_exactly_what_it_marks(self):
+		"""A session listed after a round's listing is marked in the next round before it ends."""
+		sessions = frappe.qb.DocType("Sessions")
+
+		def add_owner_session():
+			key = frappe.generate_hash()
+			frappe.qb.into(sessions).columns(
+				sessions.sid, sessions.user, sessions.sessiondata, sessions.lastupdate, sessions.status
+			).insert((key, self.owner, "{}", frappe.utils.now(), "Active")).run()
+			return key
+
+		keys = [add_owner_session()]
+		listing = session._get_session_keys
+
+		def list_then_sign_in(*args, **kwargs):
+			listed = listing(*args, **kwargs)
+			if len(keys) == 1:
+				keys.append(add_owner_session())
+			return listed
+
+		with (
+			patch("frappe.core.doctype.activity_log.feed.logout_feed"),
+			patch.object(session, "_get_session_keys", side_effect=list_then_sign_in),
+		):
+			self.assertTrue(end_sessions(self.owner, keep_current=False))
+		self.assertEqual(self._sessions(self.owner), 0)
+		self.assertEqual([state.is_session_ended(state.sid_hash(key)) for key in keys], [True, True])
+
+	def test_ending_sessions_stops_when_a_round_ends_none(self):
+		"""It stops, and reports the sign-out incomplete: the sessions are still there."""
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		self._sign_in_for_real(self.actor)
+		ended = []
+
+		def end_at_most_five(*args, **kwargs):
+			ended.append(kwargs)
+			if len(ended) > 5:
+				raise AssertionError("still ending sessions")
+
+		with (
+			patch("frappe.sessions.delete_session", side_effect=end_at_most_five),
+			patch.object(session, "_get_session_keys", wraps=session._get_session_keys) as listing,
+		):
+			self.assertFalse(end_sessions(self.owner, keep_current=False))
+		self.assertEqual(listing.call_count, 2)
+		self.assertTrue(self._is_ended(sid))
+
+	def test_ending_sessions_stops_at_its_round_limit(self):
+		"""Incomplete (logged) when sessions are still left at the limit; complete when none is."""
+		for is_any_left in (True, False):
+			with self.subTest(is_any_left=is_any_left):
+				listings = []
+
+				def a_new_session_each_round(*args):
+					listings.append(args)
+					if len(listings) > session.MAX_SIGN_OUT_ROUNDS + 5:
+						raise AssertionError("still listing sessions")
+					if len(listings) > session.MAX_SIGN_OUT_ROUNDS and not is_any_left:
+						return set()
+					return {frappe.generate_hash()}
+
+				with (
+					patch("frappe.sessions.delete_session"),
+					patch.object(session, "_get_session_keys", side_effect=a_new_session_each_round),
+					patch("frappe.log_error") as log_error,
+				):
+					self.assertEqual(end_sessions(self.owner, keep_current=False), not is_any_left)
+				self.assertEqual(len(listings), session.MAX_SIGN_OUT_ROUNDS + 1)
+				if is_any_left:
+					log_error.assert_called_once_with(title="passkeys: sign-out stopped at its round limit")
+				else:
+					log_error.assert_not_called()
+
+	def test_an_unreachable_cache_counts_as_not_ended(self):
+		"""Logged once per worker; the request goes on as the signed-in user."""
+		self._sign_in_for_real(self.owner)
+		self._next_request(frappe.session.sid)
+		down = redis.exceptions.ConnectionError("cache down")
+		with (
+			patch.object(state, "_is_cache_error_logged", False),
+			patch("frappe.logger") as logger,
+			patch.object(frappe.cache, "execute_command", side_effect=down),
+		):
+			refuse_ended_session()
+			drop_session_if_ended(get_stored_session_id(frappe.session.sid))
+		self.assertEqual(frappe.session.user, self.owner)
+		self.assertEqual(logger.return_value.warning.call_count, 1)
+
+	def test_the_queued_check_holds_no_session_id_and_never_raises(self):
+		self._sign_in_for_real(self.owner)
+		sid = frappe.session.sid
+		self._next_request(sid)
+		frappe.local.request.after_response = CallbackManager()
+		drop_ended_session()
+		(check,) = frappe.local.request.after_response._functions
+		for session_id in (sid, get_stored_session_id(sid)):
+			self.assertNotIn(session_id, repr(check))
+		with (
+			patch.object(state, "is_session_ended", side_effect=redis.exceptions.TimeoutError("slow")),
+			patch("frappe.logger") as logger,
+		):
+			check()
+		logger.return_value.error.assert_called_once_with("ended-session check failed: TimeoutError")
+
+	def test_the_mark_outlasts_each_ended_session_and_holds_no_session_id(self):
+		"""Kept past the longer of the site's session expiry and the session's own, plus a day."""
+		cred = make_credential(self.owner)
+		self._sign_in_for_real(self.owner)
+		sid, stored_id = frappe.session.sid, get_stored_session_id(frappe.session.sid)
+		own_expiry = frappe.sessions.get_expiry_in_seconds()
+		self._sign_in_for_real(self.actor)
+		with patch("frappe.sessions.get_expiry_period", return_value="00:01:00"):  # shortened since
+			frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+		marks = {frappe.safe_decode(field): int(until) for field, until in self._ended_marks().items()}
+		until = marks[state.sid_hash(stored_id)]
+		expected = time.time() + own_expiry + state.ENDED_SESSION_MARGIN
+		self.assertTrue(expected - 60 <= until <= expected)
+		self.assertFalse({sid, stored_id} & set(marks))
+
+	def test_a_signed_in_request_costs_two_cache_reads_and_guest_none(self):
+		self._next_request("Guest")
+		frappe.local.request.after_response = CallbackManager()
+		with patch.object(frappe.cache, "execute_command", wraps=frappe.cache.execute_command) as cache:
+			refuse_ended_session()
+			drop_ended_session()
+			frappe.local.request.after_response.run()
+		cache.assert_not_called()
+		self._sign_in_for_real(self.owner)
+		self._next_request(frappe.session.sid)
+		frappe.local.request.after_response = CallbackManager()
+		with patch.object(frappe.cache, "execute_command", wraps=frappe.cache.execute_command) as cache:
+			refuse_ended_session()
+			drop_ended_session()
+			frappe.local.request.after_response.run()
+		self.assertEqual(cache.call_count, 2)
+		self.assertEqual(frappe.session.user, self.owner)
 
 
 class ReauthUnderDisableUserPassTest(_Base):

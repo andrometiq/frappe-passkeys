@@ -20,6 +20,8 @@ FIXTURE_SCOPES = {
 	"User": ("User", {"name": ["like", "passkey-test-%"]}),
 	"DefaultValue": ("DefaultValue", {"parent": ["in", ["__passkeys", "__2fa"]]}),
 	"Role": ("Role", {"name": "Passkey 2FA Test Role"}),
+	"OAuth Client": ("OAuth Client", {"app_name": ["like", "passkeys-test-%"]}),
+	"OAuth Bearer Token": ("OAuth Bearer Token", {"user": ["like", "passkey-test-%"]}),
 }
 
 
