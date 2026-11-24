@@ -177,10 +177,10 @@ chromium_only("passkey management — User form", () => {
 			cy.intercept("POST", "**/api/method/passkeys.confirm.begin_confirmation").as("begin_confirmation");
 			cy.intercept("POST", "**/api/method/passkeys.confirm.verify_confirmation").as("verify_confirmation");
 			own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
-			// A real click, so the confirmation follows the user's own action.
+			// A real press, so the confirmation follows the user's own action.
 			cy.get(".modal-dialog:visible")
 				.contains(".btn-modal-primary, .btn-primary", "Remove passkey")
-				.real_click();
+				.real_press();
 			// a passkeys.manage confirmation; its dialog opens the sheet, and the virtual
 			// authenticator's auto-UV answers it → credential removed
 			cy.wait("@begin_confirmation").its("request.body.action").should("eq", "passkeys.manage");

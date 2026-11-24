@@ -4,7 +4,7 @@
 // Action-confirmation Cypress suites (happy path, accessibility, call() retry,
 // concurrency, error taxonomy, grant semantics, the prompt opening with the dialog), merged
 // into one file. A confirmation started from script has no user activation, so its dialog
-// waits for "Confirm with passkey"; one a real click started opens the passkey prompt itself.
+// waits for "Confirm with passkey"; one a real press started opens the passkey prompt itself.
 // Each
 // nested describe keeps its OWN before/after via cy.confirm_setup() /
 // cy.confirm_teardown(), so every suite runs against a freshly reset virtual
@@ -238,7 +238,7 @@ chromium_only("passkey action-confirmation", () => {
 					});
 				add_trigger(win, "A1");
 			});
-			cy.get("#confirm-trigger").real_click();
+			cy.get("#confirm-trigger").real_press();
 			cy.wait("@verify_confirmation", { timeout: 20000 }).its("response.statusCode").should("eq", 200);
 			cy.window().its("__confirm.grant", { timeout: 20000 }).should("be.a", "string");
 			cy.get("@credentials_get").should("have.been.calledOnce");
@@ -273,7 +273,7 @@ chromium_only("passkey action-confirmation", () => {
 					});
 				add_trigger(win, "A2");
 			});
-			cy.get("#confirm-trigger").real_click();
+			cy.get("#confirm-trigger").real_press();
 			cy.get("@credentials_get").should("have.been.calledOnce");
 			cy.get(".modal.show .passkey-confirm-action").should("be.visible");
 			cy.get(".modal.show .passkey-confirm-msg").should("have.text", "");

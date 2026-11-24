@@ -17,38 +17,25 @@ const cdp = (command, params = {}) =>
 
 let current_authenticator_id = null;
 
-// A click through the browser's input pipeline, at the element's place on screen. Unlike
-// cy.click(), it gives the page a user activation (navigator.userActivation.isActive).
-Cypress.Commands.add("real_click", { prevSubject: "element" }, ($element) =>
+// A trusted press of a button through the browser's input pipeline: the element is focused and
+// Enter is sent by CDP. Like a real click it gives the page user activation
+// (navigator.userActivation.isActive), and unlike a click at screen coordinates it can't land on
+// another element when the runner's layout or scale shifts.
+Cypress.Commands.add("real_press", { prevSubject: "element" }, ($element) =>
 	cy
 		.wrap($element, { log: false })
-		.scrollIntoView()
 		.should("be.visible")
-		// A modal still sliding in would move the element away from the point clicked.
-		.should(($subject) => {
-			for (let node = $subject[0]; node && node.getAnimations; node = node.parentElement) {
-				const running = node.getAnimations().filter((animation) => animation.playState === "running");
-				expect(running, "no running animation on the element or its ancestors").to.have.length(0);
-			}
-		})
 		.then(() => {
-			const frame = window.top.document.querySelector("iframe.aut-iframe");
-			const frame_rect = frame.getBoundingClientRect();
-			const scale = frame_rect.width / frame.offsetWidth;
-			const rect = $element[0].getBoundingClientRect();
-			const at = {
-				x: frame_rect.left + (rect.left + rect.width / 2) * scale,
-				y: frame_rect.top + (rect.top + rect.height / 2) * scale,
-				button: "left",
-				clickCount: 1,
-			};
-			// A click that lands elsewhere fails here, by name, not as a timeout in a later step.
-			let reached = false;
-			$element[0].addEventListener("mousedown", () => (reached = true), { once: true, capture: true });
-			return cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...at })
-				.then(() => cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...at }))
+			const element = $element[0];
+			let pressed = false;
+			element.addEventListener("click", (event) => (pressed = event.isTrusted), { once: true, capture: true });
+			element.focus();
+			expect(element.ownerDocument.activeElement, "the element has focus").to.equal(element);
+			const enter = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 };
+			return cdp("Input.dispatchKeyEvent", { type: "keyDown", text: "\r", ...enter })
+				.then(() => cdp("Input.dispatchKeyEvent", { type: "keyUp", ...enter }))
 				.then(() => {
-					expect(reached, "the real click reached the element").to.be.true;
+					expect(pressed, "a trusted press reached the element").to.be.true;
 				});
 		})
 );

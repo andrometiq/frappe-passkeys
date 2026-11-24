@@ -46,7 +46,7 @@ const record_gets = (win) => {
 const button_gets = () => gets.filter((get) => get.mediation !== "conditional");
 
 // Immediate mode needs a real user activation, which Cypress's synthetic click doesn't give, so
-// the button is clicked through the browser's input pipeline (cy.real_click).
+// the button is pressed through the browser's input pipeline (cy.real_press).
 
 immediate_only("passkey sign-in with immediate UI mode", () => {
 	before(() => {
@@ -81,7 +81,7 @@ immediate_only("passkey sign-in with immediate UI mode", () => {
 		cy.stub_post_login_shell();
 		cy.intercept_frappe_method("passkeys.passkey.verify_login", "verify");
 		visit_with_conditional_armed();
-		cy.get("#passkey-login-btn").real_click();
+		cy.get("#passkey-login-btn").real_press();
 		cy.wait("@verify", { timeout: 20000 }).its("response.statusCode").should("be.within", 200, 299);
 		cy.then(() => {
 			expect(button_gets().map((get) => get.ui_mode), "one immediate request").to.deep.eq(["immediate"]);
@@ -95,7 +95,7 @@ immediate_only("passkey sign-in with immediate UI mode", () => {
 	it("with no passkey on this device, opens the full sheet in the same click on the same ceremony", () => {
 		cy.clear_virtual_credentials();
 		visit_with_conditional_armed();
-		cy.get("#passkey-login-btn").real_click();
+		cy.get("#passkey-login-btn").real_press();
 		cy.wrap(gets).should(() => {
 			const requests = button_gets();
 			expect(requests.map((get) => get.ui_mode), "immediate, then the full sheet").to.deep.eq([
