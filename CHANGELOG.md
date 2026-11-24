@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.9] / [16.0.9] — 2026-11-24
+
 ### Upgrade notes
 
 - A user signed in during the update may be asked to confirm it's them once more before managing
@@ -403,7 +405,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.8...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.9...develop
+[15.0.9]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.9
+[16.0.9]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.9
 [15.0.8]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.8
 [16.0.8]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.8
 [15.0.7]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.7
