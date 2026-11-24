@@ -310,8 +310,10 @@ class LockingReadTest(_SweptBase):
 			self.captured.append(str(query))
 			return original_sql(query, *args, **kwargs)
 
-		frappe.db.sql = spy
-		self.addCleanup(setattr, frappe.db, "sql", original_sql)
+		# patch.object restores the connection exactly (no method left behind on the instance).
+		patcher = patch.object(frappe.db, "sql", spy)
+		patcher.start()
+		self.addCleanup(patcher.stop)
 
 	@property
 	def sid(self) -> str:

@@ -12,7 +12,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - A user signed in during the update may be asked to confirm it's them once more before managing
   passkeys or confirming an action.
 - Disabling or deleting a passkey now signs its owner out: everywhere when it's someone else's,
-  everywhere but the session in use when it's your own.
+  everywhere but the session in use when it's your own. "Remove stale passkeys" signs nobody out.
 
 ### Added
 
@@ -43,14 +43,16 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   Quickstart.", instead of three stacked notices, a security-posture card and a pop-up on save.
 - The "passkey removed" email says who removed it and asks the user to delete it from their phone,
   computer or password manager too.
-- Passkey emails name the address users open, not the server's internal site name.
+- When `host_name` is set, passkey emails name its address instead of the server's internal site
+  name.
 - The flagged-passkey email says it plainly: the passkey may have been copied, and what to do.
 - The "passkey added" email says when the browser saved the passkey on its own after a password
   sign-in, and the added and flagged emails say where to remove a passkey: the My Passkeys page.
 - Disabling or deleting a passkey signs its owner out for good, so a lost or stolen device loses
-  its session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)). If the
-  sign-out can't be completed (for example, the site cache is down), the System Managers are
-  emailed and a `passkeys:sign_out_incomplete` risk event is recorded.
+  its session ([details](docs/recovery.md#someone-may-be-using-the-account-right-now)); "Remove
+  stale passkeys" signs nobody out. If the sign-out can't be completed (for example, the site cache
+  is down), the System Managers are emailed and a `passkeys:sign_out_incomplete` risk event is
+  recorded.
 - The Remove passkey dialog says your other devices will be signed out.
 - When a passkey is asked for after the password, its prompt opens by itself; "Use a passkey" is
   still there if it doesn't. Closing the dialog closes the prompt; once your passkey is being
@@ -107,6 +109,7 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   client can receive needs an entry in the REST API reference.
 - A translation template (`passkeys/locale/main.pot`) for the server-side strings, so translators
   can start.
+- A server test and a release check hold every release to the public-API promise in RELEASES.md.
 
 ## [15.0.8] / [16.0.8] — 2026-11-16
 

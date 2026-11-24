@@ -206,8 +206,8 @@ def _get_cached_sessions(user: str, skipped_keys: set) -> dict[str, dict]:
 
 
 def _load_cached_session(value: bytes) -> dict | None:
-	"""A cached value's session data, the part core resumes the session from (version-15
-	caches it under ``data``)."""
+	"""A cached value's session data, the part core resumes the session from (some Frappe versions
+	cache it under ``data``)."""
 	try:
 		value = pickle.loads(value)
 	except Exception:

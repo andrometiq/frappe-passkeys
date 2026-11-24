@@ -134,7 +134,8 @@
     "passkeys:passkey_disabled",
     "passkeys:passkey_flagged",
     "passkeys:passkey_removed",
-    "passkeys:password_login_by_passkey_holder"
+    "passkeys:password_login_by_passkey_holder",
+    "passkeys:sign_out_incomplete"
   ],
   "js_globals": [
     "frappe.passkeys.call",

@@ -834,17 +834,18 @@ class RevocationSignOutTest(_Base):
 				self.assertIn("recovery.html#someone-may-be-using-the-account-right-now", warnings[0])
 
 	def _fail_session_expiry_reads(self):
-		"""Make the Sessions expiry read fail as a database error would, its query in the frame."""
-		database = type(frappe.local.db)
-		sql = database.sql
+		"""Make the Sessions expiry read fail as a database error would, its query in the frame.
+		Patched on the connection object itself, so an earlier test's wrapper can't shadow it."""
+		db = frappe.local.db
+		sql = db.sql
 
-		def failing_sql(db, query, *args, **kwargs):
+		def failing_sql(query, *args, **kwargs):
 			text = str(query).lstrip().lower()
 			if text.startswith("select") and "sessiondata" in text:
 				raise RuntimeError("database read failed")
-			return sql(db, query, *args, **kwargs)
+			return sql(query, *args, **kwargs)
 
-		return patch.object(database, "sql", failing_sql)
+		return patch.object(db, "sql", failing_sql)
 
 	def test_an_expiry_read_failure_marks_past_the_site_setting(self):
 		self._sign_in_for_real(self.owner)
