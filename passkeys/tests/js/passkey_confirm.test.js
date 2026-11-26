@@ -667,7 +667,7 @@ test("call(): a success's server messages go to onServerMessages before it resol
 test("call(): the retry after a confirmation hands its server messages over too", async () => {
 	const post = makePost({
 		"passkeys.api.credentials.delete_credential": [
-			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "passkeys.manage", payload_fingerprint: "fp", methods: ["passkey"] } },
+			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "passkeys.manage", payload_fingerprint: "fp", methods: ["passkey"], _server_messages: JSON.stringify([JSON.stringify({ message: "From the 401." })]) } },
 			successWithMessages({ deleted: "x" }, SIGN_OUT_WARNING, { message: "Second." }),
 		],
 		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["passkey"] } } }],
@@ -680,6 +680,33 @@ test("call(): the retry after a confirmation hands its server messages over too"
 	});
 	assert.deepStrictEqual(await engine.call("passkeys.api.credentials.delete_credential", { name: "x" }), { deleted: "x" });
 	assert.deepStrictEqual(shown, [[SIGN_OUT_WARNING, { message: "Second." }]]);
+});
+
+test("call(): messages of errors the server caught are left out, and a throwing onServerMessages doesn't fail the call", async () => {
+	const swallowed = { message: "Please setup default outgoing Email Account", indicator: "red", raise_exception: 1, __frappe_exc_id: "e1" };
+	const shown = [];
+	const engine = C.createConfirmEngine({
+		post: makePost({ "myapp.a": [successWithMessages("ok", swallowed, SIGN_OUT_WARNING)], "myapp.b": [successWithMessages("ok", swallowed)] }),
+		runGesture: () => Promise.reject(new Error("no")), ui: makeUI(),
+		onServerMessages: (messages) => shown.push(messages),
+	});
+	assert.strictEqual(await engine.call("myapp.a", {}), "ok");
+	assert.strictEqual(await engine.call("myapp.b", {}), "ok");
+	assert.deepStrictEqual(shown, [[SIGN_OUT_WARNING]], "only the warning; nothing for a call whose only message was swallowed");
+	const errors = [];
+	const savedError = console.error;
+	console.error = (e) => errors.push(e);
+	try {
+		const throwing = C.createConfirmEngine({
+			post: makePost({ "myapp.c": [successWithMessages("ok", SIGN_OUT_WARNING)] }),
+			runGesture: () => Promise.reject(new Error("no")), ui: makeUI(),
+			onServerMessages: () => { throw new Error("display broke"); },
+		});
+		assert.strictEqual(await throwing.call("myapp.c", {}), "ok");
+	} finally {
+		console.error = savedError;
+	}
+	assert.strictEqual(errors.length, 1);
 });
 
 test("call(): no onServerMessages, no messages, or a refusal: nothing is handed over", async () => {

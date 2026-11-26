@@ -350,7 +350,9 @@ A method can succeed and still send messages with `frappe.msgprint`, such as the
 some of a removed passkey's sessions may still be signed in. `call()` resolves the method's result
 either way. To show the messages, pass `onServerMessages(messages)`: the engine calls it before
 `call()` resolves, with one `{message, indicator, title}` object per message, as `frappe.msgprint`
-takes them. `message` is HTML written by the server, as `frappe.msgprint` renders it. Without
+takes them. `message` is HTML written by the server, as `frappe.msgprint` renders it. Messages of
+errors the server caught and recovered from (such as a notification email that failed) are left
+out. If `onServerMessages` throws, the error is logged and `call()` still resolves. Without
 `onServerMessages` the engine shows nothing. The Desk engine hands them to `frappe.msgprint`; the
 portal engine shows them in its own dialog.
 

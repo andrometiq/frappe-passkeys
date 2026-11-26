@@ -994,9 +994,13 @@
 			return run({ action: action, params: params || {} });
 		}
 
+		// A success's messages, minus those of errors the server caught and recovered from (a
+		// failed notification email): Frappe's msgprint would show only those and hide the rest.
 		function succeeded(body) {
-			var messages = serverMessageList(body);
-			if (messages.length && typeof onServerMessages === "function") onServerMessages(messages);
+			var messages = serverMessageList(body).filter(function (o) { return !o.raise_exception; });
+			if (messages.length && typeof onServerMessages === "function") {
+				try { onServerMessages(messages); } catch (e) { console.error(e); } // the call still succeeded
+			}
 			return unwrapMessage(body);
 		}
 
