@@ -934,7 +934,7 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 			enqueue.assert_not_called()
 		with self.assertRaises(frappe.ValidationError):
 			boot.refresh_enforcement_preview(draft=missing)
-		for signature in ("", "0" * 15, "A" * 16, "../" + "0" * 13):
+		for signature in ("", "0" * 15, "A" * 16, "../" + "0" * 13, None, ["0" * 16]):
 			with self.subTest(signature=signature), self.assertRaises(frappe.ValidationError):
 				passkey_settings.get_enforcement_preview(signature)
 		self.assertRaises(frappe.ValidationError, boot.get_enforcement_preview, None)

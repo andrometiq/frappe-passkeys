@@ -272,7 +272,7 @@ def count_enforcement_draft(draft: object) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def get_enforcement_preview(signature: str) -> dict | None:
+def get_enforcement_preview(signature: object) -> dict | None:
 	refuse_if_core_native()
 	frappe.only_for("System Manager")
 	state.rate_limit_user("get_enforcement_preview", 30, 60)

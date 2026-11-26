@@ -33,7 +33,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   settings or turning a mode on still checks every origin.
 - The count of users a Passkey Settings enforcement change would affect checks that the caller is a
   System Manager before it checks the draft, and answers a draft that isn't a JSON string with its
-  own "could not be read" error instead of a type error.
+  own "could not be read" error instead of a type error. Reading that count likewise answers a
+  signature that isn't a string with its own "Unknown enforcement preview." error.
 - When the site doesn't answer while it checks the passkey asked for after the password, the dialog
   no longer says "Verifying…" for good: after 30 seconds the page stops waiting, says "Verifying
   took too long. Try again.", and you can try again or close the dialog. If this browser was
