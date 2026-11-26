@@ -463,11 +463,11 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self._request("/api/method/passkeys.passkey.begin_login")
 		begun = passkey.begin_login()
 		binder = frappe.local.cookie_manager.cookies[state.BINDER_COOKIE]["value"]
-		passwordless = self._assert(auth, begun["options"], sign_count=5)
+		login_assertion = self._assert(auth, begun["options"], sign_count=5)
 
 		resp, _binder = self._leg1(user, PWD, binder=binder)
 		with self.assertRaises(CeremonyExpired):
-			self._leg2(resp["tmp_id"], passwordless, binder)
+			self._leg2(resp["tmp_id"], login_assertion, binder)
 		self.assertIn("state_id", frappe.local.response)  # refused by verification, so re-armed
 		self.assertEqual(frappe.session.user, "Guest")
 
@@ -479,7 +479,7 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertEqual(frappe.session.user, "Guest")
 
 		self._request("/api/method/passkeys.passkey.verify_login", binder=binder)
-		passkey.verify_login(begun["state_id"], passwordless)
+		passkey.verify_login(begun["state_id"], login_assertion)
 		self.assertEqual(frappe.session.user, user)
 		self.assertNotIn("verification", frappe.local.response)
 		self.assertNotIn("tmp_id", frappe.local.response)

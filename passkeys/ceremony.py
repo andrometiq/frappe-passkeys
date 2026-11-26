@@ -113,7 +113,8 @@ def credential_descriptors(rows: list) -> list:
 
 
 def credential_id_sha256(credential: dict, *, error=frappe.AuthenticationError) -> str:
-	"""SHA-256 of the asserted credential id — the lookup key of every stored credential."""
+	"""SHA-256 of the asserted credential id — the lookup key of every stored credential. The id
+	is public: this is a lookup key, not the hashing of a secret."""
 	credential_id = credential.get("id") or credential.get("rawId")
 	if not credential_id:
 		raise error(_("Passkey could not be verified."))
