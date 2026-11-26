@@ -25,6 +25,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - The count of users a Passkey Settings enforcement change would affect checks that the caller is a
   System Manager before it checks the draft, and answers a draft that isn't a JSON string with its
   own "could not be read" error instead of a type error.
+- When the site doesn't answer while it checks the passkey asked for after the password, the dialog
+  no longer says "Verifying…" for good: after 30 seconds the page stops waiting, says "Verifying
+  took too long. Try again.", and you can try again or close the dialog. If the sign-in went through
+  anyway, the page takes you in.
+- "Finish setting up this passkey" says "Verifying…" while your password is checked, and "Not now",
+  Esc and a second Confirm do nothing until the check ends or 30 seconds pass. Before, "Not now"
+  closed the dialog while the sign-in carried on. A wrong password now says so in the dialog.
 
 ## [15.0.9] / [16.0.9] — 2026-11-24
 

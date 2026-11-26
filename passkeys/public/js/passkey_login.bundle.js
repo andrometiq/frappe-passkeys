@@ -25,6 +25,7 @@
 	var UPSELL_FLAG_KEY = "passkey_upsell_add_local";
 	var STATUS_ID = "passkey-login-status";
 	var SLOW_MS = 4000; // "still verifying" escalation on a slow connection
+	var VERIFY_LIMIT_MS = 30000; // a dialog's verify answers in a few seconds even on a slow link
 	var IMMEDIATE_SETTLE_MS = 1000; // Chrome rejects an immediate request it can't show within 500 ms
 	var BOOTED = false;
 
@@ -380,20 +381,21 @@
 			onPrimary: function (root, close) {
 				var pwd = root.querySelector("#passkey-uv-pwd").value;
 				if (!pwd) { setDialogError(root, t("Password is required.")); return; }
-				frappeCall(API.complete_uv_setup, { setup_id: setupId, pwd: pwd },
-					composedHandlers({
-						on401: function (d) {
-							var k = C.mapServerExcType(d && d.exc_type);
-							if (k === "ceremony_expired") {
-								close(); neutralFail();
-								rebeginAndRearm();
-							} else {
-								setDialogError(root, t("That didn't work — check your password and try again."));
-							}
-						},
-						onSuccess: function () { rememberHint(); close(); }, // core's 200 handler redirects
-					})
-				);
+				// A wrong password is core's plain 401: no handler here claims it, so it gets `retry`.
+				var retry = t("That didn't work — check your password and try again.");
+				verifyInDialog(dlg, API.complete_uv_setup, { setup_id: setupId, pwd: pwd }, {
+					on401: function (d) {
+						var k = C.mapServerExcType(d && d.exc_type);
+						if (k === "ceremony_expired") {
+							close(); neutralFail();
+							rebeginAndRearm();
+						} else {
+							setDialogError(root, retry);
+						}
+					},
+					on429: function () { setDialogError(root, t("Too many attempts. Wait a moment, then try again.")); },
+					onSuccess: function () { rememberHint(); close(); }, // core's 200 handler redirects
+				}, retry);
 			},
 			onClose: restore,
 		});
@@ -563,39 +565,27 @@
 				.then(function (cred) {
 					if (request.signal.aborted) { ctxState.ceremonyPending = false; return; }
 					var credential = JSON.stringify(C.authAssertionToJSON(cred));
-					// A posted assertion can't be called back: no way out until the verify settles.
-					dlg.setLocked(true);
-					setDialogError(root, t("Verifying…"));
-					var handled = false;
-					function settle(message) {
-						handled = true;
-						ctxState.ceremonyPending = false;
-						dlg.setLocked(false);
-						if (message) setDialogError(root, message);
-					}
-					var call = frappeCall(API.verify_second_factor,
+					var failed = t("That passkey couldn't be verified — try again.");
+					return verifyInDialog(dlg, API.verify_second_factor,
 						{ state_id: ctxState.stateId, credential: credential },
-						composedHandlers({
+						{
 							on401: function (d) {
 								var expired = C.mapServerExcType(d && d.exc_type) === "ceremony_expired";
 								var freshOptions = d && d.verification && d.verification.options;
-								if (!expired) return settle(t("That passkey couldn't be verified — try again."));
+								if (!expired) return setDialogError(root, failed);
 								// The server re-armed: a fresh state rides in the 401 body.
-								if (!d.state_id || !freshOptions) { settle(); close(); coreDelegate401(d); return; }
+								if (!d.state_id || !freshOptions) { close(); coreDelegate401(d); return; }
 								ctxState.stateId = d.state_id;
 								try {
 									publicKey = C.parseRequestOptionsFromJSON(freshOptions, window.PublicKeyCredential);
 								} catch (e) { /* keep the old options */ }
-								settle(t("That didn't work — try your passkey again."));
+								setDialogError(root, t("That didn't work — try your passkey again."));
 							},
-							on429: function () { settle(t("Too many attempts. Wait a moment, then try again.")); },
-							onSuccess: function () { handled = true; ctxState.signedIn = true; rememberHint(); close(); }, // core redirects
-						})
-					);
-					function finish() {
-						if (!handled) settle(t("That passkey couldn't be verified — try again."));
-					}
-					return call.then(finish, finish);
+							on429: function () { setDialogError(root, t("Too many attempts. Wait a moment, then try again.")); },
+							onSuccess: function () { ctxState.signedIn = true; rememberHint(); close(); }, // core redirects
+						},
+						failed
+					).then(function () { ctxState.ceremonyPending = false; });
 				})
 				.catch(function (err) {
 					ctxState.ceremonyPending = false;
@@ -694,6 +684,51 @@
 		return window.frappe.call({ method: method, type: "POST", args: args, freeze: true, statusCode: statusCode });
 	}
 
+	// A posted request the user can't call back: the dialog stays locked on "Verifying…" until the
+	// answer, for at most VERIFY_LIMIT_MS; then the request is aborted and the dialog unlocks, unless
+	// this browser was signed in anyway. An answer no handler claims shows `failed`. Resolves once
+	// the dialog is unlocked.
+	function verifyInDialog(dlg, method, args, handlers, failed) {
+		var claimed = false;
+		var tracked = {};
+		Object.keys(handlers).forEach(function (name) {
+			tracked[name] = function (data) { claimed = true; handlers[name](data); };
+		});
+		dlg.setLocked(true);
+		setDialogError(dlg.root, t("Verifying…"));
+		var call = frappeCall(method, args, composedHandlers(tracked));
+		return new Promise(function (resolve) {
+			var done = false;
+			function unlock(message) {
+				dlg.setLocked(false);
+				if (message) setDialogError(dlg.root, message);
+				resolve();
+			}
+			var timer = setTimeout(function () {
+				done = true;
+				if (typeof call.abort === "function") call.abort();
+				dlg.ctxState.stopped = true;
+				if (!followLateSignIn()) unlock(t("Verifying took too long. Try again."));
+			}, VERIFY_LIMIT_MS);
+			function answered() {
+				if (done) return;
+				done = true;
+				clearTimeout(timer);
+				unlock(claimed ? null : failed);
+			}
+			call.then(answered, answered);
+		});
+	}
+
+	// An aborted request's answer can still have set the session cookie. Frappe's readable
+	// user_id cookie shows it; reloading the sign-in page takes a signed-in browser in.
+	function followLateSignIn() {
+		var user = window.frappe.get_cookie && window.frappe.get_cookie("user_id");
+		if (!user || user === "Guest") return false;
+		window.location.reload();
+		return true;
+	}
+
 	// --------------------------------------------------------------- dialog a11y
 	// role=dialog + aria-labelledby, focus trap, Esc dismisses, focus returns to the invoker.
 	function buildDialog(cfg) {
@@ -731,14 +766,14 @@
 			secBtn.type = "button";
 			secBtn.className = "btn btn-sm btn-default btn-block";
 			secBtn.textContent = cfg.secondaryText;
-			secBtn.addEventListener("click", function () { if (!ctxState.locked) cfg.onSecondary(root, close, ctxState); });
+			secBtn.addEventListener("click", function () { if (!isHeld()) cfg.onSecondary(root, close, ctxState); });
 			buttons.push(actions.appendChild(secBtn));
 		}
 		var primary = document.createElement("button");
 		primary.type = "button";
 		primary.className = "btn btn-sm btn-primary btn-block";
 		primary.textContent = cfg.primaryText;
-		primary.addEventListener("click", function () { if (!ctxState.locked) cfg.onPrimary(root, close, ctxState); });
+		primary.addEventListener("click", function () { if (!isHeld()) cfg.onPrimary(root, close, ctxState); });
 		buttons.push(actions.appendChild(primary));
 
 		var cancel = document.createElement("button");
@@ -748,8 +783,10 @@
 		cancel.addEventListener("click", dismiss);
 		buttons.push(actions.appendChild(cancel));
 
-		// While locked, only the code (close()) can close the dialog.
-		function dismiss() { if (!ctxState.locked) close(); }
+		// While locked, only the code (close()) can close the dialog. After a verify stopped at its
+		// time limit, a sign-in that landed anyway is followed instead of the action.
+		function isHeld() { return ctxState.locked || (ctxState.stopped === true && followLateSignIn()); }
+		function dismiss() { if (!isHeld()) close(); }
 		var focusBeforeLock = null;
 		function setLocked(locked) {
 			if (!!ctxState.locked === !!locked) return;
@@ -783,7 +820,7 @@
 			}
 		}
 
-		return { overlay: overlay, root: root, close: close, setLocked: setLocked, primary: primary, onKey: onKey, focusables: focusables };
+		return { overlay: overlay, root: root, close: close, setLocked: setLocked, primary: primary, onKey: onKey, focusables: focusables, ctxState: ctxState };
 	}
 
 	function openDialog(dlg) {

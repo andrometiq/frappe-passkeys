@@ -478,3 +478,216 @@ test("autofill: a request that is replaced leaves the newer one's controller in 
 		assert.strictEqual(conditional[1].signal.aborted, true, "the field holds the live request's controller");
 	});
 });
+
+// Fake timers for one test: the bundle's timers run only when the test moves the clock.
+function useFakeTimers() {
+	let now = 0;
+	const pending = new Set();
+	const saved = [global.setTimeout, global.clearTimeout];
+	global.setTimeout = (fn, ms) => { const timer = { fn, at: now + (ms || 0) }; pending.add(timer); return timer; };
+	global.clearTimeout = (timer) => { pending.delete(timer); };
+	return {
+		advance(ms) {
+			now += ms;
+			for (const timer of [...pending].sort((a, b) => a.at - b.at)) {
+				if (timer.at > now) continue;
+				pending.delete(timer);
+				timer.fn();
+			}
+		},
+		restore() { [global.setTimeout, global.clearTimeout] = saved; },
+	};
+}
+
+// A request the server hasn't answered: the test settles it with entry.reject, and abort() rejects
+// it the way jQuery's jqXHR does.
+function stalledCall(calls) {
+	return (opts) => {
+		const entry = { method: opts.method, opts, aborted: 0 };
+		calls.push(entry);
+		const promise = new Promise((resolve, reject) => { entry.reject = reject; });
+		promise.abort = () => { entry.aborted += 1; entry.reject(Object.assign(new Error("abort"), { statusText: "abort" })); };
+		return promise;
+	};
+}
+
+// Opens a dialog and returns its Esc handler.
+function openCapturingKeys(open) {
+	const keyHandlers = [];
+	const originalAddEventListener = global.document.addEventListener;
+	global.document.addEventListener = (type, fn) => { if (type === "keydown") keyHandlers.push(fn); };
+	try {
+		open();
+	} finally {
+		global.document.addEventListener = originalAddEventListener;
+	}
+	const handler = keyHandlers[keyHandlers.length - 1];
+	return () => handler({ key: "Escape", preventDefault() {} });
+}
+
+// A signed-in browser per Frappe's readable user_id cookie, and a page reload counter.
+function withSessionCookie(run) {
+	const cookies = {};
+	const reloads = { count: 0 };
+	global.window.frappe.get_cookie = (name) => cookies[name];
+	global.window.location = { reload() { reloads.count += 1; } };
+	return Promise.resolve(run(cookies, reloads)).finally(() => {
+		delete global.window.frappe.get_cookie;
+		delete global.window.location;
+	});
+}
+
+const TOO_LONG = "Verifying took too long. Try again.";
+
+test("second factor: a verify with no answer is aborted after 30 seconds, and the dialog says so and unlocks", async () => {
+	const clock = useFakeTimers();
+	const calls = [];
+	let gets = 0;
+	try {
+		install({ credentialsGet: () => { gets += 1; return Promise.resolve({ toJSON: () => ({ id: "cred-1" }) }); }, call: stalledCall(calls) });
+		const pressEscape = openCapturingKeys(() => mod.runSecondFactorCeremony("state-stalled", OPTIONS, true));
+		const overlay = global.document.body.appended[global.document.body.appended.length - 1];
+		const { root } = lastDialog();
+		await tick(); await tick();
+		assert.strictEqual(calls.length, 1, "verify_second_factor is in flight");
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, "Verifying…");
+
+		buttonLabelled("Not now").click();
+		pressEscape();
+		buttonLabelled("Use a passkey").click();
+		clock.advance(29999);
+		assert.ok(overlay.parentNode, "a close during the verify leaves the dialog open");
+		assert.strictEqual(calls[0].aborted, 0, "still waiting just before the limit");
+		assert.ok(lastDialogButtons().every((b) => b.disabled === true));
+
+		announced.length = 0;
+		clock.advance(1);
+		assert.strictEqual(calls[0].aborted, 1, "the request is aborted at the limit");
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, TOO_LONG);
+		assert.deepStrictEqual(announced, [TOO_LONG], "announced once");
+		assert.ok(lastDialogButtons().every((b) => b.disabled === false), "the dialog unlocks");
+		await tick(); await tick();
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, TOO_LONG, "the aborted request's failure doesn't replace it");
+
+		buttonLabelled("Use a passkey").click();
+		await tick(); await tick();
+		assert.strictEqual(gets, 2, "Use a passkey tries again");
+		assert.strictEqual(calls.length, 2);
+		clock.advance(30000);
+		pressEscape();
+		assert.strictEqual(overlay.parentNode, null, "Esc closes it once it is unlocked");
+	} finally {
+		clock.restore();
+	}
+});
+
+test("second factor: a sign-in that lands despite the time limit takes the page in", async () => {
+	const clock = useFakeTimers();
+	try {
+		await withSessionCookie(async (cookies, reloads) => {
+			const calls = [];
+			install({ credentialsGet: () => Promise.resolve({ toJSON: () => ({ id: "cred-1" }) }), call: stalledCall(calls) });
+
+			// Signed in by the time the limit is reached: follow it, don't offer a retry.
+			mod.runSecondFactorCeremony("state-late-1", OPTIONS, true);
+			const first = lastDialog().root;
+			await tick(); await tick();
+			cookies.user_id = "user@example.com";
+			clock.advance(30000);
+			assert.strictEqual(calls[0].aborted, 1);
+			assert.strictEqual(reloads.count, 1, "the page reloads into the signed-in session");
+			assert.strictEqual(first.querySelector(".passkey-dialog-error").textContent, "Verifying…", "no time-limit message");
+			assert.ok(lastDialogButtons().every((b) => b.disabled === true), "nothing to click while the page reloads");
+
+			// Signed in only after the limit: the next action follows it instead of closing.
+			cookies.user_id = "Guest";
+			mod.runSecondFactorCeremony("state-late-2", OPTIONS, true);
+			const overlay = global.document.body.appended[global.document.body.appended.length - 1];
+			await tick(); await tick();
+			clock.advance(30000);
+			assert.strictEqual(lastDialog().root.querySelector(".passkey-dialog-error").textContent, TOO_LONG);
+			cookies.user_id = "user@example.com";
+			buttonLabelled("Not now").click();
+			assert.strictEqual(reloads.count, 2, "Not now follows the sign-in");
+			assert.ok(overlay.parentNode, "and doesn't just close the dialog");
+		});
+	} finally {
+		clock.restore();
+		mod.state.secondFactorOpen = false;
+	}
+});
+
+// The uv-setup dialog opens from a passwordless verify the server answers with UVSetupRequired.
+function openUvSetupDialog(calls) {
+	const stalled = stalledCall(calls);
+	install({
+		credentialsGet: () => assert.fail("no passkey prompt in the uv-setup dialog"),
+		call: (opts) => {
+			if (opts.method !== "passkeys.passkey.verify_login") return stalled(opts);
+			const body = { exc_type: "UVSetupRequired", setup_id: "uvs-1" };
+			opts.statusCode[401]({ responseJSON: body });
+			return Promise.reject(body);
+		},
+	});
+	const pressEscape = openCapturingKeys(() => mod.runVerify({ toJSON: () => ({ id: "cred-1" }) }, { source: "button" }, "first-factor-state"));
+	const overlay = global.document.body.appended[global.document.body.appended.length - 1];
+	const { root, primary } = lastDialog();
+	assert.strictEqual(primary.textContent, "Confirm", "the uv-setup dialog is open");
+	root.querySelector("#passkey-uv-pwd").value = "secret";
+	return { overlay, root, primary, pressEscape };
+}
+
+test("uv setup: Not now, Esc and a second Confirm do nothing while the password is checked; after 30 seconds it is aborted and the dialog unlocks", async () => {
+	const clock = useFakeTimers();
+	const calls = [];
+	try {
+		const { overlay, root, primary, pressEscape } = openUvSetupDialog(calls);
+		primary.click();
+		const setup = calls.filter((c) => c.method === "passkeys.passkey.complete_uv_setup");
+		assert.strictEqual(setup.length, 1);
+		assert.deepStrictEqual(setup[0].opts.args, { setup_id: "uvs-1", pwd: "secret" });
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, "Verifying…");
+		assert.ok(lastDialogButtons().every((b) => b.disabled === true), "every button is disabled");
+
+		buttonLabelled("Not now").click();
+		pressEscape();
+		primary.click();
+		clock.advance(29999);
+		assert.ok(overlay.parentNode, "a close during the check leaves the dialog open");
+		assert.strictEqual(calls.length, 1, "a second Confirm sends nothing");
+		assert.strictEqual(setup[0].aborted, 0);
+
+		clock.advance(1);
+		assert.strictEqual(setup[0].aborted, 1, "the request is aborted at the limit");
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, TOO_LONG);
+		assert.ok(lastDialogButtons().every((b) => b.disabled === false), "the dialog unlocks");
+		await tick(); await tick();
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, TOO_LONG);
+
+		buttonLabelled("Not now").click();
+		assert.strictEqual(overlay.parentNode, null, "Not now closes it once it is unlocked");
+	} finally {
+		clock.restore();
+	}
+});
+
+test("uv setup: a wrong password unlocks the dialog and says so", async () => {
+	let corePainted = 0;
+	global.window.login.login_handlers[401] = () => { corePainted += 1; };
+	const calls = [];
+	try {
+		const { root, primary } = openUvSetupDialog(calls);
+		corePainted = 0;
+		primary.click();
+		const setup = calls[0];
+		setup.opts.statusCode[401]({ responseJSON: { exc_type: "AuthenticationError" } });
+		setup.reject({ status: 401 });
+		await tick(); await tick();
+		assert.strictEqual(corePainted, 1, "core painted its own 401");
+		assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, "That didn't work — check your password and try again.");
+		assert.ok(lastDialogButtons().every((b) => b.disabled === false), "the dialog unlocks");
+		buttonLabelled("Not now").click();
+	} finally {
+		delete global.window.login.login_handlers[401];
+	}
+});
