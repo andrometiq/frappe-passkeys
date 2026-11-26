@@ -20,6 +20,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - [Get alerts on passkey events](docs/operations.md#get-alerts-on-passkey-events): a Frappe Webhook
   can send every passkey change and risk event to a chat, paging or SIEM endpoint as it happens, with
   no code. The guide gives the Webhook's settings, condition and payload.
+- The docs site has an [llms.txt](https://andrometiq.github.io/frappe-passkeys/llms.txt): a short
+  index a coding agent can read, with a link to the Markdown of every docs page.
 
 ### Fixed
 

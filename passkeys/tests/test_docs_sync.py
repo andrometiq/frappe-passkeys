@@ -3,8 +3,8 @@
 
 """The reference docs keep up with the code: every Passkey Settings field a user can set has a
 row in docs/configuration.md, every typed wire error is in the error contract of
-docs/rest-api.md, and the risk-events table of docs/operations.md lists exactly the Activity Log
-events the app writes."""
+docs/rest-api.md, the risk-events table of docs/operations.md lists exactly the Activity Log
+events the app writes, and docs/llms.txt links every page."""
 
 import inspect
 import re
@@ -17,6 +17,7 @@ from passkeys import errors, notifications, session
 from passkeys.tests.compat import IntegrationTestCase
 
 DOCS = Path(frappe.get_app_path("passkeys")).parent / "docs"
+RELEASED_DOCS = "https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/"
 
 
 class DocsSyncTest(IntegrationTestCase):
@@ -71,6 +72,23 @@ class DocsSyncTest(IntegrationTestCase):
 			sorted(written),
 			"operations.md risk-events table differs from the passkeys:<event> values the app writes",
 		)
+
+	def test_llms_txt_links_every_page_and_only_pages_that_exist(self):
+		links = re.findall(r"\]\(([^)]+)\)", (DOCS / "llms.txt").read_text())
+		self.assertTrue(links)
+		self.assertEqual(
+			[link for link in links if not link.startswith(RELEASED_DOCS)],
+			[],
+			f"llms.txt links that are not under {RELEASED_DOCS}",
+		)
+		linked = {link.removeprefix(RELEASED_DOCS) for link in links}
+		self.assertEqual(
+			sorted(page for page in linked if not (DOCS / page).is_file()),
+			[],
+			"llms.txt links to pages that are not in docs/",
+		)
+		pages = {page.name for page in DOCS.glob("*.md")} - {"README.md"}
+		self.assertEqual(sorted(pages - linked), [], "docs/*.md pages missing from llms.txt")
 
 
 def _section(path: Path, heading: str) -> str:

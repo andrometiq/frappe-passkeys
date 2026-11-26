@@ -62,7 +62,8 @@ stays folded until one of them is set.
 **Require a passkey from** decides who must enroll after they sign in. That prompt is a
 post-login interstitial: the session already exists, so it raises friction toward enrollment
 and is never a server-side login block. Phone / QR enrollment is always offered; a device
-counts as capable when it has a platform authenticator or a cross-device option. Users
+counts as capable when it has a platform authenticator or a cross-device option
+([which devices support passkeys](https://passkeys.dev/device-support/)). Users
 outside the scope take **Everyone else**. A blank **Starting on** means immediately; until
 that date, in-scope users are nudged instead of required. A per-user exemption beats
 every scope rule, including System Managers.

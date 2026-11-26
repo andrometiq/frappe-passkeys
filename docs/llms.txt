@@ -1,0 +1,24 @@
+# Passkeys for Frappe
+
+> Passkeys for Frappe is a Frappe app that adds WebAuthn / FIDO2 passkeys to Frappe and ERPNext v15 and v16: passwordless sign-in, a passkey as the second factor after a password, and `@passkey_protected`, which lets any app require a passkey before a sensitive action runs. Install the `version-15` or `version-16` branch to match the site's Frappe version. The links below are the Markdown sources of the `version-16` line; `version-15` has the same pages.
+
+## Docs
+
+- [Quickstart](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/quickstart.md): from install to the first passkey sign-in, in five steps
+- [Install](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/install.md): the supported versions, install, upgrade and uninstall, and the reverse-proxy, RP ID and origin requirements
+- [Configuration](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/configuration.md): every Passkey Settings field, its default, and what changing it does
+- [Using passkeys](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/using-passkeys.md): help for end users, from adding a passkey to a lost device
+- [Troubleshooting](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/troubleshooting.md): each message people see, what it means and what to do
+- [Recovery](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/recovery.md): getting locked-out users and administrators back in, through Desk or the console
+- [Operations](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/operations.md): pre-production checks, RP ID and domain changes, backup and restore, incident response, revocation, and monitoring the risk events
+- [Security model](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/security.md): what the app enforces, what it trusts, and the residual risks
+- [REST API](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/rest-api.md): the whitelisted endpoints with their arguments, responses, typed errors, CSRF and rate limits, for a native app or a no-JS client
+- [Custom UI](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/custom-ui.md): the `frappe.passkeys.headless` JavaScript API, protecting your own methods with `@passkey_protected`, and restyling the shipped cards
+- [Mobile apps](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/mobile-apps.md): letting a native iOS or Android app share the site's passkeys: trusted app origins, the association files, and the endpoints
+- [Glossary](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/glossary.md): the terms the settings and docs use, such as RP ID and stale passkey
+
+## Optional
+
+- [Upstream proposal](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/upstream/README.md): a design and validation checklist for adopting passkeys in Frappe core
+- [WebAuthn Level 3 support](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/webauthn-l3.md): which WebAuthn L3 relying-party steps and browser features the app supports, and where each is handled
+- [AAGUID provider map](https://raw.githubusercontent.com/Andrometiq/frappe-passkeys/version-16/docs/aaguid-map.md): the vendored snapshot that names each passkey's provider, its source and license, and how to refresh it

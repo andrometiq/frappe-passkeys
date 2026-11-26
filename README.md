@@ -141,6 +141,9 @@ The full index is in **[docs/](docs/README.md)**. Most-used:
 - [**Configuration**](docs/configuration.md): every Passkey Settings field and what changing it means.
 - [**Security**](docs/security.md): what the app enforces, what it trusts, and residual risks.
 
+Coding agents: start from [llms.txt](https://andrometiq.github.io/frappe-passkeys/llms.txt), an index
+that links the Markdown of every docs page.
+
 ## Development
 
 Install the app, run `pre-commit install`, and run the suites before you push. The exact commands
