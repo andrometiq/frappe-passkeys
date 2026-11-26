@@ -13,7 +13,9 @@ from pathlib import Path
 
 import frappe
 from frappe.gettext import translate
-from frappe.gettext.extractors import navbar
+
+# A maintainer script the app never imports: it swaps the extractor's module loader in its own process only.
+from frappe.gettext.extractors import navbar  # nosemgrep: frappe-monkey-patching-not-allowed
 
 
 def get_module(path):
