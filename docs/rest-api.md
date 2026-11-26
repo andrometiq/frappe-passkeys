@@ -403,7 +403,8 @@ Read-only preview. **30 / 60 s / user**; no sudo required.
 - **Errors**: `ValidationError` for an invalid RP shape or explicit web/app origin line, including
   out-of-scope web origins and HTTP outside the developer localhost exception. A valid candidate
   with no operational path returns `new_off: true` instead. This is not a full settings-save
-  validation: a save also validates the derived `host_name` origin and requires a web origin.
+  validation: a save with a login mode on also validates the derived `host_name` origin and requires a
+  web origin.
 
 ### `remove_stale_passkeys`
 

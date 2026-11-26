@@ -571,6 +571,10 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 				self.assertRaisesRegex(
 					frappe.ValidationError, refusal, self._settings(passkey_origins=origin + "\n").save
 				)
+				app_origin = "android:apk-key-hash:" + "a" * 43
+				self.assertRaisesRegex(
+					frappe.ValidationError, refusal, self._settings(passkey_app_origins=app_origin).save
+				)
 				self.assertRaisesRegex(
 					frappe.ValidationError, refusal, self._settings(login_with_passkey=1).save
 				)

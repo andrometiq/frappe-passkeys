@@ -35,7 +35,7 @@ resolved from administrator-controlled configuration — never from live `Host`
 or `X-Forwarded-*` headers. Origins are an exact-match allowlist including port;
 the library checks the assertion's origin against that list. A compatible `host_name` contributes
 its own exact origin and explicit Passkey Origins add to it; RP ID alone never authorizes
-`https://<rp_id>`. Settings saves require a non-empty resolved web-origin set. iOS must therefore have its
+`https://<rp_id>`. A settings save with a login mode on requires a non-empty resolved web-origin set. iOS must therefore have its
 asserted `https://<rp_id>` origin explicitly present when the site's `host_name` does not contribute
 that exact value. The request host is re-checked at both begin and complete.
 

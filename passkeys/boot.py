@@ -503,7 +503,7 @@ def get_draft_settings(draft) -> Document:
 	return settings
 
 
-def count_enforcement_draft(draft_json: str) -> dict | None:
+def count_enforcement_draft(draft_json: object) -> dict | None:
 	"""Queue a count of an unsaved enforcement choice (the form's JSON). Returns its signature
 	and the scan number its count will exceed, or ``None`` when the job queue is full."""
 	try:

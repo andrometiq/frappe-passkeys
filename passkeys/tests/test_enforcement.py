@@ -830,9 +830,13 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 				(passkey_settings.get_settings_context, ()),
 				(passkey_settings.recalculate_enforcement_preview, ()),
 				(passkey_settings.count_enforcement_draft, (json.dumps(self._draft()),)),
+				(passkey_settings.count_enforcement_draft, (self._draft(),)),
 				(passkey_settings.get_enforcement_preview, ("0" * 16,)),
 			):
-				with self.subTest(endpoint=endpoint.__name__), self.assertRaises(frappe.PermissionError):
+				with (
+					self.subTest(endpoint=endpoint.__name__, args=args),
+					self.assertRaises(frappe.PermissionError),
+				):
 					endpoint(*args)
 		enqueue.assert_not_called()
 
