@@ -7,7 +7,9 @@ lockout interlock, and the row-7 reauth refusal under
 ``disable_user_pass_login``."""
 
 import base64
+import functools
 import hashlib
+import itertools
 import json
 import pickle
 import time
@@ -508,6 +510,46 @@ class RevocationSignOutTest(_Base):
 			],
 		)
 
+	def test_the_owner_removing_their_own_passkey_on_the_passkeys_page_ends_their_other_sessions(self):
+		make_credential(self.owner)
+		cred = make_credential(self.owner)
+		self._sign_in_for_real(self.owner)  # the lost device
+		lost = frappe.session.sid
+		self._sign_in_for_real(self.owner)  # the device in hand
+		current = self._current_session_id()
+		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": self.owner, "seeded_by": "password"}, 600)
+		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
+		with patch.object(frappe.local, "message_log", []):
+			self.assertEqual(credentials.delete_credential(cred.name), {"deleted": cred.name})
+			self._assert_nothing_reported(frappe.local.message_log)
+		self.assertEqual(self._session_ids(self.owner), [current])
+		self.assertEqual(frappe.session.user, self.owner)
+		self.assertTrue(self._is_ended(lost))
+		self.assertFalse(self._is_ended(frappe.session.sid))
+		self.assertNotIn("You may need to sign in again", self.sent[0]["message"])
+
+	def test_a_revocation_with_no_session_to_keep_ends_every_session_of_the_owner(self):
+		"""From the console or a background job, the owner's or a System Manager's: no request
+		session to keep, so every session of the owner ends, and nothing fails."""
+		# None: the session id frappe.set_user leaves, the user's name; a System Manager's isn't read
+		callers = (("owner", None), ("owner", ""), ("owner", "Guest"), ("Administrator", None))
+		for action, (acting, sid) in itertools.product(("disable", "delete"), callers):
+			with self.subTest(action=action, acting=acting, sid=sid):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)
+				first = frappe.session.sid
+				self._sign_in_for_real(self.owner)
+				second = frappe.session.sid
+				frappe.set_user(self.owner if acting == "owner" else acting)
+				if sid is not None:
+					frappe.session.sid = sid
+				self.sent.clear()
+				with patch.object(frappe.local, "message_log", []):
+					self._revoke(action, cred)
+					self._assert_nothing_reported(frappe.local.message_log)
+				self.assertEqual(self._sessions(self.owner), 0)
+				self.assertTrue(self._is_ended(first) and self._is_ended(second))
+
 	def _next_request(self, sid: str) -> None:
 		"""Resume ``sid`` from its cookie as the next request does; the current session becomes it."""
 		set_request(
@@ -858,6 +900,119 @@ class RevocationSignOutTest(_Base):
 		self.assertEqual([message["indicator"] for message in messages], ["orange"])
 		self.assertIn(f"some of {self.owner}'s sessions may still be signed in", messages[0]["message"])
 		self.assertIn("Ask an administrator to clear the site cache", messages[0]["message"])
+
+	def _log_traceback_variables(self) -> None:
+		"""Developer mode, where Frappe logs a traceback's variables by default."""
+		self.addCleanup(setattr, frappe.conf, "developer_mode", frappe.conf.get("developer_mode"))
+		frappe.conf.developer_mode = 1
+
+	def _revoke_and_collect(self, action: str, cred) -> frappe._dict:
+		"""Revoke as the Desk form does, version history on: what it showed, mailed, logged and
+		recorded."""
+		risk = {"user": self.owner, "content": f"passkeys:{notifications.RISK_SIGN_OUT_INCOMPLETE}"}
+		operation = {"disable": "passkey_disabled", "delete": "passkey_removed"}[action]
+		audit = {"user": self.owner, "content": f"passkeys:{operation}"}
+		before = set(frappe.get_all("Error Log", pluck="name"))
+		sent, risk_events, audit_rows = len(self.sent), activity_log_count(risk), activity_log_count(audit)
+		with (
+			patch.object(frappe.local, "message_log", []),
+			patch("frappe.utils.user.get_system_managers", return_value=["manager@example.com"]),
+		):
+			if action == "disable":  # tests skip version history unless asked
+				doc = frappe.get_doc("WebAuthn Credential", cred.name)
+				doc.enabled = 0
+				doc.save(ignore_permissions=True, ignore_version=False)
+			else:
+				frappe.delete_doc("WebAuthn Credential", cred.name, ignore_permissions=True)
+			warnings = [message.message for message in frappe.local.message_log]
+		logs = frappe.get_all(
+			"Error Log",
+			filters={"name": ["not in", list(before) or [""]]},
+			fields=["name", "method", "error"],
+		)
+		for log in logs:
+			self.addCleanup(frappe.delete_doc, "Error Log", log.name, force=1, ignore_permissions=True)
+		return frappe._dict(
+			warnings=warnings,
+			mails=self.sent[sent:],
+			logs=logs,
+			risk_events=activity_log_count(risk) - risk_events,
+			audit_rows=activity_log_count(audit) - audit_rows,
+		)
+
+	def _assert_completed_and_reported(self, action: str, cred, result, sids: tuple) -> None:
+		"""The save or delete ran to its end, the owner's email and audit row went, and the sign-out
+		was reported incomplete; the logs hold no session id."""
+		record = {
+			"disable": ("Version", {"ref_doctype": cred.doctype, "docname": cred.name}),
+			"delete": ("Deleted Document", {"deleted_doctype": cred.doctype, "deleted_name": cred.name}),
+		}[action]
+		self.assertTrue(frappe.db.exists(*record))
+		self.assertEqual((result.audit_rows, result.risk_events), (1, 1))
+		self.assertEqual(
+			[mail["recipients"] for mail in result.mails], [[self.owner], ["manager@example.com"]]
+		)
+		self.assertEqual(len(result.warnings), 1)
+		self.assertIn(f"some of {self.owner}'s sessions may still be signed in", result.warnings[0])
+		self.assertIn("Ask an administrator to clear the site cache", result.warnings[0])
+		text = "\n".join(log.error for log in result.logs)
+		for sid in sids:
+			stored_id = get_stored_session_id(sid)
+			for form in (sid, stored_id, state.sid_hash(stored_id)):
+				self.assertNotIn(form, text)
+
+	def test_a_session_that_fails_to_end_leaves_the_others_ended_and_is_reported(self):
+		self._log_traceback_variables()
+		real_delete = frappe.sessions.delete_session
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)
+				failing = frappe.session.sid
+				self._sign_in_for_real(self.owner)
+				ended = frappe.session.sid
+				self._sign_in_for_real(self.actor)
+				failing_id = get_stored_session_id(failing)
+
+				@functools.wraps(real_delete)
+				def delete_session(sid=None, user=None, reason="Session Expired", **kwargs):
+					if failing_id in (sid, kwargs.get("sid_hash")):
+						raise RuntimeError("database write failed")
+					return real_delete(sid, user, reason, **kwargs)
+
+				with patch("frappe.sessions.delete_session", delete_session):
+					result = self._revoke_and_collect(action, cred)
+				remaining = set(self._session_ids(self.owner))
+				self.assertEqual(remaining & {failing_id, get_stored_session_id(ended)}, {failing_id})
+				self.assertTrue(self._is_ended(failing) and self._is_ended(ended))
+				self.assertEqual({log.method for log in result.logs}, {"passkeys: ending a session failed"})
+				self._assert_completed_and_reported(action, cred, result, (failing, ended))
+
+	def test_a_sign_out_that_fails_part_way_is_reported_and_the_revocation_completes(self):
+		"""Here the second listing, for sessions signed in meanwhile, fails after the first ended
+		the lost device's session."""
+		self._log_traceback_variables()
+		real_listing = session._get_session_keys
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)  # the lost device
+				lost = frappe.session.sid
+				self._sign_in_for_real(self.owner)  # the device in hand
+				listings = []
+
+				def list_once(*args):
+					listings.append(args)
+					if len(listings) > 1:
+						raise RuntimeError("database read failed")
+					return real_listing(*args)
+
+				with patch.object(session, "_get_session_keys", list_once):
+					result = self._revoke_and_collect(action, cred)
+				self.assertEqual(self._session_ids(self.owner), [self._current_session_id()])
+				self.assertTrue(self._is_ended(lost))
+				self.assertEqual({log.method for log in result.logs}, {"passkeys: sign-out failed"})
+				self._assert_completed_and_reported(action, cred, result, (lost, frappe.session.sid))
 
 	def _fail_session_expiry_reads(self):
 		"""Make the Sessions expiry read fail as a database error would, its query in the frame.

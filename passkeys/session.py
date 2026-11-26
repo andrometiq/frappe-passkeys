@@ -112,7 +112,8 @@ def end_sessions(user: str, *, keep_current: bool) -> bool:
 	session of the user, on every device, is marked ended for ``refuse_ended_session``, then ended
 	with core's ``delete_session``; later rounds end sessions signed in meanwhile. The sessions are
 	ended even when a mark can't be written. Returns False (logged) when a session could not be
-	marked or some are left at the round limit, True otherwise."""
+	marked or some are left when it stops (a session that fails to end, or the round limit), True
+	otherwise."""
 	kept_key = get_stored_session_id(frappe.session.sid) if keep_current else None
 	is_complete, previous_keys = True, None
 	for round_number in range(MAX_SIGN_OUT_ROUNDS):
@@ -179,15 +180,19 @@ def _retry(func, *args):
 
 def _delete_sessions(user: str, listed_keys: set, cached_by_key: dict) -> None:
 	"""End exactly these sessions: the listed ones with core's ``delete_session`` (by the stored
-	id where core takes it); drop the cached copies of the others."""
+	id where core takes it); drop the cached copies of the others. A listed session that fails to
+	end is logged and doesn't stop the others; the next round lists it again."""
 	from frappe.sessions import delete_session
 
 	by_stored_id = "sid_hash" in inspect.signature(delete_session).parameters
 	for key in listed_keys:
-		if by_stored_id:
-			delete_session(user=user, reason="Force Logged out by the user", sid_hash=key)
-		else:
-			delete_session(key, user=user, reason="Force Logged out by the user")
+		try:
+			if by_stored_id:
+				delete_session(user=user, reason="Force Logged out by the user", sid_hash=key)
+			else:
+				delete_session(key, user=user, reason="Force Logged out by the user")
+		except Exception:
+			frappe.log_error(title="passkeys: ending a session failed", message=frappe.get_traceback())
 	for key in cached_by_key:
 		frappe.cache.hdel("session", key)
 

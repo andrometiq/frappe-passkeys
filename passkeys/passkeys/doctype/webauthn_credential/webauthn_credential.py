@@ -143,14 +143,20 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		the current one when the owner did, so a lost device's session ends too. The stale-passkey
 		bulk removal is left out: a stale passkey cannot sign in here, and the commits would
 		release the RP lock that removal holds. Returns whether the owner was signed out
-		everywhere; flags a sign-out that could not end and mark every session."""
+		everywhere; flags a sign-out that could not end and mark every session. A failure past the
+		commit is logged and flagged instead of raised, so the emails and audit rows still go."""
 		if self.flags.passkeys_remove_stale:
 			return False
 		by_owner = self._is_by_owner()
 		# A fresh snapshot: a sign-in that committed while this request waited on the row lock
 		# is listed too; any later one reads the revoked row and fails.
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit
-		self.flags.passkeys_sign_out_incomplete = not end_sessions(self.user, keep_current=by_owner)
+		try:
+			is_complete = end_sessions(self.user, keep_current=by_owner)
+		except Exception:
+			frappe.log_error(title="passkeys: sign-out failed", message=frappe.get_traceback())
+			is_complete = False
+		self.flags.passkeys_sign_out_incomplete = not is_complete
 		return not by_owner
 
 	def _report_incomplete_sign_out(self):

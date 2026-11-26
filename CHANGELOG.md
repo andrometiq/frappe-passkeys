@@ -18,6 +18,11 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - When a passkey you remove can't sign out every session on the account, you now see the warning
   that some sessions may still be signed in: Desk shows it as Frappe's orange message, the
   `/passkeys` page in a dialog. Before, the passkey list just updated.
+- If the sign-out fails part-way while a passkey is disabled or deleted (for example, one of the
+  owner's sessions can't be ended), the app still ends the others, emails the owner and reports the
+  sign-out as incomplete: the warning, the `passkeys:sign_out_incomplete` risk event and the System
+  Managers' email. Before, the passkey was revoked but Desk showed an error, and the owner's email
+  and its Activity Log row were lost.
 - Passkey Settings saves with both login modes off after a site config change made a saved origin
   invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside a new
   `host_name`'s RP scope). Before, every save was refused, turning passkeys off included. Changing the RP
