@@ -141,7 +141,7 @@ root:
 
 ```bash
 bench generate-pot-file --app passkeys
-# When the bench links apps/passkeys to a checkout elsewhere (that command then fails):
+# For a bench that links apps/passkeys to a checkout elsewhere:
 env/bin/python apps/passkeys/scripts/generate_pot.py
 ```
 

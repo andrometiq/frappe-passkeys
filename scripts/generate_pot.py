@@ -4,8 +4,8 @@
 """Regenerate passkeys/locale/main.pot with Frappe's own generate_pot, on a bench whose
 environment imports the app from a checkout outside the bench (a linked apps/passkeys).
 
-Frappe's hooks.py extractor imports hooks.py by its path relative to the bench, which fails
-there; this imports it relative to the checkout instead. Run from the bench root with the
+Frappe's hooks.py extractor imports hooks.py by its path relative to the bench; this imports it
+relative to the checkout instead. Run from the bench root with the
 bench's Python (see CONTRIBUTING.md, Translations)."""
 
 import importlib

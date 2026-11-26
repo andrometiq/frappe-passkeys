@@ -7,28 +7,33 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- `frappe.passkeys.call` now shows the messages a protected method sends with `frappe.msgprint`
+  when it succeeds: on Desk as `frappe.call` does, on the portal pages in a dialog. If your page
+  already shows that message itself, it now appears twice: remove one.
+
 ### Added
 
-- `frappe.passkeys.call` shows the messages a method sends with `frappe.msgprint` when it succeeds:
-  on Desk as `frappe.call` does, on the portal pages in a dialog. A custom confirmation dialog gets
-  them through `createConfirmEngine({..., onServerMessages})` ([Custom UI](docs/custom-ui.md)).
 - A custom confirmation dialog can now cancel after the user has chosen a passkey or while a
   password is checked: `chooseMethod` and `collectPassword` get a `cancel()` to call when the dialog
   closes, and the passkey prompt the user's choice opens gets `{ signal }`, as the one the engine
   opens by itself already did ([Custom UI](docs/custom-ui.md)). A dialog that doesn't call
   `cancel()` works as before.
 - [Get alerts on passkey events](docs/operations.md#get-alerts-on-passkey-events): a Frappe Webhook
-  can send every passkey change and risk event to a chat, paging or SIEM endpoint as it happens, with
-  no code. The guide gives the Webhook's settings, condition and payload.
+  can send every passkey change and risk event to a chat, paging or SIEM endpoint as it happens,
+  with no code. The guide gives the Webhook's settings, condition and payload.
 - The docs site has an [llms.txt](https://andrometiq.github.io/frappe-passkeys/llms.txt): a short
   index a coding agent can read, with a link to the Markdown of every docs page.
 
+### Changed
+
+- `frappe.passkeys.call` shows the messages a method sends with `frappe.msgprint` when it succeeds:
+  on Desk as `frappe.call` does, on the portal pages in a dialog. A custom confirmation dialog gets
+  them through `createConfirmEngine({..., onServerMessages})` ([Custom UI](docs/custom-ui.md)).
+
 ### Fixed
 
-- The translation template (`passkeys/locale/main.pot`) now has the screen text of the sign-in page,
-  the `/passkeys` page, the Desk passkey cards, prompts and RP alert, the Passkey Settings banners
-  and the confirmation dialogs: 189 more strings, so translators can translate them. Before, it had
-  only the server-side strings and a few from Passkey Settings.
 - When a passkey you remove can't sign out every session on the account, you now see the warning
   that some sessions may still be signed in: Desk shows it as Frappe's orange message, the
   `/passkeys` page in a dialog. Before, the passkey list just updated.
@@ -36,19 +41,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   owner's sessions can't be ended), the app still ends the others, emails the owner and reports the
   sign-out as incomplete: the warning, the `passkeys:sign_out_incomplete` risk event and the System
   Managers' email. Before, the passkey was revoked but Desk showed an error, and the owner's email
-  and its Activity Log row were lost.
-- During that sign-out, a session that can't be ended is tried only once, so the save or delete no
-  longer runs out of time trying it again. It leaves no Activity Log row saying the owner logged
-  out, its Error Log row is kept, and its error message no longer hides the orange warning. The
+  and its Activity Log row were lost. A session that can't be ended is tried once and logged
+  (`passkeys: ending a session failed`); the
   [recovery steps](docs/recovery.md#someone-may-be-using-the-account-right-now) say how to end it.
 - Passkey Settings saves with both login modes off after a site config change made a saved origin
   invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside a new
-  `host_name`'s RP scope). Before, every save was refused, turning passkeys off included. Changing the RP
-  settings or turning a mode on still checks every origin.
-- The count of users a Passkey Settings enforcement change would affect checks that the caller is a
-  System Manager before it checks the draft, and answers a draft that isn't a JSON string with its
-  own "could not be read" error instead of a type error. Reading that count likewise answers a
-  signature that isn't a string with its own "Unknown enforcement preview." error.
+  `host_name`'s RP scope). Before, every save was refused, turning passkeys off included. Changing
+  the RP settings or turning a mode on still checks every origin.
 - When the site doesn't answer while it checks the passkey asked for after the password, the dialog
   no longer says "Verifying…" for good: after 30 seconds the page stops waiting, says "Verifying
   took too long. Try again.", and you can try again or close the dialog. If this browser was
@@ -62,6 +61,15 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   after "Use your password instead" and when the dialog asks only for your password. Before, a
   passkey used after the dialog had closed still confirmed the action, and a password check that
   finished after it still ran the action or, if the password was wrong, opened the dialog again.
+
+### Maintenance
+
+- The translation template (`passkeys/locale/main.pot`) now has the screen text of the sign-in page,
+  the `/passkeys` page, the Desk passkey cards, prompts and RP alert, the Passkey Settings banners
+  and the confirmation dialogs: 189 more strings, so translators can translate them. Before, it had
+  only the server-side strings and a few from Passkey Settings.
+- The Passkey Settings enforcement-count endpoints check that the caller is a System Manager before
+  reading the request, and answer input of the wrong type with their own errors.
 
 ## [15.0.9] / [16.0.9] — 2026-11-24
 
