@@ -315,7 +315,7 @@
 			if (isPasskeyPage) render();
 			onResult(true);
 		}, function (err) {
-			setPortalStatus(t(err && err.code === "already_registered" ? M.COPY.alreadyRegistered : M.COPY.addFailed), "error");
+			setPortalStatus(err && err.code === "already_registered" ? t(M.COPY.alreadyRegistered) : t(M.COPY.addFailed), "error");
 			onResult(false);
 		});
 	}

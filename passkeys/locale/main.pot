@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Passkeys VERSION\n"
 "Report-Msgid-Bugs-To: hello@andrometiq.com\n"
-"POT-Creation-Date: 2026-11-24 12:54+0553\n"
-"PO-Revision-Date: 2026-11-24 12:54+0553\n"
+"POT-Creation-Date: 2026-11-27 01:01+0553\n"
+"PO-Revision-Date: 2026-11-27 01:01+0553\n"
 "Last-Translator: hello@andrometiq.com\n"
 "Language-Team: hello@andrometiq.com\n"
 "MIME-Version: 1.0\n"
@@ -16,15 +16,23 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:197
+#: passkeys/public/js/passkey_manage_common.bundle.js:164
+msgid "'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:201
 msgid "'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create a passkey (and cannot use a phone) will be blocked rather than nudged. Prefer 'Degrade to Nudge' if any users may be on older devices."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:189
+#: passkeys/public/js/passkey_manage_common.bundle.js:161
+msgid "'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles to require, or switch to 'All users'."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:193
 msgid "'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies to nobody. Add the roles you want to require, or switch to 'All users'."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:97
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:101
 #, python-brace-format
 msgid "'{0}' must be between 0 and {1}."
 msgstr ""
@@ -98,9 +106,17 @@ msgstr ""
 msgid "A custom app can register its own auth hooks or login endpoints, which cannot be detected deterministically."
 msgstr ""
 
+#: passkeys/public/js/passkey_confirm.bundle.js:250
+msgid "A method is required."
+msgstr ""
+
 #: passkeys/notifications.py:51
 #, python-brace-format
 msgid "A new passkey “{0}” was just added to your account on {1}{2}. If this wasn't you, remove it on your My Passkeys page{3} and change your password immediately."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:58
+msgid "A passkey lets you sign in with your fingerprint, face, screen lock, or a security key — no password to remember or type."
 msgstr ""
 
 #: passkeys/api/credentials.py:94 passkeys/api/credentials.py:98
@@ -167,8 +183,37 @@ msgstr ""
 msgid "AAGUID"
 msgstr ""
 
+#: passkeys/public/js/passkey_confirm.bundle.js:84
+#: passkeys/public/js/passkey_portal.bundle.js:89
+msgid "Action details"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:60
+msgid "Add a passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:89
+msgid "Add a passkey and skip the password next time — sign in with your fingerprint, face, or screen lock instead."
+msgstr ""
+
 #: passkeys/api/credentials.py:238
 msgid "Add a passkey before turning on passkey-only login."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:72
+msgid "Add a passkey for this site"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:95
+msgid "Add a passkey to this device"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:131
+msgid "Add at least two passkeys that work on this site before turning off password sign-in."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:76
+msgid "Added"
 msgstr ""
 
 #. Description of the 'Passkey Origins' (Small Text) field in DocType 'Passkey
@@ -215,6 +260,10 @@ msgstr ""
 #. 'Passkey Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:185
 msgid "Always require a passkey from System Managers"
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:246
+msgid "An action is required."
 msgstr ""
 
 #: passkeys/notifications.py:74
@@ -280,6 +329,10 @@ msgstr ""
 msgid "Authenticator Attachment"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:54
+msgid "Available on your other devices"
+msgstr ""
+
 #. Description of the 'Backup Eligible' (Check) field in DocType 'WebAuthn
 #. Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:135
@@ -290,6 +343,10 @@ msgstr ""
 #. Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:143
 msgid "BS flag; refreshed on every successful assertion"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:477
+msgid "Back to sign in"
 msgstr ""
 
 #. Label of the backup_eligible (Check) field in DocType 'WebAuthn Credential'
@@ -315,6 +372,17 @@ msgstr ""
 #. 'Passkey Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:222
 msgid "Block + Notify Admin"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:55
+msgid "Can't sync to your other devices"
+msgstr ""
+
+#: passkeys/public/js/passkey_portal.bundle.js:123
+#: passkeys/public/js/passkey_portal.bundle.js:258
+#: passkeys/public/js/passkey_portal.bundle.js:280
+#: passkeys/public/js/passkey_portal.bundle.js:300
+msgid "Cancel"
 msgstr ""
 
 #: passkeys/auth_hooks.py:218
@@ -347,7 +415,7 @@ msgstr ""
 msgid "Cannot merge {0} into {1}: both users have passkeys. Delete the passkeys and the WebAuthn User Handle of {0} first."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:147
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:151
 #, python-brace-format
 msgid "Cannot save: this would leave no passkey-capable login mode enabled while these users allow passkey login only: {0}. Keep a passkey login mode enabled, or clear 'Passkey Only Login' on their WebAuthn User Handle records first."
 msgstr ""
@@ -372,11 +440,20 @@ msgid "Cannot {0} the only enabled passkey of {1}: passwordless login is on for 
 msgstr ""
 
 #: passkeys/api/credentials.py:184
+#: passkeys/public/js/passkey_common.bundle.js:702
 msgid "Change passkey-only login"
 msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:117
 msgid "Change the RP ID?"
+msgstr ""
+
+#: passkeys/public/js/passkey_headless.bundle.js:264
+msgid "Changing passwordless login needs a confirmation engine. See docs/custom-ui.md."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:134
+msgid "Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back."
 msgstr ""
 
 #. Description of the 'Passkey RP ID' (Data) field in DocType 'Passkey
@@ -403,6 +480,10 @@ msgstr ""
 msgid "Cloned-authenticator hard-fail is off."
 msgstr ""
 
+#: passkeys/public/js/passkey_portal.bundle.js:202
+msgid "Close"
+msgstr ""
+
 #. Label of the passkey_conditional_create (Check) field in DocType 'Passkey
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:248
@@ -417,16 +498,178 @@ msgstr ""
 msgid "Configure at least one exact passkey origin or set this site's host_name within the RP ID scope."
 msgstr ""
 
+#: passkeys/public/js/passkey_confirm.bundle.js:191
+#: passkeys/public/js/passkey_login.bundle.js:380
+#: passkeys/public/js/passkey_portal.bundle.js:167
+msgid "Confirm"
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:709
+msgid "Confirm action"
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:31
+#: passkeys/public/js/passkey_login.bundle.js:521
+#: passkeys/public/js/passkey_portal.bundle.js:107
+msgid "Confirm it's you"
+msgstr ""
+
 #: passkeys/confirm.py:258 passkeys/confirm.py:269
 msgid "Confirm it's you to continue."
 msgstr ""
 
-#: passkeys/session.py:569
+#: passkeys/session.py:586
 msgid "Confirm it's you to manage passkeys."
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:125
+msgid "Confirm this action with a passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:147
+#: passkeys/public/js/passkey_portal.bundle.js:133
+msgid "Confirm with passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:162
+msgid "Confirm with your password"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:375
+msgid "Confirm your password once to finish setting up this passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:165
+#: passkeys/public/js/passkey_portal.bundle.js:148
+msgid "Confirm your password to continue."
+msgstr ""
+
+#: passkeys/public/js/passkey_portal.bundle.js:85
+#, python-brace-format
+msgid "Confirm {0} to continue."
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:123
+#: passkeys/public/js/passkey_portal.bundle.js:86
+#, python-brace-format
+msgid "Confirm {0} with your passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:976
+msgid "Confirmation didn't complete."
 msgstr ""
 
 #: passkeys/confirm.py:485 passkeys/confirm.py:487
 msgid "Confirmation parameters must be an object."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:915
+#: passkeys/public/js/passkey_confirm.bundle.js:66
+#: passkeys/public/js/passkey_portal.bundle.js:112
+msgid "Confirmation was cancelled."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:129
+#: passkeys/public/js/passkey_desk.bundle.js:155
+#: passkeys/public/js/passkey_portal.bundle.js:250
+#: passkeys/public/js/passkey_portal.bundle.js:291
+msgid "Confirming it's you…"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:110
+msgid "Contact administrator"
+msgstr ""
+
+#: passkeys/public/js/passkey_headless.bundle.js:218
+#: passkeys/public/js/passkey_headless.bundle.js:223
+#: passkeys/public/js/passkey_manage_common.bundle.js:85
+msgid "Couldn't add a passkey — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:175
+#: passkeys/public/js/passkey_desk.bundle.js:461
+msgid "Couldn't add passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:160
+msgid "Couldn't change passwordless login"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:160
+#: passkeys/public/js/passkey_portal.bundle.js:255
+msgid "Couldn't change passwordless login."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:323
+msgid "Couldn't complete passkey sign-in."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:79
+#: passkeys/public/js/passkey_headless.bundle.js:229
+#: passkeys/public/js/passkey_portal.bundle.js:222
+msgid "Couldn't load your passkeys."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:504
+msgid "Couldn't open verification-code sign-in. Return to sign in or contact your administrator."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:849
+#: passkeys/public/js/passkey_common.bundle.js:908
+msgid "Couldn't reach the confirmation service — try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:325
+msgid "Couldn't reach the passkey service — try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:1054
+msgid "Couldn't reach the server — try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:136
+msgid "Couldn't remove passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:136
+#: passkeys/public/js/passkey_portal.bundle.js:297
+msgid "Couldn't remove the passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:113
+#: passkeys/public/js/passkey_headless.bundle.js:236
+#: passkeys/public/js/passkey_portal.bundle.js:277
+msgid "Couldn't rename the passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:94
+msgid "Couldn't save your choice — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:845
+msgid "Couldn't start confirmation."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:229
+msgid "Couldn't start passkey sign-in — try again or sign in another way."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:124
+msgid "Couldn't update enforcement for this user — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:311
+#: passkeys/public/js/passkey_common.bundle.js:465
+msgid "Couldn't use a passkey — sign in another way."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:169
+msgid "Counting who will be affected…"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:56
+#: passkeys/public/js/passkey_manage_common.bundle.js:91
+msgid "Create a passkey"
 msgstr ""
 
 #. Label of the credential_id (Long Text) field in DocType 'WebAuthn
@@ -461,6 +704,11 @@ msgstr ""
 msgid "Degrade to Nudge"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:62
+#, python-brace-format
+msgid "Delete passkey {0}"
+msgstr ""
+
 #. Label of the passkey_enforce_incapable (Select) field in DocType 'Passkey
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:221
@@ -485,18 +733,26 @@ msgstr ""
 msgid "Disable these Social Login Keys, or accept that these providers can bypass passkeys."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:75
+msgid "Disabled"
+msgstr ""
+
 #. Label of the discoverable (Select) field in DocType 'WebAuthn Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:160
 msgid "Discoverable"
 msgstr ""
 
-#: passkeys/public/js/passkey_site_alert.bundle.js:75
+#: passkeys/public/js/passkey_site_alert.bundle.js:78
 msgid "Dismiss"
 msgstr ""
 
 #. Description of the 'AAGUID' (Data) field in DocType 'WebAuthn Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:101
 msgid "Display and telemetry only, never policy; all-zeros tolerated"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:93
+msgid "Don't ask again"
 msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:63
@@ -565,8 +821,29 @@ msgstr ""
 msgid "Everyone else can still fall back to a password, so passkeys are optional for them."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:117
+msgid "Exempt from enforcement"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:113
+msgid "Exempt from passkey enforcement"
+msgstr ""
+
 #: passkeys/enforcement_admin.py:29
 msgid "Exempt must be true or false."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:122
+#, python-brace-format
+msgid "Exemption removed — {0} is enforced again."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:373
+msgid "Finish setting up this passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_site_alert.bundle.js:30
+msgid "Fix in Passkey Settings"
 msgstr ""
 
 #. Label of the flagged (Check) field in DocType 'WebAuthn Credential'
@@ -578,6 +855,22 @@ msgstr ""
 #. Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:192
 msgid "Flagged Reason"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:169
+#: passkeys/public/js/passkey_desk.bundle.js:454
+#: passkeys/public/js/passkey_portal.bundle.js:312
+msgid "Follow your device's prompt to add a passkey…"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:116
+#, python-brace-format
+msgid "Grace logins used: {0} of {1} ({2} remaining)."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:123
+#, python-brace-format
+msgid "Grace reset — {0} sign-ins to enroll before it blocks."
 msgstr ""
 
 #. Label of the passkey_enforce_grace_logins (Int) field in DocType 'Passkey
@@ -619,8 +912,24 @@ msgstr ""
 msgid "How many times the dismissible enrollment prompt may appear before it stops. Applies to Everyone else set to Nudge, to in-scope users before Starting on, and to devices that cannot create a passkey under Degrade to Nudge."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:105
+msgid "I can't set one up here"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:69
+msgid "If you don't recognize a recent sign-in, remove it."
+msgstr ""
+
 #: passkeys/engine.py:187 passkeys/engine.py:256
 msgid "Impossible passkey backup state."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:119
+msgid "In scope — already has a passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:118
+msgid "In scope — must enroll a passkey"
 msgstr ""
 
 #. Description of the 'Require a passkey from' (Select) field in DocType
@@ -685,10 +994,19 @@ msgstr ""
 msgid "Last Used IP"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:77
+msgid "Last used"
+msgstr ""
+
 #. Description of the 'Allow First Passkey After Email-Link or Social Sign-in'
 #. (Check) field in DocType 'Passkey Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:287
 msgid "Lets a user with no enabled passkey, who signed in by email link, social login (such as Google), LDAP or another external sign-in, add a first passkey within the Re-authentication Window. Adding more passkeys still needs a password or passkey confirmation. Works only when Login with Passkey is on"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:73
+#: passkeys/public/js/passkey_portal.bundle.js:218
+msgid "Loading your passkeys…"
 msgstr ""
 
 #. Label of the passkey_notify_password_login (Check) field in DocType 'Passkey
@@ -715,8 +1033,21 @@ msgstr ""
 msgid "Lower 'Re-authentication Window (Seconds)' if management should re-verify sooner."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:70
+#, python-brace-format
+msgid "Made for {0}, doesn't work on this site"
+msgstr ""
+
 #: passkeys/engine.py:146 passkeys/engine.py:148
 msgid "Malformed client data."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:206
+msgid "Manage in the WebAuthn Credential list"
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:701
+msgid "Manage passkeys"
 msgstr ""
 
 #: passkeys/www/passkeys.html:31
@@ -732,6 +1063,10 @@ msgstr ""
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:234
 msgid "Maximum prompts per user"
+msgstr ""
+
+#: passkeys/public/js/passkey_portal.bundle.js:195
+msgid "Message"
 msgstr ""
 
 #. Description of the 'Days between prompts' (Int) field in DocType 'Passkey
@@ -750,7 +1085,8 @@ msgstr ""
 msgid "Mobile Apps"
 msgstr ""
 
-#: passkeys/www/passkeys.html:14 passkeys/www/passkeys.html:19
+#: passkeys/public/js/passkey_desk.bundle.js:288 passkeys/www/passkeys.html:14
+#: passkeys/www/passkeys.html:19
 msgid "My Passkeys"
 msgstr ""
 
@@ -760,14 +1096,32 @@ msgstr ""
 msgid "Native Android app origins, one per line, as android:apk-key-hash:&lt;hash&gt;. iOS needs no Trusted App Origin entry here; configure the exact HTTPS origin asserted by the iOS app under Passkey Origins. RP ID is credential scope, not an origin. To let a native app share these passkeys, see the <a href=\"https://andrometiq.github.io/frappe-passkeys/mobile-apps.html\" target=\"_blank\" rel=\"noopener noreferrer\">mobile apps guide</a>."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:78
+msgid "Never used yet"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:63
+msgid "New name for this passkey"
+msgstr ""
+
 #. Option for the 'Discoverable' (Select) field in DocType 'WebAuthn
 #. Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:161
 msgid "No"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:136
+#, python-brace-format
+msgid "No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in will fail. Fix it one of two ways: set host_name in the site config (site_config.json) to this site's domain, or enter a bare host name like {0} in Passkey RP ID on the Relying Party tab. If you just set host_name, wait a minute and save again."
+msgstr ""
+
 #: passkeys/posture.py:204
 msgid "No change needed — this is the intended second-factor floor."
+msgstr ""
+
+#: passkeys/public/js/passkey_headless.bundle.js:274
+#: passkeys/public/js/passkey_headless.bundle.js:282
+msgid "No confirmation engine is configured. See docs/custom-ui.md."
 msgstr ""
 
 #. Option for the 'Require a passkey from' (Select) field in DocType 'Passkey
@@ -780,11 +1134,15 @@ msgstr ""
 msgid "No passkey login mode is on, so every sign-in uses another method."
 msgstr ""
 
+#: passkeys/public/js/passkey_common.bundle.js:452
+msgid "No passkey was used — you can try again or sign in another way."
+msgstr ""
+
 #: passkeys/public/js/passkey_settings.js:145
 msgid "No passkeys stop working."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:125
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:129
 msgid "No role has Two Factor Authentication enabled, so the two-factor backstop covers nobody. Consider enabling it for role 'All' in the Role list."
 msgstr ""
 
@@ -797,12 +1155,29 @@ msgstr ""
 msgid "No such user: {0}"
 msgstr ""
 
+#: passkeys/public/js/passkey_common.bundle.js:321
+msgid "No usable passkey was found."
+msgstr ""
+
 #: passkeys/posture.py:384
 #, python-brace-format
 msgid "None of this site's origins is inside the RP ID {0}, so passkey requirements are paused."
 msgstr ""
 
-#: passkeys/session.py:397
+#: passkeys/public/js/passkey_manage_common.bundle.js:168
+msgid "Not counted yet"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:120
+msgid "Not in enforcement scope"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:774
+#: passkeys/public/js/passkey_manage_common.bundle.js:92
+msgid "Not now"
+msgstr ""
+
+#: passkeys/session.py:414
 msgid "Not permitted."
 msgstr ""
 
@@ -859,6 +1234,14 @@ msgstr ""
 msgid "One or more stock authentication settings could not be read."
 msgstr ""
 
+#: passkeys/public/js/passkey_site_alert.bundle.js:30
+msgid "Open Passkey Settings"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:493
+msgid "Opening verification-code sign-in..."
+msgstr ""
+
 #: passkeys/policy.py:193
 #, python-brace-format
 msgid "Origin {0} cannot use RP ID {1}: its host must equal the RP ID or be a subdomain of it. Serving multiple unrelated domains requires Related Origin Requests, which is deferred."
@@ -905,6 +1288,12 @@ msgstr ""
 msgid "Passkey Settings"
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:171
+#: passkeys/public/js/passkey_desk.bundle.js:456
+#: passkeys/public/js/passkey_portal.bundle.js:314
+msgid "Passkey added."
+msgstr ""
+
 #: passkeys/notifications.py:57
 #, python-brace-format
 msgid "Passkey added: {0}"
@@ -916,15 +1305,15 @@ msgstr ""
 msgid "Passkey as Second Factor"
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:112
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:116
 msgid "Passkey as Second Factor cannot be the only passkey mode while username/password login is disabled. Enable Login with Passkey or re-enable username/password login."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:158
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:162
 msgid "Passkey as Second Factor is unusable for enrolled users while username/password login is disabled: the app's password leg cannot start, and alternate login completions are final-vetoed. Keep Login with Passkey enabled as their usable route."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:119
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:123
 msgid "Passkey as Second Factor requires Two Factor Authentication to be enabled in System Settings — it is the backstop for password logins that bypass the passkey UI."
 msgstr ""
 
@@ -936,7 +1325,7 @@ msgstr ""
 msgid "Passkey backup eligibility changed — the credential is refused."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:165
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:169
 msgid "Passkey change notifications are off. They are the compensating control for credential registration hijack — leave them on outside mail-less development sites."
 msgstr ""
 
@@ -944,9 +1333,13 @@ msgstr ""
 msgid "Passkey confirmation could not be completed. Re-authenticate and begin again."
 msgstr ""
 
-#: passkeys/ceremony.py:64 passkeys/ceremony.py:119 passkeys/ceremony.py:145
-#: passkeys/ceremony.py:147 passkeys/ceremony.py:150 passkeys/ceremony.py:193
-#: passkeys/ceremony.py:198 passkeys/confirm.py:374 passkeys/confirm.py:381
+#: passkeys/public/js/passkey_common.bundle.js:844
+msgid "Passkey confirmation isn't available here."
+msgstr ""
+
+#: passkeys/ceremony.py:64 passkeys/ceremony.py:120 passkeys/ceremony.py:146
+#: passkeys/ceremony.py:148 passkeys/ceremony.py:151 passkeys/ceremony.py:194
+#: passkeys/ceremony.py:199 passkeys/confirm.py:374 passkeys/confirm.py:381
 #: passkeys/engine.py:258 passkeys/passkey.py:119 passkeys/passkey.py:126
 #: passkeys/passkey.py:129 passkeys/passkey.py:149 passkeys/passkey.py:183
 #: passkeys/passkey.py:191 passkeys/passkey.py:193 passkeys/passkey.py:197
@@ -962,6 +1355,10 @@ msgstr ""
 msgid "Passkey could not be verified. Please sign in again."
 msgstr ""
 
+#: passkeys/public/js/passkey_headless.bundle.js:216
+msgid "Passkey creation was cancelled."
+msgstr ""
+
 #: passkeys/engine.py:194
 msgid "Passkey credential id is too long."
 msgstr ""
@@ -971,12 +1368,16 @@ msgstr ""
 msgid "Passkey disabled: {0}"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:112
+msgid "Passkey enrollment enforcement"
+msgstr ""
+
 #: passkeys/notifications.py:103
 #, python-brace-format
 msgid "Passkey flagged: {0} ({1})"
 msgstr ""
 
-#: passkeys/session.py:369 passkeys/session.py:399
+#: passkeys/session.py:386 passkeys/session.py:416
 msgid "Passkey management requires a signed-in browser session."
 msgstr ""
 
@@ -1002,13 +1403,31 @@ msgstr ""
 msgid "Passkey registration could not be verified."
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:132
+#: passkeys/public/js/passkey_portal.bundle.js:293
+msgid "Passkey removed."
+msgstr ""
+
 #: passkeys/notifications.py:80
 #, python-brace-format
 msgid "Passkey removed: {0}"
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:112
+#: passkeys/public/js/passkey_portal.bundle.js:274
+msgid "Passkey renamed."
+msgstr ""
+
 #: passkeys/passkey.py:303
 msgid "Passkey second factor is not available."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:145
+msgid "Passkey second factor needs core two-factor authentication enabled first."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:313
+msgid "Passkey sign-in was cancelled."
 msgstr ""
 
 #: passkeys/engine.py:275
@@ -1017,6 +1436,14 @@ msgstr ""
 
 #: passkeys/engine.py:271
 msgid "Passkey signature counter replay detected."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:486
+msgid "Passkey verification is unavailable. Contact your administrator or return to sign in."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:473
+msgid "Passkey verification unavailable"
 msgstr ""
 
 #: passkeys/api/credentials.py:186
@@ -1030,6 +1457,10 @@ msgstr ""
 
 #: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:105
 msgid "Passkey-only login requires at least one passkey login mode to be enabled."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:257
+msgid "Passkeys"
 msgstr ""
 
 #: passkeys/posture.py:81
@@ -1060,16 +1491,65 @@ msgstr ""
 msgid "Passkeys are off on this site: its address isn't covered by the RP ID."
 msgstr ""
 
+#: passkeys/public/js/passkey_site_alert.bundle.js:20
+#, python-brace-format
+msgid "Passkeys are off on this site: its address {0} isn't covered by the RP ID {1}. Passkey requirements are paused until this is fixed."
+msgstr ""
+
+#: passkeys/public/js/passkey_site_alert.bundle.js:13
+msgid "Passkeys are off on this site: no RP ID resolves. Passkey requirements are paused. Set host_name in site config or a Passkey RP ID."
+msgstr ""
+
+#: passkeys/public/js/passkey_site_alert.bundle.js:16
+#, python-brace-format
+msgid "Passkeys are off on this site: none of its origins is inside the RP ID {0}. Passkey requirements are paused until this is fixed."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:155
+#, python-brace-format
+msgid "Passkeys are off. To turn them on, follow the {0}."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:80
+msgid "Passkeys are read-only while you impersonate this user."
+msgstr ""
+
 #: passkeys/www/passkeys.py:58
 msgid "Passkeys are served natively by this site."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:317
+msgid "Passkeys aren't available on this page."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:221
+#: passkeys/public/js/passkey_login.bundle.js:251
+msgid "Passkeys aren't available right now."
 msgstr ""
 
 #: passkeys/ceremony.py:50 passkeys/confirm.py:322 passkeys/passkey.py:557
 msgid "Passkeys aren't set up for this site."
 msgstr ""
 
-#: passkeys/session.py:419
+#: passkeys/public/js/passkey_login.bundle.js:476
+msgid "Passkeys aren't supported on this device, and no verification-code fallback is available. Contact your administrator or return to sign in."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:319
+msgid "Passkeys aren't supported on this device."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:475
+#: passkeys/public/js/passkey_login.bundle.js:485
+msgid "Passkeys aren't supported on this device. Use a verification code to finish signing in."
+msgstr ""
+
+#: passkeys/session.py:436
 msgid "Passkeys can't be changed or used while impersonating a user."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:73
+msgid "Passkeys don't work on this site right now. Ask your administrator to check the passkey settings."
 msgstr ""
 
 #: passkeys/www/passkeys.html:21
@@ -1084,8 +1564,26 @@ msgstr ""
 msgid "Passkeys would be off on this site with this RP ID."
 msgstr ""
 
+#: passkeys/public/js/passkey_confirm.bundle.js:37
+#: passkeys/public/js/passkey_login.bundle.js:377
+msgid "Password"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:383
+msgid "Password is required."
+msgstr ""
+
 #: passkeys/posture.py:286
 msgid "Password login is allowed, Passkey as Second Factor is on, and Administrator has no enabled passkey. The per-user passwordless flag does not apply to Administrator."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:150
+msgid "Password login is disabled site-wide, so passkey second factor can never run for password logins."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:147
+#: passkeys/public/js/passkey_portal.bundle.js:247
+msgid "Password login will be allowed for your account again."
 msgstr ""
 
 #: passkeys/posture.py:239
@@ -1110,11 +1608,26 @@ msgstr ""
 msgid "Passwordless first-factor login with a passkey (and the login page UI)"
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:157
+#: passkeys/public/js/passkey_portal.bundle.js:252
+msgid "Passwordless login is off."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:157
+#: passkeys/public/js/passkey_portal.bundle.js:252
+msgid "Passwordless login is on."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:126
+msgid "Passwordless login only"
+msgstr ""
+
 #: passkeys/confirm.py:390
 msgid "Please verify it's you to confirm this action."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:181
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:185
+#: passkeys/public/js/passkey_manage_common.bundle.js:158
 msgid "Privileged users (System Manager) are outside passkey enforcement. Administrators are the accounts attackers target first — industry practice enforces them first."
 msgstr ""
 
@@ -1127,6 +1640,10 @@ msgstr ""
 #. Label of the public_key (Text) field in DocType 'WebAuthn Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:81
 msgid "Public Key"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:156
+msgid "Quickstart"
 msgstr ""
 
 #. Label of the rp_id (Data) field in DocType 'WebAuthn Credential'
@@ -1168,10 +1685,28 @@ msgstr ""
 msgid "Reject logins on a signature-counter regression instead of logging and flagging the credential"
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:293
+#: passkeys/public/js/passkey_portal.bundle.js:234
+msgid "Reload"
+msgstr ""
+
 #. Label of the relying_party_tab (Tab Break) field in DocType 'Passkey
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:87
 msgid "Relying Party"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:104
+#, python-brace-format
+msgid "Remind me later (sign-ins left: {0})"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:114
+msgid "Remove enforcement exemption"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:67
+msgid "Remove passkey"
 msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:627
@@ -1184,6 +1719,10 @@ msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:625
 msgid "Remove stale passkeys?"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:64
+msgid "Remove this passkey?"
 msgstr ""
 
 #: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.py:77
@@ -1200,6 +1739,24 @@ msgstr ""
 msgid "Removed {0} passkey(s)."
 msgstr ""
 
+#: passkeys/public/js/passkey_headless.bundle.js:247
+msgid "Removing a passkey needs a confirmation engine. See docs/custom-ui.md."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:106
+#: passkeys/public/js/passkey_portal.bundle.js:263
+msgid "Rename passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:61
+#, python-brace-format
+msgid "Rename passkey {0}"
+msgstr ""
+
+#: passkeys/public/js/passkey_portal.bundle.js:272
+msgid "Renaming passkey…"
+msgstr ""
+
 #. Label of the passkey_enforce_scope (Select) field in DocType 'Passkey
 #. Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:168
@@ -1208,6 +1765,10 @@ msgstr ""
 
 #: passkeys/posture.py:351
 msgid "Require a passkey from the users you want covered, then set 'Passwordless login only' for them."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:115
+msgid "Reset grace logins"
 msgstr ""
 
 #. Label of the resolved_rp_html (HTML) field in DocType 'Passkey Settings'
@@ -1250,6 +1811,11 @@ msgstr ""
 msgid "SHA-256 signing-certificate fingerprint(s) for assetlinks.json, one per line (hex; colons optional). Use Google's Play app-signing certificate (Play Console → App integrity → App signing); include the upload key too during rollout. Required together with the package name to serve assetlinks.json."
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:108
+#: passkeys/public/js/passkey_portal.bundle.js:270
+msgid "Save"
+msgstr ""
+
 #: passkeys/public/js/passkey_settings.js:557
 msgid "Save the RP ID change first."
 msgstr ""
@@ -1282,9 +1848,26 @@ msgstr ""
 msgid "Set the Passkey RP ID to cover this site's address, or set host_name back. Passkeys made for another RP ID stay unusable."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:100
+msgid "Set up a passkey to continue"
+msgstr ""
+
 #. Label of the sign_count (Long Int) field in DocType 'WebAuthn Credential'
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:90
 msgid "Sign Count"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:87
+msgid "Sign in faster next time"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:175
+#: passkeys/public/js/passkey_login.bundle.js:180
+msgid "Sign in with a passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:109
+msgid "Sign out"
 msgstr ""
 
 #. Description of the 'Conditional Create' (Check) field in DocType 'Passkey
@@ -1317,9 +1900,17 @@ msgstr ""
 msgid "Starting on"
 msgstr ""
 
+#: passkeys/public/js/passkey_common.bundle.js:447
+msgid "Still verifying — this can take a moment on a slow connection."
+msgstr ""
+
 #: passkeys/public/js/passkey_settings.js:541
 #, python-brace-format
 msgid "Suggested from this site's address ({0}). Review it, then save."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:52
+msgid "Synced"
 msgstr ""
 
 #. Name of a role
@@ -1327,6 +1918,34 @@ msgstr ""
 #: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.json:225
 #: passkeys/passkeys/doctype/webauthn_user_handle/webauthn_user_handle.json:56
 msgid "System Manager"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:385
+msgid "That didn't work — check your password and try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:968
+msgid "That didn't work — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:582
+msgid "That didn't work — try your passkey again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:315
+msgid "That passkey can't be used here."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:568
+msgid "That passkey couldn't be verified — try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:971
+msgid "That passkey didn't confirm it's you. Try again, or use your password."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:457
+msgid "That passkey didn't work here — it may have been removed. Sign in another way."
 msgstr ""
 
 #: passkeys/passkey.py:477
@@ -1337,9 +1956,15 @@ msgstr ""
 msgid "That password didn't match — try again."
 msgstr ""
 
+#: passkeys/public/js/passkey_common.bundle.js:998
+msgid "That password wasn't right. Try again."
+msgstr ""
+
 #: passkeys/api/registration.py:93 passkeys/ceremony.py:107
 #: passkeys/confirm.py:379 passkeys/passkey.py:123 passkeys/passkey.py:226
 #: passkeys/passkey.py:249 passkeys/passkey.py:398 passkeys/passkey.py:496
+#: passkeys/public/js/passkey_common.bundle.js:331
+#: passkeys/public/js/passkey_manage_common.bundle.js:84
 msgid "That took too long — please try again."
 msgstr ""
 
@@ -1360,20 +1985,24 @@ msgstr ""
 msgid "The RP ID this passkey was made for. It works only while the site's RP ID is exactly this value."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:264
+#: passkeys/public/js/passkey_common.bundle.js:1062
+msgid "The action couldn't be confirmed — please try again."
+msgstr ""
+
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:268
 msgid "The count could not start because the job queue is full. Try again later."
 msgstr ""
 
-#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:247
+#: passkeys/passkeys/doctype/passkey_settings/passkey_settings.py:251
 msgid "The enforcement preview recount could not start because the job queue is full. Try again later."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:170
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:178
 #, python-brace-format
 msgid "The passkey no longer works, but some of {0}'s sessions may still be signed in. Ask an administrator to clear the site cache: see {1}."
 msgstr ""
 
-#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:166
+#: passkeys/passkeys/doctype/webauthn_credential/webauthn_credential.py:174
 #, python-brace-format
 msgid "The passkey no longer works, but some of {0}'s sessions may still be signed in. Clear the site cache once it can be reached: see {1}."
 msgstr ""
@@ -1391,6 +2020,15 @@ msgstr ""
 #: passkeys/install.py:48
 #, python-brace-format
 msgid "The passkeys app needs Frappe {0} or later on this line; this site runs {1}."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:142
+msgid "The resolved RP ID / origins do not match this site's current host — passkey sign-in will fail here until this is corrected."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:167
+#, python-brace-format
+msgid "The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}."
 msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:367
@@ -1434,6 +2072,30 @@ msgstr ""
 msgid "This action requires a signed-in browser session."
 msgstr ""
 
+#: passkeys/public/js/passkey_desk.bundle.js:48
+#: passkeys/public/js/passkey_headless.bundle.js:217
+#: passkeys/public/js/passkey_portal.bundle.js:308
+msgid "This browser can't create passkeys."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:153
+#, python-brace-format
+msgid "This change would leave {0} passwordless-only user(s) with no way to sign in. Clear their passwordless-only flag first."
+msgstr ""
+
+#: passkeys/public/js/passkey_headless.bundle.js:215
+#: passkeys/public/js/passkey_manage_common.bundle.js:83
+msgid "This device already has a passkey for this account."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:462
+msgid "This device can't use passkeys yet — sign in with your password instead."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:53
+msgid "This device only"
+msgstr ""
+
 #: passkeys/install.py:415
 #, python-brace-format
 msgid "This export restores passkey-only user(s) ({0}), but no passkey login mode is enabled on this site. Enable 'Login with Passkey' in Passkey Settings before importing, or those users would be locked out."
@@ -1455,6 +2117,14 @@ msgstr ""
 msgid "This is your only passkey and passwordless login is on for your account — add another passkey (or turn off passkey-only login) before removing it."
 msgstr ""
 
+#: passkeys/public/js/passkey_headless.bundle.js:204
+msgid "This needs a fresh confirmation, but no confirmation engine is configured. See docs/custom-ui.md."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:872
+msgid "This needs you to confirm it's you, but this sign-in can't be confirmed with a passkey or password. Sign in again with your password or a passkey, then try again."
+msgstr ""
+
 #: passkeys/passkey.py:146
 msgid "This passkey can't complete a passwordless sign-in. Please verify another way."
 msgstr ""
@@ -1463,8 +2133,18 @@ msgstr ""
 msgid "This passkey is already registered."
 msgstr ""
 
-#: passkeys/ceremony.py:155 passkeys/passkey.py:136 passkeys/passkey.py:266
+#: passkeys/public/js/passkey_manage_common.bundle.js:68
+msgid "This passkey was flagged: it may have been copied."
+msgstr ""
+
+#: passkeys/ceremony.py:156 passkeys/passkey.py:136 passkeys/passkey.py:266
+#: passkeys/public/js/passkey_common.bundle.js:460
 msgid "This passkey was made for another address and doesn't work on this site."
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:122
+#: passkeys/public/js/passkey_portal.bundle.js:83
+msgid "This sign-in hasn't been strongly verified recently. To manage your passkeys, confirm it's you below."
 msgstr ""
 
 #: passkeys/install.py:432
@@ -1480,8 +2160,32 @@ msgstr ""
 msgid "This site's address isn't covered by the RP ID {0}, so no passkey can sign in here and passkey requirements are paused."
 msgstr ""
 
+#: passkeys/public/js/passkey_site_alert.bundle.js:24
+#, python-brace-format
+msgid "This site's address {0} isn't covered by the RP ID {1}. Passkeys work only at: {2}."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:171
+#, python-brace-format
+msgid "This unsaved change would require a passkey from {0} user(s) who do not have one yet."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:200
+#: passkeys/public/js/passkey_manage_common.bundle.js:81
+msgid "This user has no passkeys."
+msgstr ""
+
 #: passkeys/confirm.py:442 passkeys/passkey.py:238
 msgid "Too many attempts. Please try again later."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:996
+msgid "Too many attempts. Try again later."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:396
+#: passkeys/public/js/passkey_login.bundle.js:584
+msgid "Too many attempts. Wait a moment, then try again."
 msgstr ""
 
 #. Label of the transports (Small Text) field in DocType 'WebAuthn Credential'
@@ -1495,12 +2199,30 @@ msgstr ""
 msgid "Trusted App Origins"
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:108
+msgid "Try passkey setup again"
+msgstr ""
+
 #: passkeys/posture.py:123
 msgid "Turn off 'Allow OTP Fallback for Passkey Second Factor' to require the passkey leg for enrolled users."
 msgstr ""
 
 #: passkeys/posture.py:215
 msgid "Turn off 'Login with email link' in System Settings."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:128
+msgid "Turn off password sign-in for your account. Needs at least two passkeys so a lost device never locks you out."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:152
+#: passkeys/public/js/passkey_portal.bundle.js:248
+msgid "Turn off passwordless login"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:149
+#: passkeys/public/js/passkey_portal.bundle.js:244
+msgid "Turn off passwordless login?"
 msgstr ""
 
 #: passkeys/posture.py:105
@@ -1517,6 +2239,25 @@ msgstr ""
 
 #: passkeys/posture.py:74
 msgid "Turn on 'Login with Passkey' or 'Passkey as Second Factor' above to start."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:152
+#: passkeys/public/js/passkey_portal.bundle.js:248
+msgid "Turn on passwordless login"
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:149
+#: passkeys/public/js/passkey_portal.bundle.js:244
+msgid "Turn on passwordless login?"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:147
+msgid "Turning off change notifications removes the main safeguard against a hijacked session silently adding a passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_desk.bundle.js:146
+#: passkeys/public/js/passkey_portal.bundle.js:246
+msgid "Turning on passwordless login means you will not be able to log in with a password — only a passkey. Keep at least two passkeys so a lost device never locks you out."
 msgstr ""
 
 #: passkeys/posture.py:187
@@ -1551,6 +2292,10 @@ msgstr ""
 msgid "Unknown nudge event."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:51
+msgid "Unknown provider"
+msgstr ""
+
 #: passkeys/api/registration.py:32
 msgid "Unknown registration flow."
 msgstr ""
@@ -1559,10 +2304,23 @@ msgstr ""
 msgid "Unsupported passkey algorithm."
 msgstr ""
 
+#: passkeys/public/js/passkey_login.bundle.js:525
+msgid "Use a passkey"
+msgstr ""
+
 #. Description of the 'Passkey as Second Factor' (Check) field in DocType
 #. 'Passkey Settings'
 #: passkeys/passkeys/doctype/passkey_settings/passkey_settings.json:71
 msgid "Use a passkey as the second factor after password login; requires Two Factor Authentication to be enabled in System Settings"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:473
+#: passkeys/public/js/passkey_login.bundle.js:477
+msgid "Use a verification code"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:526
+msgid "Use a verification code instead"
 msgstr ""
 
 #: passkeys/posture.py:290
@@ -1571,6 +2329,15 @@ msgstr ""
 
 #: passkeys/confirm.py:436
 msgid "Use your passkey to confirm — password re-authentication is disabled for this account."
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:523
+msgid "Use your passkey to finish signing in."
+msgstr ""
+
+#: passkeys/public/js/passkey_confirm.bundle.js:150
+#: passkeys/public/js/passkey_portal.bundle.js:135
+msgid "Use your password instead"
 msgstr ""
 
 #. Label of the user (Link) field in DocType 'WebAuthn Credential'
@@ -1596,12 +2363,55 @@ msgstr ""
 msgid "Users outside the scope: a dismissible enrollment prompt (capped below), or nothing."
 msgstr ""
 
+#: passkeys/public/js/passkey_login.bundle.js:712
+msgid "Verifying took too long. Try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:445
+msgid "Verifying your signature…"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:437
+#: passkeys/public/js/passkey_login.bundle.js:696
+msgid "Verifying…"
+msgstr ""
+
 #: passkeys/public/js/passkey_settings.js:392
 msgid "View recommendations"
 msgstr ""
 
 #: passkeys/public/js/passkey_settings.js:392
 msgid "View report"
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:444
+msgid "Waiting for your device…"
+msgstr ""
+
+#: passkeys/public/js/passkey_login.bundle.js:549
+#: passkeys/public/js/passkey_login.bundle.js:555
+msgid "Waiting for your passkey."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:957
+msgid "Waiting for your passkey…"
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:1050
+msgid "We confirmed it's you, but the action still didn't go through — please try again."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:172
+msgid "We couldn't count who will be affected. Check the user list before saving."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:107
+msgid "We've let your administrator know. Please contact them to finish signing in."
+msgstr ""
+
+#: passkeys/public/js/passkey_site_alert.bundle.js:22
+#, python-brace-format
+msgid "Web sign-in on this site has no passkey path: its address {0} isn't covered by the RP ID {1}. Only the mobile app can use passkeys, and passkey requirements still apply."
 msgstr ""
 
 #. Name of a DocType
@@ -1655,12 +2465,25 @@ msgstr ""
 msgid "You have reached the maximum of {0} passkeys."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:97
+msgid "You just signed in from another device. Add a passkey here to sign in directly next time."
+msgstr ""
+
 #: passkeys/notifications.py:267
 msgid "You may need to sign in again."
 msgstr ""
 
 #: passkeys/notifications.py:126
 msgid "You signed in with a one-time code instead of your passkey"
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:65
+#, python-brace-format
+msgid "You won't be able to sign in with {0} after this."
+msgstr ""
+
+#: passkeys/public/js/passkey_common.bundle.js:450
+msgid "You're in — taking you through…"
 msgstr ""
 
 #: passkeys/request_security.py:31 passkeys/state.py:216
@@ -1677,9 +2500,21 @@ msgstr ""
 msgid "Your browser saved a passkey “{0}” for your account on {1}{2} after you signed in with your password. Next time you can sign in with it. If you didn't just sign in, remove it on your My Passkeys page{3} and change your password."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:102
+msgid "Your organization requires a passkey to keep signing in. It only takes a moment — use your fingerprint, face, screen lock, or a security key."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:66
+msgid "Your other devices will be signed out. This one stays signed in."
+msgstr ""
+
 #: passkeys/notifications.py:106
 #, python-brace-format
 msgid "Your passkey “{0}” was flagged after a sign-in on {1}: it may have been copied. If you don't recognize a recent sign-in, remove this passkey on your My Passkeys page{2} and contact your administrator."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:71
+msgid "Your passkeys were made for another address and don't work on this site."
 msgstr ""
 
 #: passkeys/posture.py:197
@@ -1813,6 +2648,11 @@ msgstr ""
 msgid "{0} is not a passkeys credential export."
 msgstr ""
 
+#: passkeys/public/js/passkey_manage_common.bundle.js:121
+#, python-brace-format
+msgid "{0} is now exempt from passkey enforcement."
+msgstr ""
+
 #: passkeys/notifications.py:155
 #, python-brace-format
 msgid "{0} is required to register a passkey to keep signing in, but reports that their device cannot create one. Consider granting this user an exemption from the Passkeys section of their User form, resetting their grace budget, or issuing a hardware security key."
@@ -1841,5 +2681,10 @@ msgstr ""
 #: passkeys/install.py:440
 #, python-brace-format
 msgid "{0} uses an unsupported passkeys export version."
+msgstr ""
+
+#: passkeys/public/js/passkey_manage_common.bundle.js:74
+#, python-brace-format
+msgid "{0} was made for another address and doesn't work on this site."
 msgstr ""
 

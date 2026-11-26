@@ -62,6 +62,9 @@
 		rename_failed: true,
 	};
 
+	// Marks an error message for the translation template; err() translates it.
+	function N_(source) { return source; }
+
 	// deps: common (passkey_common), post, getAssertion, createCredential (the passkey_common
 	// signatures), capabilities(), getConfirm() / getCall() (the confirm engine or null),
 	// manageMethods (MANAGE_METHODS), signalCredentialState(data), translate.
@@ -198,7 +201,7 @@
 					var confirm = getConfirm();
 					if (typeof confirm !== "function") {
 						throw err("confirmation_unavailable",
-							"This needs a fresh confirmation, but no confirmation engine is configured. See docs/custom-ui.md.");
+							N_("This needs a fresh confirmation, but no confirmation engine is configured. See docs/custom-ui.md."));
 					}
 					return confirm(MANAGE_ACTION).then(function () { return beginRegistration(flow, true); });
 				}
@@ -209,28 +212,28 @@
 		function mapCreateError(e) {
 			if (e && e.code && REG_CODES[e.code]) return e;
 			var name = e && (e.name || e.code);
-			if (name === "InvalidStateError") return err("already_registered", "This device already has a passkey for this account.");
-			if (name === "NotAllowedError" || name === "AbortError") return err("user_cancelled", "Passkey creation was cancelled.");
-			if (name === "NotSupportedError" || name === "SecurityError") return err("not_supported", "This browser can't create passkeys.");
-			return err("add_failed", "Couldn't add a passkey — please try again.");
+			if (name === "InvalidStateError") return err("already_registered", N_("This device already has a passkey for this account."));
+			if (name === "NotAllowedError" || name === "AbortError") return err("user_cancelled", N_("Passkey creation was cancelled."));
+			if (name === "NotSupportedError" || name === "SecurityError") return err("not_supported", N_("This browser can't create passkeys."));
+			return err("add_failed", N_("Couldn't add a passkey — please try again."));
 		}
 		function mapVerifyError(res) {
 			var exc = res && res.body && res.body.exc_type;
 			if (C.mapServerExcType(exc) === "ceremony_expired") return err("add_expired", C.CEREMONY_EXPIRED_MESSAGE);
-			return err("add_failed", C.serverMessages(res && res.body) || "Couldn't add a passkey — please try again.");
+			return err("add_failed", C.serverMessages(res && res.body) || N_("Couldn't add a passkey — please try again."));
 		}
 
 		// -------------------------------------------------------- management
 		function listCredentials() {
 			return post(MM.list, {}, {}).then(function (res) {
-				if (!res || !res.ok) throw err("list_failed", "Couldn't load your passkeys.");
+				if (!res || !res.ok) throw err("list_failed", N_("Couldn't load your passkeys."));
 				return unwrap(res.body) || { credentials: [], passkey_only_login: 0 };
 			});
 		}
 
 		function renameCredential(name, label) {
 			return post(MM.rename, { name: name, label: label }, {}).then(function (res) {
-				if (!res || !res.ok) throw err("rename_failed", C.serverMessages(res && res.body) || "Couldn't rename the passkey.");
+				if (!res || !res.ok) throw err("rename_failed", C.serverMessages(res && res.body) || N_("Couldn't rename the passkey."));
 				return unwrap(res.body) || {};
 			});
 		}
@@ -241,7 +244,7 @@
 			var call = getCall();
 			if (typeof call !== "function") {
 				return Promise.reject(err("confirmation_unavailable",
-					"Removing a passkey needs a confirmation engine. See docs/custom-ui.md."));
+					N_("Removing a passkey needs a confirmation engine. See docs/custom-ui.md.")));
 			}
 			return call(MM.del, { name: name }).then(function (result) {
 				return post(MM.getSignalData, {}, {}).then(function (res) {
@@ -258,7 +261,7 @@
 			var call = getCall();
 			if (typeof call !== "function") {
 				return Promise.reject(err("confirmation_unavailable",
-					"Changing passwordless login needs a confirmation engine. See docs/custom-ui.md."));
+					N_("Changing passwordless login needs a confirmation engine. See docs/custom-ui.md.")));
 			}
 			return call(MM.setPasskeyOnly, { enabled: !!enabled });
 		}
@@ -268,7 +271,7 @@
 			var c = getConfirm();
 			if (typeof c !== "function") {
 				return Promise.reject(err("confirmation_unavailable",
-					"No confirmation engine is configured. See docs/custom-ui.md."));
+					N_("No confirmation engine is configured. See docs/custom-ui.md.")));
 			}
 			return c(action, params);
 		}
@@ -276,7 +279,7 @@
 			var c = getCall();
 			if (typeof c !== "function") {
 				return Promise.reject(err("confirmation_unavailable",
-					"No confirmation engine is configured. See docs/custom-ui.md."));
+					N_("No confirmation engine is configured. See docs/custom-ui.md.")));
 			}
 			return c(method, args);
 		}

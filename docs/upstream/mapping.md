@@ -42,7 +42,7 @@ Use four outcomes during that review:
 | `shims/login_page.py`, `shims/portal_nudge.py` | Replace with native render/boot integration | Delete only after native surfaces are tested with the app still installed. |
 | `/passkeys` page and User-form integration | Core User/security UX | Decide the canonical surface, permissions, portal behavior, and redirect compatibility. |
 | AAGUID snapshot/loader | Optional display data | Keep display-only and non-authoritative; record any vendored snapshot as a dated artifact. |
-| Translations | Core translation pipeline | Verify guest login delivery and every new confirmation display label. |
+| Translations | Core translation pipeline | Verify guest login delivery and every new confirmation display label. Core's JS extractor reads only `__()`: port the bundles' `t()`, `tr()` and `N_()` (read by the app's `babel_extractors.csv`) to a form it extracts. |
 
 ## App lifecycle after native release
 

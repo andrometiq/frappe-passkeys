@@ -2,29 +2,32 @@
 (function (root) {
 	"use strict";
 
+	// Marks alert text for the translation template; render() translates it.
+	function N_(source) { return source; }
+
 	function rpAlertDecision(alert) {
 		if (!alert || !alert.reason) return null;
 		var message;
 		var args = [alert.site_host, alert.rp_id];
 		if (alert.reason === "no_rp_id") {
-			message = "Passkeys are off on this site: no RP ID resolves. Passkey requirements are paused. Set host_name in site config or a Passkey RP ID.";
+			message = N_("Passkeys are off on this site: no RP ID resolves. Passkey requirements are paused. Set host_name in site config or a Passkey RP ID.");
 			args = [];
 		} else if (alert.reason === "no_valid_origins") {
-			message = "Passkeys are off on this site: none of its origins is inside the RP ID {0}. Passkey requirements are paused until this is fixed.";
+			message = N_("Passkeys are off on this site: none of its origins is inside the RP ID {0}. Passkey requirements are paused until this is fixed.");
 			args = [alert.rp_id];
 		} else if (alert.reason === "host_outside_rp") {
 			if (alert.status === "off") {
-				message = "Passkeys are off on this site: its address {0} isn't covered by the RP ID {1}. Passkey requirements are paused until this is fixed.";
+				message = N_("Passkeys are off on this site: its address {0} isn't covered by the RP ID {1}. Passkey requirements are paused until this is fixed.");
 			} else if (alert.status === "app_only") {
-				message = "Web sign-in on this site has no passkey path: its address {0} isn't covered by the RP ID {1}. Only the mobile app can use passkeys, and passkey requirements still apply.";
+				message = N_("Web sign-in on this site has no passkey path: its address {0} isn't covered by the RP ID {1}. Only the mobile app can use passkeys, and passkey requirements still apply.");
 			} else if (alert.status === "web_works") {
-				message = "This site's address {0} isn't covered by the RP ID {1}. Passkeys work only at: {2}.";
+				message = N_("This site's address {0} isn't covered by the RP ID {1}. Passkeys work only at: {2}.");
 				args.push((alert.working_origins || []).join(", "));
 			}
 		}
 		if (!message) return null;
 		return { message: message, args: args, suggestion: alert.suggested_rp_id,
-			action: alert.reason === "no_rp_id" ? "Open Passkey Settings" : "Fix in Passkey Settings" };
+			action: alert.reason === "no_rp_id" ? N_("Open Passkey Settings") : N_("Fix in Passkey Settings") };
 	}
 
 	if (typeof module === "object" && module.exports) module.exports = { rpAlertDecision: rpAlertDecision };

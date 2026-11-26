@@ -19,6 +19,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ### Fixed
 
+- The translation template (`passkeys/locale/main.pot`) now has the screen text of the sign-in page,
+  the `/passkeys` page, the Desk passkey cards, prompts and RP alert, the Passkey Settings banners
+  and the confirmation dialogs: 189 more strings, so translators can translate them. Before, it had
+  only the server-side strings and a few from Passkey Settings.
 - When a passkey you remove can't sign out every session on the account, you now see the warning
   that some sessions may still be signed in: Desk shows it as Frappe's orange message, the
   `/passkeys` page in a dialog. Before, the passkey list just updated.

@@ -22,6 +22,9 @@
 		return str;
 	}
 
+	// Marks table text for the translation template; t() translates it when it is shown.
+	function N_(source) { return source; }
+
 	// Merge, never clobber: frappe._messages already holds Web-Form strings on v15/v16 and
 	// the full core catalog on develop.
 	function mergeAppTranslations(frappeRef, catalog) {
@@ -305,27 +308,27 @@
 		var name = err && (err.name || err.code);
 		switch (name) {
 			case "NotAllowedError": // cancel and timeout are indistinguishable by design
-				return { code: "user_cancelled", messageKey: "Couldn't use a passkey — sign in another way." };
+				return { code: "user_cancelled", messageKey: N_("Couldn't use a passkey — sign in another way.") };
 			case "AbortError":
-				return { code: "user_cancelled", messageKey: "Passkey sign-in was cancelled." };
+				return { code: "user_cancelled", messageKey: N_("Passkey sign-in was cancelled.") };
 			case "InvalidStateError":
-				return { code: "confirmation_failed", messageKey: "That passkey can't be used here." };
+				return { code: "confirmation_failed", messageKey: N_("That passkey can't be used here.") };
 			case "SecurityError":
-				return { code: "not_supported", messageKey: "Passkeys aren't available on this page." };
+				return { code: "not_supported", messageKey: N_("Passkeys aren't available on this page.") };
 			case "NotSupportedError":
-				return { code: "not_supported", messageKey: "Passkeys aren't supported on this device." };
+				return { code: "not_supported", messageKey: N_("Passkeys aren't supported on this device.") };
 			case "ConstraintError":
-				return { code: "no_credentials", messageKey: "No usable passkey was found." };
+				return { code: "no_credentials", messageKey: N_("No usable passkey was found.") };
 			case "UnknownError":
-				return { code: "confirmation_failed", messageKey: "Couldn't complete passkey sign-in." };
+				return { code: "confirmation_failed", messageKey: N_("Couldn't complete passkey sign-in.") };
 			default:
-				return { code: "network", messageKey: "Couldn't reach the passkey service — try again." };
+				return { code: "network", messageKey: N_("Couldn't reach the passkey service — try again.") };
 		}
 	}
 
 	// Map a server typed error (exc_type — the class name is the wire value) to a
 	// client action. Clients match on exc_type ONLY, never on message text.
-	var CEREMONY_EXPIRED_MESSAGE = "That took too long — please try again.";
+	var CEREMONY_EXPIRED_MESSAGE = N_("That took too long — please try again.");
 	function mapServerExcType(excType) {
 		switch (excType) {
 			case "CeremonyExpired":
@@ -438,28 +441,28 @@
 	// sighted and screen-reader users get the same message. Every error names a way out.
 	var LOGIN_STATES = {
 		idle: { text: "", tone: "idle", visible: false, terminal: false },
-		waiting: { text: "Waiting for your device…", tone: "progress", visible: true, terminal: false },
-		verifying: { text: "Verifying your signature…", tone: "progress", visible: true, terminal: false },
+		waiting: { text: N_("Waiting for your device…"), tone: "progress", visible: true, terminal: false },
+		verifying: { text: N_("Verifying your signature…"), tone: "progress", visible: true, terminal: false },
 		verifying_slow: {
-			text: "Still verifying — this can take a moment on a slow connection.",
+			text: N_("Still verifying — this can take a moment on a slow connection."),
 			tone: "progress", visible: true, terminal: false,
 		},
-		success: { text: "You're in — taking you through…", tone: "success", visible: true, terminal: true },
+		success: { text: N_("You're in — taking you through…"), tone: "success", visible: true, terminal: true },
 		cancelled: {
-			text: "No passkey was used — you can try again or sign in another way.",
+			text: N_("No passkey was used — you can try again or sign in another way."),
 			tone: "error", visible: true, terminal: true,
 		},
 		// Enumeration-safe: "didn't work here", never "isn't registered".
 		removed: {
-			text: "That passkey didn't work here — it may have been removed. Sign in another way.",
+			text: N_("That passkey didn't work here — it may have been removed. Sign in another way."),
 			tone: "error", visible: true, terminal: true,
 		},
-		stale: { text: "This passkey was made for another address and doesn't work on this site.", tone: "error", visible: true, terminal: true },
+		stale: { text: N_("This passkey was made for another address and doesn't work on this site."), tone: "error", visible: true, terminal: true },
 		unsupported: {
-			text: "This device can't use passkeys yet — sign in with your password instead.",
+			text: N_("This device can't use passkeys yet — sign in with your password instead."),
 			tone: "error", visible: true, terminal: true,
 		},
-		failed: { text: "Couldn't use a passkey — sign in another way.", tone: "error", visible: true, terminal: true },
+		failed: { text: N_("Couldn't use a passkey — sign in another way."), tone: "error", visible: true, terminal: true },
 	};
 
 	// Legal transitions; an out-of-order call stays put, so a late error can never
@@ -695,15 +698,15 @@
 	}
 
 	var CONFIRM_ACTION_LABELS = {
-		"passkeys.manage": "Manage passkeys",
-		"passkeys.set_passkey_only_login": "Change passkey-only login",
+		"passkeys.manage": N_("Manage passkeys"),
+		"passkeys.set_passkey_only_login": N_("Change passkey-only login"),
 	};
 
 	function confirmationActionContext(action, serverLabel, serverSummary) {
 		var fromServer = typeof serverLabel === "string" && !!serverLabel.trim();
 		var label = fromServer ? serverLabel.trim() : (CONFIRM_ACTION_LABELS[action] || humanizeAction(action));
 		return {
-			label: label || "Confirm action",
+			label: label || N_("Confirm action"),
 			labelFromServer: fromServer,
 			summary: normalizeConfirmationSummary(serverSummary),
 		};
@@ -838,12 +841,12 @@
 			return post(CONFIRM_METHODS.begin, beginBody, {}).then(function (res) {
 				if (!res || !res.ok) {
 					var parsed = res && parseConfirmationRequired(res.body);
-					if (res && res.status === 417) return reject(CONFIRM_CODES.NOT_SUPPORTED, "Passkey confirmation isn't available here.");
-					if (parsed) return reject(CONFIRM_CODES.CONFIRMATION_FAILED, "Couldn't start confirmation.");
+					if (res && res.status === 417) return reject(CONFIRM_CODES.NOT_SUPPORTED, N_("Passkey confirmation isn't available here."));
+					if (parsed) return reject(CONFIRM_CODES.CONFIRMATION_FAILED, N_("Couldn't start confirmation."));
 					// A server that answered and refused (e.g. an impersonated session) says why.
 					var refused = res && serverMessages(res.body);
 					if (refused) return Promise.reject(new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, refused));
-					return reject(CONFIRM_CODES.NETWORK, "Couldn't reach the confirmation service — try again.");
+					return reject(CONFIRM_CODES.NETWORK, N_("Couldn't reach the confirmation service — try again."));
 				}
 				var begin = unwrapMessage(res.body) || {};
 				var stateId = begin.state_id;
@@ -866,8 +869,8 @@
 				);
 				if (!caps.passkey && !caps.password) {
 					return reject(CONFIRM_CODES.FALLBACK_UNAVAILABLE,
-						"This needs you to confirm it's you, but this sign-in can't be confirmed " +
-						"with a passkey or password. Sign in again with your password or a passkey, then try again.");
+						N_("This needs you to confirm it's you, but this sign-in can't be confirmed " +
+						"with a passkey or password. Sign in again with your password or a passkey, then try again."));
 				}
 				var controller = ui();
 				var stop = cancellation();
@@ -902,7 +905,7 @@
 						throw err;
 					});
 			}, function () {
-				return reject(CONFIRM_CODES.NETWORK, "Couldn't reach the confirmation service — try again.");
+				return reject(CONFIRM_CODES.NETWORK, N_("Couldn't reach the confirmation service — try again."));
 			});
 		}
 

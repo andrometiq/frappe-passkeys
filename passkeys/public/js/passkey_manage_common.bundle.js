@@ -44,131 +44,132 @@
 
 	var QUICKSTART_URL = "https://andrometiq.github.io/frappe-passkeys/quickstart.html";
 
-	// English source strings; the renderer translates them.
+	// English source strings; N_() marks them for the translation template, the renderer translates them.
+	function N_(source) { return source; }
 	var COPY = {
 		// cards / empty state
-		unknownProvider: "Unknown provider",
-		syncedBadge: "Synced",
-		deviceBoundBadge: "This device only",
-		syncedHint: "Available on your other devices",
-		deviceBoundHint: "Can't sync to your other devices",
-		emptyTitle: "Create a passkey",
+		unknownProvider: N_("Unknown provider"),
+		syncedBadge: N_("Synced"),
+		deviceBoundBadge: N_("This device only"),
+		syncedHint: N_("Available on your other devices"),
+		deviceBoundHint: N_("Can't sync to your other devices"),
+		emptyTitle: N_("Create a passkey"),
 		emptyBody:
-			"A passkey lets you sign in with your fingerprint, face, screen lock, or a " +
-			"security key — no password to remember or type.",
-		addButton: "Add a passkey",
-		renameAction: "Rename passkey {0}",
-		deleteAction: "Delete passkey {0}",
-		renamePrompt: "New name for this passkey",
-		deleteConfirmTitle: "Remove this passkey?",
-		deleteConfirmBody: "You won't be able to sign in with {0} after this.",
-		deleteConfirmSignOut: "Your other devices will be signed out. This one stays signed in.",
-		deleteConfirmCta: "Remove passkey",
-		flaggedNote: "This passkey was flagged: it may have been copied.",
-		flaggedRemoveHint: "If you don't recognize a recent sign-in, remove it.",
-		staleNote: "Made for {0}, doesn't work on this site",
-		staleNudgeBody: "Your passkeys were made for another address and don't work on this site.",
-		staleNudgeCta: "Add a passkey for this site",
-		siteOffNotice: "Passkeys don't work on this site right now. Ask your administrator to check the passkey settings.",
-		deleteStaleConfirmBody: "{0} was made for another address and doesn't work on this site.",
-		disabledBadge: "Disabled",
-		createdLabel: "Added",
-		lastUsedLabel: "Last used",
-		lastUsedNever: "Never used yet",
+			N_("A passkey lets you sign in with your fingerprint, face, screen lock, or a " +
+			"security key — no password to remember or type."),
+		addButton: N_("Add a passkey"),
+		renameAction: N_("Rename passkey {0}"),
+		deleteAction: N_("Delete passkey {0}"),
+		renamePrompt: N_("New name for this passkey"),
+		deleteConfirmTitle: N_("Remove this passkey?"),
+		deleteConfirmBody: N_("You won't be able to sign in with {0} after this."),
+		deleteConfirmSignOut: N_("Your other devices will be signed out. This one stays signed in."),
+		deleteConfirmCta: N_("Remove passkey"),
+		flaggedNote: N_("This passkey was flagged: it may have been copied."),
+		flaggedRemoveHint: N_("If you don't recognize a recent sign-in, remove it."),
+		staleNote: N_("Made for {0}, doesn't work on this site"),
+		staleNudgeBody: N_("Your passkeys were made for another address and don't work on this site."),
+		staleNudgeCta: N_("Add a passkey for this site"),
+		siteOffNotice: N_("Passkeys don't work on this site right now. Ask your administrator to check the passkey settings."),
+		deleteStaleConfirmBody: N_("{0} was made for another address and doesn't work on this site."),
+		disabledBadge: N_("Disabled"),
+		createdLabel: N_("Added"),
+		lastUsedLabel: N_("Last used"),
+		lastUsedNever: N_("Never used yet"),
 		// a session impersonating the user (core's Impersonate) sees the cards read-only
-		impersonatedNotice: "Passkeys are read-only while you impersonate this user.",
-		impersonatedEmpty: "This user has no passkeys.",
+		impersonatedNotice: N_("Passkeys are read-only while you impersonate this user."),
+		impersonatedEmpty: N_("This user has no passkeys."),
 		// friendly ceremony errors
-		alreadyRegistered: "This device already has a passkey for this account.",
-		addExpired: "That took too long — please try again.",
-		addFailed: "Couldn't add a passkey — please try again.",
+		alreadyRegistered: N_("This device already has a passkey for this account."),
+		addExpired: N_("That took too long — please try again."),
+		addFailed: N_("Couldn't add a passkey — please try again."),
 		// nudge
-		nudgeTitle: "Sign in faster next time",
+		nudgeTitle: N_("Sign in faster next time"),
 		nudgeBody:
-			"Add a passkey and skip the password next time — sign in with your fingerprint, " +
-			"face, or screen lock instead.",
-		nudgeCta: "Create a passkey",
-		nudgeLater: "Not now",
-		nudgeNever: "Don't ask again",
-		nudgeSaveFailed: "Couldn't save your choice — please try again.",
-		upsellTitle: "Add a passkey to this device",
+			N_("Add a passkey and skip the password next time — sign in with your fingerprint, " +
+			"face, or screen lock instead."),
+		nudgeCta: N_("Create a passkey"),
+		nudgeLater: N_("Not now"),
+		nudgeNever: N_("Don't ask again"),
+		nudgeSaveFailed: N_("Couldn't save your choice — please try again."),
+		upsellTitle: N_("Add a passkey to this device"),
 		upsellBody:
-			"You just signed in from another device. Add a passkey here to sign in " +
-			"directly next time.",
+			N_("You just signed in from another device. Add a passkey here to sign in " +
+			"directly next time."),
 		// enforcement interstitial (guilt-free copy, per the FIDO no-dark-patterns guidance)
-		enforceTitle: "Set up a passkey to continue",
+		enforceTitle: N_("Set up a passkey to continue"),
 		enforceBody:
-			"Your organization requires a passkey to keep signing in. It only takes a " +
-			"moment — use your fingerprint, face, screen lock, or a security key.",
-		enforceRemindLater: "Remind me later (sign-ins left: {0})",
-		enforceCantSetUp: "I can't set one up here",
+			N_("Your organization requires a passkey to keep signing in. It only takes a " +
+			"moment — use your fingerprint, face, screen lock, or a security key."),
+		enforceRemindLater: N_("Remind me later (sign-ins left: {0})"),
+		enforceCantSetUp: N_("I can't set one up here"),
 		enforceBlockedNotice:
-			"We've let your administrator know. Please contact them to finish signing in.",
-		enforceRetry: "Try passkey setup again",
-		enforceSignOut: "Sign out",
-		enforceContactAdmin: "Contact administrator",
+			N_("We've let your administrator know. Please contact them to finish signing in."),
+		enforceRetry: N_("Try passkey setup again"),
+		enforceSignOut: N_("Sign out"),
+		enforceContactAdmin: N_("Contact administrator"),
 		// admin enforcement-recovery (User-form Passkeys section, System-Manager-only)
-		enforceAdminHeading: "Passkey enrollment enforcement",
-		enforceAdminExempt: "Exempt from passkey enforcement",
-		enforceAdminUnexempt: "Remove enforcement exemption",
-		enforceAdminReset: "Reset grace logins",
-		enforceAdminGrace: "Grace logins used: {0} of {1} ({2} remaining).",
-		enforceAdminStateExempt: "Exempt from enforcement",
-		enforceAdminStateEnforced: "In scope — must enroll a passkey",
-		enforceAdminStateSatisfied: "In scope — already has a passkey",
-		enforceAdminStateNotScope: "Not in enforcement scope",
-		enforceAdminExemptDone: "{0} is now exempt from passkey enforcement.",
-		enforceAdminUnexemptDone: "Exemption removed — {0} is enforced again.",
-		enforceAdminResetDone: "Grace reset — {0} sign-ins to enroll before it blocks.",
-		enforceAdminFailed: "Couldn't update enforcement for this user — please try again.",
+		enforceAdminHeading: N_("Passkey enrollment enforcement"),
+		enforceAdminExempt: N_("Exempt from passkey enforcement"),
+		enforceAdminUnexempt: N_("Remove enforcement exemption"),
+		enforceAdminReset: N_("Reset grace logins"),
+		enforceAdminGrace: N_("Grace logins used: {0} of {1} ({2} remaining)."),
+		enforceAdminStateExempt: N_("Exempt from enforcement"),
+		enforceAdminStateEnforced: N_("In scope — must enroll a passkey"),
+		enforceAdminStateSatisfied: N_("In scope — already has a passkey"),
+		enforceAdminStateNotScope: N_("Not in enforcement scope"),
+		enforceAdminExemptDone: N_("{0} is now exempt from passkey enforcement."),
+		enforceAdminUnexemptDone: N_("Exemption removed — {0} is enforced again."),
+		enforceAdminResetDone: N_("Grace reset — {0} sign-ins to enroll before it blocks."),
+		enforceAdminFailed: N_("Couldn't update enforcement for this user — please try again."),
 		// passkey-only switch
-		passkeyOnlyLabel: "Passwordless login only",
+		passkeyOnlyLabel: N_("Passwordless login only"),
 		passkeyOnlyHelp:
-			"Turn off password sign-in for your account. Needs at least two passkeys so a " +
-			"lost device never locks you out.",
+			N_("Turn off password sign-in for your account. Needs at least two passkeys so a " +
+			"lost device never locks you out."),
 		passkeyOnlyNeedsTwo:
-			"Add at least two passkeys that work on this site before turning off password sign-in.",
+			N_("Add at least two passkeys that work on this site before turning off password sign-in."),
 		// settings banners — keyed; args filled by the matrix
 		rpIdOneWayDoor:
-			"Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back.",
+			N_("Changing the RP ID invalidates every existing passkey made for the current RP ID: they stop working on this site until it is changed back."),
 		rpIdUnresolved:
-			"No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in " +
+			N_("No Relying Party ID can be resolved, so passkeys cannot be enabled and sign-in " +
 			"will fail. Fix it one of two ways: set host_name in the site config " +
 			"(site_config.json) to this site's domain, or enter a bare host name like {0} in " +
 			"Passkey RP ID on the Relying Party tab. If you just set host_name, wait a minute and " +
-			"save again.",
+			"save again."),
 		hostMismatch:
-			"The resolved RP ID / origins do not match this site's current host — passkey " +
-			"sign-in will fail here until this is corrected.",
+			N_("The resolved RP ID / origins do not match this site's current host — passkey " +
+			"sign-in will fail here until this is corrected."),
 		twofaRequiresCore:
-			"Passkey second factor needs core two-factor authentication enabled first.",
+			N_("Passkey second factor needs core two-factor authentication enabled first."),
 		notifyOffWeakens:
-			"Turning off change notifications removes the main safeguard against a hijacked " +
-			"session silently adding a passkey.",
+			N_("Turning off change notifications removes the main safeguard against a hijacked " +
+			"session silently adding a passkey."),
 		deadTwofaCombo:
-			"Password login is disabled site-wide, so passkey second factor can never run for " +
-			"password logins.",
+			N_("Password login is disabled site-wide, so passkey second factor can never run for " +
+			"password logins."),
 		strandsPasskeyOnlyUsers:
-			"This change would leave {0} passwordless-only user(s) with no way to sign in. " +
-			"Clear their passwordless-only flag first.",
-		allModesOff: "Passkeys are off. To turn them on, follow the {0}.",
-		quickstartLink: "Quickstart",
+			N_("This change would leave {0} passwordless-only user(s) with no way to sign in. " +
+			"Clear their passwordless-only flag first."),
+		allModesOff: N_("Passkeys are off. To turn them on, follow the {0}."),
+		quickstartLink: N_("Quickstart"),
 		enforcePrivilegedOutside:
-			"Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
-			"the accounts attackers target first — industry practice enforces them first.",
+			N_("Privileged users (System Manager) are outside passkey enforcement. Administrators are " +
+			"the accounts attackers target first — industry practice enforces them first."),
 		enforceEmptyRoles:
-			"'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies " +
-			"to nobody. Add the roles to require, or switch to 'All users'.",
+			N_("'Require a passkey from' is 'Selected roles' but no roles are listed, so it applies " +
+			"to nobody. Add the roles to require, or switch to 'All users'."),
 		enforceBlockIncapable:
-			"'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create " +
-			"a passkey (and cannot use a phone) will be blocked rather than nudged.",
+			N_("'Device cannot create a passkey' is 'Block + Notify Admin': users on devices that cannot create " +
+			"a passkey (and cannot use a phone) will be blocked rather than nudged."),
 		enforcePreview:
-			"The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}.",
-		enforcePreviewPending: "Not counted yet",
-		enforceDraftCounting: "Counting who will be affected…",
+			N_("The saved policy would require a passkey from {0} in-scope user(s) who do not have one yet. Counted at {1}."),
+		enforcePreviewPending: N_("Not counted yet"),
+		enforceDraftCounting: N_("Counting who will be affected…"),
 		enforceDraftPreview:
-			"This unsaved change would require a passkey from {0} user(s) who do not have one yet.",
-		enforceDraftFailed: "We couldn't count who will be affected. Check the user list before saving.",
+			N_("This unsaved change would require a passkey from {0} user(s) who do not have one yet."),
+		enforceDraftFailed: N_("We couldn't count who will be affected. Check the user list before saving."),
 	};
 
 	// {0}/{1} placeholders; the caller translates first.

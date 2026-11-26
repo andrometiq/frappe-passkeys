@@ -131,8 +131,22 @@ If a line ever needs code that a feature check in `develop` cannot express, it s
 ## Translations
 
 `passkeys/locale/main.pot` lists the strings Frappe's extractor finds (literal `_()` and `__()`
-calls). Most screen text in `passkeys/public/js` is kept in tables and passed to `__()` by key, so
-it is not in the template yet. Regenerate it with `bench generate-pot-file --app passkeys`.
+calls). `babel_extractors.csv` sends `passkeys/public/js` through `passkeys/translation_extractor.py`,
+which also reads literal `t()` and `tr()` calls and `N_()`. In a bundle, pass screen text to
+`__()`/`t()` as a literal; wrap a table string that is translated later, by key, in `N_()`, which
+returns it unchanged.
+
+Regenerate the template whenever screen text changes, and commit it with the change. From the bench
+root:
+
+```bash
+bench generate-pot-file --app passkeys
+# When the bench links apps/passkeys to a checkout elsewhere (that command then fails):
+env/bin/python apps/passkeys/scripts/generate_pot.py
+```
+
+`test_translation_template` and `passkey_translation_template.test.js` fail when a bundle string is
+missing from the template.
 
 ## Commit messages
 
