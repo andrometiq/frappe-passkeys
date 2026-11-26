@@ -8,7 +8,8 @@
 // 401 retry + VERBATIM payload_fingerprint echo + grant-header attach,
 // params/payload_hash mutual exclusion, password-fallback leg, fallback_unavailable,
 // user-cancel mapping, DOMException mapping through the gesture, single-retry cap,
-// concurrent-invocation dialog sharing, and the opt-in passkey prompt opening with the dialog.
+// concurrent-invocation dialog sharing, the opt-in passkey prompt opening with the dialog, and
+// a close the controller reports through cancel(), before or after the pick.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -183,11 +184,13 @@ test("call(): protected-action display metadata survives an empty begin response
 	const ui = makeUI({ method: "passkey" });
 	const engine = C.createConfirmEngine({ post, runGesture: () => Promise.resolve(ASSERTION), ui });
 	await engine.call("myapp.api.release_payment", { payment_id: "PAY-7" });
-	assert.deepStrictEqual(ui.events.find((event) => event[0] === "choose")[1], {
+	const { cancel, ...choice } = ui.events.find((event) => event[0] === "choose")[1];
+	assert.deepStrictEqual(choice, {
 		action: "myapp.release_payment", actionLabel: "Release payment",
 		parameterSummary: [{ label: "Payment", value: "PAY-7" }],
 		canPasskey: true, canPassword: false,
 	});
+	assert.strictEqual(typeof cancel, "function");
 });
 
 test("call(): non-401 success passes through unwrapped, no confirmation", async () => {
@@ -386,7 +389,9 @@ test("without promptWithDialog no gesture starts before the pick", async () => {
 	assert.strictEqual(gestures.length, 0, "the prompt waits for the dialog's button");
 	ui.pick("passkey");
 	assert.strictEqual(await grant, "SHEET-GRANT");
-	assert.deepStrictEqual(gestures, [[REQ_OPTIONS]], "one gesture, with no second argument");
+	assert.strictEqual(gestures.length, 1, "one gesture");
+	assert.strictEqual(gestures[0][0], REQ_OPTIONS);
+	assert.ok(gestures[0][1].signal instanceof AbortSignal, "the picked gesture gets {signal} too");
 	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"], "busy comes before the gesture");
 });
 
@@ -541,6 +546,144 @@ test("promptWithDialog: closing the dialog while the prompt is open aborts it, a
 	sheet.resolve(ASSERTION);
 	await flush();
 	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"), "fail closed");
+});
+
+// After the pick, the dialog reports its close through chooseMethod's cancel().
+const closeDialog = (ui) => ui.events.find((e) => e[0] === "choose")[1].cancel();
+
+test("closing the dialog after a passkey pick aborts the prompt, sends no verify and rejects user_cancelled", async () => {
+	// [promptWithDialog, activation]: a plain pick, a pick with the option, a pick that joins the automatic prompt.
+	for (const [promptWithDialog, activation] of [[false, false], [true, false], [true, true]]) {
+		browser({ activation });
+		const post = makePost(sheetScript());
+		const ui = makeWaitingUI();
+		const sheet = deferred();
+		const signals = [];
+		// This gesture ignores its signal, so an assertion still arrives after the close.
+		const engine = C.createConfirmEngine({ post, runGesture: (o, opts) => { signals.push(opts.signal); return sheet.promise; }, ui: () => ui.controller, promptWithDialog });
+		const grant = engine.confirm("myapp.pay", { id: 1 });
+		await paint();
+		ui.pick("passkey");
+		await flush();
+		assert.strictEqual(signals.length, 1, "one prompt is open after the pick");
+		closeDialog(ui);
+		await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+		assert.strictEqual(signals[0].aborted, true, "the close aborted the prompt");
+		sheet.resolve(ASSERTION);
+		await flush();
+		assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"), "no verify after the close");
+		assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"]);
+		assert.deepStrictEqual(ui.events[3], ["done", false]);
+		closeDialog(ui); // a second close changes nothing
+		assert.strictEqual(ui.events.length, 4);
+	}
+});
+
+test("closing the dialog while the verify is in flight rejects user_cancelled at once, and the action never runs", async () => {
+	const late = [
+		{ ok: true, status: 200, body: { message: { grant: "LATE-GRANT" } } },
+		{ ok: false, status: 403, body: { exc_type: "ConfirmationFailed" } },
+	];
+	for (const verifyResult of late) {
+		browser({ activation: false });
+		const verify = deferred();
+		const post = makePost({
+			"myapp.api.pay": [
+				{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "myapp.pay", payload_fingerprint: "fp", methods: ["passkey"] } },
+				{ ok: true, status: 200, body: { message: "paid" } },
+			],
+			"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["passkey"] } } }],
+			"passkeys.confirm.verify_confirmation": [verify.promise],
+		});
+		const ui = makeWaitingUI();
+		const result = promptEngine(post, ui, () => Promise.resolve(ASSERTION)).call("myapp.api.pay", { id: 1 });
+		await paint();
+		ui.pick("passkey");
+		await flush();
+		assert.ok(post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"), "the assertion was sent");
+		closeDialog(ui);
+		await assert.rejects(result, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+		verify.resolve(verifyResult);
+		await flush();
+		assert.strictEqual(post.calls.filter((c) => c.method === "myapp.api.pay").length, 1, "the grant was never used");
+		assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "busy", "announce", "done"], "nothing is shown after the close");
+	}
+});
+
+test("a cancel before the pick: no prompt opens after it, and an automatic prompt that still finishes is not verified", async () => {
+	for (const cancelBeforePaint of [true, false]) {
+		browser();
+		const post = makePost(sheetScript());
+		const ui = makeWaitingUI();
+		const sheet = deferred();
+		let gestures = 0;
+		const grant = promptEngine(post, ui, () => { gestures += 1; return sheet.promise; }).confirm("myapp.pay", { id: 1 });
+		await flush();
+		if (cancelBeforePaint) closeDialog(ui);
+		await paint();
+		if (!cancelBeforePaint) closeDialog(ui);
+		await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+		assert.strictEqual(gestures, cancelBeforePaint ? 0 : 1);
+		sheet.resolve(ASSERTION);
+		await flush();
+		assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "done"], "no busy state after the close");
+		assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.verify_confirmation"));
+	}
+});
+
+test("a password that arrives after the close is never sent", async () => {
+	browser({ activation: false });
+	const post = makePost(sheetScript());
+	const ui = makeWaitingUI();
+	const typed = deferred();
+	ui.controller.collectPassword = () => typed.promise;
+	const grant = promptEngine(post, ui, () => Promise.resolve(ASSERTION)).confirm("myapp.pay", { id: 1 });
+	await paint();
+	ui.pick("password");
+	await flush();
+	closeDialog(ui);
+	await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+	typed.resolve("hunter2");
+	await flush();
+	assert.ok(!post.calls.some((c) => c.method === "passkeys.confirm.reauth_password"));
+});
+
+test("closing the dialog while a password is checked: no retry prompt after it, and no grant", async () => {
+	browser({ activation: false });
+	const reauth = deferred();
+	const post = makePost(sheetScript({ "passkeys.confirm.reauth_password": [reauth.promise] }));
+	const ui = makeWaitingUI();
+	const grant = promptEngine(post, ui, () => Promise.resolve(ASSERTION)).confirm("myapp.pay", { id: 1 });
+	await paint();
+	ui.pick("password");
+	await flush();
+	closeDialog(ui);
+	await assert.rejects(grant, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+	reauth.resolve({ ok: false, status: 401, body: {} });
+	await flush();
+	assert.deepStrictEqual(ui.events.map((e) => e[0]), ["choose", "password", "done"], "no password error and no second prompt");
+});
+
+test("a controller that never calls cancel works as before: a rejection cancels before the pick, and a pick confirms", async () => {
+	for (const promptWithDialog of [false, true]) {
+		browser({ activation: false });
+		const closed = makeWaitingUI();
+		const rejected = C.createConfirmEngine({ post: makePost(sheetScript()), runGesture: () => Promise.resolve(ASSERTION), ui: () => closed.controller, promptWithDialog }).confirm("myapp.pay", { id: 1 });
+		await paint();
+		closed.cancel();
+		await assert.rejects(rejected, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+		assert.deepStrictEqual(closed.events.map((e) => e[0]), ["choose", "done"]);
+
+		const picked = makeWaitingUI();
+		const signals = [];
+		const grant = C.createConfirmEngine({ post: makePost(sheetScript()), runGesture: (o, opts) => { signals.push(opts.signal); return Promise.resolve(ASSERTION); }, ui: () => picked.controller, promptWithDialog }).confirm("myapp.pay", { id: 1 });
+		await paint();
+		picked.pick("passkey");
+		assert.strictEqual(await grant, "SHEET-GRANT");
+		assert.strictEqual(signals[0].aborted, false);
+		assert.deepStrictEqual(picked.events.map((e) => e[0]), ["choose", "busy", "announce", "done"]);
+		assert.deepStrictEqual(picked.events[3], ["done", true]);
+	}
 });
 
 // ----------------------------------------------------- HTTP vs network (C11)

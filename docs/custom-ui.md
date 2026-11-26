@@ -302,14 +302,23 @@ Implement all six methods:
 
 | Method | Called when |
 |---|---|
-| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. With `promptWithDialog`, it may stay unsettled: the automatic prompt can finish first. |
+| `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword, cancel})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. Call `cancel()` when the user closes your dialog, before or after the pick (below). With `promptWithDialog`, it may stay unsettled: the automatic prompt can finish first. |
 | `collectPassword({action, actionLabel, parameterSummary})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. |
 | `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
 | `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
 | `busy(isBusy)` | A passkey is being verified, or a prompt the user picked is open. |
-| `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending. |
+| `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending; so may `done(false)` after `cancel()`. |
 
-With only password available, the engine goes straight to `collectPassword`.
+With only password available, the engine goes straight to `collectPassword`, so there is no
+`cancel()`: reject `collectPassword` to cancel.
+
+Call `cancel()` whenever the user closes your dialog (Esc, a close button, a route change), also
+after the pick. The engine then calls `done(false)`, rejects with `user_cancelled` at once and
+aborts the passkey prompt's `signal`. It sends nothing more: an assertion or password that
+arrives later is never sent, and the answer to a verify or password check already sent is
+dropped, so its grant is never used. After `done`, `cancel()` does nothing. A controller that
+never calls it works as before: rejecting `chooseMethod` cancels before the pick, but a close
+after the pick does not stop the confirmation.
 
 Without `promptWithDialog` (the default), the engine opens the passkey prompt only after
 `chooseMethod` resolves `"passkey"`: it calls `busy(true)` and `announce`, then `runGesture`, and
@@ -336,15 +345,15 @@ itself, so the user confirms without a click while your dialog shows what is bei
    password leg. A `"passkey"` pick while the prompt is still open uses that prompt and calls
    `busy(true)` and `announce` under it. Until the prompt finishes or the user picks passkey, the
    engine calls neither `busy` nor `announce`.
-5. `signal` is aborted when `chooseMethod` resolves `"password"` or rejects (the user closed the
-   dialog). Pass it to `navigator.credentials.get` so the prompt closes with your dialog; an
-   assertion that arrives after that is never verified. After a `"passkey"` pick the engine no
-   longer cancels the prompt: closing your dialog then does not stop it, and an assertion that
-   still arrives is verified.
+5. `signal` is aborted when `chooseMethod` resolves `"password"` or rejects, or when you call
+   `cancel()` (the user closed the dialog). Pass it to `navigator.credentials.get` so the prompt
+   closes with your dialog; an assertion that arrives after that is never verified. After a
+   `"passkey"` pick, only `cancel()` stops the prompt.
 
-Only the prompt the engine opens by itself gets `{ signal }`. A gesture started by the user's
-`"passkey"` pick, and every gesture without the option, gets `options` only, so give the second
-parameter a default, `(opts, { signal } = {})`, as in the example.
+Every gesture gets `{ signal }`: the prompt the engine opens by itself, and the one the user's
+`"passkey"` pick starts, with or without the option. Pass it to `navigator.credentials.get`, as in
+the example, so `cancel()` closes the prompt too. Earlier releases passed `options` only to a
+picked gesture; the example's default, `(opts, { signal } = {})`, works with both.
 
 A method can succeed and still send messages with `frappe.msgprint`, such as the warning that
 some of a removed passkey's sessions may still be signed in. `call()` resolves the method's result

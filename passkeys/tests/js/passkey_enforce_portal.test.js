@@ -188,6 +188,31 @@ test("portal confirm: password error remains visible on the retry prompt", async
 	await assert.rejects(retry, (err) => err.code === C.CONFIRM_CODES.USER_CANCELLED);
 });
 
+test("portal confirm: Esc or Cancel after the pick reports the cancel to the engine; done()'s own close does not", async () => {
+	let cancels = 0;
+	const choice = { action: "myapp.pay", actionLabel: "Pay invoice", canPasskey: true, canPassword: true, cancel: () => { cancels += 1; } };
+	const primary = (b) => (b.className || "").includes("btn-primary");
+	for (const close of [pressEscape, () => findButton(global.document.body, (b) => b.textContent === "Cancel").click()]) {
+		global.document = makeDoc();
+		const ui = mod.makeConfirmUI();
+		const picked = ui.chooseMethod(choice);
+		findButton(global.document.body, primary).click();
+		assert.strictEqual(await picked, "passkey");
+		const before = cancels;
+		close();
+		assert.strictEqual(global.document.body.children.length, 0, "the dialog closed");
+		assert.strictEqual(cancels, before + 1, "the close after the pick reached the engine");
+	}
+
+	global.document = makeDoc();
+	const finished = mod.makeConfirmUI();
+	finished.chooseMethod(choice);
+	const before = cancels;
+	finished.done(true);
+	assert.strictEqual(global.document.body.children.length, 0);
+	assert.strictEqual(cancels, before, "the engine's own close is not a cancel");
+});
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const normalFetch = global.fetch;
 function bannerDoc() {

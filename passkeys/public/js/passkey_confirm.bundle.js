@@ -129,6 +129,8 @@
 						'</div>',
 					].join("");
 					showPrompt(reject);
+					// A close after the pick cancels too: the engine aborts the prompt and sends nothing more.
+					if (opts.cancel) dialog.$wrapper.on("hide.bs.modal", function () { if (!settled) opts.cancel(); });
 					dialog.set_df_property("password", "hidden", 1);
 					fieldWrap("summary").html(html);
 					var polite = messageBox();

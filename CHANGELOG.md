@@ -12,6 +12,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - `frappe.passkeys.call` shows the messages a method sends with `frappe.msgprint` when it succeeds:
   on Desk as `frappe.call` does, on the portal pages in a dialog. A custom confirmation dialog gets
   them through `createConfirmEngine({..., onServerMessages})` ([Custom UI](docs/custom-ui.md)).
+- A custom confirmation dialog can now cancel after the user has chosen a passkey: `chooseMethod`
+  gets a `cancel()` to call when the dialog closes, and the passkey prompt the user's choice opens
+  gets `{ signal }`, as the one the engine opens by itself already did
+  ([Custom UI](docs/custom-ui.md)). A dialog that doesn't call `cancel()` works as before.
 
 ### Fixed
 
@@ -42,6 +46,12 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 - "Finish setting up this passkey" says "Verifying…" while your password is checked, and "Not now",
   Esc and a second Confirm do nothing until the check ends or 30 seconds pass. Before, "Not now"
   closed the dialog while the sign-in carried on. A wrong password now says so in the dialog.
+- Closing a "Confirm it's you" dialog after choosing "Confirm with passkey" (Esc, its close or
+  Cancel button, or a Desk route change) now cancels it: the passkey prompt closes, nothing more is
+  sent, and the action doesn't run. Closing it while your password is being checked cancels too.
+  Before, a passkey used after the dialog had closed still confirmed the action, and a password
+  check that finished after it still ran the action or, if the password was wrong, opened the
+  dialog again.
 
 ## [15.0.9] / [16.0.9] — 2026-11-24
 

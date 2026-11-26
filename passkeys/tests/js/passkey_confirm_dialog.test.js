@@ -78,9 +78,16 @@ function makeDialogClass() {
 		});
 		this._primary = { className: "", handlers: {}, _props: {}, focus() {}, addClass(c) { this.className += " " + c; }, removeClass(c) { this.className = this.className.replace(c, ""); }, prop(k, v) { this._props[k] = v; this.disabled = v; } };
 		this._secondary = { className: "", addClass(c) { this.className += " " + c; } };
-		this.$wrapper = { on() { return this; }, one() { return this; }, modal() {} };
-		this.show = function () {};
-		this.hide = function () {};
+		const handlers = {};
+		this.$wrapper = {
+			on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); return this; },
+			one() { return this; },
+			modal() {},
+			trigger(type) { (handlers[type] || []).slice().forEach((fn) => fn()); },
+		};
+		this.show = function () { this.display = true; };
+		// As Bootstrap does: Esc, the close button, a route change and done() all hide through here.
+		this.hide = function () { this.display = false; this.$wrapper.trigger("hide.bs.modal"); };
 		FakeDialog.instances.push(this);
 	}
 	FakeDialog.prototype.set_df_property = function (name, prop, value) {
@@ -193,6 +200,35 @@ test("focus goes back to the opener when the dialog was closed before done()", (
 	Dialog.instances[0].display = false;
 	ui.done(false);
 	assert.strictEqual(focused, true);
+});
+
+test("closing the desk dialog after the pick reports the cancel to the engine; done()'s own close does not", async () => {
+	const Dialog = makeDialogClass();
+	global.document = makeDoc();
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true });
+	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	const { makeDialogUI } = require("../../public/js/passkey_confirm.bundle.js");
+	let cancels = 0;
+	const choice = { action: "myapp.release_payment", canPasskey: true, canPassword: true, cancel: () => { cancels += 1; } };
+
+	const ui = makeDialogUI();
+	const picked = ui.chooseMethod(choice);
+	Dialog.instances[0].get_primary_btn().handlers.click();
+	assert.strictEqual(await picked, "passkey");
+	ui.busy(true);
+	Dialog.instances[0].hide(); // Esc while the passkey prompt is open
+	assert.strictEqual(cancels, 1, "the close after the pick reached the engine");
+
+	const finished = makeDialogUI();
+	finished.chooseMethod(choice);
+	finished.done(true);
+	assert.strictEqual(Dialog.instances[1].display, false, "done() closed the dialog");
+	assert.strictEqual(cancels, 1, "the engine's own close is not a cancel");
+	// Without `cancel` in the choice, a close only rejects chooseMethod, as before.
+	const plain = makeDialogUI().chooseMethod({ action: "myapp.release_payment", canPasskey: true, canPassword: false });
+	Dialog.instances[2].hide();
+	await assert.rejects(plain, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
 });
 
 test("frappe.passkeys.call on Desk shows a success's server messages with frappe.msgprint, as frappe.call does", async () => {

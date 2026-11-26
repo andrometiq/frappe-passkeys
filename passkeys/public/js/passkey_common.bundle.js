@@ -799,7 +799,7 @@
 	}
 
 	// deps: post(method, body, headers) -> Promise<{ok, status, body}>;
-	// runGesture(optionsJSON[, {signal}]) -> Promise<assertionJSON>; ui: a controller, or a factory
+	// runGesture(optionsJSON, {signal}) -> Promise<assertionJSON>; ui: a controller, or a factory
 	// for one per ceremony (contract: docs/custom-ui.md); translate (optional);
 	// promptWithDialog (optional): open the passkey prompt with the dialog;
 	// onServerMessages (optional): gets a successful call's server messages before it resolves.
@@ -870,7 +870,8 @@
 						"with a passkey or password. Sign in again with your password or a passkey, then try again.");
 				}
 				var controller = ui();
-				return Promise.resolve()
+				var stop = cancellation();
+				var flow = Promise.resolve()
 					.then(function () {
 						if (!caps.passkey) return { method: "password" };
 						var choice = {
@@ -879,16 +880,19 @@
 							parameterSummary: displayContext.parameterSummary,
 							canPasskey: caps.passkey,
 							canPassword: caps.password,
+							cancel: stop.cancel,
 						};
-						if (promptWithDialog) return chooseWithPromptOpen(controller, options, choice);
+						if (promptWithDialog) return chooseWithPromptOpen(controller, options, choice, stop.prompt);
 						return Promise.resolve(controller.chooseMethod(choice)).then(function (method) { return { method: method }; });
 					})
 					.then(function (picked) {
+						stop.check();
 						if (picked.method === "password") {
-							return passwordLeg(controller, action, fingerprint, displayContext);
+							return passwordLeg(controller, action, fingerprint, displayContext, stop);
 						}
-						return passkeyLeg(controller, stateId, options, picked.sheet);
-					})
+						return passkeyLeg(controller, stateId, options, picked.sheet, stop);
+					});
+				return Promise.race([flow, stop.cancelled])
 					.then(function (grant) {
 						controller.done(true);
 						return grant;
@@ -902,28 +906,44 @@
 			});
 		}
 
+		// cancel(): the user closed the dialog. The ceremony rejects user_cancelled at once and the
+		// passkey prompt is aborted; check() stops each later step, so nothing more is sent and a
+		// verify already sent goes unused. `prompt` is also aborted by a password pick or a
+		// rejected chooseMethod.
+		function cancellation() {
+			var prompt = new AbortController();
+			var error = new ConfirmError(CONFIRM_CODES.USER_CANCELLED, tr("Confirmation was cancelled."));
+			var isCancelled = false;
+			var settle;
+			return {
+				prompt: prompt,
+				cancelled: new Promise(function (resolve, reject) { settle = reject; }),
+				cancel: function () { isCancelled = true; prompt.abort(); settle(error); },
+				check: function () { if (isCancelled) throw error; },
+			};
+		}
+
 		// One frame after chooseMethod (the controller's dialog must be on screen by then), and only
 		// when the page had a click or key press in the last few seconds, the passkey prompt opens by
 		// itself. A refused or closed prompt is silent and the dialog's choices stay; a passkey pick
 		// joins an open prompt; a password pick or a cancel aborts it.
-		function chooseWithPromptOpen(controller, options, choice) {
+		function chooseWithPromptOpen(controller, options, choice, prompt) {
 			return new Promise(function (resolve, reject) {
 				var chosen = false;
 				var sheet = null;
-				var request = new AbortController();
 				Promise.resolve(controller.chooseMethod(choice)).then(function (method) {
 					chosen = true;
-					if (method === "password") request.abort();
+					if (method === "password") prompt.abort();
 					resolve({ method: method, sheet: method === "password" ? null : sheet });
 				}, function (err) {
 					chosen = true;
-					request.abort();
+					prompt.abort();
 					reject(err);
 				});
 				afterPaint(function () {
-					if (chosen || !hasUserActivation()) return;
+					if (chosen || prompt.signal.aborted || !hasUserActivation()) return;
 					var automatic = sheet = new Promise(function (start) {
-						start(runGesture(options, { signal: request.signal }));
+						start(runGesture(options, { signal: prompt.signal }));
 					});
 					automatic.then(function () { resolve({ method: "passkey", sheet: automatic }); },
 						function () { if (sheet === automatic) sheet = null; });
@@ -932,15 +952,17 @@
 		}
 
 		// sheet: the automatic prompt the user's pick joins, if one is open.
-		function passkeyLeg(controller, stateId, options, sheet) {
+		function passkeyLeg(controller, stateId, options, sheet, stop) {
 			controller.busy(true);
 			controller.announce(tr("Waiting for your passkey…"));
-			return (sheet || Promise.resolve().then(function () { return runGesture(options); }))
+			return (sheet || Promise.resolve().then(function () { return runGesture(options, { signal: stop.prompt.signal }); }))
 				.catch(function (err) { throw mapGestureError(err); })
 				.then(function (assertion) {
+					stop.check();
 					return post(CONFIRM_METHODS.verify, { state_id: stateId, credential: assertion }, {});
 				})
 				.then(function (res) {
+					stop.check();
 					if (!res || !res.ok) {
 						// An assertion is never re-POSTed; a retry is a fresh ceremony.
 						controller.announce(tr("That didn't work — please try again."));
@@ -956,10 +978,11 @@
 				});
 		}
 
-		function passwordLeg(controller, action, fingerprint, displayContext) {
+		function passwordLeg(controller, action, fingerprint, displayContext, stop) {
 			var tries = 0;
 			function attempt() {
 				return controller.collectPassword(displayContext).then(function (pwd) {
+					stop.check();
 					tries += 1;
 					var body = { pwd: pwd, action: action };
 					if (fingerprint) body.payload_fingerprint = fingerprint;
@@ -968,6 +991,7 @@
 							var grant = extractGrant(res.body);
 							if (grant) return grant;
 						}
+						stop.check();
 						if (tries >= MAX_PASSWORD_TRIES) {
 							throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED, tr("Too many attempts. Try again later."));
 						}

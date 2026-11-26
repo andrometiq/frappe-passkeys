@@ -106,6 +106,37 @@ chromium_only("passkey action-confirmation", () => {
 			cy.window().its("__confirm_reject.code").should("eq", "user_cancelled");
 			cy.simulate_passkey_tap();
 		});
+
+		it("Esc after the passkey pick closes the prompt and cancels, and nothing is verified", () => {
+			cy.login(USER, PW());
+			cy.visit_desk(USER);
+			cy.hold_passkey_taps(); // the passkey prompt stays open until it is aborted
+			cy.intercept("POST", "**/passkeys.confirm.verify_confirmation", cy.spy().as("verify"));
+			cy.window().then((win) => {
+				const credentials = win.navigator.credentials;
+				const real_get = credentials.get.bind(credentials);
+				win.__prompt = {};
+				cy.stub(credentials, "get").callsFake((request) => {
+					win.__prompt.started = true;
+					return real_get(request).catch((err) => {
+						win.__prompt.error = err.name;
+						throw err;
+					});
+				});
+				win.__confirm_reject = null;
+				win.frappe.passkeys
+					.confirm(ACTION, { token: "A2" })
+					.catch((err) => (win.__confirm_reject = err));
+			});
+			cy.get(".modal.show .passkey-confirm-passkey").should("be.visible").click();
+			cy.window().its("__prompt.started").should("eq", true);
+			cy.get("body").type("{esc}");
+			cy.get(".modal.show").should("not.exist");
+			cy.window().its("__confirm_reject.code").should("eq", "user_cancelled");
+			cy.window().its("__prompt.error").should("eq", "AbortError");
+			cy.simulate_passkey_tap();
+			cy.get("@verify").should("not.have.been.called");
+		});
 	});
 
 	describe("call() retry", () => {

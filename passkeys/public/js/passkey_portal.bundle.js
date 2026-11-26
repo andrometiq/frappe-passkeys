@@ -100,15 +100,17 @@
 	function makeConfirmUI() {
 		var modal = null;
 		var pendingReject = null;
+		var cancelCeremony = null;
 		var passwordMessage = "";
 
 		function freshModal() {
 			var made = buildModal({ title: t("Confirm it's you"), onClose: function () {
 				if (modal === made) modal = null;
-				// A dismissal while a prompt is open cancels it.
+				// A dismissal while a prompt is open cancels it; after the pick, the engine's cancel does.
 				var reject = pendingReject;
 				pendingReject = null;
 				if (reject) reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
+				if (cancelCeremony) cancelCeremony();
 			} });
 			modal = made;
 		}
@@ -124,6 +126,7 @@
 			chooseMethod: function (opts) {
 				return new Promise(function (resolve, reject) {
 					passwordMessage = "";
+					cancelCeremony = opts.cancel || null;
 					freshModal();
 					pendingReject = reject;
 					appendConfirmationContext(modal.body, opts);
@@ -178,6 +181,7 @@
 			},
 			done: function () {
 				pendingReject = null;
+				cancelCeremony = null;
 				if (!modal) return;
 				var current = modal;
 				modal = null;
