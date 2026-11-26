@@ -145,8 +145,9 @@ bench generate-pot-file --app passkeys
 env/bin/python apps/passkeys/scripts/generate_pot.py
 ```
 
-`test_translation_template` and `passkey_translation_template.test.js` fail when a bundle string is
-missing from the template.
+`test_translation_template` fails when a string the extractor finds is missing from the template, and
+`passkey_translation_template.test.js` when a string in the bundles' text tables is. Neither sees a
+string passed to `__()` or `t()` through a variable that isn't wrapped in `N_()`, so wrap those.
 
 ## Commit messages
 
