@@ -221,6 +221,49 @@ core OTP succeeds. A direct core OTP completion without that marker is not a sup
 password rotation between the password and passkey legs also fails by design because the ceremony's
 keyed, non-reversible password-hash version no longer matches.
 
+## Get alerts on passkey events
+
+Every event in the [table above](#monitoring-the-risk-events) is an Activity Log row, so a Frappe
+**Webhook** can send each one to a chat, paging or SIEM endpoint as it happens, with no code. This
+works on Frappe 15 and 16. In Desk, create a **Webhook** with these settings:
+
+| Field | Value |
+|---|---|
+| **DocType** | `Activity Log` |
+| **Doc Event** | `after_insert` |
+| **Condition** | `doc.content and doc.content.startswith("passkeys:")` |
+| **Request URL** | Your receiver's HTTPS address. |
+| **Request Method** | `POST` |
+| **Request Structure** | `JSON` (the form adds a `Content-Type: application/json` header). |
+| **JSON Request Body** | The template below. |
+| **Enable Security**, **Webhook Secret** | On, with a long random secret, so the receiver can check each request. |
+
+The rows this app writes have a `content` that starts with `passkeys:`; Frappe's own rows, such as
+sign-ins and sign-outs, don't, so the condition skips them. To send some events only, list them, for example
+`doc.content in ("passkeys:passkey_flagged", "passkeys:sign_out_incomplete")`. The
+`grant_issued` / `grant_consumed` rows come with every confirmed action; add
+`and not doc.content.startswith("passkeys:grant_")` to leave them out.
+
+```jinja
+{
+  "event": {{ doc.content | tojson }},
+  "user": {{ doc.user | tojson }},
+  "subject": {{ doc.subject | tojson }},
+  "time": {{ doc.communication_date | tojson }},
+  "log": {{ doc.name | tojson }}
+}
+```
+
+`event` is the `passkeys:<event>` value from the table, `user` the account it concerns, `subject` a
+one-line description (for example `Passkey added: Work laptop`), `time` when it was recorded (site
+time zone), and `log` the Activity Log row's name. `tojson` keeps a passkey label that contains
+quotes valid JSON.
+
+Frappe sends the request from a background job once the row is committed, so the site's worker must
+be running; each attempt is recorded in **Webhook Request Log**. With **Enable Security** on, every
+request carries an `X-Frappe-Webhook-Signature` header: the base64-encoded HMAC-SHA256 of the request
+body, keyed with the Webhook Secret. Reject a request whose signature doesn't match.
+
 ## The self-hoster password-disable override (advanced, at your own risk)
 
 **Goal:** a site that wants *passwords fully disabled site-wide* with passkeys as

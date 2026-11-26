@@ -16,6 +16,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   gets a `cancel()` to call when the dialog closes, and the passkey prompt the user's choice opens
   gets `{ signal }`, as the one the engine opens by itself already did
   ([Custom UI](docs/custom-ui.md)). A dialog that doesn't call `cancel()` works as before.
+- [Get alerts on passkey events](docs/operations.md#get-alerts-on-passkey-events): a Frappe Webhook
+  can send every passkey change and risk event to a chat, paging or SIEM endpoint as it happens, with
+  no code. The guide gives the Webhook's settings, condition and payload.
 
 ### Fixed
 

@@ -2,16 +2,18 @@
 # License: MIT. See LICENSE
 
 """The reference docs keep up with the code: every Passkey Settings field a user can set has a
-row in docs/configuration.md, and every typed wire error is in the error contract of
-docs/rest-api.md."""
+row in docs/configuration.md, every typed wire error is in the error contract of
+docs/rest-api.md, and the risk-events table of docs/operations.md lists exactly the Activity Log
+events the app writes."""
 
 import inspect
+import re
 from pathlib import Path
 
 import frappe
 from frappe.model import display_fieldtypes
 
-from passkeys import errors
+from passkeys import errors, notifications, session
 from passkeys.tests.compat import IntegrationTestCase
 
 DOCS = Path(frappe.get_app_path("passkeys")).parent / "docs"
@@ -49,6 +51,34 @@ class DocsSyncTest(IntegrationTestCase):
 		self.assertEqual(
 			missing, [], "passkeys.errors classes missing from the rest-api.md Typed errors list"
 		)
+
+	def test_risk_events_table_lists_every_activity_log_event(self):
+		section = _section(DOCS / "operations.md", "## Monitoring the risk events")
+		documented = {
+			event
+			for line in section.splitlines()
+			if line.startswith("| `passkeys:")
+			for event in re.findall(r"`(?:passkeys:)?(\w+)`", line.split("|")[1])
+		}
+		written = (
+			{value for name, value in vars(notifications).items() if name.startswith("RISK_")}
+			| set(re.findall(r'activity=\("(\w+)"', inspect.getsource(notifications)))
+			| {f"grant_{event}" for event in re.findall(r'_audit_grant\("(\w+)"', inspect.getsource(session))}
+		)
+		self.assertTrue(written)
+		self.assertEqual(
+			sorted(documented),
+			sorted(written),
+			"operations.md risk-events table differs from the passkeys:<event> values the app writes",
+		)
+
+
+def _section(path: Path, heading: str) -> str:
+	"""One ``##`` section of a page, up to the next ``##`` heading."""
+	text = path.read_text()
+	begin = text.index(heading)
+	end = text.find("\n## ", begin + len(heading))
+	return text[begin : end if end != -1 else None]
 
 
 def _bullet(path: Path, start: str) -> str:

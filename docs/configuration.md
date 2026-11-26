@@ -197,6 +197,11 @@ rotation during the ceremony therefore fails closed without retaining the passwo
 passkey-only leg. The password itself is retained only where an allowed OTP fallback, or an external
 authentication account without a local hash marker, requires core to re-authenticate.
 
+A passwordless sign-in (**Login with Passkey**) already counts as two factors: the app accepts it
+only when the user both holds the passkey and was verified on the device (PIN, fingerprint or face),
+so Frappe's own two-factor prompt is not asked after it, even for a user whose role has two-factor
+authentication on.
+
 ## Settings interaction matrix (operator terms)
 
 | Situation | What happens |
