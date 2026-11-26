@@ -79,6 +79,10 @@ class PasskeySettings(ReadOnlyWhileImpersonated, Document):
 		)
 
 	def _validate_inactive_origins(self):
+		"""With every mode off, only a save that changes an RP setting checks the origins, so a
+		stored origin a config change made invalid never blocks turning passkeys off."""
+		if not any(self.has_value_changed(fieldname) for fieldname in policy.RP_SETTINGS_FIELDS):
+			return
 		if self.passkey_origins:
 			policy.validate_origins(self, policy.resolve_rp_id(self))
 		if self.passkey_app_origins:

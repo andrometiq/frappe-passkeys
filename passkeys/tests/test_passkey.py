@@ -540,6 +540,41 @@ class TestPasskeySettingsValidation(PasskeyTestCase):
 		)
 		doc.save()
 
+	def test_stored_origin_never_blocks_saving_with_both_modes_off(self):
+		"""A site config change can leave a stored origin invalid: http://localhost once
+		developer_mode is off, or an origin outside a new host_name's RP scope. Turning passkeys
+		off and saving with both modes off still work; editing the origins or enabling is refused."""
+		cases = (
+			(
+				"localhost",
+				"http://localhost:8000",
+				{"developer_mode": 0, "host_name": None},
+				"must use HTTPS",
+			),
+			("", "https://app.old.example", {"host_name": "https://new.example"}, "cannot use RP ID"),
+		)
+		for rp_id, origin, conf, refusal in cases:
+			with self.subTest(origin=origin):
+				frappe.db.set_single_value(
+					"Passkey Settings",
+					{"login_with_passkey": 1, "passkey_rp_id": rp_id, "passkey_origins": origin},
+				)
+				frappe.local.conf.update(conf)
+
+				self._settings(login_with_passkey=0, passkey_as_second_factor=0).save()
+				self.assertFalse(cint(frappe.db.get_single_value("Passkey Settings", "login_with_passkey")))
+				self._settings(passkey_reauth_window=120).save()
+				self.assertEqual(
+					cint(frappe.db.get_single_value("Passkey Settings", "passkey_reauth_window")), 120
+				)
+
+				self.assertRaisesRegex(
+					frappe.ValidationError, refusal, self._settings(passkey_origins=origin + "\n").save
+				)
+				self.assertRaisesRegex(
+					frappe.ValidationError, refusal, self._settings(login_with_passkey=1).save
+				)
+
 	def test_localhost_origin_only_under_developer_mode(self):
 		frappe.local.conf["host_name"] = None
 		frappe.local.conf["developer_mode"] = 0

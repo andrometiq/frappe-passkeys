@@ -7,6 +7,13 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Fixed
+
+- Passkey Settings saves with both login modes off again after a site config change made a saved
+  origin invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside
+  a new `host_name`). Before, every save was refused, turning passkeys off included. Changing the RP
+  settings or turning a mode on still checks every origin.
+
 ## [15.0.9] / [16.0.9] — 2026-11-24
 
 ### Upgrade notes

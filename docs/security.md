@@ -386,8 +386,9 @@ real sign-in gets a random session id.
   origin.** The app pins RP ID and origins to that host; if the proxy lies about
   the host, ceremonies fail closed rather than misbind, but correct operation
   assumes the public host is within RP scope and its exact origin is trusted. HTTPS/HSTS at the
-  edge is the operator's responsibility; settings saves refuse plain HTTP origins except
-  localhost in developer mode. Runtime operational status is not an HTTPS health check.
+  edge is the operator's responsibility; a settings save refuses plain HTTP origins, except
+  localhost in developer mode, whenever a mode is on or the RP settings change. Runtime
+  operational status is not an HTTPS health check.
 - **No untrusted content is served within the RP ID's scope.** A passkey is
   scoped to the RP ID; hosting attacker-controlled content on a subdomain within
   that scope is a deployment concern the app cannot enforce.
