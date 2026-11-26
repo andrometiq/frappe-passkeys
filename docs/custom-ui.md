@@ -307,7 +307,7 @@ Implement all six methods:
 | `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
 | `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
 | `busy(isBusy)` | A passkey is being verified, or a prompt the user picked is open. |
-| `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending; so may `done(false)` after `cancel()`. |
+| `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending; so may `done(false)` after `cancel()`, with `chooseMethod` or `collectPassword` still pending. |
 
 With only password available, the engine goes straight to `collectPassword`, whose argument
 carries the same `cancel()`.

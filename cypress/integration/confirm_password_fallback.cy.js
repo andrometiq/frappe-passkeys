@@ -110,7 +110,15 @@ chromium_only("passkey action-confirmation — password fallback", () => {
 			cy.focused().type("{esc}");
 			cy.get(".modal.show").should("not.exist");
 			cy.window().its("__confirm_reject.code").should("eq", "user_cancelled");
-			cy.wait("@reauthPassword");
+			cy.wait("@reauthPassword").then(({ response }) => {
+				// The right password really passed the check: its grant arrived and went unused.
+				if (password === FALLBACK_PW) {
+					expect(response.statusCode).to.eq(200);
+					expect(response.body.message).to.have.property("grant");
+				} else {
+					expect(response.statusCode).to.not.eq(200);
+				}
+			});
 			cy.get(".modal.show").should("not.exist");
 		});
 		// One try per call: the right password's grant was never used.
