@@ -386,3 +386,24 @@ for (const site_rp_id of [null, "current.test"]) {
 		} finally { global.fetch = normalFetch; }
 	});
 }
+
+test("portal call: a success's server messages open the portal's own message dialog", async () => {
+	const warning = { message: "Some of a@example.com's sessions may still be signed in: see <a href=\"https://example.com/r\">recovery</a>.", indicator: "orange" };
+	global.fetch = () => Promise.resolve({
+		ok: true, status: 200,
+		json: () => Promise.resolve({ message: { deleted: "x" }, _server_messages: JSON.stringify([JSON.stringify(warning)]) }),
+	});
+	try {
+		global.document = makeDoc();
+		const result = await frappeObj.passkeys.call("passkeys.api.credentials.delete_credential", { name: "x" });
+		assert.deepStrictEqual(result, { deleted: "x" });
+		const overlay = global.document.body.children[0];
+		assert.ok(overlay, "the message dialog is open");
+		const title = findNode(overlay, (n) => (n.className || "").includes("passkey-dialog-title"));
+		assert.strictEqual(title.textContent, "Message");
+		assert.strictEqual(title.className, "passkey-dialog-title indicator orange");
+		assert.strictEqual(findNode(overlay, (n) => n.className === "passkey-server-message").innerHTML, warning.message);
+		findButton(overlay, (b) => b.textContent === "Close").click();
+		assert.strictEqual(global.document.body.children.length, 0, "Close closes it");
+	} finally { global.fetch = normalFetch; }
+});

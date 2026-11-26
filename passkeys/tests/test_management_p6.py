@@ -19,6 +19,7 @@ import redis
 from frappe.auth import CookieManager, LoginManager
 from frappe.utils import CallbackManager, set_request
 from frappe.utils.password import set_encrypted_password
+from frappe.utils.response import make_logs
 
 from passkeys import ceremony, confirm, notifications, session, state
 from passkeys.api import credentials
@@ -832,6 +833,31 @@ class RevocationSignOutTest(_Base):
 				self.assertIn(f"some of {self.owner}'s sessions may still be signed in", warnings[0])
 				self.assertIn(instruction, warnings[0])
 				self.assertIn("recovery.html#someone-may-be-using-the-account-right-now", warnings[0])
+
+	def test_the_delete_endpoint_returns_an_incomplete_sign_out_warning_to_the_owner(self):
+		"""The response the passkey dialogs read carries the warning as an orange message."""
+		make_credential(self.owner)
+		cred = make_credential(self.owner)
+		self._sign_in_for_real(self.owner)  # the lost device
+		self._sign_in_for_real(self.owner)  # the device in hand
+		state.set_sudo_window(frappe.session.sid, {"v": 1, "user": self.owner, "seeded_by": "password"}, 600)
+		self.addCleanup(state.clear_sudo_window, frappe.session.sid)
+		self.addCleanup(setattr, frappe.local, "response", frappe.local.response)
+		frappe.local.response = frappe._dict()
+		with (
+			patch.object(
+				state, "mark_sessions_ended", side_effect=redis.exceptions.ConnectionError("cache down")
+			),
+			patch.object(session.time, "sleep"),
+			patch.object(frappe.local, "message_log", []),
+			patch("frappe.utils.user.get_system_managers", return_value=["manager@example.com"]),
+		):
+			self.assertEqual(credentials.delete_credential(cred.name), {"deleted": cred.name})
+			make_logs()
+		messages = [json.loads(message) for message in json.loads(frappe.local.response["_server_messages"])]
+		self.assertEqual([message["indicator"] for message in messages], ["orange"])
+		self.assertIn(f"some of {self.owner}'s sessions may still be signed in", messages[0]["message"])
+		self.assertIn("Ask an administrator to clear the site cache", messages[0]["message"])
 
 	def _fail_session_expiry_reads(self):
 		"""Make the Sessions expiry read fail as a database error would, its query in the frame.

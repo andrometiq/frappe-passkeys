@@ -7,8 +7,17 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+### Added
+
+- `frappe.passkeys.call` shows the messages a method sends with `frappe.msgprint` when it succeeds:
+  on Desk as `frappe.call` does, on the portal pages in a dialog. A custom confirmation dialog gets
+  them through `createConfirmEngine({..., onServerMessages})` ([Custom UI](docs/custom-ui.md)).
+
 ### Fixed
 
+- When a passkey you remove can't sign out every session on the account, you now see the warning
+  that some sessions may still be signed in: Desk shows it as Frappe's orange message, the
+  `/passkeys` page in a dialog. Before, the passkey list just updated.
 - Passkey Settings saves with both login modes off again after a site config change made a saved
   origin invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside
   a new `host_name`). Before, every save was refused, turning passkeys off included. Changing the RP

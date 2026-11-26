@@ -63,7 +63,7 @@
 			}
 		}
 		return {
-			root: root, body: body, actions: actions, close: close,
+			root: root, title: title, body: body, actions: actions, close: close,
 			open: function () {
 				(document.body || document.documentElement).appendChild(overlay);
 				document.addEventListener("keydown", onKey, true);
@@ -185,7 +185,23 @@
 			},
 		};
 	}
-	var engine = C.createConfirmEngine({ post: post, runGesture: C.getAssertion, ui: makeConfirmUI, translate: t, promptWithDialog: true });
+	// The portal's msgprint: titled and colored by the first message. The messages are
+	// server-authored HTML, as msgprint renders them.
+	function showServerMessages(messages) {
+		var modal = buildModal({ title: messages[0].title || t("Message") });
+		modal.title.className += " indicator " + (messages[0].indicator || "blue");
+		messages.forEach(function (message) {
+			var box = el("div", "passkey-server-message");
+			box.innerHTML = String(message.message);
+			modal.body.appendChild(box);
+		});
+		modal.actions.appendChild(M.button("primary", t("Close"), modal.close));
+		modal.open();
+	}
+	var engine = C.createConfirmEngine({
+		post: post, runGesture: C.getAssertion, ui: makeConfirmUI, translate: t, promptWithDialog: true,
+		onServerMessages: showServerMessages,
+	});
 	// Any portal script (and the headless delete) can confirm through it.
 	window.frappe.passkeys = window.frappe.passkeys || {};
 	if (!window.frappe.passkeys.confirm) window.frappe.passkeys.confirm = engine.confirm;

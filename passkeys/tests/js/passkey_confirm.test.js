@@ -640,6 +640,60 @@ test("call(): retry after a confirmed grant surfaces the server message when the
 	);
 });
 
+// A success can carry frappe.msgprint messages too (the incomplete sign-out warning on a delete).
+const SIGN_OUT_WARNING = {
+	message: "The passkey no longer works, but some of a@example.com's sessions may still be signed in. Ask an administrator to clear the site cache: see <a href=\"https://example.com/recovery.html\">Someone may be using the account right now</a>.",
+	indicator: "orange",
+};
+function successWithMessages(message, ...messages) {
+	return { ok: true, status: 200, body: { message, _server_messages: JSON.stringify(messages.map((m) => JSON.stringify(m))) } };
+}
+
+test("call(): a success's server messages go to onServerMessages before it resolves; the result is unchanged", async () => {
+	const post = makePost({ "passkeys.api.credentials.delete_credential": [successWithMessages({ deleted: "x" }, SIGN_OUT_WARNING)] });
+	const shown = [];
+	const engine = C.createConfirmEngine({
+		post, runGesture: () => Promise.reject(new Error("should not run")), ui: makeUI(),
+		onServerMessages: (messages) => shown.push(messages),
+	});
+	const result = await engine.call("passkeys.api.credentials.delete_credential", { name: "x" }).then((r) => {
+		assert.strictEqual(shown.length, 1, "shown before the promise resolves");
+		return r;
+	});
+	assert.deepStrictEqual(result, { deleted: "x" });
+	assert.deepStrictEqual(shown, [[SIGN_OUT_WARNING]]);
+});
+
+test("call(): the retry after a confirmation hands its server messages over too", async () => {
+	const post = makePost({
+		"passkeys.api.credentials.delete_credential": [
+			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "passkeys.manage", payload_fingerprint: "fp", methods: ["passkey"] } },
+			successWithMessages({ deleted: "x" }, SIGN_OUT_WARNING, { message: "Second." }),
+		],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["passkey"] } } }],
+		"passkeys.confirm.verify_confirmation": [{ ok: true, status: 200, body: { message: { grant: "G" } } }],
+	});
+	const shown = [];
+	const engine = C.createConfirmEngine({
+		post, runGesture: () => Promise.resolve(ASSERTION), ui: makeUI({ method: "passkey" }),
+		onServerMessages: (messages) => shown.push(messages),
+	});
+	assert.deepStrictEqual(await engine.call("passkeys.api.credentials.delete_credential", { name: "x" }), { deleted: "x" });
+	assert.deepStrictEqual(shown, [[SIGN_OUT_WARNING, { message: "Second." }]]);
+});
+
+test("call(): no onServerMessages, no messages, or a refusal: nothing is handed over", async () => {
+	const shown = [];
+	const onServerMessages = (messages) => shown.push(messages);
+	const quiet = C.createConfirmEngine({ post: makePost({ "myapp.ping": [{ ok: true, status: 200, body: { message: 1 } }] }), runGesture: () => Promise.reject(new Error("no")), ui: makeUI(), onServerMessages });
+	assert.strictEqual(await quiet.call("myapp.ping", {}), 1);
+	const refused = C.createConfirmEngine({ post: makePost({ "myapp.x": [{ ok: false, status: 417, body: serverMsgBody("No.") }] }), runGesture: () => Promise.reject(new Error("no")), ui: makeUI(), onServerMessages });
+	await assert.rejects(refused.call("myapp.x", {}), (e) => e.message === "No.");
+	assert.deepStrictEqual(shown, []);
+	const headless = C.createConfirmEngine({ post: makePost({ "myapp.y": [successWithMessages("ok", SIGN_OUT_WARNING)] }), runGesture: () => Promise.reject(new Error("no")), ui: makeUI() });
+	assert.strictEqual(await headless.call("myapp.y", {}), "ok");
+});
+
 for (const [excType, message] of [
 	["CeremonyExpired", "That took too long — please try again."],
 	["CeremonyFailed", "That passkey didn't confirm it's you. Try again, or use your password."],

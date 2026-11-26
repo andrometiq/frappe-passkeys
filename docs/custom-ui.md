@@ -289,6 +289,7 @@ const engine = C.createConfirmEngine({
     .then((cred) => C.authAssertionToJSON(cred)),
   ui: makeYourConfirmModal,   // your DOM; see the controller contract below
   promptWithDialog: true,     // optional: open the passkey prompt with the dialog (below)
+  onServerMessages: showYourMessages, // optional: a successful call's server messages (below)
 });
 frappe.passkeys = frappe.passkeys || {};
 frappe.passkeys.confirm = frappe.passkeys.confirm || engine.confirm;
@@ -345,6 +346,14 @@ Only the prompt the engine opens by itself gets `{ signal }`. A gesture started 
 `"passkey"` pick, and every gesture without the option, gets `options` only, so give the second
 parameter a default, `(opts, { signal } = {})`, as in the example.
 
+A method can succeed and still send messages with `frappe.msgprint`, such as the warning that
+some of a removed passkey's sessions may still be signed in. `call()` resolves the method's result
+either way. To show the messages, pass `onServerMessages(messages)`: the engine calls it before
+`call()` resolves, with one `{message, indicator, title}` object per message, as `frappe.msgprint`
+takes them. `message` is HTML written by the server, as `frappe.msgprint` renders it. Without
+`onServerMessages` the engine shows nothing. The Desk engine hands them to `frappe.msgprint`; the
+portal engine shows them in its own dialog.
+
 `passkey_portal.bundle.js` is a full, self-contained reference implementation of
 `makeYourConfirmModal` (a `role="dialog"` overlay with focus trap and Esc handling).
 
@@ -400,6 +409,10 @@ codes). `fallback_unavailable` means neither a passkey nor password confirmation
 available. `confirmation_failed` also covers a protected method's refusal after successful
 confirmation and a server's refusal to start one (for example an impersonated session); show
 `.message`. Expired confirmations say "That took too long — please try again."
+
+When the method succeeds, `call()` shows the messages it sent with `frappe.msgprint`: on Desk as
+`frappe.call` does, on the app's portal pages in a dialog. A custom engine shows them only through
+`onServerMessages` (above).
 
 On Desk, a route change closes any open dialog, so a confirmation that is open when Desk routes
 rejects with `user_cancelled`. Start confirmations from a user action on a page that has finished

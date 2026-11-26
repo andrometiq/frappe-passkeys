@@ -169,6 +169,27 @@ chromium_only("passkey management — User form", () => {
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 		});
 
+		it("shows a message the delete sends back the way Frappe's msgprint does", () => {
+			const warning = "Some of this account's sessions may still be signed in.";
+			cy.login(USER, PW());
+			visit_user_passkeys();
+			// The server sends it when the sign-out can't finish; here it is added to a real delete.
+			cy.intercept("POST", "**/api/method/passkeys.api.credentials.delete_credential", (req) => {
+				req.continue((res) => {
+					res.body._server_messages = JSON.stringify([JSON.stringify({ message: warning, indicator: "orange" })]);
+				});
+			}).as("delete");
+			own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
+			cy.get(".modal-dialog:visible").contains(".btn-modal-primary, .btn-primary", "Remove passkey").click();
+			cy.wait("@delete").its("response.statusCode").should("eq", 200);
+			cy.get(".msgprint:visible", { timeout: 20000 })
+				.should("have.text", warning)
+				.closest(".modal-dialog")
+				.find(".modal-header .indicator")
+				.should("have.class", "orange");
+			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
+		});
+
 		it("confirms it's you with the passkey sheet the cold-window dialog opens, with no click in it", () => {
 			cy.login(USER, PW());
 			visit_user_passkeys();

@@ -647,31 +647,38 @@
 		return body;
 	}
 
-	// The text in a thrown error's `_server_messages` (a JSON string of JSON-encoded
-	// {message,...} dicts), so a server refusal is shown verbatim. Null when absent.
-	function serverMessages(body) {
-		if (!body || typeof body !== "object" || !body._server_messages) return null;
+	// A response's `_server_messages` (a JSON string of JSON-encoded {message, indicator, title, ...}
+	// dicts, one per frappe.msgprint) as those dicts; [] when absent.
+	function serverMessageList(body) {
+		if (!body || typeof body !== "object" || !body._server_messages) return [];
 		var arr;
 		try {
 			arr = typeof body._server_messages === "string"
 				? JSON.parse(body._server_messages)
 				: body._server_messages;
 		} catch (e) {
-			return null;
+			return [];
 		}
-		if (!Array.isArray(arr) || !arr.length) return null;
-		var msgs = [];
+		if (!Array.isArray(arr)) return [];
+		var list = [];
 		for (var i = 0; i < arr.length; i++) {
-			var text = "";
+			var o;
 			try {
-				var o = typeof arr[i] === "string" ? JSON.parse(arr[i]) : arr[i];
-				text = o && typeof o === "object" ? (o.message || "") : String(arr[i]);
+				o = typeof arr[i] === "string" ? JSON.parse(arr[i]) : arr[i];
 			} catch (e) {
-				text = String(arr[i]);
+				o = null;
 			}
-			if (text) msgs.push(String(text));
+			if (!o || typeof o !== "object") o = { message: String(arr[i]) };
+			if (o.message) list.push(o);
 		}
-		return msgs.length ? msgs.join(" ") : null;
+		return list;
+	}
+
+	// The text of a thrown error's server messages, so a server refusal is shown verbatim. Null
+	// when absent.
+	function serverMessages(body) {
+		var list = serverMessageList(body);
+		return list.length ? list.map(function (o) { return String(o.message); }).join(" ") : null;
 	}
 
 	// The 401 retry contract, or null. payload_fingerprint is echoed verbatim; JS never hashes.
@@ -794,13 +801,15 @@
 	// deps: post(method, body, headers) -> Promise<{ok, status, body}>;
 	// runGesture(optionsJSON[, {signal}]) -> Promise<assertionJSON>; ui: a controller, or a factory
 	// for one per ceremony (contract: docs/custom-ui.md); translate (optional);
-	// promptWithDialog (optional): open the passkey prompt with the dialog.
+	// promptWithDialog (optional): open the passkey prompt with the dialog;
+	// onServerMessages (optional): gets a successful call's server messages before it resolves.
 	function createConfirmEngine(deps) {
 		var post = deps.post;
 		var runGesture = deps.runGesture;
 		var makeUI = deps.ui;
 		var tr = deps.translate || function (s) { return s; };
 		var promptWithDialog = deps.promptWithDialog === true;
+		var onServerMessages = deps.onServerMessages;
 
 		var inflight = {}; // signature -> Promise: identical concurrent calls share one
 		var chain = Promise.resolve(); // distinct confirmations run one after another
@@ -985,11 +994,17 @@
 			return run({ action: action, params: params || {} });
 		}
 
+		function succeeded(body) {
+			var messages = serverMessageList(body);
+			if (messages.length && typeof onServerMessages === "function") onServerMessages(messages);
+			return unwrapMessage(body);
+		}
+
 		// On the 401 contract: confirm, then retry once with the grant header.
 		function call(method, args) {
 			args = args || {};
 			return post(method, args, {}).then(function (res) {
-				if (res && res.ok) return unwrapMessage(res.body);
+				if (res && res.ok) return succeeded(res.body);
 				var req = res && res.status === 401 && parseConfirmationRequired(res.body);
 				if (!req) throw httpError(res);
 				return run({
@@ -1000,7 +1015,7 @@
 					parameterSummary: req.parameterSummary,
 				}).then(function (grant) {
 					return post(method, args, buildGrantHeaders(grant)).then(function (res2) {
-						if (res2 && res2.ok) return unwrapMessage(res2.body);
+						if (res2 && res2.ok) return succeeded(res2.body);
 						// e.g. the last-passkey guard, which runs after the sudo gate.
 						throw new ConfirmError(CONFIRM_CODES.CONFIRMATION_FAILED,
 							serverMessages(res2 && res2.body) ||

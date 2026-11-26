@@ -225,12 +225,19 @@
 		return controller;
 	}
 
+	// As frappe.call shows them.
+	function showServerMessages(messages) {
+		window.frappe.hide_msgprint();
+		window.frappe.msgprint(messages);
+	}
+
 	var engine = C.createConfirmEngine({
 		post: C.post,
 		runGesture: C.getAssertion,
 		ui: makeDialogUI,
 		translate: t,
 		promptWithDialog: true,
+		onServerMessages: showServerMessages,
 	});
 
 	function confirm(action, params) {

@@ -194,3 +194,27 @@ test("focus goes back to the opener when the dialog was closed before done()", (
 	ui.done(false);
 	assert.strictEqual(focused, true);
 });
+
+test("frappe.passkeys.call on Desk shows a success's server messages with frappe.msgprint, as frappe.call does", async () => {
+	const warning = { message: "Some of a@example.com's sessions may still be signed in: see <a href=\"https://example.com/r\">recovery</a>.", indicator: "orange" };
+	const shown = [];
+	global.document = makeDoc();
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true });
+	global.window = {
+		frappe: {
+			passkeys_common: C, ui: { Dialog: makeDialogClass() },
+			hide_msgprint() { shown.push("hide"); },
+			msgprint(messages) { shown.push(messages); },
+		},
+	};
+	global.fetch = () => Promise.resolve({
+		ok: true, status: 200,
+		json: () => Promise.resolve({ message: { deleted: "x" }, _server_messages: JSON.stringify([JSON.stringify(warning)]) }),
+	});
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	require("../../public/js/passkey_confirm.bundle.js");
+
+	const result = await window.frappe.passkeys.call("passkeys.api.credentials.delete_credential", { name: "x" });
+	assert.deepStrictEqual(result, { deleted: "x" });
+	assert.deepStrictEqual(shown, ["hide", [warning]]);
+});
