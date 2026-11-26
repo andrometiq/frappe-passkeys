@@ -7,6 +7,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
 
 ## [Unreleased]
 
+## [15.0.10] / [16.0.10] — 2026-11-27
+
 ### Upgrade notes
 
 - `frappe.passkeys.call` now shows the messages a protected method sends with `frappe.msgprint`
@@ -469,7 +471,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   the app.
 - Private security reporting (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.9...develop
+[Unreleased]: https://github.com/Andrometiq/frappe-passkeys/compare/v16.0.10...develop
+[15.0.10]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.10
+[16.0.10]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.10
 [15.0.9]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.9
 [16.0.9]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v16.0.9
 [15.0.8]: https://github.com/Andrometiq/frappe-passkeys/releases/tag/v15.0.8
