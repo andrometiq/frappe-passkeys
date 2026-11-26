@@ -684,10 +684,8 @@
 		return window.frappe.call({ method: method, type: "POST", args: args, freeze: true, statusCode: statusCode });
 	}
 
-	// A posted request the user can't call back: the dialog stays locked on "Verifying…" until the
-	// answer, for at most VERIFY_LIMIT_MS; then the request is aborted and the dialog unlocks, unless
-	// this browser was signed in anyway. An answer no handler claims shows `failed`. Resolves once
-	// the dialog is unlocked.
+	// Locked on "Verifying…" until the answer, for at most VERIFY_LIMIT_MS; an answer no handler
+	// claims shows `failed`. Resolves once the dialog is unlocked.
 	function verifyInDialog(dlg, method, args, handlers, failed) {
 		var claimed = false;
 		var tracked = {};
@@ -705,10 +703,13 @@
 				resolve();
 			}
 			var timer = setTimeout(function () {
+				if (claimed) return; // answered; jQuery runs the .then a task later
 				done = true;
 				if (typeof call.abort === "function") call.abort();
-				dlg.ctxState.stopped = true;
-				if (!followLateSignIn()) unlock(t("Verifying took too long. Try again."));
+				// An answer taken in as the abort fired may have signed this browser in.
+				var user = window.frappe.get_cookie && window.frappe.get_cookie("user_id");
+				if (user && user !== "Guest") window.location.reload();
+				else unlock(t("Verifying took too long. Try again."));
 			}, VERIFY_LIMIT_MS);
 			function answered() {
 				if (done) return;
@@ -718,15 +719,6 @@
 			}
 			call.then(answered, answered);
 		});
-	}
-
-	// An aborted request's answer can still have set the session cookie. Frappe's readable
-	// user_id cookie shows it; reloading the sign-in page takes a signed-in browser in.
-	function followLateSignIn() {
-		var user = window.frappe.get_cookie && window.frappe.get_cookie("user_id");
-		if (!user || user === "Guest") return false;
-		window.location.reload();
-		return true;
 	}
 
 	// --------------------------------------------------------------- dialog a11y
@@ -766,14 +758,14 @@
 			secBtn.type = "button";
 			secBtn.className = "btn btn-sm btn-default btn-block";
 			secBtn.textContent = cfg.secondaryText;
-			secBtn.addEventListener("click", function () { if (!isHeld()) cfg.onSecondary(root, close, ctxState); });
+			secBtn.addEventListener("click", function () { if (!ctxState.locked) cfg.onSecondary(root, close, ctxState); });
 			buttons.push(actions.appendChild(secBtn));
 		}
 		var primary = document.createElement("button");
 		primary.type = "button";
 		primary.className = "btn btn-sm btn-primary btn-block";
 		primary.textContent = cfg.primaryText;
-		primary.addEventListener("click", function () { if (!isHeld()) cfg.onPrimary(root, close, ctxState); });
+		primary.addEventListener("click", function () { if (!ctxState.locked) cfg.onPrimary(root, close, ctxState); });
 		buttons.push(actions.appendChild(primary));
 
 		var cancel = document.createElement("button");
@@ -783,10 +775,8 @@
 		cancel.addEventListener("click", dismiss);
 		buttons.push(actions.appendChild(cancel));
 
-		// While locked, only the code (close()) can close the dialog. After a verify stopped at its
-		// time limit, a sign-in that landed anyway is followed instead of the action.
-		function isHeld() { return ctxState.locked || (ctxState.stopped === true && followLateSignIn()); }
-		function dismiss() { if (!isHeld()) close(); }
+		// While locked, only the code (close()) can close the dialog.
+		function dismiss() { if (!ctxState.locked) close(); }
 		var focusBeforeLock = null;
 		function setLocked(locked) {
 			if (!!ctxState.locked === !!locked) return;
@@ -820,7 +810,7 @@
 			}
 		}
 
-		return { overlay: overlay, root: root, close: close, setLocked: setLocked, primary: primary, onKey: onKey, focusables: focusables, ctxState: ctxState };
+		return { overlay: overlay, root: root, close: close, setLocked: setLocked, primary: primary, onKey: onKey, focusables: focusables };
 	}
 
 	function openDialog(dlg) {

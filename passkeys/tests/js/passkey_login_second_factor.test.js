@@ -598,18 +598,32 @@ test("second factor: a sign-in that lands despite the time limit takes the page 
 			assert.strictEqual(reloads.count, 1, "the page reloads into the signed-in session");
 			assert.strictEqual(first.querySelector(".passkey-dialog-error").textContent, "Verifying…", "no time-limit message");
 			assert.ok(lastDialogButtons().every((b) => b.disabled === true), "nothing to click while the page reloads");
+		});
+	} finally {
+		clock.restore();
+		mod.state.secondFactorOpen = false;
+	}
+});
 
-			// Signed in only after the limit: the next action follows it instead of closing.
-			cookies.user_id = "Guest";
-			mod.runSecondFactorCeremony("state-late-2", OPTIONS, true);
-			const overlay = global.document.body.appended[global.document.body.appended.length - 1];
+test("second factor: a verify answered before the limit is never aborted later", async () => {
+	const clock = useFakeTimers();
+	try {
+		await withSessionCookie(async (cookies, reloads) => {
+			const calls = [];
+			install({ credentialsGet: () => Promise.resolve({ toJSON: () => ({ id: "cred-1" }) }), call: stalledCall(calls) });
+			mod.runSecondFactorCeremony("state-answered", OPTIONS, true);
+			const { root } = lastDialog();
 			await tick(); await tick();
-			clock.advance(30000);
-			assert.strictEqual(lastDialog().root.querySelector(".passkey-dialog-error").textContent, TOO_LONG);
+			clock.advance(10000);
+			calls[0].reject({ status: 500 }); // an answer no handler claims
+			await tick(); await tick();
+			const shown = root.querySelector(".passkey-dialog-error").textContent;
+			assert.notStrictEqual(shown, "Verifying…");
 			cookies.user_id = "user@example.com";
-			buttonLabelled("Not now").click();
-			assert.strictEqual(reloads.count, 2, "Not now follows the sign-in");
-			assert.ok(overlay.parentNode, "and doesn't just close the dialog");
+			clock.advance(30000);
+			assert.strictEqual(calls[0].aborted, 0, "no abort after an answer");
+			assert.strictEqual(root.querySelector(".passkey-dialog-error").textContent, shown, "the answer's message stays");
+			assert.strictEqual(reloads.count, 0, "no reload");
 		});
 	} finally {
 		clock.restore();

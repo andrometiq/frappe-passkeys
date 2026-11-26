@@ -62,7 +62,7 @@ Wait a few minutes and try again.
 ### Verifying took too long. Try again.
 
 The site didn't answer within 30 seconds while it checked your passkey or password, so the page
-stopped waiting. If the sign-in went through anyway, the page takes you in.
+stopped waiting. If this browser was already signed in by then, the page takes you in.
 
 Try again. If it keeps happening, tell your administrator. Administrators: look for slow requests
 to `verify_second_factor` or `complete_uv_setup` in the web server logs.
