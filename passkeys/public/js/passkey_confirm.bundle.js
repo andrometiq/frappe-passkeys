@@ -25,7 +25,7 @@
 		}
 
 		// The engine can go straight to the password leg, so either prompt may open it.
-		function ensureDialog() {
+		function ensureDialog(cancel) {
 			if (!dialog) {
 				dialog = new window.frappe.ui.Dialog({
 					title: t("Confirm it's you"),
@@ -42,6 +42,8 @@
 						},
 					],
 				});
+				// A close after the pick or while a password is checked cancels too: the engine sends nothing more.
+				if (cancel) dialog.$wrapper.on("hide.bs.modal", function () { if (!settled) cancel(); });
 			}
 			return dialog;
 		}
@@ -67,8 +69,8 @@
 			});
 		}
 
-		function showPrompt(reject) {
-			ensureDialog();
+		function showPrompt(reject, cancel) {
+			ensureDialog(cancel);
 			armCancel(reject);
 			dialog.show();
 			C.ensureLiveRegion(document);
@@ -128,9 +130,7 @@
 						summaryHtml(action.context.summary),
 						'</div>',
 					].join("");
-					showPrompt(reject);
-					// A close after the pick cancels too: the engine aborts the prompt and sends nothing more.
-					if (opts.cancel) dialog.$wrapper.on("hide.bs.modal", function () { if (!settled) opts.cancel(); });
+					showPrompt(reject, opts.cancel);
 					dialog.set_df_property("password", "hidden", 1);
 					fieldWrap("summary").html(html);
 					var polite = messageBox();
@@ -165,7 +165,7 @@
 						'<p class="passkey-confirm-pwlabel">' + esc(t("Confirm your password to continue.")) + '</p>',
 						'</div>',
 					].join("");
-					showPrompt(reject);
+					showPrompt(reject, opts && opts.cancel);
 					dialog.set_df_property("password", "hidden", 0);
 					fieldWrap("summary").html(html);
 					var input = dialog.fields_dict.password.$input;

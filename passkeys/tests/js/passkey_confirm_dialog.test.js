@@ -231,6 +231,35 @@ test("closing the desk dialog after the pick reports the cancel to the engine; d
 	await assert.rejects(plain, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
 });
 
+test("closing the desk dialog while a password-only check runs reports one cancel to the engine; done()'s own close does not", async () => {
+	const Dialog = makeDialogClass();
+	global.document = makeDoc();
+	Object.defineProperty(globalThis, "navigator", { configurable: true, value: {}, writable: true });
+	global.window = { frappe: { passkeys_common: C, ui: { Dialog: Dialog } } };
+	delete require.cache[require.resolve("../../public/js/passkey_confirm.bundle.js")];
+	const { makeDialogUI } = require("../../public/js/passkey_confirm.bundle.js");
+	let cancels = 0;
+	const context = { action: "myapp.release_payment", cancel: () => { cancels += 1; } };
+
+	// No chooseMethod: the engine opens straight on the password prompt, and again after a wrong one.
+	const ui = makeDialogUI();
+	const first = ui.collectPassword(context);
+	Dialog.instances[0].get_primary_btn().handlers.click();
+	await first;
+	ui.passwordError("That password wasn't right. Try again.");
+	const retry = ui.collectPassword(context);
+	Dialog.instances[0].get_primary_btn().handlers.click();
+	await retry;
+	Dialog.instances[0].hide(); // Esc while the second password is checked
+	assert.strictEqual(cancels, 1, "the close reached the engine once");
+
+	const finished = makeDialogUI();
+	finished.collectPassword(context);
+	finished.done(true);
+	assert.strictEqual(Dialog.instances[1].display, false, "done() closed the dialog");
+	assert.strictEqual(cancels, 1, "the engine's own close is not a cancel");
+});
+
 test("frappe.passkeys.call on Desk shows a success's server messages with frappe.msgprint, as frappe.call does", async () => {
 	const warning = { message: "Some of a@example.com's sessions may still be signed in: see <a href=\"https://example.com/r\">recovery</a>.", indicator: "orange" };
 	const shown = [];

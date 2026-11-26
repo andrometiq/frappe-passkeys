@@ -303,24 +303,24 @@ Implement all six methods:
 | Method | Called when |
 |---|---|
 | `chooseMethod({action, actionLabel, parameterSummary, canPasskey, canPassword, cancel})` | A passkey is available (password may also be available). Resolve `"passkey"` or `"password"`; reject to cancel. Call `cancel()` when the user closes your dialog, before or after the pick (below). With `promptWithDialog`, it may stay unsettled: the automatic prompt can finish first. |
-| `collectPassword({action, actionLabel, parameterSummary})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. |
+| `collectPassword({action, actionLabel, parameterSummary, cancel})` | The password leg starts, and again after each wrong password. Resolve the password; reject to cancel. Call `cancel()` when the user closes your dialog, also while the password is checked (below). |
 | `passwordError(message)` | The password was wrong and the engine is about to call `collectPassword` again. Show `message` on the retry prompt. |
 | `announce(message)` | Status for screen readers (for example "Waiting for your passkey…"). |
 | `busy(isBusy)` | A passkey is being verified, or a prompt the user picked is open. |
 | `done(isOk)` | The confirmation finished or failed. Close your modal here. With `promptWithDialog`, it may come, with `true` or `false`, while `chooseMethod` is still pending; so may `done(false)` after `cancel()`. |
 
-With only password available, the engine goes straight to `collectPassword`, so there is no
-`cancel()`: reject `collectPassword` to cancel.
+With only password available, the engine goes straight to `collectPassword`, whose argument
+carries the same `cancel()`.
 
 Call `cancel()` whenever the user closes your dialog (Esc, a close button, a route change), also
-after the pick. The engine then calls `done(false)`, rejects with `user_cancelled` at once and
-aborts the passkey prompt's `signal`. It sends nothing more: an assertion or password that
-arrives later is never sent, and the answer to a verify or password check already sent is
-dropped, so its grant is never used. For `passkeys.manage`, a verify or password check already
-sent still opens the manage-passkeys window on the server: the user did confirm. After `done`,
-`cancel()` does nothing. A controller that
-never calls it works as before: rejecting `chooseMethod` cancels before the pick, but a close
-after the pick does not stop the confirmation.
+after the pick or while a password is checked. The engine then calls `done(false)`, rejects with
+`user_cancelled` at once and aborts the passkey prompt's `signal`. It sends nothing more: an
+assertion or password that arrives later is never sent, and the answer to a verify or password
+check already sent is dropped, so its grant is never used. For `passkeys.manage`, a verify or
+password check already sent still opens the manage-passkeys window on the server: the user did
+confirm. After `done`, `cancel()` does nothing. A controller that never calls it works as before:
+rejecting `chooseMethod` or `collectPassword` cancels while it is pending, but a close after the
+pick or while a password is checked does not stop the confirmation.
 
 Without `promptWithDialog` (the default), the engine opens the passkey prompt only after
 `chooseMethod` resolves `"passkey"`: it calls `busy(true)` and `announce`, then `runGesture`, and

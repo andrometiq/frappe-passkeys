@@ -4,8 +4,9 @@
 // Password fallback. For an allow_password_fallback
 // action with no usable passkey, the dialog offers a password tab;
 // reauth_password{pwd, action, payload_fingerprint} mints a password-method grant
-// that authorizes the retry. Wrong password retries in-dialog. A
-// allow_password_fallback=False action offers no password door (fallback_unavailable).
+// that authorizes the retry. Wrong password retries in-dialog. Closing the dialog while the
+// password is checked cancels. A allow_password_fallback=False action offers no password door
+// (fallback_unavailable).
 
 const chromium_only = Cypress.isBrowser({ family: "chromium" }) ? describe : describe.skip;
 const USER = "Administrator";
@@ -79,6 +80,41 @@ chromium_only("passkey action-confirmation — password fallback", () => {
 				expect(message.token).to.eq("PF1");
 			})
 		);
+	});
+
+	it("closing the dialog while the password is checked cancels: a wrong one opens nothing, a right one runs nothing", () => {
+		cy.login(FALLBACK_USER, FALLBACK_PW);
+		cy.call(SEED_NUDGE, { declines: 0, last_shown: null, opt_out: 1 });
+		cy.visit_desk(FALLBACK_USER);
+		cy.get('html[data-passkeys-nudge-evaluated="true"]', { timeout: 20000 });
+		let checks = 0;
+		// Each check answers late, so the dialog closes while it runs.
+		cy.intercept("POST", "**/api/method/passkeys.confirm.reauth_password", (req) => {
+			checks += 1;
+			req.continue((res) => {
+				res.setDelay(1500);
+			});
+		}).as("reauthPassword");
+		cy.intercept("POST", `**/api/method/${PROBE}`).as("probe");
+		[
+			["not-the-password", 1],
+			[FALLBACK_PW, 2],
+		].forEach(([password, check]) => {
+			cy.window().then((win) => {
+				win.__confirm_reject = null;
+				win.frappe.passkeys.call(PROBE, { token: "PF2" }).catch((err) => (win.__confirm_reject = err));
+			});
+			cy.get(".modal.show .passkey-confirm-pw").should("be.visible").type(password, { delay: 0 });
+			cy.get(".modal.show .passkey-confirm-pwgo").click();
+			cy.wrap(null).should(() => expect(checks).to.eq(check));
+			cy.focused().type("{esc}");
+			cy.get(".modal.show").should("not.exist");
+			cy.window().its("__confirm_reject.code").should("eq", "user_cancelled");
+			cy.wait("@reauthPassword");
+			cy.get(".modal.show").should("not.exist");
+		});
+		// One try per call: the right password's grant was never used.
+		cy.get("@probe.all").should("have.length", 2);
 	});
 
 	it("offers no password door when the action forbids fallback", () => {

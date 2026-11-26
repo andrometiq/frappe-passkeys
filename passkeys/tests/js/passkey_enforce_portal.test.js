@@ -213,6 +213,20 @@ test("portal confirm: Esc or Cancel after the pick reports the cancel to the eng
 	assert.strictEqual(cancels, before, "the engine's own close is not a cancel");
 });
 
+test("portal confirm: Esc while a password-only check runs reports the cancel to the engine", async () => {
+	let cancels = 0;
+	global.document = makeDoc();
+	const ui = mod.makeConfirmUI();
+	const typed = ui.collectPassword({ action: "myapp.pay", actionLabel: "Pay invoice", cancel: () => { cancels += 1; } });
+	const overlay = global.document.body.children[0];
+	findNode(overlay, (n) => n.id === "passkey-portal-pw").value = "secret";
+	findButton(overlay, (b) => (b.className || "").includes("btn-primary")).click();
+	assert.strictEqual(await typed, "secret");
+	pressEscape();
+	assert.strictEqual(global.document.body.children.length, 0, "the dialog closed");
+	assert.strictEqual(cancels, 1, "the close reached the engine");
+});
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const normalFetch = global.fetch;
 function bannerDoc() {

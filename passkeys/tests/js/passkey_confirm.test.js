@@ -9,7 +9,7 @@
 // params/payload_hash mutual exclusion, password-fallback leg, fallback_unavailable,
 // user-cancel mapping, DOMException mapping through the gesture, single-retry cap,
 // concurrent-invocation dialog sharing, the opt-in passkey prompt opening with the dialog, and
-// a close the controller reports through cancel(), before or after the pick.
+// a close the controller reports through cancel(), before or after the pick, or with password only.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -230,9 +230,11 @@ test("password fallback leg mints a grant via reauth_password (action-bound)", a
 	const rc = post.calls.find((c) => c.method === "passkeys.confirm.reauth_password");
 	// reauth carries action + fingerprint so the server can mint an ACTION grant (not a bare sudo seed)
 	assert.deepStrictEqual(rc.body, { pwd: "s3cret", action: "myapp.pay", payload_fingerprint: "fp9" });
-	assert.deepStrictEqual(ui.events.find((event) => event[0] === "password")[1], {
+	const { cancel, ...context } = ui.events.find((event) => event[0] === "password")[1];
+	assert.deepStrictEqual(context, {
 		action: "myapp.pay", actionLabel: "Release payment", parameterSummary: { Payment: "PAY-1" },
 	});
+	assert.strictEqual(typeof cancel, "function");
 });
 
 test("password fallback: wrong password retries in-dialog, then succeeds", async () => {
@@ -365,7 +367,7 @@ function makeWaitingUI() {
 	const choice = deferred();
 	const controller = {
 		chooseMethod(info) { events.push(["choose", info]); return choice.promise; },
-		collectPassword() { events.push(["password"]); return Promise.resolve("hunter2"); },
+		collectPassword(info) { events.push(["password", info]); return Promise.resolve("hunter2"); },
 		announce(m) { events.push(["announce", m]); },
 		busy(b) { events.push(["busy", b]); },
 		passwordError(m) { events.push(["pwerror", m]); },
@@ -684,6 +686,57 @@ test("a controller that never calls cancel works as before: a rejection cancels 
 		assert.deepStrictEqual(picked.events.map((e) => e[0]), ["choose", "busy", "announce", "done"]);
 		assert.deepStrictEqual(picked.events[3], ["done", true]);
 	}
+});
+
+// With only password available there is no chooseMethod: collectPassword's cancel() reports the close.
+function passwordOnlyScript(reauth) {
+	return {
+		"myapp.api.pay": [
+			{ ok: false, status: 401, body: { exc_type: "PasskeyConfirmationRequired", action: "myapp.pay", payload_fingerprint: "fp", methods: ["password"] } },
+			{ ok: true, status: 200, body: { message: "paid" } },
+		],
+		"passkeys.confirm.begin_confirmation": [{ ok: true, status: 200, body: { message: { state_id: "s", options: REQ_OPTIONS, payload_fingerprint: "fp", methods: ["password"] } } }],
+		"passkeys.confirm.reauth_password": reauth,
+	};
+}
+
+test("closing a password-only confirmation while the password is checked: the action never runs, and no retry prompt opens", async () => {
+	const late = [
+		{ ok: true, status: 200, body: { message: { grant: "LATE-GRANT" } } },
+		{ ok: false, status: 401, body: {} },
+	];
+	for (const reauthResult of late) {
+		const reauth = deferred();
+		const post = makePost(passwordOnlyScript([reauth.promise]));
+		const ui = makeWaitingUI();
+		const result = C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error("no gesture")), ui: () => ui.controller }).call("myapp.api.pay", { id: 1 });
+		await flush();
+		assert.ok(post.calls.some((c) => c.method === "passkeys.confirm.reauth_password"), "the password was sent");
+		ui.events.find((e) => e[0] === "password")[1].cancel();
+		await assert.rejects(result, (e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+		reauth.resolve(reauthResult);
+		await flush();
+		assert.strictEqual(post.calls.filter((c) => c.method === "myapp.api.pay").length, 1, "the grant was never used");
+		assert.deepStrictEqual(ui.events.map((e) => e[0]), ["password", "done"], "no password error and no second prompt");
+	}
+});
+
+test("a password-only controller that never calls cancel works as before: a rejection cancels, a retried password confirms", async () => {
+	const closed = makeUI({ cancelPassword: true });
+	const closedPost = makePost(passwordOnlyScript([]));
+	await assert.rejects(C.createConfirmEngine({ post: closedPost, runGesture: () => Promise.reject(new Error()), ui: closed }).call("myapp.api.pay", { id: 1 }),
+		(e) => e.code === C.CONFIRM_CODES.USER_CANCELLED);
+	assert.deepStrictEqual(closed.events.map((e) => e[0]), ["password", "done"]);
+	assert.ok(!closedPost.calls.some((c) => c.method === "passkeys.confirm.reauth_password"));
+
+	const typed = makeUI({ passwords: ["wrong", "right"] });
+	const post = makePost(passwordOnlyScript([
+		{ ok: false, status: 401, body: {} },
+		{ ok: true, status: 200, body: { message: { grant: "PW-GRANT" } } },
+	]));
+	assert.strictEqual(await C.createConfirmEngine({ post, runGesture: () => Promise.reject(new Error()), ui: typed }).call("myapp.api.pay", { id: 1 }), "paid");
+	assert.deepStrictEqual(typed.events.map((e) => e[0]), ["password", "pwerror", "password", "done"]);
+	assert.deepStrictEqual(typed.events[3], ["done", true]);
 });
 
 // ----------------------------------------------------- HTTP vs network (C11)

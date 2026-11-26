@@ -858,10 +858,12 @@
 					(typeof begin.action_label === "string" ? begin.action_label : null);
 				var parameterSummary = input.parameterSummary !== undefined && input.parameterSummary !== null
 					? input.parameterSummary : begin.parameter_summary;
+				var stop = cancellation();
 				var displayContext = {
 					action: action,
 					actionLabel: actionLabel,
 					parameterSummary: parameterSummary,
+					cancel: stop.cancel,
 				};
 				// begin's per-user methods are authoritative; the 401 hint is the fallback.
 				var caps = confirmCapabilities(
@@ -873,7 +875,6 @@
 						"with a passkey or password. Sign in again with your password or a passkey, then try again."));
 				}
 				var controller = ui();
-				var stop = cancellation();
 				var flow = Promise.resolve()
 					.then(function () {
 						if (!caps.passkey) return { method: "password" };

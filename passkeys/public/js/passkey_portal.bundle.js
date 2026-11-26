@@ -106,7 +106,7 @@
 		function freshModal() {
 			var made = buildModal({ title: t("Confirm it's you"), onClose: function () {
 				if (modal === made) modal = null;
-				// A dismissal while a prompt is open cancels it; after the pick, the engine's cancel does.
+				// A dismissal while a prompt is open cancels it; once the prompt has answered, the engine's cancel does.
 				var reject = pendingReject;
 				pendingReject = null;
 				if (reject) reject(new C.ConfirmError(C.CONFIRM_CODES.USER_CANCELLED, t("Confirmation was cancelled.")));
@@ -140,6 +140,7 @@
 			},
 			collectPassword: function (opts) {
 				return new Promise(function (resolve, reject) {
+					if (opts && opts.cancel) cancelCeremony = opts.cancel;
 					var mustOpen = !modal; // the engine can open straight on the password prompt
 					if (mustOpen) freshModal();
 					pendingReject = reject;
