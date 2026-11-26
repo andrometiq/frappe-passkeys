@@ -114,7 +114,8 @@ def end_sessions(user: str, *, keep_current: bool) -> bool:
 	ended even when a mark can't be written. Returns False (logged) when a session could not be
 	marked or some are left when it stops (a session that fails to end, or the round limit), True
 	otherwise. A session that fails to end isn't tried again: each try can take the database's
-	whole lock wait."""
+	whole lock wait. Commits as it goes, and rolls back a failed delete's writes, so call it only
+	after the caller's own writes are committed."""
 	kept_key = get_stored_session_id(frappe.session.sid) if keep_current else None
 	is_complete, previous_keys, skipped_keys = True, None, {kept_key}
 	for round_number in range(MAX_SIGN_OUT_ROUNDS):
