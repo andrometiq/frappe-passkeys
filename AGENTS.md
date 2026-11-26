@@ -169,6 +169,8 @@ spaces. These rules apply to any change here:
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets
   and personal data; CI runs a `gitleaks` secret scan over full history. Never weaken a security
   gate to make a test pass.
+- Agents push, tag or release only on a maintainer's explicit word for that action, and scan the
+  commits for private data before every push.
 - Keep docs concise and current in the same change as the behavior: operators need the workflow
   and the security consequence quickly (`docs/`). Security model: `docs/security.md`. Core-merge
   contract: `docs/upstream/` — update it in the same change when you touch a seam core would inherit.
