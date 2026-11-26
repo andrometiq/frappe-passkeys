@@ -23,6 +23,10 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   sign-out as incomplete: the warning, the `passkeys:sign_out_incomplete` risk event and the System
   Managers' email. Before, the passkey was revoked but Desk showed an error, and the owner's email
   and its Activity Log row were lost.
+- During that sign-out, a session that can't be ended is tried only once, so the save or delete no
+  longer runs out of time trying it again. It leaves no Activity Log row saying the owner logged
+  out, its Error Log row is kept, and its error message no longer hides the orange warning. The
+  [recovery steps](docs/recovery.md#someone-may-be-using-the-account-right-now) say how to end it.
 - Passkey Settings saves with both login modes off after a site config change made a saved origin
   invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside a new
   `host_name`'s RP scope). Before, every save was refused, turning passkeys off included. Changing the RP

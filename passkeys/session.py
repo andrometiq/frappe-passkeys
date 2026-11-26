@@ -113,31 +113,34 @@ def end_sessions(user: str, *, keep_current: bool) -> bool:
 	with core's ``delete_session``; later rounds end sessions signed in meanwhile. The sessions are
 	ended even when a mark can't be written. Returns False (logged) when a session could not be
 	marked or some are left when it stops (a session that fails to end, or the round limit), True
-	otherwise."""
+	otherwise. A session that fails to end isn't tried again: each try can take the database's
+	whole lock wait."""
 	kept_key = get_stored_session_id(frappe.session.sid) if keep_current else None
-	is_complete, previous_keys = True, None
+	is_complete, previous_keys, skipped_keys = True, None, {kept_key}
 	for round_number in range(MAX_SIGN_OUT_ROUNDS):
-		listed_keys = _get_session_keys(user, kept_key)
+		listed_keys = _get_session_keys(user, skipped_keys)
 		is_complete &= _mark_ended(listed_keys, _get_stored_expiries(listed_keys))
 		cached_by_key = {}
 		if round_number == 0:  # one cache read per call
 			cached_by_key, is_marked = _mark_cached_sessions(user, {kept_key, *listed_keys})
 			is_complete &= is_marked
-		_delete_sessions(user, listed_keys, cached_by_key)
+		failed_keys = _delete_sessions(user, listed_keys, cached_by_key)
+		is_complete &= not failed_keys
+		skipped_keys |= failed_keys
 		if not listed_keys or listed_keys == previous_keys:  # none left, or the last round ended none
 			return is_complete and not listed_keys
 		previous_keys = listed_keys
-	if not _get_session_keys(user, kept_key):
+	if not _get_session_keys(user, skipped_keys):
 		return is_complete
 	frappe.log_error(title="passkeys: sign-out stopped at its round limit")
 	return False
 
 
-def _get_session_keys(user: str, kept_key: str | None) -> set:
-	"""The stored ids of all of ``user``'s sessions but ``kept_key``."""
+def _get_session_keys(user: str, skipped_keys: set) -> set:
+	"""The stored ids of all of ``user``'s sessions but ``skipped_keys``."""
 	sessions = frappe.qb.DocType("Sessions")
 	stored_keys = frappe.qb.from_(sessions).select(sessions.sid).where(sessions.user == user).run(pluck=True)
-	return set(stored_keys) - {kept_key}
+	return set(stored_keys) - skipped_keys
 
 
 def _mark_cached_sessions(user: str, skipped_keys: set) -> tuple[dict[str, dict], bool]:
@@ -178,23 +181,30 @@ def _retry(func, *args):
 			time.sleep(pause)
 
 
-def _delete_sessions(user: str, listed_keys: set, cached_by_key: dict) -> None:
+def _delete_sessions(user: str, listed_keys: set, cached_by_key: dict) -> set:
 	"""End exactly these sessions: the listed ones with core's ``delete_session`` (by the stored
-	id where core takes it); drop the cached copies of the others. A listed session that fails to
-	end is logged and doesn't stop the others; the next round lists it again."""
+	id where core takes it); drop the cached copies of the others. Returns the listed ones that
+	failed to end: each is logged, its writes and messages dropped, and doesn't stop the others."""
 	from frappe.sessions import delete_session
 
 	by_stored_id = "sid_hash" in inspect.signature(delete_session).parameters
+	failed_keys = set()
 	for key in listed_keys:
+		message_count = len(frappe.local.message_log)
 		try:
 			if by_stored_id:
 				delete_session(user=user, reason="Force Logged out by the user", sid_hash=key)
 			else:
 				delete_session(key, user=user, reason="Force Logged out by the user")
 		except Exception:
+			frappe.db.rollback()  # a lock wait timeout leaves the delete's earlier writes in
+			del frappe.local.message_log[message_count:]
 			frappe.log_error(title="passkeys: ending a session failed", message=frappe.get_traceback())
+			frappe.db.commit()  # the log stays even if a later delete rolls back
+			failed_keys.add(key)
 	for key in cached_by_key:
 		frappe.cache.hdel("session", key)
+	return failed_keys
 
 
 def _get_cached_sessions(user: str, skipped_keys: set) -> dict[str, dict]:

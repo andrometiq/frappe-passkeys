@@ -106,7 +106,9 @@ don't recognise), do all of these, in order:
    from [the Desk actions](#the-desk-actions-used-below) until
    `frappe.db.count("Sessions", {"user": "user@example.com"})` returns 0.
 3. Clear the site cache: `bench --site <site> clear-cache`, or `frappe.clear_cache()` in the
-   [console](#console-access). Other users stay signed in.
+   [console](#console-access). Other users stay signed in. Clearing the cache doesn't end a
+   session the app couldn't end (Error Log `passkeys: ending a session failed` or
+   `passkeys: sign-out failed`): run the console line from step 2 until its count returns 0.
 4. If the account has no passkey you could disable, or it is still in use after step 3, take the
    site offline: stop its web workers, or turn on maintenance mode
    (`bench --site <site> set-maintenance-mode on`, with `allow_reads_during_maintenance` off in the

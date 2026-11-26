@@ -1014,6 +1014,124 @@ class RevocationSignOutTest(_Base):
 				self.assertEqual({log.method for log in result.logs}, {"passkeys: sign-out failed"})
 				self._assert_completed_and_reported(action, cred, result, (lost, frappe.session.sid))
 
+	def test_a_sign_out_whose_first_listing_fails_ends_nothing_and_is_reported(self):
+		self._log_traceback_variables()
+		for action in ("disable", "delete"):
+			with self.subTest(action=action):
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)
+				signed_in = frappe.session.sid
+				self._sign_in_for_real(self.actor)
+				before = set(self._session_ids(self.owner))
+				failure = RuntimeError("database read failed")
+				with patch.object(session, "_get_session_keys", side_effect=failure):
+					result = self._revoke_and_collect(action, cred)
+				self.assertEqual(set(self._session_ids(self.owner)), before)
+				self.assertFalse(self._is_ended(signed_in))
+				self.assertEqual({log.method for log in result.logs}, {"passkeys: sign-out failed"})
+				self._assert_completed_and_reported(action, cred, result, (signed_in,))
+
+	def test_a_failed_session_delete_leaves_none_of_its_writes_and_the_rest_still_runs(self):
+		"""As a lock wait timeout fails it (its earlier writes stay in the transaction) and as a
+		deadlock does (the whole transaction is rolled back): each failure is logged once."""
+		self._log_traceback_variables()
+		real_delete = frappe.sessions.delete_session
+		for failure in ("lock wait timeout", "deadlock"):
+			with self.subTest(failure=failure):
+				cred = make_credential(self.owner)
+				sids = []
+				for _ in range(3):
+					self._sign_in_for_real(self.owner)
+					sids.append(frappe.session.sid)
+				self._sign_in_for_real(self.actor)
+				failed, partial = [], f"partial write {frappe.generate_hash()}"
+				self.addCleanup(frappe.db.commit)
+				self.addCleanup(frappe.db.delete, "ToDo", {"description": partial})
+
+				@functools.wraps(real_delete)
+				def fail_the_first_two(sid=None, user=None, reason="Session Expired", **kwargs):
+					if len(failed) == 2:
+						return real_delete(sid, user, reason, **kwargs)
+					failed.append(kwargs.get("sid_hash") or sid)
+					frappe.get_doc({"doctype": "ToDo", "description": partial}).insert(
+						ignore_permissions=True
+					)
+					if failure == "deadlock":
+						frappe.db.rollback()
+					raise RuntimeError(failure)
+
+				with patch("frappe.sessions.delete_session", fail_the_first_two):
+					result = self._revoke_and_collect("disable", cred)
+				self.assertEqual(set(self._session_ids(self.owner)), set(failed))
+				self.assertTrue(all(self._is_ended(sid) for sid in sids))
+				self.assertFalse(frappe.db.exists("ToDo", {"description": partial}))
+				self.assertEqual(
+					[log.method for log in result.logs], ["passkeys: ending a session failed"] * 2
+				)
+				self._assert_completed_and_reported("disable", cred, result, tuple(sids))
+
+	def test_a_session_that_fails_to_end_is_not_tried_again(self):
+		"""Each try can take the database's whole lock wait."""
+		self._sign_in_for_real(self.owner)
+		failing_id = self._current_session_id()
+		self._sign_in_for_real(self.owner)
+		self._sign_in_for_real(self.actor)
+		real_delete = frappe.sessions.delete_session
+		tried = []
+
+		@functools.wraps(real_delete)
+		def delete_session(sid=None, user=None, reason="Session Expired", **kwargs):
+			tried.append(kwargs.get("sid_hash") or sid)
+			if tried[-1] == failing_id:
+				raise RuntimeError("Lock wait timeout exceeded")
+			return real_delete(sid, user, reason, **kwargs)
+
+		with patch("frappe.sessions.delete_session", delete_session), patch("frappe.log_error") as log_error:
+			self.assertFalse(end_sessions(self.owner, keep_current=False))
+		self.assertEqual((len(tried), tried.count(failing_id)), (2, 1))
+		self.assertEqual(self._session_ids(self.owner), [failing_id])
+		self.assertEqual(
+			[logged.kwargs["title"] for logged in log_error.call_args_list],
+			["passkeys: ending a session failed"],
+		)
+
+	def test_a_caught_error_s_message_is_dropped_and_the_orange_warning_sent(self):
+		"""Frappe's msgprint shows only the error when one is among the messages."""
+
+		def refuse(*args, **kwargs):
+			frappe.throw("The site is in read only mode")
+
+		steps = {
+			"a session's end": "frappe.sessions.delete_session",
+			"the listing": "passkeys.session._get_session_keys",
+		}
+		self.addCleanup(setattr, frappe.local, "response", frappe.local.response)
+		for step, target in steps.items():
+			with self.subTest(failing=step):
+				make_credential(self.owner)
+				cred = make_credential(self.owner)
+				self._sign_in_for_real(self.owner)  # the lost device
+				self._sign_in_for_real(self.owner)  # the device in hand
+				sudo = {"v": 1, "user": self.owner, "seeded_by": "password"}
+				state.set_sudo_window(frappe.session.sid, sudo, 600)
+				self.addCleanup(state.clear_sudo_window, frappe.session.sid)
+				frappe.local.response = frappe._dict()
+				with (
+					patch(target, refuse),
+					patch("frappe.log_error"),
+					patch.object(frappe.local, "message_log", []),
+					patch("frappe.utils.user.get_system_managers", return_value=["manager@example.com"]),
+				):
+					self.assertEqual(credentials.delete_credential(cred.name), {"deleted": cred.name})
+					make_logs()
+				server_messages = frappe.local.response["_server_messages"]
+				messages = [json.loads(message) for message in json.loads(server_messages)]
+				self.assertEqual([message["indicator"] for message in messages], ["orange"])
+				self.assertIn(
+					f"some of {self.owner}'s sessions may still be signed in", messages[0]["message"]
+				)
+				self.assertNotIn("read only mode", server_messages)
+
 	def _fail_session_expiry_reads(self):
 		"""Make the Sessions expiry read fail as a database error would, its query in the frame.
 		Patched on the connection object itself, so an earlier test's wrapper can't shadow it."""

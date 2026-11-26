@@ -151,9 +151,11 @@ class WebAuthnCredential(ReadOnlyWhileImpersonated, Document):
 		# A fresh snapshot: a sign-in that committed while this request waited on the row lock
 		# is listed too; any later one reads the revoked row and fails.
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+		message_count = len(frappe.local.message_log)
 		try:
 			is_complete = end_sessions(self.user, keep_current=by_owner)
 		except Exception:
+			del frappe.local.message_log[message_count:]  # Frappe would show it instead of the warning
 			frappe.log_error(title="passkeys: sign-out failed", message=frappe.get_traceback())
 			is_complete = False
 		self.flags.passkeys_sign_out_incomplete = not is_complete

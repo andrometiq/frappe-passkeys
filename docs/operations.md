@@ -155,7 +155,10 @@ credential revoked after the backup was taken returns with the backup and may wo
   If the sign-out can't be completed (for example, the site cache can't be reached at that
   moment), the passkey is still revoked, but some of the owner's sessions may still be signed in:
   the app records a `passkeys:sign_out_incomplete` risk event, emails the System Managers, and a
-  save in the Desk form shows a warning. Clear the site cache once it is reachable.
+  save in the Desk form shows a warning. Clear the site cache once it is reachable. If a session
+  couldn't be ended (Error Log `passkeys: ending a session failed` or `passkeys: sign-out failed`),
+  clearing the cache doesn't end it: untick **Enabled** on the owner's **User** record and save, as
+  below.
   **Remove stale passkeys** signs nobody out: a stale passkey cannot sign in on this site.
 
   For an account you believe someone is using right now, follow
