@@ -48,8 +48,8 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   closed the dialog while the sign-in carried on. A wrong password now says so in the dialog.
 - Closing a "Confirm it's you" dialog after choosing "Confirm with passkey" (Esc, its close or
   Cancel button, or a Desk route change) now cancels it: the passkey prompt closes, nothing more is
-  sent, and the action doesn't run. Closing it while your password is being checked cancels too.
-  Before, a passkey used after the dialog had closed still confirmed the action, and a password
+  sent, and the action doesn't run. Closing it after choosing "Use your password instead", while the
+  password is checked, cancels too. Before, a passkey used after the dialog had closed still confirmed the action, and a password
   check that finished after it still ran the action or, if the password was wrong, opened the
   dialog again.
 

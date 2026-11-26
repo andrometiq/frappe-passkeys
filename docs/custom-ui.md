@@ -316,13 +316,15 @@ Call `cancel()` whenever the user closes your dialog (Esc, a close button, a rou
 after the pick. The engine then calls `done(false)`, rejects with `user_cancelled` at once and
 aborts the passkey prompt's `signal`. It sends nothing more: an assertion or password that
 arrives later is never sent, and the answer to a verify or password check already sent is
-dropped, so its grant is never used. After `done`, `cancel()` does nothing. A controller that
+dropped, so its grant is never used. For `passkeys.manage`, a verify or password check already
+sent still opens the manage-passkeys window on the server: the user did confirm. After `done`,
+`cancel()` does nothing. A controller that
 never calls it works as before: rejecting `chooseMethod` cancels before the pick, but a close
 after the pick does not stop the confirmation.
 
 Without `promptWithDialog` (the default), the engine opens the passkey prompt only after
 `chooseMethod` resolves `"passkey"`: it calls `busy(true)` and `announce`, then `runGesture`, and
-`done` comes after `chooseMethod` has settled.
+`done` comes after `chooseMethod` has settled, unless you call `cancel()` first.
 
 With `promptWithDialog: true` (the desk and portal dialogs set it), the engine opens the prompt
 itself, so the user confirms without a click while your dialog shows what is being confirmed:

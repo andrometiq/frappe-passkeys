@@ -906,10 +906,7 @@
 			});
 		}
 
-		// cancel(): the user closed the dialog. The ceremony rejects user_cancelled at once and the
-		// passkey prompt is aborted; check() stops each later step, so nothing more is sent and a
-		// verify already sent goes unused. `prompt` is also aborted by a password pick or a
-		// rejected chooseMethod.
+		// cancel() rejects user_cancelled and aborts the prompt; check() stops every later step.
 		function cancellation() {
 			var prompt = new AbortController();
 			var error = new ConfirmError(CONFIRM_CODES.USER_CANCELLED, tr("Confirmation was cancelled."));
