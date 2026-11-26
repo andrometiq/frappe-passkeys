@@ -908,6 +908,8 @@ class EnforcementVerdictTest(PinnedSiteRp, IntegrationTestCase):
 		del missing["passkey_enforce_roles"]
 		for value in (
 			"not json",
+			draft,
+			None,
 			json.dumps(["All users"]),
 			json.dumps(missing),
 			json.dumps({**draft, "passkey_enforce_grace_logins": 0}),

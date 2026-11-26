@@ -13,6 +13,9 @@ version: the first public release is 15.0.0 (`version-15`, for Frappe v15) and 1
   origin invalid (for example `http://localhost` once `developer_mode` is off, or an origin outside
   a new `host_name`). Before, every save was refused, turning passkeys off included. Changing the RP
   settings or turning a mode on still checks every origin.
+- The count of users a Passkey Settings enforcement change would affect checks that the caller is a
+  System Manager before it reads the request, and answers a draft that isn't a JSON string with its
+  own "could not be read" error instead of a type error.
 
 ## [15.0.9] / [16.0.9] — 2026-11-24
 

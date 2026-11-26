@@ -256,7 +256,7 @@ def recalculate_enforcement_preview() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def count_enforcement_draft(draft: str) -> dict:
+def count_enforcement_draft(draft: object) -> dict:
 	"""Count the form's unsaved enforcement choice in the background; poll
 	``get_enforcement_preview`` with the returned signature."""
 	refuse_if_core_native()
